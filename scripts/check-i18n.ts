@@ -120,7 +120,22 @@ for (const [lang, flat] of catalogues) {
   }
 }
 
-// 4. Every AI code the model may emit must have a sentence in every language,
+// 4. A pluralised sentence prints {{value}}, never {{count}}. `count` stays a
+//    number because it is what selects `_one` from `_other`, and i18next writes an
+//    interpolated number with `String(value)` — `{{count}} months` would render
+//    `2.4 months` in a UI that spells every other number `2,4`. `t()` supplies
+//    the formatted `{{value}}`; this check is what stops the next plural key from
+//    quietly reaching for `{{count}}` again.
+for (const [lang, flat] of catalogues) {
+  for (const [key, value] of flat) {
+    if (!/_(one|other|two|few|many|zero)$/.test(key)) continue
+    if (varsIn(value).has('count')) {
+      fail(`${lang}: plural key "${key}" prints {{count}}; use {{value}} (see t() in src/i18n)`)
+    }
+  }
+}
+
+// 5. Every AI code the model may emit must have a sentence in every language,
 //    using exactly the variables its spec declares. This is the check that stops
 //    a new finding code shipping as a raw identifier in the Dutch UI.
 const codeGroups: Array<[string, Record<string, { readonly vars: readonly string[] }>]> = [
