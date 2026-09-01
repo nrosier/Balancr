@@ -1,0 +1,46 @@
+{
+  "accounts": {
+    "hint": "Mark one source of truth per account that exists in both tools.",
+    "includeInNetWorth": "Count toward net worth",
+    "sourceOfTruth": "Source of truth",
+    "title": "Accounts"
+  },
+  "ai": {
+    "lastRun": "Last analysis",
+    "model": "Model",
+    "runs": "Analyses",
+    "spend": "{{spent}} of {{budget}} this month",
+    "title": "AI usage"
+  },
+  "language": {
+    "en": "English",
+    "hint": "Amounts and dates stay in Belgian format in every language.",
+    "nl": "Dutch",
+    "title": "Language"
+  },
+  "prompt": {
+    "activate": "Make active",
+    "active": "Active",
+    "dryRun": "Test on last month",
+    "dryRunCost": "Estimated cost: {{cost}}",
+    "hint": "Written in English whatever the interface language; the assistant answers in yours.",
+    "rollback": "Roll back to {{version}}",
+    "title": "Assistant instructions",
+    "version": "Version {{version}}"
+  },
+  "sync": {
+    "lastSync": "Last sync",
+    "nextSync": "Next sync",
+    "runNow": "Sync now",
+    "title": "Synchronisation"
+  },
+  "thresholds": {
+    "baselineMonths": "Months in the baseline",
+    "emergencyTarget": "Emergency buffer target",
+    "halfLife": "Half-life",
+    "materiality": "Only ask about categories above",
+    "savingsTarget": "Savings target",
+    "title": "Thresholds"
+  },
+  "title": "Settings"
+}

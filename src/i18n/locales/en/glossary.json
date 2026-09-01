@@ -1,0 +1,42 @@
+{
+  "effectenrekening": {
+    "definition": "The account your investments are held in.",
+    "term": "Securities account (effectenrekening)"
+  },
+  "ewma": {
+    "definition": "A weighted average of the last twelve months, with recent months counting more.",
+    "term": "12-month norm"
+  },
+  "meerwaarde": {
+    "definition": "Tax on the gain realised when selling an investment.",
+    "term": "Capital gains tax (meerwaardebelasting)"
+  },
+  "mwr": {
+    "definition": "Return that includes the timing of your deposits, so it measures your outcome.",
+    "term": "Money-weighted return"
+  },
+  "pensioensparen": {
+    "definition": "Tax-advantaged retirement saving with an annual ceiling.",
+    "term": "Pension saving (pensioensparen)"
+  },
+  "reynders": {
+    "definition": "Tax on the interest component of certain bond funds when you sell.",
+    "term": "Reynders tax (Reynders-taks)"
+  },
+  "roerendeVoorheffing": {
+    "definition": "Tax withheld at source on dividends and interest.",
+    "term": "Withholding tax (roerende voorheffing)"
+  },
+  "ter": {
+    "definition": "The yearly percentage a fund deducts from its assets.",
+    "term": "Ongoing charges (TER)"
+  },
+  "tob": {
+    "definition": "Belgian tax charged on each purchase or sale of a security, at a rate that depends on the instrument.",
+    "term": "Stock exchange tax (beurstaks / TOB)"
+  },
+  "twr": {
+    "definition": "Return that ignores the timing of your deposits, so it measures the investments.",
+    "term": "Time-weighted return"
+  }
+}

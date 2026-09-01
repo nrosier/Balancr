@@ -1,0 +1,19 @@
+# gitleaks configuration.
+#
+# The default rule set does the work; this file exists for the allowlist, and
+# the allowlist is deliberately narrow — every entry is a place where a
+# secret-shaped string is provably not a secret.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and test fixtures"
+paths = [
+  '''\.env\.example$''',
+  '''^test/setup\.ts$''',
+  '''^README\.md$''',
+]
+regexes = [
+  # The 48-character session secret in the test setup is literally 'x' repeated.
+  '''x{32,}''',
+]

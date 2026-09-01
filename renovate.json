@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Brussels",
+  "schedule": ["* 2-6 * * 1"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* 2-6 * * 1"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "@actual-app/api is versioned YY.M to track the Actual server release. Bumping it ahead of the server produces out-of-sync-migrations, so this one is never automatic — it is approved by hand when the server is upgraded.",
+      "matchPackageNames": ["@actual-app/api"],
+      "dependencyDashboardApproval": true,
+      "addLabels": ["needs-server-upgrade"]
+    },
+    {
+      "description": "Dev tooling: one PR for all non-major updates.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies"
+    },
+    {
+      "description": "Native modules get their own PR — a rebuild failure should not be hidden inside a group.",
+      "matchPackageNames": ["better-sqlite3", "argon2"],
+      "groupName": null
+    },
+    {
+      "description": "Majors are reviewed one at a time.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

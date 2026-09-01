@@ -1,0 +1,38 @@
+{
+  "category": {
+    "description": "Waarvoor dient dit?",
+    "descriptionHint": "Je eigen notitie. De assistent gebruikt die om deze categorie te begrijpen.",
+    "sensitive": "Als gevoelig behandelen",
+    "sensitiveHint": "Het bedrag wordt nog steeds geanalyseerd, maar de naam verlaat deze server nooit.",
+    "sharedCustody": "Gedeeld met de andere ouder"
+  },
+  "chart": {
+    "axisMoney": "Euro",
+    "axisMonth": "Maand",
+    "bulletTitle": "Budget versus werkelijk",
+    "burnTitle": "Uitgavetempo deze maand",
+    "sankeyTitle": "Waar het geld naartoe gaat",
+    "trendTitle": "Uitgaven per categorie"
+  },
+  "group": {
+    "hidden": "Verborgen categorieën",
+    "uncategorised": "Niet-gecategoriseerd"
+  },
+  "hygiene": {
+    "hint": "Een analyse is maar zo goed als de boekhouding erachter.",
+    "score": "Kwaliteitsscore",
+    "title": "Gegevenskwaliteit"
+  },
+  "metric": {
+    "assigned": "Toegewezen",
+    "available": "Beschikbaar",
+    "baseline": "12-maandsgemiddelde",
+    "burnRate": "Verbruikstempo",
+    "carryover": "Overgedragen",
+    "income": "Inkomsten",
+    "projected": "Prognose einde maand",
+    "savingsRate": "Spaarquote",
+    "spent": "Uitgegeven"
+  },
+  "title": "Budget"
+}
