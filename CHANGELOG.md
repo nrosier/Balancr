@@ -31,10 +31,26 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   category drops below its norm, and `irregular_expense` for a first-ever cost.
   Every relative signal is gated on an absolute floor, because a EUR 7 envelope
   40% over is EUR 2.80.
-- **Hygiene signals** (`src/domain/aggregate/hygiene.ts`): uncategorised backlog
-  and recomputation mismatch. Deliberately no hygiene *score* yet: two of its
-  four inputs do not exist, and a number computed from half of them would move
-  when the rest arrive with no visible reason.
+- **Hygiene signals and score** (`src/domain/aggregate/hygiene.ts`): uncategorised
+  backlog, recomputation mismatch, accounts whose balance has become a guess for
+  want of reconciling, and portfolio snapshots past their staleness limit. The
+  score is an explicit capped-deduction model from 10000 bp rather than a weighted
+  average, and reports what it deducted and why, so a number the AI narrates is
+  never unexplainable. Snapshot staleness is documented as the age of *our*
+  snapshot, because Ghostfolio's API exposes no as-of date for a market price.
+- **Net worth** (`src/domain/aggregate/networth.ts`): one figure out of two systems
+  that both think they know it. `account_map.dedupe_group` plus
+  `is_source_of_truth` stops an Actual investment mirror and the same Ghostfolio
+  positions being added together, which would overstate net worth by the size of
+  the portfolio — wrong in the flattering direction and entirely plausible. A
+  group with no source of truth is reported explicitly rather than silently
+  counted as nothing, because too-low net worth has no symptom.
+- **Household signals** (`src/domain/aggregate/household.ts`): savings rate against
+  target, income moved against its own norm, emergency fund in months of
+  *typical* spend, and a new net-worth high. Every ratio with a zero denominator
+  produces nothing at all rather than an infinity.
+- `daysBetween` and `assertDate` in `src/util/month.ts`, for staleness measured in
+  calendar days rather than in instants.
 - **Idempotent fact persistence** (`src/domain/aggregate/facts.ts`): upsert rather
   than delete-then-insert, so no page load can catch a month mid-rebuild; stale
   rows for categories that vanished are removed explicitly. `category_meta`
@@ -48,8 +64,10 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
 - Golden tests throughout: hand-computed EWMA and interpolated quantiles, the
   annual-premium case the frequency window exists to handle, the Brussels midnight
   case where UTC still says the previous month, sign normalisation in both
-  directions, the chunk boundary in the writer, and each overspend signal proven
-  to fire on its own.
+  directions, the chunk boundary in the writer, each overspend signal proven to
+  fire on its own, the dedupe cases that would misstate net worth in either
+  direction, and the annual-premium month that must not shorten the emergency
+  fund on paper.
 
 ### Changed
 - `BaselineResult` reports `winsorEffectBp` — how far winsorisation moved the
