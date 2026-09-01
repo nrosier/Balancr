@@ -5,9 +5,12 @@
  *  1. `config` validates the environment at import time — a half-configured
  *     advisor that silently skips auth is worse than one that refuses to boot.
  *  2. migrations run before anything serves, so traffic never meets an old schema.
- *  3. i18n initialises before the first render or cron digest, which have no
+ *  3. the built-in prompts are seeded, so a fresh database has an active,
+ *     inspectable prompt rather than a hidden constant. Idempotent, and it never
+ *     touches a prompt someone has edited.
+ *  4. i18n initialises before the first render or cron digest, which have no
  *     request context to fall back on.
- *  4. the scheduler starts last, once everything it needs is up. It ticks
+ *  5. the scheduler starts last, once everything it needs is up. It ticks
  *     immediately, so starting it before the migrations ran would mean a job
  *     writing to a schema that does not exist yet.
  *
@@ -24,6 +27,7 @@ import { initI18n } from './i18n/index.ts'
 import { logger } from './logger.ts'
 import { closeActual } from './adapters/actual/client.ts'
 import { createScheduler, registry } from './jobs/index.ts'
+import { seedPrompts } from './domain/ai/prompts.ts'
 
 const log = logger.child({ module: 'main' })
 
@@ -50,6 +54,9 @@ const VERSION = appVersion()
 async function main(): Promise<void> {
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')
+
+  const seeded = seedPrompts(db)
+  if (seeded > 0) log.info({ prompts: seeded }, 'seeded built-in prompts')
 
   await initI18n()
 

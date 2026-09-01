@@ -15,6 +15,13 @@
       "when": 1788297454441,
       "tag": "0001_young_domino",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788302145604,
+      "tag": "0002_lovely_junta",
+      "breakpoints": true
     }
   ]
 }

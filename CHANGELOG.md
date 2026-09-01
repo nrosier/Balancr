@@ -6,6 +6,86 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The Gemini adapter** (`src/adapters/gemini/client.ts`): the only thing that
+  puts a payload on the wire, so it is the second half of the privacy review —
+  `redact.ts` decides what a payload may contain, this decides that nothing else
+  is ever sent. Financial data goes inside a delimited block and the system
+  instruction states, in as many words, that the block is data and never
+  instructions; a payload containing the fence markers is **refused rather than
+  escaped**, because a payload that can close the fence can write instructions
+  outside it. The fence contract is composed in code rather than stored with the
+  prompt, so a prompt saved without it cannot exist. Provider choice
+  (`aistudio` / `vertex`) is a pure exported function, since that decision is
+  where the data physically goes.
+- **Context caching** for the stable system prompt, with the failure path treated
+  as a cost problem rather than a correctness one: a prompt below the provider's
+  minimum cacheable size falls back to an inline instruction, and the outcome is
+  remembered so a nightly pass does not retry a doomed `caches.create` every run.
+  The cache key hashes the prompt text, so an edited prompt is never served from a
+  stale cache.
+- **A closed response schema** (`src/adapters/gemini/schemas.ts`): the model
+  returns codes, labels and severities — never prose and never a number. Two
+  layers, because one is not enough. The wire schema restricts `code` to the
+  vocabulary, so an invented code is a parse failure; then `groundResponse`
+  requires every finding to match a `(code, label)` pair that actually exists in
+  the payload's signals, which is what catches the plausible hallucination — a
+  *real* code about a *real* category that nothing computed. Dropped items are
+  recorded with a reason, so that is visible rather than silent. Severity may be
+  lowered by the model and never raised: the threshold that would justify an alert
+  lives in `settings`, not in a sentence. A parse failure is an error, never a
+  rendered guess.
+- **The price table and cost arithmetic** (`src/adapters/gemini/pricing.ts`) in
+  integer micro-euros, with dated per-model rates and longest-prefix matching so a
+  dated or preview suffix prices as its family and `flash-lite` is never billed as
+  `flash`. An unrecognised model is priced at the **most expensive** tier, so the
+  guard overstates rather than understates what a call will cost.
+- **Versioned prompts** (`src/domain/ai/prompts.ts`): the prompt lives in the
+  database because a web app cannot edit `.env`, and it is versioned rather than
+  overwritten — every edit is a new row, activation is a flag, and rollback is
+  activating an older row, so no edit destroys the text that produced last month's
+  output. At most one active version per `(key, locale)` is enforced by a partial
+  unique index rather than by remembering to clear the old flag. Resolution steps
+  down three levels — the locale's active version, then `DEFAULT_LOCALE`'s, then
+  the built-in text — so a Dutch prompt nobody has written yet is served by the
+  English one, and a database whose prompt rows were deleted can still produce a
+  run. The built-in defaults are seeded at startup, idempotently, so a fresh
+  install boots with a prompt that can be read in the UI instead of a hidden
+  constant.
+- **The run ledger** (`src/domain/ai/runs.ts`): one row per attempt, whether or
+  not it reached Google. `payload_json` is exactly what was prepared for the call,
+  stored verbatim — the record that makes the privacy claim checkable by opening a
+  row rather than by argument. A refused attempt is still a row (`capped` when over
+  budget, `blocked` when the call was refused before it went out), carrying the
+  payload it would have sent, so a missing answer explains itself instead of just
+  being absent. Cost is derived inside the writer from the model and the token
+  counts, so no call site can record a call as free by forgetting a field.
+- **The cost guard** (`src/domain/ai/budget.ts`) over a new `ai_spend_monthly`
+  view: month-to-date spend is summed from the ledger and nowhere else, so there
+  is no second counter to drift. Over budget serves the last stored answer with a
+  banner and never fails hard; an estimate is checked against what is *left*, not
+  just against the total, so a month at 95% cannot start a run costing half the
+  budget again. `GEMINI_MONTHLY_BUDGET_EUR=0` reads as "no AI spend at all", since
+  that is the one interpretation of a zero budget that cannot produce a bill
+  nobody asked for. The view groups by **UTC** month deliberately — SQLite has no
+  timezone database, and a fixed offset would be wrong half the year — and the
+  guard computes its month key from the same rule.
+- **A line diff** (`src/util/diff.ts`) for the prompt editor: LCS over lines,
+  deletion-first on a tie, and a hard line cap so a pasted document cannot make the
+  editor allocate a table nobody wants.
+- Tests for all of it (140 new): the grounding refusals one by one, the fence
+  refusal for a marker buried at any depth, the caching fall-back and its
+  no-retry memo, thinking tokens billed as output, prompt rollback leaving exactly
+  one active row, the three-step resolution, the ledger's verbatim payload, the
+  view summing across statuses and grouping by UTC, and every branch of the budget
+  decision including the zero budget.
+
+### Changed
+- Startup seeds the built-in prompts after migrations and before i18n, so the
+  documented startup order still describes what happens.
+
 ## [0.3.1] — 2026-09-02
 
 ### Added

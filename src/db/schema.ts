@@ -17,6 +17,7 @@ import {
   integer,
   primaryKey,
   sqliteTable,
+  sqliteView,
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
@@ -500,7 +501,11 @@ export const aiRuns = sqliteTable(
       onDelete: 'set null',
     }),
     locale: text().notNull(),
-    /** Verbatim redacted payload. */
+    /**
+     * The redacted payload verbatim — what was *prepared* for this run. `status`
+     * says whether it was actually sent: a `capped` or `blocked` row carries the
+     * payload it would have sent, which is what makes the refusal inspectable.
+     */
     payloadJson: text('payload_json').notNull(),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
@@ -517,6 +522,48 @@ export const aiRuns = sqliteTable(
     index('ai_runs_created_idx').on(t.createdAt),
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
   ],
+)
+
+/**
+ * Month-to-date AI spend, as a view over `ai_runs`.
+ *
+ * A view rather than a counter table: a second place that stores cost is a second
+ * place that can disagree with the ledger, and the one number a cost guard must
+ * never get wrong is how much has already been spent.
+ *
+ * Every row counts, whatever its status. A run that failed after the call still
+ * cost money, and a `capped` run costs nothing — so summing the column is right
+ * in both directions and no status filter is needed.
+ *
+ * The month is a **UTC** month, deliberately, even though the rest of the app
+ * works in `TZ`. SQLite has no timezone database, so a local month would need a
+ * fixed offset that is wrong half the year; a UTC month means the budget window
+ * resets at 01:00 or 02:00 Brussels time on the 1st instead of midnight, which
+ * moves nothing but the boundary hour — and the nightly pass runs at 03:00.
+ * `domain/ai/budget.ts` computes its month key the same way, from the same rule.
+ */
+export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
+  month: text().notNull(),
+  runCount: integer('run_count').notNull(),
+  inputTokens: integer('input_tokens').notNull(),
+  outputTokens: integer('output_tokens').notNull(),
+  cachedTokens: integer('cached_tokens').notNull(),
+  costMicroEur: integer('cost_micro_eur').notNull(),
+}).as(
+  // Declared with explicit columns and raw SQL rather than built from the query
+  // builder, for two reasons: the columns come back as real typed columns that
+  // `where` and `orderBy` accept, and the emitted DDL is exactly this text —
+  // drizzle-kit renders a column reference inside an aliased `sql` fragment
+  // without the snake_case rule, which produced `"createdAt"` in the view body.
+  sql`select
+    strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch') as month,
+    count(*) as run_count,
+    coalesce(sum(ai_runs.input_tokens), 0) as input_tokens,
+    coalesce(sum(ai_runs.output_tokens), 0) as output_tokens,
+    coalesce(sum(ai_runs.cached_tokens), 0) as cached_tokens,
+    coalesce(sum(ai_runs.cost_micro_eur), 0) as cost_micro_eur
+  from ai_runs
+  group by strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch')`,
 )
 
 /**
@@ -654,6 +701,7 @@ export const schema = {
   portfolioMetrics,
   prompts,
   aiRuns,
+  aiSpendMonthly,
   aiFindings,
   aiNarratives,
   proposals,
