@@ -68,6 +68,16 @@ async function main(): Promise<void> {
   // fail because Ghostfolio is restarting.
   app.get('/healthz', () => ({ status: 'ok', version: VERSION }))
 
+  // The SPA is served from here once it exists (0.6.0). Until then this says so,
+  // because a bare Fastify `Route GET:/ not found` on the root of a fresh
+  // deployment reads as a broken container rather than as an unfinished one.
+  app.get('/', () => ({
+    name: 'balancr',
+    version: VERSION,
+    ui: 'not built yet — the web interface arrives in 0.6.0',
+    health: '/healthz',
+  }))
+
   await app.listen({ host: '0.0.0.0', port: config.PORT })
   log.info({ port: config.PORT, env: config.NODE_ENV }, 'balancr listening')
 

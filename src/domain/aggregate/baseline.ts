@@ -19,7 +19,7 @@
  * Everything here is pure: no database, no clock, no Actual. That is what makes
  * the golden test meaningful.
  */
-import { addMonths } from '../../util/month.ts'
+import { assertDenseMonths } from '../../util/month.ts'
 import type { AggregateParams } from './params.ts'
 
 export type ExpectedFrequency = 'monthly' | 'quarterly' | 'annual' | 'irregular'
@@ -161,28 +161,6 @@ export function rollingRates(values: readonly number[], window: number): number[
 }
 
 /**
- * Asserts the series is ascending and has no gaps.
- *
- * A missing month is not the same as a zero month, and a rolling window over a
- * sparse series silently averages across a hole — inflating every rate by
- * exactly the amount nobody would notice. Callers build dense series from the
- * fact table, where a month with no transactions is a real zero row.
- */
-function assertDense(series: readonly MonthValue[]): void {
-  for (let index = 1; index < series.length; index += 1) {
-    const previous = series[index - 1] as MonthValue
-    const current = series[index] as MonthValue
-    const expected = addMonths(previous.month, 1)
-    if (current.month !== expected) {
-      throw new Error(
-        `baseline series must be dense and ascending: ${previous.month} is ` +
-          `followed by ${current.month}, expected ${expected}`,
-      )
-    }
-  }
-}
-
-/**
  * The baseline for one category as of `month`.
  *
  * `series` must be dense, ascending, and include `month` as well as the months
@@ -196,7 +174,10 @@ export function computeBaseline(
   frequency: ExpectedFrequency,
   params: AggregateParams['baseline'],
 ): BaselineResult | null {
-  assertDense(series)
+  assertDenseMonths(
+    series.map((entry) => entry.month),
+    'baseline series',
+  )
 
   const targetIndex = series.findIndex((entry) => entry.month === month)
   if (targetIndex === -1) {

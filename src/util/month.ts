@@ -84,6 +84,31 @@ export function monthsBefore(month: string, count: number): string[] {
   return monthRange(addMonths(month, -count), addMonths(month, -1))
 }
 
+/**
+ * Asserts `months` is ascending with no gaps, naming both sides of the hole.
+ *
+ * A missing month is not the same as a zero month: a rolling window over a
+ * sparse series silently averages across the hole, inflating every rate by
+ * exactly the amount nobody would notice. Callers build dense series from the
+ * fact table, where a month with no transactions is a real zero row.
+ *
+ * `label` names the series in the error, because by the time this throws the
+ * caller is several layers away from whichever query produced the gap.
+ */
+export function assertDenseMonths(months: readonly string[], label: string): void {
+  for (let index = 1; index < months.length; index += 1) {
+    const previous = months[index - 1] as string
+    const current = months[index] as string
+    const expected = addMonths(previous, 1)
+    if (current !== expected) {
+      throw new Error(
+        `${label} must be dense and ascending: ${previous} is followed by ` +
+          `${current}, expected ${expected}`,
+      )
+    }
+  }
+}
+
 interface Parts {
   year: number
   month: number

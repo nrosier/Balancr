@@ -17,11 +17,16 @@
  * thing that knows how a euro is written.
  */
 
+/** Ordered least to most urgent, so `SEVERITY_RANK` can sort by it. */
+export type Severity = 'info' | 'warn' | 'alert'
+
+export const SEVERITY_RANK: Record<Severity, number> = { alert: 0, warn: 1, info: 2 }
+
 export interface FindingSpec {
   /** Interpolation variables the sentence must use, in both locales. */
   readonly vars: readonly string[]
   /** Highest severity this code may carry. The model may report lower. */
-  readonly maxSeverity: 'info' | 'warn' | 'alert'
+  readonly maxSeverity: Severity
   /** False for findings that are good news, so the UI can style them apart. */
   readonly negative: boolean
 }
@@ -30,7 +35,11 @@ export const FINDING_SPECS = {
   // --- the four overspend signals, reported separately and never merged ---
   over_assigned: { vars: ['category', 'spent', 'assigned'], maxSeverity: 'warn', negative: true },
   over_available: { vars: ['category', 'overspend'], maxSeverity: 'alert', negative: true },
-  above_baseline: { vars: ['category', 'delta', 'baseline'], maxSeverity: 'warn', negative: true },
+  // Alert, unlike over_assigned: a carried-over balance routinely covers an
+  // envelope going over, but running half again above your own 12-month norm on a
+  // material amount is the top of the panel. `overspend.baselineAlertBp` is the
+  // threshold, and would be a knob that cannot do anything if this were 'warn'.
+  above_baseline: { vars: ['category', 'delta', 'baseline'], maxSeverity: 'alert', negative: true },
   above_benchmark: { vars: ['category', 'delta', 'benchmark'], maxSeverity: 'info', negative: true },
 
   // --- trajectory ---
@@ -48,6 +57,7 @@ export const FINDING_SPECS = {
 
   // --- data hygiene: surfaced first, because the rest is worthless without it ---
   uncategorised_backlog: { vars: ['count'], maxSeverity: 'warn', negative: true },
+  recompute_mismatch: { vars: ['category', 'difference'], maxSeverity: 'alert', negative: true },
   unreconciled_account: { vars: ['account', 'days'], maxSeverity: 'warn', negative: true },
   stale_prices: { vars: ['count', 'days'], maxSeverity: 'warn', negative: true },
 } as const satisfies Record<string, FindingSpec>
@@ -67,6 +77,20 @@ export const CLARIFICATION_SPECS = {
   custody_shared_unknown: { vars: ['category'] },
   sensitive_unknown: { vars: ['category'] },
 } as const satisfies Record<string, { readonly vars: readonly string[] }>
+
+/**
+ * Lowers `severity` to whatever the code is allowed to carry.
+ *
+ * The ceiling in `FINDING_SPECS` is the contract for a code, and both the
+ * deterministic signal producers and the model's own output run through here —
+ * otherwise the declared maximum would be documentation rather than a rule, and
+ * `above_benchmark` (an `info` by design, since v1 has no benchmark) could
+ * arrive as an alert.
+ */
+export function capSeverity(code: FindingCode, severity: Severity): Severity {
+  const ceiling = FINDING_SPECS[code].maxSeverity
+  return SEVERITY_RANK[severity] < SEVERITY_RANK[ceiling] ? ceiling : severity
+}
 
 export type ClarificationCode = keyof typeof CLARIFICATION_SPECS
 export const CLARIFICATION_CODES = Object.keys(CLARIFICATION_SPECS) as ClarificationCode[]
