@@ -36,6 +36,11 @@ jobs:
       - name: i18n parity
         run: npm run i18n:check
 
+      # The release and licence badges are static because shields.io cannot read a
+      # private repo; this is what stops them quoting last month's version.
+      - name: README badges
+        run: npm run badges:check
+
       - name: Tests
         run: npm test
 
