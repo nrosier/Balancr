@@ -142,6 +142,13 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   Renovate would have kept proposing exactly those diffs.
 
 ### Fixed
+- The release and licence badges no longer read "repo not found". Both were
+  shields.io `github/…` endpoints, which fetch over the *public* GitHub API — on a
+  private repository that is a 404, and a badge reading "repo not found" looks
+  like a broken project rather than a closed one. Both are now static badges, and
+  `npm run badges:check` (in CI) fails if either drifts from `package.json` or if a
+  dynamic one is reintroduced. The CI badge is GitHub's own `badge.svg`, which a
+  signed-in viewer with access can read, so it stays dynamic.
 - Pluralised sentences print a Belgian number. i18next writes an interpolated
   value with `String()`, so `{{count}} months` rendered `2.4 months` in a UI that
   spells every other number `2,4`; `count` now selects the plural form and
