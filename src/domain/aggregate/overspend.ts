@@ -208,14 +208,20 @@ export function sortSignals(signals: readonly Signal[]): Signal[] {
   return [...signals].sort((a, b) => {
     const bySeverity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
     if (bySeverity !== 0) return bySeverity
-    const byMagnitude = magnitude(b) - magnitude(a)
+    const byMagnitude = signalMagnitude(b) - signalMagnitude(a)
     if (byMagnitude !== 0) return byMagnitude
     return (a.categoryName ?? '').localeCompare(b.categoryName ?? '')
   })
 }
 
-/** Largest cents figure in a signal — a rough "how much does this matter". */
-function magnitude(signal: Signal): number {
+/**
+ * Largest cents figure in a signal — a rough "how much does this matter".
+ *
+ * Exported because `domain/ai/findings.ts` breaks its own ties the same way, and
+ * two definitions of "which of these matters more" that can disagree would put
+ * the caps and the sort order out of step with each other.
+ */
+export function signalMagnitude(signal: Signal): number {
   let largest = 0
   for (const [name, value] of Object.entries(signal.metrics)) {
     if (name.endsWith('Cents')) largest = Math.max(largest, Math.abs(value))

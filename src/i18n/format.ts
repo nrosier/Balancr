@@ -122,6 +122,28 @@ export function parseMoneyToCents(raw: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
+//  Plain numbers
+// ---------------------------------------------------------------------------
+
+/**
+ * A count or a quantity, Belgian conventions: `1.234`, `2,4`.
+ *
+ * Exists because `i18next` interpolates a raw number with `String(value)`, which
+ * writes `2.4 months` in a UI that spells every other number `2,4`. The
+ * interpolation hook in `i18n/index.ts` routes numeric variables through here, so
+ * a decimal separator cannot depend on which layer happened to render it.
+ */
+export function formatDecimal(value: number, maxFractionDigits = 1): string {
+  const fmt = cached(`decimal:${maxFractionDigits}`, () =>
+    new Intl.NumberFormat(formatSettings().formatLocale, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxFractionDigits,
+    }),
+  ) as Intl.NumberFormat
+  return fmt.format(value)
+}
+
+// ---------------------------------------------------------------------------
 //  Percentages — stored as basis points, so no float drift in the database
 // ---------------------------------------------------------------------------
 

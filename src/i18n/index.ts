@@ -24,6 +24,7 @@ import i18next, {
 } from 'i18next'
 import { config } from '../config.ts'
 import { configureFormatting } from './format-config.ts'
+import { formatDecimal } from './format.ts'
 import {
   CLARIFICATION_SPECS,
   FINDING_SPECS,
@@ -91,9 +92,11 @@ export async function initI18n(): Promise<I18nInstance> {
     ns: NAMESPACES,
     defaultNS: 'common',
     resources: loadCatalogues(),
-    // Values are pre-formatted by src/i18n/format.ts and rendered into React,
-    // so i18next must not HTML-escape them a second time.
-    interpolation: { escapeValue: false },
+    interpolation: {
+      // Values are pre-formatted by src/i18n/format.ts and rendered into React,
+      // so i18next must not HTML-escape them a second time.
+      escapeValue: false,
+    },
     returnNull: false,
   })
 
@@ -118,7 +121,26 @@ export function t(lang: string, key: string, vars: Vars = {}): string {
   if (!i18n().exists(key, { lng: lang, ...vars }) && config.NODE_ENV !== 'production') {
     throw new Error(`missing translation: ${key} [${lang}]`)
   }
-  return fixed(key, vars) as string
+  return fixed(key, withFormattedCount(vars)) as string
+}
+
+/**
+ * Supplies `{{value}}` for a pluralised key, formatted the Belgian way.
+ *
+ * `count` has to stay a number — it is what selects `_one` from `_other` — and
+ * i18next writes an interpolated number with `String(value)`, so a catalogue
+ * printing `{{count}}` renders `2.4 months` in a UI that spells every other
+ * number `2,4`. Hence the split: `count` selects the form, `{{value}}` is what
+ * the sentence prints. `scripts/check-i18n.ts` fails a plural key that reaches
+ * for `{{count}}` instead.
+ *
+ * This is done here rather than through `interpolation.format`, which looks like
+ * the obvious place and is not: i18next installs its own formatter during `init`
+ * and overwrites that option, so a hook there is silently discarded.
+ */
+function withFormattedCount(vars: Vars): Vars {
+  if (typeof vars.count !== 'number' || vars.value !== undefined) return vars
+  return { ...vars, value: formatDecimal(vars.count) }
 }
 
 /** Variables a code's sentence needs but the caller did not supply. */

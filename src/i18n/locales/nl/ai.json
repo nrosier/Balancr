@@ -48,5 +48,8 @@
     "hint": "Er verandert niets tot je het toepast.",
     "title": "Voorgestelde wijzigingen"
   },
-  "title": "Inzichten"
+  "title": "Inzichten",
+  "variant": {
+    "never_reconciled": "{{account}} is nog nooit afgepunt."
+  }
 }
