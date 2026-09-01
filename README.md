@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.3.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.3.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -157,17 +157,26 @@ same reason.
 
 ## Versioning
 
-`0.x` versions track progress toward 1.0, one minor per completed slice. When
-every requested feature is in, releases become `1.0.0-rc.N` for real-world
-testing; **1.0.0 ships when the testing says it is ready**, not when the
-checklist ends.
+`0.x` versions track progress toward 1.0, one **minor per completed milestone**:
+`0.4.0` is the version where every issue in the AI-layer milestone is closed, not
+the version where the first piece of it landed.
 
-| Version | Slice | Status |
+Work merged on the way there releases as a **patch of the current minor**. While
+the `0.4.0` slice is in progress the releases are `0.3.1`, `0.3.2`, … — each one a
+real version for a real merge, none of them claiming a milestone that is not
+finished yet. The minor is the promise kept; the patches are the progress toward
+it.
+
+When every requested feature is in, releases become `1.0.0-rc.N` for real-world
+testing; **1.0.0 ships when the testing says it is ready**, not when the checklist
+ends.
+
+| Version | Milestone | Status |
 |---|---|---|
 | `0.1.0` | Config, schema, i18n, formatting, logging | ✅ |
 | `0.2.0` | Actual and Ghostfolio adapters, capability probe | ✅ |
 | `0.3.0` | Aggregation, portfolio snapshots, job scheduler | ✅ |
-| `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ⬜ |
+| `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | 🔄 `0.3.x` |
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ⬜ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ⬜ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ⬜ |
@@ -176,12 +185,15 @@ checklist ends.
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
+✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
+
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
 
 A push to `main` publishes `edge`; a `v*` tag publishes that version, and
-`latest` follows the newest non-RC tag. Closing a version means bumping
-`package.json`, renaming `## [Unreleased]` in `CHANGELOG.md`, and letting
+`latest` follows the newest non-RC tag. Releasing means bumping `package.json` —
+the patch for a slice, the minor when its milestone closes — renaming
+`## [Unreleased]` in `CHANGELOG.md` to it, and letting
 `npm run badges:check` confirm the release badge above moved with it — that bump
 is also what triggers the image build, since `package.json` is one of
 [`image.yml`](.github/workflows/image.yml)'s trigger paths.

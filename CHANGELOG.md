@@ -2,10 +2,11 @@
 
 All notable changes to Balancr, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow the
-scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, and
-1.0.0 ships when testing says so rather than when the feature list ends.
+scheme in [README](README.md#versioning) — a minor lands when its milestone is
+complete, patches carry the work in between, and 1.0.0 ships when testing says so
+rather than when the feature list ends.
 
-## [Unreleased]
+## [0.3.1] — 2026-09-02
 
 ### Added
 - **The redaction boundary** (`src/domain/ai/redact.ts`): one pure function from
@@ -136,6 +137,12 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   the lockfile, `tsconfig.build.json`, the two build scripts. `package.json` is on
   that list, which makes it the milestone gate too: the version bump that closes a
   milestone builds the image before it merges.
+- Slices of an unfinished milestone now release as patches of the current minor.
+  A minor keeps its meaning — `0.4.0` will be the version where the AI-layer
+  milestone is *complete* — while work merged on the way there still ships under a
+  version of its own, instead of sitting on main unreleased for weeks. So this is
+  `0.3.1`: the aggregation milestone is what is finished, and two slices of the AI
+  layer are on top of it.
 - Workflow actions are referenced by version tag rather than by pinned digest, so
   the files match the rule `renovate.json` already states. A `@<40 hex> # v7` diff
   cannot be reviewed — a patch bump and a hijacked tag read identically — and
