@@ -159,11 +159,11 @@ checklist ends.
 |---|---|---|
 | `0.1.0` | Config, schema, i18n, formatting, logging | ✅ |
 | `0.2.0` | Actual and Ghostfolio adapters, capability probe | ✅ |
-| `0.3.0` | Aggregation: hygiene, baselines, overspend, net worth | 🔨 |
+| `0.3.0` | Aggregation, portfolio snapshots, job scheduler | ✅ |
 | `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ⬜ |
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ⬜ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ⬜ |
-| `0.7.0` | Scheduler, Docker deployment, backups | ⬜ |
+| `0.7.0` | Backups, monthly digest, operational hardening | ⬜ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |

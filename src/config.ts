@@ -67,6 +67,24 @@ const EnvSchema = z.object({
   AUTH_LOCAL_ENABLED: bool('false'),
   AUTH_LOCAL_ALLOWED_CIDRS: csv('127.0.0.1/32'),
 
+  // Background jobs
+  /**
+   * Off leaves every pure function and every route intact and simply never
+   * schedules anything — the switch for a second instance, or for looking at a
+   * copy of the database without it reaching out to Actual and Ghostfolio.
+   */
+  JOBS_ENABLED: bool('true'),
+  /** How often the sync/aggregate pipeline runs. */
+  JOBS_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  /** Local hour for the nightly deep pass. Local, so it stays overnight in July. */
+  JOBS_NIGHTLY_HOUR: z.coerce.number().int().min(0).max(23).default(3),
+  /**
+   * How many months of facts to recompute each pass. Baseline history is fetched
+   * on top of this, so a smaller number does not weaken the norms — it only
+   * decides how far back a correction in Actual is picked up.
+   */
+  JOBS_HISTORY_MONTHS: z.coerce.number().int().min(1).max(120).default(24),
+
   // Locale
   SUPPORTED_LOCALES: csv('en,nl'),
   DEFAULT_LOCALE: z.string().min(2).default('en'),
@@ -186,6 +204,10 @@ export function configSummary(): Record<string, unknown> {
     oidcEnabled: config.oidcEnabled,
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
+    JOBS_ENABLED: config.JOBS_ENABLED,
+    JOBS_SYNC_INTERVAL_MINUTES: config.JOBS_SYNC_INTERVAL_MINUTES,
+    JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,
+    JOBS_HISTORY_MONTHS: config.JOBS_HISTORY_MONTHS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
     DEFAULT_LOCALE: config.DEFAULT_LOCALE,
     FORMAT_LOCALE: config.FORMAT_LOCALE,

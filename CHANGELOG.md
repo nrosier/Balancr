@@ -5,7 +5,7 @@ All notable changes to Balancr, newest first. Format follows
 scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, and
 1.0.0 ships when testing says so rather than when the feature list ends.
 
-## [Unreleased]
+## [0.3.0] — 2026-09-01
 
 ### Added
 - Month arithmetic utilities (`src/util/month.ts`) — string-based `YYYY-MM`
@@ -68,6 +68,47 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   fire on its own, the dedupe cases that would misstate net worth in either
   direction, and the annual-premium month that must not shorten the emergency
   fund on paper.
+
+- **Account mapping** (`src/domain/aggregate/accounts.ts`): both tools' accounts
+  into one table, under one rule — a sync may create rows and follow renames, but
+  may never overwrite a decision. Dedupe candidates are only offered where a
+  mirror plausibly exists, and marking a group picks exactly one source of truth.
+- **Portfolio snapshots and metrics** (`src/domain/portfolio/`): Ghostfolio's
+  floats become integer cents exactly once, at the boundary, while quantities stay
+  text so a fractional share survives the round trip. Two positions in the same
+  ISIN merge into one instrument. Allocation shares are apportioned by largest
+  remainder so they sum to exactly 10000 bp — a pie chart labelled 99.97% invites
+  the reader to distrust every other figure on the page. Return is *copied* from
+  Ghostfolio rather than recomputed, because two implementations that can disagree
+  is the problem and not the fix; `mwrBp`, `driftJson` and `terAnnualCents` stay
+  null with the missing input named, since a guess would render as a number.
+- **Job layer** (`src/jobs/`): `isDue` over `{interval}` and `{daily}` schedules,
+  compared on the *local* calendar day and hour, so a DST change can neither skip
+  the nightly pass nor run it twice — and no cron dependency. `nextRunAt` probes
+  that same predicate forward instead of re-deriving calendar arithmetic that
+  would be free to disagree with it.
+- Every job shares one queue, because Actual's `dataDir` makes no concurrency
+  promises; a job never throws at the ticker, the `jobs` row is written on failure
+  too, and `lastSuccessAt` is deliberately left alone so it keeps meaning "how
+  stale the data is" rather than "when we last tried". Rows left `running` by a
+  killed container become errors at startup — otherwise the one field an operator
+  reads is the one nobody believes.
+- Three jobs, registered in dependency order because one queue is all the
+  sequencing needed: `sync` (read-only Actual pass, facts rebuild, account map),
+  `portfolio` (holdings snapshot and metrics, stamped with the *local* date so a
+  night-time run cannot overwrite yesterday), and `networth` nightly. A Ghostfolio
+  outage degrades each of them to stale-but-labelled data instead of aborting the
+  pass, and a failed earlier job still lets the later ones run.
+- `historyDepth`: each pass loads `windowMonths + 11` months of budget history
+  before the first target month, pinned by a test against `computeBaseline` itself
+  rather than against a number — too little history makes every annual baseline
+  null, and that failure is completely silent.
+- Scheduler wired into startup behind `JOBS_ENABLED`, and stopped before the HTTP
+  server on shutdown so a pass in flight is never cut off mid-write.
+- `JOBS_ENABLED`, `JOBS_SYNC_INTERVAL_MINUTES`, `JOBS_NIGHTLY_HOUR` and
+  `JOBS_HISTORY_MONTHS` in `.env.example`, with what each one costs.
+- `dateIn` and `hourIn` in `src/util/month.ts` — the scheduler's "is it past
+  03:00 yet" has to be asked in Brussels, not in UTC.
 
 ### Changed
 - `BaselineResult` reports `winsorEffectBp` — how far winsorisation moved the
