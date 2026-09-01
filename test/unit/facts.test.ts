@@ -1,0 +1,202 @@
+/**
+ * `monthly_category_facts` is derived data, rebuilt on every pass. Idempotence is
+ * therefore the whole contract: the nightly job, a manual re-run, and a re-run
+ * after a crash halfway through must all leave the same table behind.
+ */
+import { beforeEach, describe, expect, it } from 'vitest'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { createTestDb } from '../../src/db/index.ts'
+import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
+import { loadFrequencies, persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
+import type { MonthlyFact } from '../../src/domain/aggregate/spend.ts'
+import { eq } from 'drizzle-orm'
+
+let ctx: ReturnType<typeof createTestDb>
+
+beforeEach(() => {
+  ctx = createTestDb()
+  applyMigrations(ctx.db as never)
+})
+
+function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): MonthlyFact {
+  return {
+    month,
+    categoryId: id,
+    categoryName: id,
+    isIncome: false,
+    hidden: false,
+    spentCents: 10_000,
+    budgetedCents: 12_000,
+    availableCents: 2_000,
+    carryoverEnabled: false,
+    txnCount: 3,
+    recomputedSpentCents: 10_000,
+    baseline: null,
+    ...overrides,
+  }
+}
+
+const rows = () =>
+  ctx.db.select().from(monthlyCategoryFacts).orderBy(monthlyCategoryFacts.categoryId).all()
+
+describe('persistFacts', () => {
+  it('is idempotent: the same input twice leaves the same data', () => {
+    const facts = [fact('2026-01', 'food'), fact('2026-01', 'rent')]
+    expect(persistFacts(ctx.db, facts, ['2026-01'])).toEqual({ written: 2, removed: 0 })
+    const first = rows()
+
+    expect(persistFacts(ctx.db, facts, ['2026-01'])).toEqual({ written: 2, removed: 0 })
+    const second = rows()
+
+    // Everything except `computed_at`, which is *supposed* to move: it is how a
+    // fact left behind by a failed pass is told apart from a current one.
+    const withoutTimestamp = (all: typeof first) =>
+      all.map(({ computedAt: _computedAt, ...rest }) => rest)
+    expect(withoutTimestamp(second)).toEqual(withoutTimestamp(first))
+    expect(second[0]?.computedAt.getTime()).toBeGreaterThanOrEqual(
+      first[0]?.computedAt.getTime() ?? 0,
+    )
+  })
+
+  it('updates every column in place rather than inserting a second row', () => {
+    persistFacts(ctx.db, [fact('2026-01', 'food')], ['2026-01'])
+    persistFacts(
+      ctx.db,
+      [
+        fact('2026-01', 'food', {
+          spentCents: 55_000,
+          budgetedCents: 50_000,
+          availableCents: -5_000,
+          carryoverEnabled: true,
+          txnCount: 9,
+          recomputedSpentCents: 55_000,
+          baseline: {
+            baselineCents: 40_000,
+            currentCents: 55_000,
+            deltaBp: 3_750,
+            monthsUsed: 12,
+            windowMonths: 1,
+            winsorEffectBp: 0,
+          },
+        }),
+      ],
+      ['2026-01'],
+    )
+
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toMatchObject({
+      spentCents: 55_000,
+      budgetedCents: 50_000,
+      availableCents: -5_000,
+      carryoverEnabled: true,
+      txnCount: 9,
+      recomputedSpentCents: 55_000,
+      ewmaBaselineCents: 40_000,
+      baselineDeltaBp: 3_750,
+    })
+  })
+
+  it('keeps a null baseline null instead of storing a zero norm', () => {
+    // Zero is a claim ("you normally spend nothing"); null is the truth ("not
+    // enough history to say"), and the UI renders them differently.
+    persistFacts(ctx.db, [fact('2026-01', 'new')], ['2026-01'])
+    expect(rows()[0]?.ewmaBaselineCents).toBeNull()
+    expect(rows()[0]?.baselineDeltaBp).toBeNull()
+  })
+
+  it('removes a category that no longer appears in a recomputed month', () => {
+    // A category deleted in Actual would otherwise survive forever and keep
+    // showing up in charts as a ghost envelope.
+    persistFacts(ctx.db, [fact('2026-01', 'food'), fact('2026-01', 'gone')], ['2026-01'])
+    expect(persistFacts(ctx.db, [fact('2026-01', 'food')], ['2026-01'])).toEqual({
+      written: 1,
+      removed: 1,
+    })
+    expect(rows().map((row) => row.categoryId)).toEqual(['food'])
+  })
+
+  it('clears a month that legitimately ends up with no categories', () => {
+    // Which is why `months` is passed in rather than derived from `facts`:
+    // deriving it would make this case a silent no-op.
+    persistFacts(ctx.db, [fact('2026-01', 'food')], ['2026-01'])
+    expect(persistFacts(ctx.db, [], ['2026-01'])).toEqual({ written: 0, removed: 1 })
+    expect(rows()).toEqual([])
+  })
+
+  it('leaves months outside the recomputed window alone', () => {
+    persistFacts(ctx.db, [fact('2025-12', 'food')], ['2025-12'])
+    persistFacts(ctx.db, [fact('2026-01', 'food')], ['2026-01'])
+    expect(rows()).toHaveLength(2)
+
+    persistFacts(ctx.db, [], ['2026-01'])
+    expect(rows().map((row) => row.month)).toEqual(['2025-12'])
+  })
+
+  it('writes more rows than one statement holds', () => {
+    // The chunk boundary is a real edge: an off-by-one there loses a category
+    // silently, and a wide budget over a year crosses it every night.
+    const many = Array.from({ length: 450 }, (_, index) =>
+      fact('2026-01', `cat-${String(index).padStart(3, '0')}`),
+    )
+    expect(persistFacts(ctx.db, many, ['2026-01'])).toEqual({ written: 450, removed: 0 })
+    expect(rows()).toHaveLength(450)
+  })
+})
+
+describe('syncCategoryMeta', () => {
+  it('records what the user told us and never overwrites it', () => {
+    // This table is the app's accumulating asset. A rename in Actual, or just
+    // another nightly run, must not reset an answer someone typed.
+    syncCategoryMeta(ctx.db, [fact('2026-01', 'c1', { categoryName: 'Boodschappen' })])
+    ctx.db
+      .update(categoryMeta)
+      .set({ userDescription: 'Weekly supermarket run', nature: 'variable', confidence: 1 })
+      .where(eq(categoryMeta.categoryId, 'c1'))
+      .run()
+
+    syncCategoryMeta(ctx.db, [fact('2026-02', 'c1', { categoryName: 'Groceries' })])
+
+    const row = ctx.db.select().from(categoryMeta).where(eq(categoryMeta.categoryId, 'c1')).get()
+    expect(row).toMatchObject({
+      nameSnapshot: 'Groceries',
+      userDescription: 'Weekly supermarket run',
+      nature: 'variable',
+      confidence: 1,
+    })
+  })
+
+  it('takes the name from the latest month, whatever order the facts arrive in', () => {
+    syncCategoryMeta(ctx.db, [
+      fact('2026-02', 'c1', { categoryName: 'Groceries' }),
+      fact('2026-01', 'c1', { categoryName: 'Boodschappen' }),
+    ])
+    expect(
+      ctx.db.select().from(categoryMeta).where(eq(categoryMeta.categoryId, 'c1')).get()?.nameSnapshot,
+    ).toBe('Groceries')
+  })
+
+  it('marks an income category as such on first sight', () => {
+    syncCategoryMeta(ctx.db, [fact('2026-01', 'salary', { isIncome: true })])
+    expect(
+      ctx.db.select().from(categoryMeta).where(eq(categoryMeta.categoryId, 'salary')).get()?.nature,
+    ).toBe('income')
+  })
+})
+
+describe('loadFrequencies', () => {
+  it('round-trips what aggregateSpend asks for, and omits what it has not been told', () => {
+    // An absent category defaults to monthly at the call site, which is why a
+    // fresh install still produces baselines rather than nothing.
+    syncCategoryMeta(ctx.db, [fact('2026-01', 'insurance'), fact('2026-01', 'food')])
+    ctx.db
+      .update(categoryMeta)
+      .set({ expectedFrequency: 'annual' })
+      .where(eq(categoryMeta.categoryId, 'insurance'))
+      .run()
+
+    const frequencies = loadFrequencies(ctx.db)
+    expect(frequencies.get('insurance')).toBe('annual')
+    expect(frequencies.get('food')).toBe('monthly')
+    expect(frequencies.has('never-seen')).toBe(false)
+  })
+})
