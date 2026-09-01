@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
       # Build only — publishing happens in release.yml, so a PR still proves the
       # Dockerfile works without pushing anything.
       - uses: docker/build-push-action@v6
