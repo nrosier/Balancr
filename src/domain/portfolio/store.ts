@@ -9,7 +9,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
-import type { PortfolioMetricsResult } from './metrics.ts'
+import type { AllocationSlice, PortfolioMetricsResult } from './metrics.ts'
 import type { HoldingSnapshot } from './snapshot.ts'
 
 export interface SnapshotPersistResult {
@@ -119,6 +119,60 @@ export function latestSnapshotDate(db: Db): string | null {
     .from(portfolioSnapshots)
     .get()
   return row?.date ?? null
+}
+
+/** Allocation back out of JSON, keeping only slices that are still well formed. */
+function toAllocation(json: string | null): AllocationSlice[] {
+  if (json === null) return []
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (slice): slice is AllocationSlice =>
+      slice !== null &&
+      typeof slice === 'object' &&
+      typeof (slice as { key?: unknown }).key === 'string' &&
+      typeof (slice as { valueCents?: unknown }).valueCents === 'number' &&
+      typeof (slice as { shareBp?: unknown }).shareBp === 'number',
+  )
+}
+
+/**
+ * The stored metrics for one date, or null when that date was never computed.
+ *
+ * Returns the same `PortfolioMetricsResult` the computation produced, so a caller
+ * cannot tell whether the figures were just calculated or read back — which is
+ * what lets the AI pass work entirely off SQLite.
+ */
+export function loadPortfolioMetrics(db: Db, date: string): PortfolioMetricsResult | null {
+  const row = db.select().from(portfolioMetrics).where(eq(portfolioMetrics.date, date)).get()
+  if (row === undefined) return null
+
+  return {
+    date: row.date,
+    totalValueCents: row.totalValueCents,
+    twrBp: row.twrBp,
+    // Both are `null` in the type until the deferred tax and drift work lands;
+    // reading them back as anything else would be inventing a figure.
+    mwrBp: null,
+    allocation: toAllocation(row.allocationJson),
+    driftJson: null,
+    terAnnualCents: null,
+  }
+}
+
+/** How many holdings a date's snapshot has. A count, never the instruments. */
+export function countSnapshotHoldings(db: Db, date: string): number {
+  const row = db
+    .select({ count: sql<number>`count(*)` })
+    .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.date, date))
+    .get()
+  return row?.count ?? 0
 }
 
 /** Holdings for one date, ordered as `toHoldingSnapshots` produced them. */

@@ -298,7 +298,24 @@ describe('hygiene', () => {
     })
     expect(codes(signals)).toEqual(['unreconciled_account'])
     expect(signals[0]?.categoryName).toBe('Savings')
+    expect(signals[0]?.categoryId).toBe('a2')
     expect(signals[0]?.metrics).toEqual({ days: 120, limitDays: 45 })
+  })
+
+  it('gives each stale account its own subject, so two do not become one', () => {
+    // `Signal.categoryId` is the subject of the signal, and everything downstream
+    // groups by it: with a null subject both of these would land in the household
+    // group and dedupe into a single finding, and the redaction boundary would
+    // have no id to turn into an account label.
+    const { signals } = hygieneSignals({
+      ...clean,
+      accounts: [
+        { accountId: 'a1', name: 'Current', lastReconciled: '2025-11-01', closed: false },
+        { accountId: 'a2', name: 'Savings', lastReconciled: null, closed: false },
+      ],
+    })
+    expect(codes(signals)).toEqual(['unreconciled_account', 'unreconciled_account'])
+    expect(new Set(signals.map((signal) => signal.categoryId))).toEqual(new Set(['a1', 'a2']))
   })
 
   it('treats never reconciled as its own case and ignores closed accounts', () => {

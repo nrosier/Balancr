@@ -66,6 +66,10 @@ export function persistFacts(
             recomputedSpentCents: fact.recomputedSpentCents,
             ewmaBaselineCents: fact.baseline?.baselineCents ?? null,
             baselineDeltaBp: fact.baseline?.deltaBp ?? null,
+            baselineCurrentCents: fact.baseline?.currentCents ?? null,
+            baselineMonthsUsed: fact.baseline?.monthsUsed ?? null,
+            baselineWindowMonths: fact.baseline?.windowMonths ?? null,
+            baselineWinsorEffectBp: fact.baseline?.winsorEffectBp ?? null,
             computedAt,
           })),
         )
@@ -80,6 +84,10 @@ export function persistFacts(
             recomputedSpentCents: sql`excluded.recomputed_spent_cents`,
             ewmaBaselineCents: sql`excluded.ewma_baseline_cents`,
             baselineDeltaBp: sql`excluded.baseline_delta_bp`,
+            baselineCurrentCents: sql`excluded.baseline_current_cents`,
+            baselineMonthsUsed: sql`excluded.baseline_months_used`,
+            baselineWindowMonths: sql`excluded.baseline_window_months`,
+            baselineWinsorEffectBp: sql`excluded.baseline_winsor_effect_bp`,
             computedAt: sql`excluded.computed_at`,
           },
         })
@@ -127,6 +135,8 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
   const rows = [...latest.values()].map((fact) => ({
     categoryId: fact.categoryId,
     nameSnapshot: fact.categoryName,
+    isIncome: fact.isIncome,
+    hidden: fact.hidden,
     nature: fact.isIncome ? ('income' as const) : null,
   }))
 
@@ -138,6 +148,11 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
           target: categoryMeta.categoryId,
           set: {
             nameSnapshot: sql`excluded.name_snapshot`,
+            // Actual owns these two, so they are refreshed rather than preserved.
+            // `nature` deliberately is not: it is seeded from `is_income` on the
+            // first sighting and is the user's to correct after that.
+            isIncome: sql`excluded.is_income`,
+            hidden: sql`excluded.hidden`,
             updatedAt: new Date(),
           },
         })
@@ -165,4 +180,64 @@ export function loadFrequencies(db: Db): Map<string, ExpectedFrequency> {
     .all()
 
   return new Map(rows.map((row) => [row.categoryId, row.expectedFrequency]))
+}
+
+/**
+ * A month's facts, rebuilt out of SQLite.
+ *
+ * The inverse of `persistFacts`, and the reason the fact table carries the whole
+ * of `BaselineResult` and `category_meta` carries Actual's own flags: every pass
+ * after the sync — signals, the AI payload, the API — works from this rather than
+ * from a budget download, so none of them needs Actual to be reachable.
+ *
+ * The join is inner: a fact whose category has no meta row cannot exist, because
+ * `syncCategoryMeta` runs first in the same pass. If one ever did, it would be a
+ * fact with no name, and dropping it is better than inventing one.
+ */
+export function loadFacts(db: Db, month: string): MonthlyFact[] {
+  const rows = db
+    .select({
+      fact: monthlyCategoryFacts,
+      name: categoryMeta.nameSnapshot,
+      isIncome: categoryMeta.isIncome,
+      hidden: categoryMeta.hidden,
+    })
+    .from(monthlyCategoryFacts)
+    .innerJoin(categoryMeta, eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId))
+    .where(eq(monthlyCategoryFacts.month, month))
+    .orderBy(monthlyCategoryFacts.categoryId)
+    .all()
+
+  return rows.map(({ fact, name, isIncome, hidden }) => ({
+    month: fact.month,
+    categoryId: fact.categoryId,
+    categoryName: name,
+    isIncome,
+    hidden,
+    spentCents: fact.spentCents,
+    budgetedCents: fact.budgetedCents,
+    availableCents: fact.availableCents,
+    carryoverEnabled: fact.carryoverEnabled,
+    txnCount: fact.txnCount,
+    recomputedSpentCents: fact.recomputedSpentCents,
+    // All four companion columns are written with `ewma_baseline_cents` or not at
+    // all, so this one null check settles the whole object. `?? 0` never fires;
+    // it is there because the columns are nullable in the type.
+    baseline:
+      fact.ewmaBaselineCents === null
+        ? null
+        : {
+            baselineCents: fact.ewmaBaselineCents,
+            currentCents: fact.baselineCurrentCents ?? 0,
+            deltaBp: fact.baselineDeltaBp,
+            monthsUsed: fact.baselineMonthsUsed ?? 0,
+            windowMonths: fact.baselineWindowMonths ?? 1,
+            winsorEffectBp: fact.baselineWinsorEffectBp,
+          },
+  }))
+}
+
+/** Every category with a stored meta row, keyed by id. */
+export function loadCategoryMeta(db: Db): Map<string, typeof categoryMeta.$inferSelect> {
+  return new Map(db.select().from(categoryMeta).all().map((row) => [row.categoryId, row]))
 }

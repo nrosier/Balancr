@@ -29,10 +29,9 @@
  */
 import type { AccountKind, categoryMeta } from '../../db/schema.ts'
 import type { AccountMapRow } from '../aggregate/accounts.ts'
-import type { NetWorthResult } from '../aggregate/networth.ts'
+import type { NetWorthSummary } from '../aggregate/networth.ts'
 import type { Signal } from '../aggregate/overspend.ts'
 import type { MonthlyFact, MonthTotals } from '../aggregate/spend.ts'
-import type { HoldingSnapshot } from '../portfolio/snapshot.ts'
 import type { PortfolioMetricsResult } from '../portfolio/metrics.ts'
 import type { Severity } from './codes.ts'
 
@@ -58,7 +57,7 @@ export interface AnalysisBundle {
   totals: MonthTotals
   /** Trailing months, oldest first, for the model to see a trend. */
   totalsHistory: readonly MonthTotals[]
-  netWorth: NetWorthResult | null
+  netWorth: NetWorthSummary | null
   hygiene: BundleHygiene
   portfolio: BundlePortfolio | null
   accounts: readonly AccountMapRow[]
@@ -81,8 +80,13 @@ export interface BundleHygiene {
 
 export interface BundlePortfolio {
   metrics: PortfolioMetricsResult
-  /** Carried so the count can be stated. No holding-level field is ever sent. */
-  holdings: readonly HoldingSnapshot[]
+  /**
+   * A count, and nothing else. Which funds are held is the most identifying data
+   * in the whole set, so the collector never puts a holding in the bundle: there
+   * is then no instrument name for a future field to carry out by accident, and
+   * the count is all any statement about the shape of a portfolio needs.
+   */
+  holdingCount: number
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +204,7 @@ function toTotals(totals: MonthTotals): RedactedMonthTotals {
   }
 }
 
-function toNetWorth(netWorth: NetWorthResult): RedactedNetWorth {
+function toNetWorth(netWorth: NetWorthSummary): RedactedNetWorth {
   // `contributions` and `excluded` are deliberately dropped: both are per-account
   // and would reintroduce the account dimension the labels exist to remove.
   return {
@@ -261,15 +265,15 @@ function toAccount(row: AccountMapRow, label: string): RedactedAccount {
 }
 
 function toPortfolio(portfolio: BundlePortfolio): RedactedPortfolio {
-  const { metrics, holdings } = portfolio
+  const { metrics } = portfolio
   return {
     date: metrics.date,
     totalValueCents: metrics.totalValueCents,
     twrBp: metrics.twrBp,
-    // A count, not a list. Which funds are held is the most identifying thing in
-    // the whole dataset and is not needed to say anything useful about the shape
-    // of the portfolio — asset-class shares carry that.
-    holdingCount: holdings.length,
+    // A count, not a list — and one the bundle already reduced to a number, so
+    // there is no instrument here to omit. Asset-class shares carry everything
+    // useful that can be said about the shape of a portfolio.
+    holdingCount: portfolio.holdingCount,
     allocation: metrics.allocation.map((slice) => ({
       assetClass: slice.key,
       valueCents: slice.valueCents,
