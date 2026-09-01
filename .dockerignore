@@ -1,0 +1,14 @@
+# Build inputs only — everything else bloats the context and can leak secrets.
+node_modules
+dist
+data
+.git
+.github
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+coverage
+test
+*.log

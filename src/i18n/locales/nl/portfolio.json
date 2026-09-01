@@ -1,0 +1,30 @@
+{
+  "chart": {
+    "allocationTitle": "Spreiding",
+    "netWorthTitle": "Nettovermogen in de tijd",
+    "twrTitle": "Rendement in de tijd"
+  },
+  "dedupe": {
+    "hint": "Deze rekening staat in beide tools; alleen de brongegevens tellen mee voor het nettovermogen.",
+    "title": "Eenmaal geteld"
+  },
+  "holding": {
+    "isin": "ISIN",
+    "name": "Positie",
+    "price": "Koers",
+    "priceDate": "Koersdatum",
+    "quantity": "Aantal",
+    "weight": "Gewicht"
+  },
+  "metric": {
+    "emergencyFund": "Noodbuffer",
+    "gain": "Resultaat",
+    "invested": "Geïnvesteerd",
+    "mwr": "Geldgewogen rendement",
+    "netWorth": "Nettovermogen",
+    "ter": "Jaarlijkse kosten",
+    "twr": "Tijdgewogen rendement",
+    "value": "Marktwaarde"
+  },
+  "title": "Portefeuille"
+}

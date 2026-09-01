@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded run tells you nothing; cancel it and keep the queue short.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, i18n, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Catalogue drift is silent by nature: a missing Dutch key renders as the
+      # key itself, which nobody notices until a screenshot.
+      - name: i18n parity
+        run: npm run i18n:check
+
+      - name: Tests
+        run: npm test
+
+      # Proves the release artefact compiles, and that copy-assets keeps the
+      # migrations and catalogues next to the JS.
+      - name: Build
+        run: npm run build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # gitleaks scans history, which needs all of it.
+          fetch-depth: 0
+
+      # Run the image directly rather than the marketplace action: no licence
+      # key, and the same command works locally.
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            zricethezav/gitleaks:latest git --redact --verbose --no-banner /repo
+
+  image:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      # Build only — publishing happens in release.yml, so a PR still proves the
+      # Dockerfile works without pushing anything.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

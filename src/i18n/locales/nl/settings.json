@@ -1,0 +1,46 @@
+{
+  "accounts": {
+    "hint": "Duid één brongegeven aan per rekening die in beide tools staat.",
+    "includeInNetWorth": "Meetellen in nettovermogen",
+    "sourceOfTruth": "Brongegeven",
+    "title": "Rekeningen"
+  },
+  "ai": {
+    "lastRun": "Laatste analyse",
+    "model": "Model",
+    "runs": "Analyses",
+    "spend": "{{spent}} van {{budget}} deze maand",
+    "title": "AI-gebruik"
+  },
+  "language": {
+    "en": "Engels",
+    "hint": "Bedragen en datums blijven in elke taal in Belgisch formaat.",
+    "nl": "Nederlands",
+    "title": "Taal"
+  },
+  "prompt": {
+    "activate": "Activeren",
+    "active": "Actief",
+    "dryRun": "Testen op vorige maand",
+    "dryRunCost": "Geschatte kost: {{cost}}",
+    "hint": "In het Engels geschreven, ongeacht de interfacetaal; de assistent antwoordt in de jouwe.",
+    "rollback": "Terug naar versie {{version}}",
+    "title": "Instructies voor de assistent",
+    "version": "Versie {{version}}"
+  },
+  "sync": {
+    "lastSync": "Laatste synchronisatie",
+    "nextSync": "Volgende synchronisatie",
+    "runNow": "Nu synchroniseren",
+    "title": "Synchronisatie"
+  },
+  "thresholds": {
+    "baselineMonths": "Maanden in het gemiddelde",
+    "emergencyTarget": "Doel noodbuffer",
+    "halfLife": "Halfwaardetijd",
+    "materiality": "Vraag enkel over categorieën boven",
+    "savingsTarget": "Spaardoel",
+    "title": "Drempels"
+  },
+  "title": "Instellingen"
+}

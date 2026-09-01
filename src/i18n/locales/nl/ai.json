@@ -1,0 +1,51 @@
+{
+  "clarify": {
+    "custody_shared_unknown": "Deel je {{category}} met de andere ouder?",
+    "frequency_unknown": "Hoe vaak komt {{category}} terug?",
+    "hint": "Eén keer beantwoord, blijvend onthouden.",
+    "nature_unknown": "Is {{category}} een vaste kost, een variabele kost, of vrij besteedbaar?",
+    "purpose_unknown": "Waarvoor gebruik je {{category}}?",
+    "sensitive_unknown": "Moet de naam {{category}} verborgen blijven voor de AI?",
+    "suggestion": "Vermoeden: {{guess}}",
+    "title": "Help de assistent begrijpen"
+  },
+  "findings": {
+    "above_baseline": "{{category}} ligt {{delta}} boven je 12-maandsgemiddelde van {{baseline}}.",
+    "above_benchmark": "{{category}} ligt {{delta}} boven de Belgische referentie van {{benchmark}}.",
+    "below_baseline": "{{category}} ligt {{delta}} onder je gebruikelijke niveau.",
+    "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen.",
+    "emergency_fund_short": "Je buffer dekt {{months}}, minder dan de {{target}} die je nastreeft.",
+    "income_change": "Je inkomen wijkt {{delta}} af van je gebruikelijke {{baseline}}.",
+    "irregular_expense": "Een ongebruikelijke uitgave van {{amount}} in {{category}}.",
+    "net_worth_high": "Je nettovermogen bereikte een nieuwe top van {{amount}}.",
+    "no_spend_streak": "Al {{months}} niets besteed aan {{category}}.",
+    "none": "Er is niets dat je aandacht vraagt.",
+    "over_assigned": "{{category}}: {{spent}} uitgegeven tegenover {{assigned}} toegewezen.",
+    "over_available": "{{category}} staat {{overspend}} boven het beschikbare saldo.",
+    "savings_rate_low": "Je spaarde {{rate}} van je inkomen, tegenover een doel van {{target}}.",
+    "savings_rate_up": "Spaarquote gestegen tot {{rate}}, {{delta}} beter dan voordien.",
+    "stale_prices": "{{count}} posities hebben koersen ouder dan {{days}}.",
+    "title": "Wat opvalt",
+    "uncategorised_backlog": "{{count}} verrichtingen zijn nog niet gecategoriseerd.",
+    "unreconciled_account": "{{account}} is al {{days}} niet meer afgepunt."
+  },
+  "narrative": {
+    "capped": "Maandelijks AI-budget bereikt — dit is de laatste analyse.",
+    "generatedAt": "Geschreven op {{when}} door {{model}}",
+    "stale": "Gebaseerd op gegevens van {{when}}.",
+    "title": "Deze maand in woorden",
+    "translate": "Dit in het {{language}} schrijven"
+  },
+  "privacy": {
+    "hint": "Enkel categorienamen en bedragen. Geen tegenpartijen, geen verrichtingen.",
+    "title": "Wat is verzonden",
+    "viewPayload": "Toon de exacte verzonden gegevens"
+  },
+  "proposal": {
+    "diff": "Nu / voorstel",
+    "expiresAt": "Verloopt op {{when}}",
+    "hint": "Er verandert niets tot je het toepast.",
+    "title": "Voorgestelde wijzigingen"
+  },
+  "title": "Inzichten"
+}

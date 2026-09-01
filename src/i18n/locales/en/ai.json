@@ -1,0 +1,51 @@
+{
+  "clarify": {
+    "custody_shared_unknown": "Do you share {{category}} with your co-parent?",
+    "frequency_unknown": "How often does {{category}} come up?",
+    "hint": "Answered once, remembered for good.",
+    "nature_unknown": "Is {{category}} a fixed cost, a variable one, or free spending?",
+    "purpose_unknown": "What do you use {{category}} for?",
+    "sensitive_unknown": "Should the name {{category}} be kept from the AI?",
+    "suggestion": "Best guess: {{guess}}",
+    "title": "Help the assistant understand"
+  },
+  "findings": {
+    "above_baseline": "{{category}} is {{delta}} above your 12-month norm of {{baseline}}.",
+    "above_benchmark": "{{category}} is {{delta}} above the Belgian reference of {{benchmark}}.",
+    "below_baseline": "{{category}} is {{delta}} below your usual level.",
+    "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned.",
+    "emergency_fund_short": "Your buffer covers {{months}}, short of the {{target}} you aim for.",
+    "income_change": "Income is {{delta}} off your usual {{baseline}}.",
+    "irregular_expense": "An unusual expense of {{amount}} in {{category}}.",
+    "net_worth_high": "Net worth reached a new high of {{amount}}.",
+    "no_spend_streak": "Nothing spent on {{category}} for {{months}}.",
+    "none": "Nothing needs your attention.",
+    "over_assigned": "{{category}}: {{spent}} spent against {{assigned}} assigned.",
+    "over_available": "{{category}} is {{overspend}} over its available balance.",
+    "savings_rate_low": "You saved {{rate}} of your income, against a target of {{target}}.",
+    "savings_rate_up": "Savings rate up to {{rate}}, {{delta}} better than before.",
+    "stale_prices": "{{count}} holdings have prices older than {{days}}.",
+    "title": "What stands out",
+    "uncategorised_backlog": "{{count}} transactions are still uncategorised.",
+    "unreconciled_account": "{{account}} has not been reconciled in {{days}}."
+  },
+  "narrative": {
+    "capped": "Monthly AI budget reached — showing the last analysis.",
+    "generatedAt": "Written {{when}} by {{model}}",
+    "stale": "Based on data from {{when}}.",
+    "title": "This month in words",
+    "translate": "Write this in {{language}}"
+  },
+  "privacy": {
+    "hint": "Category names and amounts only. No payees, no transactions.",
+    "title": "What was sent",
+    "viewPayload": "Show the exact payload"
+  },
+  "proposal": {
+    "diff": "Now / proposed",
+    "expiresAt": "Expires {{when}}",
+    "hint": "Nothing is changed until you apply it.",
+    "title": "Proposed changes"
+  },
+  "title": "Insights"
+}
