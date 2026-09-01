@@ -175,7 +175,7 @@ describe('emergency fund', () => {
     )
     expect(find(signals, 'emergency_fund_short')?.metrics).toEqual({
       monthsBp: 15_000,
-      targetBp: 30_000,
+      targetMonthsBp: 30_000,
       liquidCents: 360_000,
       typicalSpendCents: 240_000,
       shortfallCents: 360_000,

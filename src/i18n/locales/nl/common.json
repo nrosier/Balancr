@@ -90,11 +90,11 @@
     "running": "Bezig"
   },
   "time": {
-    "dayCount_one": "{{count}} dag",
-    "dayCount_other": "{{count}} dagen",
+    "dayCount_one": "{{value}} dag",
+    "dayCount_other": "{{value}} dagen",
     "lastUpdated": "Bijgewerkt op {{when}}",
-    "monthCount_one": "{{count}} maand",
-    "monthCount_other": "{{count}} maanden",
+    "monthCount_one": "{{value}} maand",
+    "monthCount_other": "{{value}} maanden",
     "monthToDate": "Deze maand tot nu"
   }
 }

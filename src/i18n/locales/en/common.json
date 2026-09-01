@@ -90,11 +90,11 @@
     "running": "Running"
   },
   "time": {
-    "dayCount_one": "{{count}} day",
-    "dayCount_other": "{{count}} days",
+    "dayCount_one": "{{value}} day",
+    "dayCount_other": "{{value}} days",
     "lastUpdated": "Updated {{when}}",
-    "monthCount_one": "{{count}} month",
-    "monthCount_other": "{{count}} months",
+    "monthCount_one": "{{value}} month",
+    "monthCount_other": "{{value}} months",
     "monthToDate": "Month to date"
   }
 }

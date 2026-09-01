@@ -133,17 +133,21 @@ export function householdSignals(input: HouseholdInput): Signal[] {
     )
     if (typicalSpend > 0) {
       // Basis points of a month, so "2.4 months" survives being an integer.
+      // Named `targetMonthsBp` rather than `targetBp` because `savings_rate_low`
+      // already has a `targetBp` measured in basis points of *income*: one metric
+      // name whose unit depends on which code carries it is how a chart or a
+      // renderer eventually prints "3 months" as "0,3%".
       const monthsBp = Math.round((input.netWorth.liquidCents / typicalSpend) * 10_000)
-      const targetBp = Math.round(params.household.emergencyFundTargetMonths * 10_000)
-      if (monthsBp < targetBp) {
+      const targetMonthsBp = Math.round(params.household.emergencyFundTargetMonths * 10_000)
+      if (monthsBp < targetMonthsBp) {
         signals.push(
           householdSignal('emergency_fund_short', 'alert', {
             monthsBp,
-            targetBp,
+            targetMonthsBp,
             liquidCents: input.netWorth.liquidCents,
             typicalSpendCents: typicalSpend,
             shortfallCents: Math.round(
-              (typicalSpend * (targetBp - monthsBp)) / 10_000,
+              (typicalSpend * (targetMonthsBp - monthsBp)) / 10_000,
             ),
           }),
         )

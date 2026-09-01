@@ -5,6 +5,67 @@ All notable changes to Balancr, newest first. Format follows
 scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, and
 1.0.0 ships when testing says so rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The redaction boundary** (`src/domain/ai/redact.ts`): one pure function from
+  everything the aggregation layer computed to the exact object that is sent to
+  Gemini, and the only path there. Amounts, baselines, deltas, allocation shares
+  and category names cross; payees, memos, transaction ids, account names and
+  numbers, instrument names, symbols and ISINs never do. Every field is written
+  out by hand — no spreads, no `JSON.parse(JSON.stringify(x))` — because a spread
+  is how a field added upstream rides along with no test failing. Categories and
+  accounts are addressed by an opaque label (`c7`, `a2`) assigned in id order, so
+  a stored payload still reads against today's data and the stable half of the
+  prompt stays cacheable. A category flagged `sensitive` keeps its amounts and
+  loses its name and description, so the model can still reason about the money
+  without learning it is a therapist.
+- **Finding assembly** (`src/domain/ai/findings.ts`): the editor between the
+  producers and the page. One signal per code and category, keeping the most
+  serious and breaking ties by size so a re-run cannot change the answer; hygiene
+  findings first regardless of severity, because "312 transactions are
+  uncategorised" is the reason not to trust the alert beneath it; then two per
+  category and two dozen in total. Household findings are exempt from the
+  per-category cap, since they are each about a different thing. Nothing is
+  computed here.
+- **Local rendering of every finding** (`src/domain/ai/render.ts`): a code plus
+  numbers becomes a sentence from the i18n catalogue, so both languages come for
+  free and output can never end up half-translated. One table maps each code's
+  metrics to its sentence variables, exhaustive over `FindingCode` by type, and
+  every value goes through `src/i18n/format.ts`. An account that was never
+  reconciled says so instead of reporting `-1` days.
+- `test/unit/ai-redact.test.ts` — the privacy guarantee, and load-bearing. A
+  denylist built from the fixture's own account names, source ids, IBANs, ISINs
+  and fund names, asserted absent from the serialised payload; a second assertion
+  that the fixture really contains them, so the first cannot pass by testing
+  nothing; and a key allowlist walked to any depth, which catches the field
+  somebody adds later without deciding whether it is safe to send.
+- `test/unit/ai-render.test.ts` walks the whole vocabulary in both languages,
+  because a finding whose metric keys do not match its producer renders as
+  nothing at all, and nobody notices a finding that is missing.
+
+### Changed
+- `signalMagnitude` is exported from `src/domain/aggregate/overspend.ts`. The
+  ranking breaks ties the same way the sort does, and two definitions of "which of
+  these matters more" that can disagree would put the caps and the order out of
+  step.
+- `emergency_fund_short` reports `targetMonthsBp` rather than `targetBp`.
+  `savings_rate_low` already had a `targetBp` measured in basis points of income,
+  and one metric name whose unit depends on which code carries it is how a chart
+  eventually prints "3 months" as "0,3%".
+- Renovate proposes version bumps, never digests. A `uses: actions/checkout@abc123`
+  diff cannot be reviewed — a patch bump and a hijacked tag read identically — so
+  `pinDigests` is off explicitly, in case a preset turns it on.
+
+### Fixed
+- Pluralised sentences print a Belgian number. i18next writes an interpolated
+  value with `String()`, so `{{count}} months` rendered `2.4 months` in a UI that
+  spells every other number `2,4`; `count` now selects the plural form and
+  `{{value}}` prints it. The formatting lives in `t()` rather than in
+  `interpolation.format`, which looks like the place for it and is not — i18next
+  installs its own formatter during `init` and discards the hook. `npm run
+  i18n:check` fails a plural key that reaches for `{{count}}` again.
+
 ## [0.3.0] — 2026-09-01
 
 ### Added
