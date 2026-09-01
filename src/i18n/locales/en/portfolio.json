@@ -1,0 +1,30 @@
+{
+  "chart": {
+    "allocationTitle": "Allocation",
+    "netWorthTitle": "Net worth over time",
+    "twrTitle": "Return over time"
+  },
+  "dedupe": {
+    "hint": "This account exists in both tools; only the source of truth counts toward net worth.",
+    "title": "Counted once"
+  },
+  "holding": {
+    "isin": "ISIN",
+    "name": "Holding",
+    "price": "Price",
+    "priceDate": "Price date",
+    "quantity": "Quantity",
+    "weight": "Weight"
+  },
+  "metric": {
+    "emergencyFund": "Emergency buffer",
+    "gain": "Result",
+    "invested": "Invested",
+    "mwr": "Money-weighted return",
+    "netWorth": "Net worth",
+    "ter": "Annual costs",
+    "twr": "Time-weighted return",
+    "value": "Market value"
+  },
+  "title": "Portfolio"
+}

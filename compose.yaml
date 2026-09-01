@@ -1,0 +1,56 @@
+# Balancr alongside an existing Actual + Ghostfolio + Traefik + DockFlare stack.
+#
+# Actual and Ghostfolio stay off the internet: Balancr reaches them over the
+# shared internal network, and only Balancr is published — through the Cloudflare
+# tunnel and Traefik, behind Authentik.
+services:
+  balancr:
+    image: ${BALANCR_IMAGE:-nrosier/balancr:latest}
+    container_name: balancr
+    restart: unless-stopped
+    # PID 1 in Node does not reap children or forward signals on its own.
+    init: true
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/balancr.db
+      ACTUAL_DATA_DIR: /data/actual
+    volumes:
+      - balancr-data:/data
+    # Everything writable lives in the volume, so the rest can be immutable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proxy
+      - internal
+    labels:
+      # --- Traefik -------------------------------------------------------
+      traefik.enable: 'true'
+      traefik.docker.network: proxy
+      traefik.http.routers.balancr.rule: Host(`balancr.example.com`)
+      traefik.http.routers.balancr.entrypoints: websecure
+      traefik.http.routers.balancr.tls.certresolver: letsencrypt
+      traefik.http.services.balancr.loadbalancer.server.port: '3000'
+      # Authentik forward-auth. Balancr also runs its own OIDC code flow, so this
+      # is defence in depth rather than the only gate — and Balancr trusts the
+      # X-authentik-* headers only from TRUSTED_PROXY_CIDRS.
+      traefik.http.routers.balancr.middlewares: authentik@file
+      # --- DockFlare -----------------------------------------------------
+      # Label names follow DockFlare's own convention; check them against the
+      # version you run, as they have changed between releases.
+      cloudflare.tunnel.enable: 'true'
+      cloudflare.tunnel.hostname: balancr.example.com
+      cloudflare.tunnel.service: http://balancr:3000
+
+volumes:
+  balancr-data:
+
+networks:
+  proxy:
+    external: true
+  internal:
+    external: true

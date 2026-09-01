@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# --- Balancr ---
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

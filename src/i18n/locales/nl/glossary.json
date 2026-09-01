@@ -1,0 +1,42 @@
+{
+  "effectenrekening": {
+    "definition": "De rekening waarop je beleggingen worden aangehouden.",
+    "term": "Effectenrekening"
+  },
+  "ewma": {
+    "definition": "Een gewogen gemiddelde van de laatste twaalf maanden, waarbij recente maanden zwaarder wegen.",
+    "term": "12-maandsgemiddelde"
+  },
+  "meerwaarde": {
+    "definition": "Belasting op de meerwaarde bij verkoop van een belegging.",
+    "term": "Meerwaardebelasting"
+  },
+  "mwr": {
+    "definition": "Rendement dat de timing van je stortingen meerekent en dus jouw resultaat meet.",
+    "term": "Geldgewogen rendement"
+  },
+  "pensioensparen": {
+    "definition": "Fiscaal voordelig pensioensparen met een jaarlijks plafond.",
+    "term": "Pensioensparen"
+  },
+  "reynders": {
+    "definition": "Belasting op het interestgedeelte van bepaalde obligatiefondsen bij verkoop.",
+    "term": "Reynders-taks"
+  },
+  "roerendeVoorheffing": {
+    "definition": "Belasting die aan de bron wordt ingehouden op dividenden en interesten.",
+    "term": "Roerende voorheffing"
+  },
+  "ter": {
+    "definition": "Het jaarlijkse percentage dat een fonds van zijn vermogen afhoudt.",
+    "term": "Lopende kosten (TER)"
+  },
+  "tob": {
+    "definition": "Belgische taks op elke aan- of verkoop van een effect, met een tarief dat van het instrument afhangt.",
+    "term": "Beurstaks (TOB)"
+  },
+  "twr": {
+    "definition": "Rendement dat de timing van je stortingen negeert en dus de beleggingen meet.",
+    "term": "Tijdgewogen rendement"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "accountKind": {
+    "cash": "Cash",
+    "checking": "Zichtrekening",
+    "credit": "Kredietkaart",
+    "investment": "Beleggingsrekening",
+    "other": "Andere",
+    "savings": "Spaarrekening"
+  },
+  "action": {
+    "apply": "Toepassen",
+    "cancel": "Annuleren",
+    "confirm": "Bevestigen",
+    "copy": "Kopiëren",
+    "dismiss": "Negeren",
+    "edit": "Wijzigen",
+    "refresh": "Vernieuwen",
+    "reject": "Afwijzen",
+    "retry": "Opnieuw proberen",
+    "save": "Opslaan",
+    "showLess": "Minder weergeven",
+    "showMore": "Meer weergeven"
+  },
+  "app": {
+    "name": "Balancr",
+    "tagline": "Budget en portefeuille, in één overzicht"
+  },
+  "auth": {
+    "invalid": "Die gegevens zijn niet juist.",
+    "localDisabled": "Lokaal aanmelden is niet beschikbaar vanaf dit netwerk.",
+    "lockedUntil": "Te veel pogingen. Geblokkeerd tot {{when}}.",
+    "password": "Wachtwoord",
+    "signIn": "Aanmelden",
+    "signInLocal": "Aanmelden met een lokaal account",
+    "signInOidc": "Aanmelden met Authentik",
+    "signOut": "Afmelden",
+    "totp": "Authenticatorcode",
+    "username": "Gebruikersnaam"
+  },
+  "empty": {
+    "noData": "Nog geen gegevens",
+    "noDataHint": "Voer een synchronisatie uit om je budget en portefeuille op te halen."
+  },
+  "error": {
+    "generic": "Er is iets misgegaan.",
+    "rateLimited": "Te veel aanvragen. Probeer het straks opnieuw.",
+    "unauthorized": "Meld je opnieuw aan.",
+    "upstream": "{{service}} is onbereikbaar."
+  },
+  "frequency": {
+    "annual": "Jaarlijks",
+    "irregular": "Onregelmatig",
+    "monthly": "Maandelijks",
+    "quarterly": "Per kwartaal"
+  },
+  "nature": {
+    "discretionary": "Vrij besteedbaar",
+    "fixed": "Vast",
+    "income": "Inkomen",
+    "variable": "Variabel"
+  },
+  "nav": {
+    "budget": "Budget",
+    "insights": "Inzichten",
+    "overview": "Overzicht",
+    "portfolio": "Portefeuille",
+    "settings": "Instellingen"
+  },
+  "severity": {
+    "alert": "Actie nodig",
+    "info": "Info",
+    "warn": "Let op"
+  },
+  "source": {
+    "actual": "Actual Budget",
+    "ghostfolio": "Ghostfolio"
+  },
+  "status": {
+    "answered": "Beantwoord",
+    "applied": "Toegepast",
+    "blocked": "Geblokkeerd",
+    "capped": "Budgetplafond bereikt",
+    "error": "Fout",
+    "expired": "Verlopen",
+    "idle": "Inactief",
+    "ok": "OK",
+    "open": "Open",
+    "pending": "Wacht op nazicht",
+    "rejected": "Afgewezen",
+    "running": "Bezig"
+  },
+  "time": {
+    "dayCount_one": "{{count}} dag",
+    "dayCount_other": "{{count}} dagen",
+    "lastUpdated": "Bijgewerkt op {{when}}",
+    "monthCount_one": "{{count}} maand",
+    "monthCount_other": "{{count}} maanden",
+    "monthToDate": "Deze maand tot nu"
+  }
+}

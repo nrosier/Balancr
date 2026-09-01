@@ -1,0 +1,38 @@
+{
+  "category": {
+    "description": "What is this for?",
+    "descriptionHint": "Your own note. The assistant uses it to reason about this category.",
+    "sensitive": "Treat as sensitive",
+    "sensitiveHint": "The amount is still analysed, but the name never leaves this server.",
+    "sharedCustody": "Shared with co-parent"
+  },
+  "chart": {
+    "axisMoney": "Euro",
+    "axisMonth": "Month",
+    "bulletTitle": "Budget versus actual",
+    "burnTitle": "Spending pace this month",
+    "sankeyTitle": "Where the money goes",
+    "trendTitle": "Spending per category"
+  },
+  "group": {
+    "hidden": "Hidden categories",
+    "uncategorised": "Uncategorised"
+  },
+  "hygiene": {
+    "hint": "Analysis is only as good as the bookkeeping behind it.",
+    "score": "Quality score",
+    "title": "Data quality"
+  },
+  "metric": {
+    "assigned": "Assigned",
+    "available": "Available",
+    "baseline": "12-month norm",
+    "burnRate": "Burn rate",
+    "carryover": "Carried over",
+    "income": "Income",
+    "projected": "Projected month end",
+    "savingsRate": "Savings rate",
+    "spent": "Spent"
+  },
+  "title": "Budget"
+}

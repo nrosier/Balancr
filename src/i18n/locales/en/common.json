@@ -1,0 +1,100 @@
+{
+  "accountKind": {
+    "cash": "Cash",
+    "checking": "Current account",
+    "credit": "Credit card",
+    "investment": "Investment account",
+    "other": "Other",
+    "savings": "Savings account"
+  },
+  "action": {
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "copy": "Copy",
+    "dismiss": "Dismiss",
+    "edit": "Edit",
+    "refresh": "Refresh",
+    "reject": "Reject",
+    "retry": "Try again",
+    "save": "Save",
+    "showLess": "Show less",
+    "showMore": "Show more"
+  },
+  "app": {
+    "name": "Balancr",
+    "tagline": "Budget and portfolio, in one view"
+  },
+  "auth": {
+    "invalid": "Those details are not correct.",
+    "localDisabled": "Local sign-in is not available from this network.",
+    "lockedUntil": "Too many attempts. Locked until {{when}}.",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signInLocal": "Sign in with a local account",
+    "signInOidc": "Sign in with Authentik",
+    "signOut": "Sign out",
+    "totp": "Authenticator code",
+    "username": "Username"
+  },
+  "empty": {
+    "noData": "No data yet",
+    "noDataHint": "Run a sync to pull in your budget and portfolio."
+  },
+  "error": {
+    "generic": "Something went wrong.",
+    "rateLimited": "Too many requests. Try again shortly.",
+    "unauthorized": "Please sign in again.",
+    "upstream": "{{service}} is unreachable."
+  },
+  "frequency": {
+    "annual": "Annual",
+    "irregular": "Irregular",
+    "monthly": "Monthly",
+    "quarterly": "Quarterly"
+  },
+  "nature": {
+    "discretionary": "Discretionary",
+    "fixed": "Fixed",
+    "income": "Income",
+    "variable": "Variable"
+  },
+  "nav": {
+    "budget": "Budget",
+    "insights": "Insights",
+    "overview": "Overview",
+    "portfolio": "Portfolio",
+    "settings": "Settings"
+  },
+  "severity": {
+    "alert": "Action needed",
+    "info": "Info",
+    "warn": "Attention"
+  },
+  "source": {
+    "actual": "Actual Budget",
+    "ghostfolio": "Ghostfolio"
+  },
+  "status": {
+    "answered": "Answered",
+    "applied": "Applied",
+    "blocked": "Blocked",
+    "capped": "Budget cap reached",
+    "error": "Error",
+    "expired": "Expired",
+    "idle": "Idle",
+    "ok": "OK",
+    "open": "Open",
+    "pending": "Awaiting review",
+    "rejected": "Rejected",
+    "running": "Running"
+  },
+  "time": {
+    "dayCount_one": "{{count}} day",
+    "dayCount_other": "{{count}} days",
+    "lastUpdated": "Updated {{when}}",
+    "monthCount_one": "{{count}} month",
+    "monthCount_other": "{{count}} months",
+    "monthToDate": "Month to date"
+  }
+}
