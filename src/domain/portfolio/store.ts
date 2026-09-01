@@ -1,0 +1,141 @@
+/**
+ * Persistence for portfolio snapshots and metrics.
+ *
+ * Same shape as the net-worth store, and for the same reason: a pass that runs
+ * twice in one day must correct the day rather than duplicate it. Upsert on the
+ * primary key, then delete the rows for that date whose instrument is gone — a
+ * position sold this morning must not linger in this afternoon's snapshot.
+ */
+import { and, eq, notInArray, sql } from 'drizzle-orm'
+import type { Db } from '../../db/index.ts'
+import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
+import type { PortfolioMetricsResult } from './metrics.ts'
+import type { HoldingSnapshot } from './snapshot.ts'
+
+export interface SnapshotPersistResult {
+  written: number
+  removed: number
+}
+
+export function persistPortfolioSnapshots(
+  db: Db,
+  date: string,
+  holdings: readonly HoldingSnapshot[],
+): SnapshotPersistResult {
+  const computedAt = new Date()
+  const out: SnapshotPersistResult = { written: 0, removed: 0 }
+
+  db.transaction((tx) => {
+    for (const holding of holdings) {
+      tx.insert(portfolioSnapshots)
+        .values({
+          date,
+          instrument: holding.instrument,
+          symbol: holding.symbol,
+          isin: holding.isin,
+          name: holding.name,
+          quantity: holding.quantity,
+          priceCents: holding.priceCents,
+          valueCents: holding.valueCents,
+          currency: holding.currency,
+          computedAt,
+        })
+        .onConflictDoUpdate({
+          target: [portfolioSnapshots.date, portfolioSnapshots.instrument],
+          set: {
+            symbol: sql`excluded.symbol`,
+            isin: sql`excluded.isin`,
+            name: sql`excluded.name`,
+            quantity: sql`excluded.quantity`,
+            priceCents: sql`excluded.price_cents`,
+            valueCents: sql`excluded.value_cents`,
+            currency: sql`excluded.currency`,
+            computedAt: sql`excluded.computed_at`,
+          },
+        })
+        .run()
+      out.written += 1
+    }
+
+    const keep = holdings.map((holding) => holding.instrument)
+    // `notInArray` with an empty list matches nothing in SQL, so an empty
+    // portfolio needs its own branch or yesterday's holdings survive as today's.
+    const where =
+      keep.length > 0
+        ? and(
+            eq(portfolioSnapshots.date, date),
+            notInArray(portfolioSnapshots.instrument, keep),
+          )
+        : eq(portfolioSnapshots.date, date)
+    out.removed = tx.delete(portfolioSnapshots).where(where).run().changes
+  })
+
+  return out
+}
+
+/**
+ * Allocation is stored as JSON because its shape belongs to this module, not to
+ * the schema — a new slice field must not be a migration.
+ */
+export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult): void {
+  const computedAt = new Date()
+  db.insert(portfolioMetrics)
+    .values({
+      date: result.date,
+      twrBp: result.twrBp,
+      mwrBp: result.mwrBp,
+      totalValueCents: result.totalValueCents,
+      allocationJson: JSON.stringify(result.allocation),
+      driftJson: result.driftJson,
+      terAnnualCents: result.terAnnualCents,
+      computedAt,
+    })
+    .onConflictDoUpdate({
+      target: portfolioMetrics.date,
+      set: {
+        twrBp: sql`excluded.twr_bp`,
+        mwrBp: sql`excluded.mwr_bp`,
+        totalValueCents: sql`excluded.total_value_cents`,
+        allocationJson: sql`excluded.allocation_json`,
+        driftJson: sql`excluded.drift_json`,
+        terAnnualCents: sql`excluded.ter_annual_cents`,
+        computedAt: sql`excluded.computed_at`,
+      },
+    })
+    .run()
+}
+
+/**
+ * The most recent snapshot date, or null when there is none.
+ *
+ * This is what the hygiene score reads to decide whether prices are stale. It
+ * measures *our* snapshot age deliberately: Ghostfolio's API exposes no as-of
+ * date for a price, so the age of the last successful pass is the only honest
+ * signal available.
+ */
+export function latestSnapshotDate(db: Db): string | null {
+  const row = db
+    .select({ date: sql<string | null>`max(${portfolioSnapshots.date})` })
+    .from(portfolioSnapshots)
+    .get()
+  return row?.date ?? null
+}
+
+/** Holdings for one date, ordered as `toHoldingSnapshots` produced them. */
+export function loadSnapshot(db: Db, date: string): (typeof portfolioSnapshots.$inferSelect)[] {
+  return db
+    .select()
+    .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.date, date))
+    .orderBy(portfolioSnapshots.instrument)
+    .all()
+}
+
+/** Total portfolio value per date, ascending — the portfolio value series. */
+export function loadPortfolioValueHistory(db: Db): { date: string; totalCents: number }[] {
+  return db
+    .select({ date: portfolioMetrics.date, totalCents: portfolioMetrics.totalValueCents })
+    .from(portfolioMetrics)
+    .orderBy(portfolioMetrics.date)
+    .all()
+}

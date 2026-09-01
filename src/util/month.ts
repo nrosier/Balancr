@@ -160,10 +160,25 @@ function partsIn(instant: Date, timeZone: string): Parts {
   }
 }
 
+/** The calendar date `instant` falls on in `timeZone`, as `YYYY-MM-DD`. */
+export function dateIn(instant: Date, timeZone: string): string {
+  const { year, month, day } = partsIn(instant, timeZone)
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/**
+ * Wall-clock hour of `instant` in `timeZone`, 0..23.
+ *
+ * The scheduler decides "is it past 03:00 yet" with this. Doing it in UTC would
+ * drift an hour every spring and run the nightly pass in daylight.
+ */
+export function hourIn(instant: Date, timeZone: string): number {
+  return partsIn(instant, timeZone).hour
+}
+
 /** Today in `timeZone`, as `YYYY-MM-DD`. */
 export function todayIn(timeZone: string): string {
-  const { year, month, day } = partsIn(new Date(), timeZone)
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return dateIn(new Date(), timeZone)
 }
 
 /** The current month in `timeZone`, as `YYYY-MM`. */
