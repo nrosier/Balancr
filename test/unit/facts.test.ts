@@ -7,7 +7,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
-import { loadFrequencies, persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
+import {
+  loadCategoryMeta,
+  loadFacts,
+  loadFrequencies,
+  persistFacts,
+  syncCategoryMeta,
+} from '../../src/domain/aggregate/facts.ts'
 import type { MonthlyFact } from '../../src/domain/aggregate/spend.ts'
 import { eq } from 'drizzle-orm'
 
@@ -198,5 +204,129 @@ describe('loadFrequencies', () => {
     expect(frequencies.get('insurance')).toBe('annual')
     expect(frequencies.get('food')).toBe('monthly')
     expect(frequencies.has('never-seen')).toBe(false)
+  })
+})
+
+describe('loadFacts', () => {
+  it('reads back what was written, baseline and all', () => {
+    // The round-trip that every pass after the sync depends on: the signal job and
+    // the AI bundle both read facts from here, never from Actual.
+    const written = fact('2026-03', 'food', {
+      categoryName: 'Groceries',
+      baseline: {
+        baselineCents: 44_000,
+        currentCents: 52_000,
+        deltaBp: 1_818,
+        monthsUsed: 11,
+        windowMonths: 12,
+        winsorEffectBp: 120,
+      },
+    })
+    syncCategoryMeta(ctx.db, [written])
+    persistFacts(ctx.db, [written], ['2026-03'])
+
+    expect(loadFacts(ctx.db, '2026-03')).toEqual([written])
+  })
+
+  it('takes the name, income flag and hidden flag from the meta row, not the fact row', () => {
+    // The name is stored once, in `category_meta`, so a rename in Actual shows up
+    // on every historical month at once instead of leaving old months mislabelled.
+    const march = fact('2026-03', 'food', { categoryName: 'Food', isIncome: true, hidden: true })
+    syncCategoryMeta(ctx.db, [march])
+    persistFacts(ctx.db, [march], ['2026-03'])
+    ctx.db
+      .update(categoryMeta)
+      .set({ nameSnapshot: 'Groceries' })
+      .where(eq(categoryMeta.categoryId, 'food'))
+      .run()
+
+    const loaded = loadFacts(ctx.db, '2026-03')[0]
+    expect(loaded?.categoryName).toBe('Groceries')
+    expect(loaded?.isIncome).toBe(true)
+    expect(loaded?.hidden).toBe(true)
+  })
+
+  it('is ordered by category id, so a payload labels the same category the same way', () => {
+    const facts = [fact('2026-03', 'rent'), fact('2026-03', 'food'), fact('2026-03', 'gas')]
+    syncCategoryMeta(ctx.db, facts)
+    persistFacts(ctx.db, facts, ['2026-03'])
+    expect(loadFacts(ctx.db, '2026-03').map((f) => f.categoryId)).toEqual(['food', 'gas', 'rent'])
+  })
+
+  it('reads one month only', () => {
+    const facts = [fact('2026-02', 'food'), fact('2026-03', 'food')]
+    syncCategoryMeta(ctx.db, facts)
+    persistFacts(ctx.db, facts, ['2026-02', '2026-03'])
+    expect(loadFacts(ctx.db, '2026-03').map((f) => f.month)).toEqual(['2026-03'])
+  })
+
+  it('is empty for a month that was never computed', () => {
+    expect(loadFacts(ctx.db, '2026-03')).toEqual([])
+  })
+
+  it('skips a fact whose category has no meta row', () => {
+    // An inner join, deliberately: without a meta row there is no name, and a
+    // nameless category in a bundle would reach the model as an empty string.
+    // `sync.ts` calls `syncCategoryMeta` before `persistFacts` so this cannot
+    // happen in the pass; the row is dropped rather than half-loaded if it does.
+    persistFacts(ctx.db, [fact('2026-03', 'orphan')], ['2026-03'])
+    expect(loadFacts(ctx.db, '2026-03')).toEqual([])
+  })
+
+  it('keeps a null delta on a baseline that has one', () => {
+    // `deltaBp` is null when the baseline is zero — a first-ever annual bill has a
+    // norm of nothing to compare against, and a percentage of zero is not a number.
+    const written = fact('2026-03', 'food', {
+      baseline: {
+        baselineCents: 0,
+        currentCents: 8_000,
+        deltaBp: null,
+        monthsUsed: 2,
+        windowMonths: 12,
+        winsorEffectBp: null,
+      },
+    })
+    syncCategoryMeta(ctx.db, [written])
+    persistFacts(ctx.db, [written], ['2026-03'])
+    expect(loadFacts(ctx.db, '2026-03')[0]?.baseline).toEqual(written.baseline)
+  })
+})
+
+describe('loadCategoryMeta', () => {
+  it('keys every stored row by its category id', () => {
+    syncCategoryMeta(ctx.db, [fact('2026-03', 'food'), fact('2026-03', 'rent')])
+    const meta = loadCategoryMeta(ctx.db)
+    expect([...meta.keys()].sort()).toEqual(['food', 'rent'])
+    expect(meta.get('food')?.nameSnapshot).toBe('food')
+  })
+
+  it('carries the fields the redaction boundary reads', () => {
+    // These five decide what a category looks like to the model — and whether it
+    // is described at all. Loading them is what makes `sensitive` mean anything.
+    syncCategoryMeta(ctx.db, [fact('2026-03', 'therapy')])
+    ctx.db
+      .update(categoryMeta)
+      .set({
+        userDescription: 'Weekly sessions',
+        coicopCode: '06.2.2',
+        nature: 'fixed',
+        custodyShared: true,
+        sensitive: true,
+      })
+      .where(eq(categoryMeta.categoryId, 'therapy'))
+      .run()
+
+    const row = loadCategoryMeta(ctx.db).get('therapy')
+    expect(row).toMatchObject({
+      userDescription: 'Weekly sessions',
+      coicopCode: '06.2.2',
+      nature: 'fixed',
+      custodyShared: true,
+      sensitive: true,
+    })
+  })
+
+  it('is empty before the first sync', () => {
+    expect(loadCategoryMeta(ctx.db).size).toBe(0)
   })
 })

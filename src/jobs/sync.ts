@@ -24,6 +24,7 @@ import type { Db } from '../db/index.ts'
 import { syncAccountMap, type AccountSighting } from '../domain/aggregate/accounts.ts'
 import { FREQUENCY_WINDOW } from '../domain/aggregate/baseline.ts'
 import { loadFrequencies, persistFacts, syncCategoryMeta } from '../domain/aggregate/facts.ts'
+import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { aggregateSpend } from '../domain/aggregate/spend.ts'
 import type { Logger } from '../logger.ts'
@@ -162,6 +163,13 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
   // classifiable by the next pass.
   const categories = syncCategoryMeta(db, aggregate.facts)
   const facts = persistFacts(db, aggregate.facts, targets)
+  // Month totals cover the target months, so the uncategorised backlog stored
+  // here is the backlog over the months this install reports on
+  // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
+  // baseline are dropped: there is no month row to hang them on, and a to-do list
+  // reaching further back than any page shows is not a to-do list.
+  const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised)
+  const drift = persistMismatches(db, aggregate.mismatches, targets)
   const accounts = await syncAccounts(db, log)
 
   return {
@@ -173,8 +181,9 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
     accountsCreated: accounts.created,
     accountsRenamed: accounts.renamed,
     accountsMissing: accounts.missing,
+    totals: months,
     uncategorisedTxns: aggregate.uncategorised.reduce((sum, b) => sum + b.txnCount, 0),
-    mismatches: aggregate.mismatches.length,
+    mismatches: drift.mismatches,
   }
 }
 

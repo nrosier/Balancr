@@ -152,7 +152,11 @@ export function hygieneSignals(input: HygieneInput): HygieneResult {
     unreconciled += 1
     signals.push({
       code: 'unreconciled_account',
-      categoryId: null,
+      // The account's own id, not null: `Signal.categoryId` is the subject of the
+      // signal, and two stale accounts with no subject dedupe into one finding
+      // because they share the household group. It is also what lets the
+      // redaction boundary give this signal an account label.
+      categoryId: account.accountId,
       categoryName: account.name,
       severity: capSeverity('unreconciled_account', 'warn'),
       metrics: {
