@@ -50,7 +50,15 @@ export interface Exclusion {
   dedupeGroup: string | null
 }
 
-export interface NetWorthResult {
+/**
+ * The five figures every consumer of net worth actually reads.
+ *
+ * Split out of `NetWorthResult` so a summary reconstructed from
+ * `net_worth_snapshots` is the same type as a freshly computed one, rather than a
+ * `NetWorthResult` with three fields faked. The household producers and the
+ * redaction boundary take this; only the persistence layer needs the rest.
+ */
+export interface NetWorthSummary {
   date: string
   /** Everything counted, signed. */
   totalCents: number
@@ -59,6 +67,9 @@ export interface NetWorthResult {
   investedCents: number
   /** Debt as a positive number, because "you owe 2 400" reads better negated. */
   debtCents: number
+}
+
+export interface NetWorthResult extends NetWorthSummary {
   /** One row per counted account, ready to become a `net_worth_snapshots` row. */
   contributions: AccountValue[]
   excluded: Exclusion[]
@@ -70,7 +81,12 @@ export interface NetWorthResult {
   unresolvedGroups: string[]
 }
 
-const LIQUID: ReadonlySet<AccountKind> = new Set(['checking', 'savings', 'cash'])
+/**
+ * Exported so a summary rebuilt from stored snapshots classifies accounts the
+ * same way this module does. Two definitions of "liquid" that can disagree is
+ * how an emergency-fund figure ends up differing between two pages.
+ */
+export const LIQUID: ReadonlySet<AccountKind> = new Set(['checking', 'savings', 'cash'])
 
 export function computeNetWorth(date: string, accounts: readonly AccountValue[]): NetWorthResult {
   const excluded: Exclusion[] = []

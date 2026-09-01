@@ -35,7 +35,6 @@ import {
 import type { AccountMapRow } from '../../src/domain/aggregate/accounts.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
-import type { HoldingSnapshot } from '../../src/domain/portfolio/snapshot.ts'
 
 /**
  * Strings that must never reach Gemini, planted throughout the fixture.
@@ -61,7 +60,19 @@ const NEVER_SENT = [
   'gf-brokerage',
   'a1b2c3d4-0000-4000-8000-000000000001',
   'BE68 5390 0754 7034',
-  // Instruments — which funds are held is the most identifying data in the set.
+]
+
+/**
+ * Identifying text the *bundle* cannot hold, let alone the payload.
+ *
+ * Instrument identity — ISIN, ticker, fund name — is the most identifying data in
+ * the set, so it is excluded a layer earlier than this module:
+ * `BundlePortfolio.holdingCount` is a number, and the collector never puts a
+ * holding in the bundle at all. These are asserted absent from the **fixture**
+ * rather than only from the payload, which is the stronger statement and the one
+ * that fails the day a `holdings` field comes back.
+ */
+const NEVER_COLLECTED = [
   'IE00B4L5Y983',
   'BE6295424999',
   'IWDA.AS',
@@ -95,6 +106,8 @@ const fact = (overrides: Partial<MonthlyFact> = {}): MonthlyFact => ({
 const meta = (overrides: Partial<CategoryMetaRow> = {}): CategoryMetaRow => ({
   categoryId: 'cat-groceries',
   nameSnapshot: 'Groceries',
+  isIncome: false,
+  hidden: false,
   userDescription: null,
   coicopCode: '01.1',
   nature: 'variable',
@@ -116,21 +129,6 @@ const account = (overrides: Partial<AccountMapRow> = {}): AccountMapRow => ({
   dedupeGroup: null,
   isSourceOfTruth: true,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
-  ...overrides,
-})
-
-const holding = (overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot => ({
-  date: '2026-08-31',
-  instrument: 'IE00B4L5Y983',
-  symbol: 'IWDA.AS',
-  isin: 'IE00B4L5Y983',
-  name: 'iShares Core MSCI World UCITS ETF',
-  quantity: '142.5500',
-  priceCents: 9_812,
-  valueCents: 3_600_000,
-  currency: 'EUR',
-  assetClass: 'EQUITY',
-  assetSubClass: 'ETF',
   ...overrides,
 })
 
@@ -213,30 +211,6 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
       liquidCents: 900_000,
       investedCents: 4_200_000,
       debtCents: 180_000,
-      contributions: [
-        {
-          accountMapId: 'a1b2c3d4-0000-4000-8000-000000000001',
-          source: 'actual',
-          externalId: 'acct-current',
-          name: 'KBC Zichtrekening ...6703',
-          kind: 'checking',
-          valueCents: 900_000,
-          includeInNetWorth: true,
-          dedupeGroup: null,
-          isSourceOfTruth: true,
-        },
-      ],
-      excluded: [
-        {
-          accountMapId: 'a1b2c3d4-0000-4000-8000-000000000002',
-          name: 'Ghostfolio brokerage',
-          source: 'ghostfolio',
-          valueCents: 4_200_000,
-          reason: 'deduped',
-          dedupeGroup: 'investments',
-        },
-      ],
-      unresolvedGroups: [],
     },
     hygiene: {
       scoreBp: 8_450,
@@ -257,18 +231,7 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
         driftJson: null,
         terAnnualCents: null,
       },
-      holdings: [
-        holding(),
-        holding({
-          instrument: 'BE6295424999',
-          symbol: 'ARGB.BR',
-          isin: 'BE6295424999',
-          name: 'Argenta Portfolio Defensive',
-          valueCents: 600_000,
-          assetClass: 'FIXED_INCOME',
-          assetSubClass: 'MUTUALFUND',
-        }),
-      ],
+      holdingCount: 2,
     },
     accounts: [
       account(),
@@ -346,6 +309,15 @@ describe('nothing on the denylist leaves the machine', () => {
     const source = JSON.stringify(bundle())
     for (const secret of NEVER_SENT) {
       expect(source, `fixture never contained "${secret}"`).toContain(secret)
+    }
+  })
+
+  it('never even collects an instrument, so there is nothing here to strip', () => {
+    const source = JSON.stringify(bundle())
+    for (const secret of NEVER_COLLECTED) {
+      expect(source, `bundle carries "${secret}"; the collector should not`).not.toContain(
+        secret,
+      )
     }
   })
 
@@ -548,10 +520,21 @@ describe('the portfolio crosses as a shape, not as holdings', () => {
     expect(sent?.allocation.map((a) => a.shareBp)).toEqual([8_571, 1_429])
   })
 
-  it('names no instrument, symbol or ISIN', () => {
-    const sent = JSON.stringify(redact(bundle()).payload.portfolio)
-    for (const secret of ['IWDA', 'IE00B4L5Y983', 'iShares', 'Argenta', 'BE6295424999']) {
-      expect(sent, `portfolio contains "${secret}"`).not.toContain(secret)
+  it('carries a holding count and no per-holding key', () => {
+    // The instruments are gone one layer earlier than this module: the bundle
+    // holds a number, so there is nothing here to strip. What is worth asserting
+    // is that the shape stayed a shape — a `holdings` or `positions` key
+    // appearing under `portfolio` would mean the boundary moved back downstream.
+    const sent = redact(bundle()).payload.portfolio
+    expect(Object.keys(sent ?? {}).sort()).toEqual([
+      'allocation',
+      'date',
+      'holdingCount',
+      'totalValueCents',
+      'twrBp',
+    ])
+    for (const slice of sent?.allocation ?? []) {
+      expect(Object.keys(slice).sort()).toEqual(['assetClass', 'shareBp', 'valueCents'])
     }
   })
 

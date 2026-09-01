@@ -147,6 +147,16 @@ export const categoryMeta = sqliteTable(
     categoryId: text('category_id').primaryKey(),
     /** Name as last seen in Actual, so renames are detectable. */
     nameSnapshot: text('name_snapshot').notNull(),
+    /**
+     * Actual's own flags, refreshed on every sync.
+     *
+     * Unlike everything below them these are not the user's answers, they are the
+     * source's — which is why the sync pass overwrites them and never overwrites a
+     * description. They live here so that a later pass can reconstruct a whole
+     * `MonthlyFact` out of SQLite, without Actual having to be up.
+     */
+    isIncome: integer('is_income', { mode: 'boolean' }).notNull().default(false),
+    hidden: integer({ mode: 'boolean' }).notNull().default(false),
     /** The user's own answer to "what is this budget for?" */
     userDescription: text('user_description'),
     /** COICOP class, for the (deferred) Statbel benchmark mapping. */
@@ -244,12 +254,144 @@ export const monthlyCategoryFacts = sqliteTable(
     ewmaBaselineCents: integer('ewma_baseline_cents'),
     /** (spent - baseline) / baseline, basis points. Null when no baseline. */
     baselineDeltaBp: integer('baseline_delta_bp'),
+    /**
+     * The rest of `BaselineResult`, so a stored fact is the whole fact.
+     *
+     * Without these a later pass could read a baseline but not what it was made
+     * of, and would have to recompute it from Actual to say anything about it —
+     * which is the one thing this table exists to avoid. All four are null exactly
+     * when `ewma_baseline_cents` is.
+     */
+    baselineCurrentCents: integer('baseline_current_cents'),
+    /** Observations behind the average, so thin evidence is visible. */
+    baselineMonthsUsed: integer('baseline_months_used'),
+    /** Months per observation, from the category's expected frequency. */
+    baselineWindowMonths: integer('baseline_window_months'),
+    /** How far winsorisation moved the norm, basis points. */
+    baselineWinsorEffectBp: integer('baseline_winsor_effect_bp'),
     computedAt: createdAt(),
   },
   (t) => [
     primaryKey({ columns: [t.month, t.categoryId] }),
     index('facts_month_idx').on(t.month),
     index('facts_category_idx').on(t.categoryId),
+  ],
+)
+
+/**
+ * One row per month, from Actual's own month totals.
+ *
+ * Derived like `monthly_category_facts`, and stored for the same reason: every
+ * later pass reads the month from here rather than asking Actual again. Without
+ * it the AI pass and the API would each need Actual up and a full budget download
+ * to state a savings rate that was already computed hours earlier.
+ *
+ * The uncategorised counters live here rather than in their own table because
+ * they are a property of the month: "in August, 12 transactions worth EUR 340
+ * had no category". Per-transaction detail is deliberately absent — it would be
+ * the one place in this schema holding a payee.
+ */
+export const monthlyTotals = sqliteTable(
+  'monthly_totals',
+  {
+    month: text().primaryKey(), // YYYY-MM
+    incomeCents: integer('income_cents').notNull().default(0),
+    spentCents: integer('spent_cents').notNull().default(0),
+    budgetedCents: integer('budgeted_cents').notNull().default(0),
+    toBudgetCents: integer('to_budget_cents').notNull().default(0),
+    fromLastMonthCents: integer('from_last_month_cents').notNull().default(0),
+    balanceCents: integer('balance_cents').notNull().default(0),
+    /** Null in a month with no income — not zero, and not minus infinity. */
+    savingsRateBp: integer('savings_rate_bp'),
+    uncategorisedTxnCount: integer('uncategorised_txn_count').notNull().default(0),
+    /** Positive-out, so a negative figure is an unassigned refund. */
+    uncategorisedCents: integer('uncategorised_cents').notNull().default(0),
+    computedAt: createdAt(),
+  },
+)
+
+/**
+ * Where Actual's own `spent` and our AQL recomputation disagree.
+ *
+ * A row here means one of our hygiene rules is wrong — a transfer not paired up,
+ * a split not expanded — and the category and month are the whole lead for
+ * finding out which. Persisted rather than only logged, because the hygiene score
+ * and the `recompute_mismatch` findings are computed in a later pass than the one
+ * that spots the drift, and because "it was fine yesterday" is worth being able
+ * to check.
+ */
+export const recomputeMismatches = sqliteTable(
+  'recompute_mismatches',
+  {
+    month: text().notNull(),
+    categoryId: text('category_id').notNull(),
+    categoryName: text('category_name').notNull(),
+    /** Actual's figure. */
+    actualCents: integer('actual_cents').notNull(),
+    /** Ours. */
+    recomputedCents: integer('recomputed_cents').notNull(),
+    /** `recomputed - actual`, signed so the direction of the drift is visible. */
+    differenceCents: integer('difference_cents').notNull(),
+    computedAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.month, t.categoryId] }),
+    index('mismatch_month_idx').on(t.month),
+  ],
+)
+
+/**
+ * The hygiene score for a month, with the deductions that produced it.
+ *
+ * A single number for "can these figures be trusted" is only useful if it can be
+ * taken apart, so the deductions are stored beside it — `hygiene.ts` computes the
+ * score by subtracting named amounts from 10 000, and a score on a page with no
+ * explanation behind it is exactly the kind of figure people learn to ignore.
+ *
+ * Its own table rather than a column on `monthly_totals`: the score is computed a
+ * pass later than the totals are, and a second writer to that row would have the
+ * sync pass wipe the score every time it ran.
+ */
+export const monthlyHygiene = sqliteTable('monthly_hygiene', {
+  month: text().primaryKey(),
+  /** 0..10000. 10 000 means nothing was deducted. */
+  scoreBp: integer('score_bp').notNull(),
+  /** `[{reason, bp}]` — what was taken off and why. */
+  deductionsJson: text('deductions_json').notNull(),
+  computedAt: createdAt(),
+})
+
+/**
+ * The deterministic findings for a month, as computed — not as ranked.
+ *
+ * These are facts, so all of them are kept: the per-category and total caps in
+ * `domain/ai/findings.ts` are a presentation decision and are applied when the
+ * page or the payload is built, not when the row is written. Capping here would
+ * mean a threshold change silently rewrote history.
+ *
+ * `subject_key` exists because SQLite treats NULLs as distinct in a unique
+ * index, so a nullable `category_id` in the primary key would let the same
+ * household signal be inserted twice. Empty string for "no subject".
+ */
+export const monthlySignals = sqliteTable(
+  'monthly_signals',
+  {
+    month: text().notNull(),
+    /** A `FindingCode`. Text, not an enum: the vocabulary lives in domain/ai. */
+    code: text().notNull(),
+    /** Category id, account id, or `''` for a household-level signal. */
+    subjectKey: text('subject_key').notNull(),
+    subjectId: text('subject_id'),
+    /** Category or account name as it was when the signal was computed. */
+    subjectName: text('subject_name'),
+    severity: text({ enum: ['info', 'warn', 'alert'] }).notNull(),
+    /** The numbers behind the claim: cents as cents, ratios as basis points. */
+    metricsJson: text('metrics_json').notNull(),
+    computedAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.month, t.code, t.subjectKey] }),
+    index('signals_month_idx').on(t.month, t.severity),
   ],
 )
 
@@ -503,6 +645,10 @@ export const schema = {
   categoryMeta,
   clarificationQueue,
   monthlyCategoryFacts,
+  monthlyTotals,
+  recomputeMismatches,
+  monthlySignals,
+  monthlyHygiene,
   netWorthSnapshots,
   portfolioSnapshots,
   portfolioMetrics,

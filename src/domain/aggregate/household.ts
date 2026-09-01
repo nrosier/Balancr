@@ -16,7 +16,7 @@
  * Pure. Every series arrives dense and ascending from the caller.
  */
 import { ewma, type MonthValue } from './baseline.ts'
-import type { NetWorthResult } from './networth.ts'
+import type { NetWorthSummary } from './networth.ts'
 import type { AggregateParams } from './params.ts'
 import type { Signal } from './overspend.ts'
 import { capSeverity } from '../ai/codes.ts'
@@ -32,7 +32,7 @@ export interface HouseholdInput {
   incomeHistory: readonly MonthValue[]
   /** Total spend per month, same shape. Feeds the emergency-fund denominator. */
   spendHistory: readonly MonthValue[]
-  netWorth: NetWorthResult | null
+  netWorth: NetWorthSummary | null
   /**
    * Every earlier net worth figure, any order. Used only for "is this a new
    * high" — an empty history means the first run says nothing, rather than

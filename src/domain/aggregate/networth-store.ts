@@ -11,9 +11,9 @@
  */
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
-import { netWorthSnapshots } from '../../db/schema.ts'
+import { accountMap, netWorthSnapshots } from '../../db/schema.ts'
 import { config } from '../../config.ts'
-import type { NetWorthResult } from './networth.ts'
+import { LIQUID, type NetWorthResult, type NetWorthSummary } from './networth.ts'
 
 export interface NetWorthPersistResult {
   written: number
@@ -90,4 +90,44 @@ export function loadNetWorthHistory(db: Db): { date: string; totalCents: number 
     .groupBy(netWorthSnapshots.date)
     .orderBy(netWorthSnapshots.date)
     .all()
+}
+
+/**
+ * The most recent stored snapshot, summed back into a summary.
+ *
+ * Recomputed from the per-account rows rather than from a stored total, because
+ * there is no stored total: `persistNetWorth` writes only the accounts that
+ * counted, so summing them is the definition of the figure rather than a second
+ * opinion on it. The kinds come from today's `account_map`, which is also what
+ * makes a mapping correction show up in the summary of an older date.
+ */
+export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
+  const latest = db
+    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
+    .from(netWorthSnapshots)
+    .get()
+  const date = latest?.date ?? null
+  if (date === null) return null
+
+  const rows = db
+    .select({ kind: accountMap.kind, valueCents: netWorthSnapshots.valueCents })
+    .from(netWorthSnapshots)
+    .innerJoin(accountMap, eq(accountMap.id, netWorthSnapshots.accountMapId))
+    .where(eq(netWorthSnapshots.date, date))
+    .all()
+
+  const summary: NetWorthSummary = {
+    date,
+    totalCents: 0,
+    liquidCents: 0,
+    investedCents: 0,
+    debtCents: 0,
+  }
+  for (const row of rows) {
+    summary.totalCents += row.valueCents
+    if (LIQUID.has(row.kind)) summary.liquidCents += row.valueCents
+    if (row.kind === 'investment') summary.investedCents += row.valueCents
+    if (row.valueCents < 0) summary.debtCents += -row.valueCents
+  }
+  return summary
 }

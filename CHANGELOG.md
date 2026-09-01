@@ -43,6 +43,61 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
 - `test/unit/ai-render.test.ts` walks the whole vocabulary in both languages,
   because a finding whose metric keys do not match its producer renders as
   nothing at all, and nobody notices a finding that is missing.
+- **The signal orchestrator** (`src/domain/aggregate/signals.ts`): the one place
+  that decides which deterministic producers run over a month and in what order,
+  and the last purely computational step — everything after it only selects, hides
+  or explains what it produced. Output is sorted but uncapped: these rows are
+  facts, and capping them here would mean a threshold change rewrote history. The
+  trailing window must end at the month being judged, and is asserted dense before
+  anything reads a trend off it.
+- **Month-level persistence** (`src/domain/aggregate/month-store.ts`): totals, the
+  uncategorised backlog and recompute drift, so every pass after the sync reads a
+  month from SQLite rather than downloading a budget again. `loadTrailingTotals`
+  returns the unbroken run of months ending at the one being judged — a gap can
+  exist legitimately, and the honest answer to a hole is a shorter window, not an
+  average taken across it. Drift rows are replaced per month rather than derived
+  from the mismatches passed in, so a month that has *stopped* drifting is cleared
+  instead of showing yesterday's fixed problem forever.
+- **Signal persistence** (`src/domain/aggregate/signals-store.ts`): a month's
+  findings and its hygiene score, replaced wholesale on every run because a
+  finding that has stopped being true has to disappear. The hygiene row is written
+  even for a month with nothing to report, which is what lets a later pass tell
+  "clean" apart from "not analysed". Reads are defensive: a code dropped from the
+  vocabulary in a later version, or a metrics blob that will not parse, drops that
+  row rather than making an old month unopenable.
+- **The nightly signals job** (`src/jobs/signals.ts`): judges the current month
+  and the one before it, so the month that just ended is seen once in its final
+  state. Reads SQLite and nothing else, with one documented exception — Actual's
+  account list, for `last_reconciled`, because a reconciliation is an event that
+  exists only there. Actual stores that column as epoch milliseconds in a text
+  field, so `reconciledDate` accepts both shapes and degrades to "never
+  reconciled", which overstates the problem rather than hiding it.
+- **The analysis collector** (`src/domain/ai/bundle.ts`): everything the model may
+  see, gathered out of the fact tables. The counterpart to `redact.ts`, and it
+  comes first — a field never collected cannot leak, whatever anyone adds
+  downstream. It recomputes nothing: the hygiene score is read, not recalculated,
+  and its window comes from the same `loadTrailingTotals` call the signals job
+  makes, so the figure the model explains is the figure the page shows. A month
+  that has not been judged returns null rather than a bundle of zeroes. Hidden
+  categories with no money in them are dropped; hidden categories that saw money
+  are kept, because that is worth knowing about.
+- `loadFacts`, `loadCategoryMeta` (`src/domain/aggregate/facts.ts`),
+  `loadLatestNetWorth` (`networth-store.ts`), `loadPortfolioMetrics` and
+  `countSnapshotHoldings` (`src/domain/portfolio/store.ts`) — the read side the
+  collector and the signals job need. The category name comes from
+  `category_meta`, stored once, so a rename in Actual relabels every historical
+  month at the same time.
+- Four tables and six columns: `monthly_totals`, `recompute_mismatches`,
+  `monthly_signals`, `monthly_hygiene`, and the baseline companion columns on
+  `monthly_category_facts` (migration `0001_young_domino.sql`).
+  `monthly_signals.subject_key` holds `''` rather than NULL for a household-level
+  signal, because SQLite treats NULLs as distinct in a unique index and two
+  household signals of one code would both be stored.
+- `test/unit/ai-bundle.test.ts`, `month-store.test.ts`, `signals-store.test.ts`
+  and `signals-orchestrator.test.ts` — 66 tests, including an end-to-end pass that
+  builds a bundle out of the database, runs it through the real redaction
+  boundary, and asserts both the key allowlist and the absence of every name that
+  was in the tables.
 
 ### Changed
 - `signalMagnitude` is exported from `src/domain/aggregate/overspend.ts`. The
@@ -56,6 +111,22 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
 - Renovate proposes version bumps, never digests. A `uses: actions/checkout@abc123`
   diff cannot be reviewed — a patch bump and a hijacked tag read identically — so
   `pinDigests` is off explicitly, in case a preset turns it on.
+- `BundlePortfolio` carries `holdingCount: number` instead of the holdings
+  themselves, and the collector never puts a holding in a bundle at all. Which
+  funds someone owns is the most identifying data in the set, so it is excluded a
+  layer earlier than the redaction boundary: there is then no instrument name for
+  a future field to carry out by accident, and asset-class shares plus a count say
+  everything that can usefully be said about the shape of a portfolio. The
+  privacy claim is structural rather than a matter of remembering to strip a
+  field.
+- `NetWorthSummary` and the `LIQUID` kind set are exported from
+  `src/domain/aggregate/networth.ts`, so the stored snapshot can be summed back
+  into the same summary shape the live computation produces. One authority per
+  figure: the signals job reads the snapshot the net-worth pass wrote earlier in
+  the same queue rather than recomputing net worth itself.
+- `unreconciled_account` carries the account id as its subject. With a null
+  subject two stale accounts landed in the household group, deduped into one
+  finding, and left the redaction boundary with no id to turn into a label.
 
 ### Fixed
 - Pluralised sentences print a Belgian number. i18next writes an interpolated
