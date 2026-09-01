@@ -6,10 +6,17 @@
   <a href="https://ghostfol.io">Ghostfolio</a>, and keeping your data yours.</em>
 </p>
 
+<!--
+  The release and licence badges are static on purpose. This repository is
+  private, and shields.io reads the public GitHub API — its `github/v/release`
+  and `github/license` endpoints render "repo not found" here, which looks like a
+  broken project rather than a closed one. `npm run badges:check` fails if either
+  badge drifts from package.json, or if a dynamic one comes back.
+-->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/github/v/release/nrosier/Balancr?include_prereleases&sort=semver&label=release"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/nrosier/Balancr"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.3.0-blue"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
 ---
@@ -173,7 +180,11 @@ Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
 
 A push to `main` publishes `edge`; a `v*` tag publishes that version, and
-`latest` follows the newest non-RC tag.
+`latest` follows the newest non-RC tag. Closing a version means bumping
+`package.json`, renaming `## [Unreleased]` in `CHANGELOG.md`, and letting
+`npm run badges:check` confirm the release badge above moved with it — that bump
+is also what triggers the image build, since `package.json` is one of
+[`image.yml`](.github/workflows/image.yml)'s trigger paths.
 
 ## Development notes
 
