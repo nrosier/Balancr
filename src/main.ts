@@ -7,6 +7,9 @@
  *  2. migrations run before anything serves, so traffic never meets an old schema.
  *  3. i18n initialises before the first render or cron digest, which have no
  *     request context to fall back on.
+ *  4. the scheduler starts last, once everything it needs is up. It ticks
+ *     immediately, so starting it before the migrations ran would mean a job
+ *     writing to a schema that does not exist yet.
  *
  * The HTTP surface here is liveness only. Routes, auth and the SPA arrive with
  * the server module (v0.5.0); this file will then hand off to it instead of
@@ -20,6 +23,7 @@ import { closeDatabase, db } from './db/index.ts'
 import { initI18n } from './i18n/index.ts'
 import { logger } from './logger.ts'
 import { closeActual } from './adapters/actual/client.ts'
+import { createScheduler, registry } from './jobs/index.ts'
 
 const log = logger.child({ module: 'main' })
 
@@ -81,10 +85,23 @@ async function main(): Promise<void> {
   await app.listen({ host: '0.0.0.0', port: config.PORT })
   log.info({ port: config.PORT, env: config.NODE_ENV }, 'balancr listening')
 
+  // Off is a supported state, not a degraded one: a second instance, or a look at
+  // a copy of the database, must not reach out to Actual and Ghostfolio.
+  const scheduler = createScheduler(db, registry)
+  if (config.JOBS_ENABLED) {
+    scheduler.start()
+  } else {
+    log.warn('JOBS_ENABLED=false — nothing is scheduled; data will not refresh')
+  }
+
   const shutdown = (signal: string): void => {
     log.info({ signal }, 'shutting down')
     void (async () => {
       try {
+        // Stopped first so no new job starts while the process is closing. A job
+        // already mid-flight finishes; `closeActual` waits behind it on the same
+        // queue, which is what keeps the dataDir lock from being released early.
+        scheduler.stop()
         await app.close()
         // Actual holds a lock on its dataDir; leaving it held makes the next
         // start fail with a file already in use.
