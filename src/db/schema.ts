@@ -486,6 +486,15 @@ export const settings = sqliteTable('settings', {
   updatedAt: createdAt(),
 })
 
+/**
+ * The account kinds `account_map.kind` may hold, as a type.
+ *
+ * Derived from the column rather than declared beside it: a kind added to the
+ * enum and forgotten here would otherwise be a silent gap in whichever `switch`
+ * decides what counts as liquid.
+ */
+export type AccountKind = (typeof accountMap.$inferSelect)['kind']
+
 export const schema = {
   users,
   localCredentials,
