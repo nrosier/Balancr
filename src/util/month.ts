@@ -32,8 +32,27 @@ export function monthOf(date: string): string {
   return date.slice(0, 7)
 }
 
+export function assertDate(date: string): string {
+  if (!isDate(date)) throw new Error(`invalid date: ${date}`)
+  return date
+}
+
 export function startOfMonth(month: string): string {
   return `${assertMonth(month)}-01`
+}
+
+/**
+ * Whole days from `from` to `to`, both `YYYY-MM-DD`. Negative when `to` is
+ * earlier.
+ *
+ * Both dates are read as UTC, which is the point of keeping dates as strings:
+ * "45 days since this account was reconciled" is a statement about calendar
+ * days, and involving a timezone would make it wrong for two hours a year.
+ */
+export function daysBetween(from: string, to: string): number {
+  assertDate(from)
+  assertDate(to)
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
 export function daysInMonth(month: string): number {
