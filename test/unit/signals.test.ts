@@ -218,36 +218,53 @@ describe('burn rate', () => {
 })
 
 describe('hygiene', () => {
+  /** Everything clean, so each test switches on exactly the input it names. */
+  const clean = {
+    today: '2026-03-01',
+    uncategorised: [],
+    mismatches: [],
+    accounts: [],
+    latestPortfolioSnapshot: '2026-02-28',
+    params: DEFAULT_PARAMS,
+  } as const
+
+  it('is a perfect score when there is nothing wrong', () => {
+    const { signals, score } = hygieneSignals(clean)
+    expect(signals).toEqual([])
+    expect(score).toEqual({ scoreBp: 10_000, deductions: [] })
+  })
+
   it('reports one backlog signal for the window, not one per month', () => {
-    const signals = hygieneSignals({
+    const { signals, score } = hygieneSignals({
+      ...clean,
       uncategorised: [
         { month: '2026-01', txnCount: 4, amountCents: 12_000 },
         { month: '2026-02', txnCount: 9, amountCents: -3_000 },
       ],
-      mismatches: [],
-      params: DEFAULT_PARAMS,
     })
     expect(codes(signals)).toEqual(['uncategorised_backlog'])
     // Amounts are summed as magnitudes: a refund cancelling out a charge does not
     // mean there is nothing left to categorise.
     expect(signals[0]?.metrics).toEqual({ count: 13, amountCents: 15_000, months: 2 })
+    // Only the transactions past the tolerated count are charged for.
+    expect(score.deductions).toEqual([{ reason: 'uncategorised', bp: 400 }])
+    expect(score.scoreBp).toBe(9_600)
   })
 
   it('tolerates a handful of uncategorised transactions', () => {
-    expect(
-      hygieneSignals({
-        uncategorised: [{ month: '2026-01', txnCount: 5, amountCents: 100 }],
-        mismatches: [],
-        params: DEFAULT_PARAMS,
-      }),
-    ).toEqual([])
+    const { signals, score } = hygieneSignals({
+      ...clean,
+      uncategorised: [{ month: '2026-01', txnCount: 5, amountCents: 100 }],
+    })
+    expect(signals).toEqual([])
+    expect(score.scoreBp).toBe(10_000)
   })
 
   it('reports a recomputation mismatch per category, because that is the lead', () => {
     // A mismatch means one of our own hygiene rules is wrong — most likely a
     // transfer or a split — and the category and month are how it gets found.
-    const signals = hygieneSignals({
-      uncategorised: [],
+    const { signals, score } = hygieneSignals({
+      ...clean,
       mismatches: [
         {
           month: '2026-01',
@@ -258,7 +275,6 @@ describe('hygiene', () => {
           differenceCents: 1_000,
         },
       ],
-      params: DEFAULT_PARAMS,
     })
     expect(signals).toEqual([
       {
@@ -269,6 +285,110 @@ describe('hygiene', () => {
         metrics: { differenceCents: 1_000, actualCents: 40_000, recomputedCents: 41_000 },
       },
     ])
+    expect(score.scoreBp).toBe(9_000)
+  })
+
+  it('flags an account whose balance has become a guess, and only that one', () => {
+    const { signals } = hygieneSignals({
+      ...clean,
+      accounts: [
+        { accountId: 'a1', name: 'Current', lastReconciled: '2026-02-20', closed: false },
+        { accountId: 'a2', name: 'Savings', lastReconciled: '2025-11-01', closed: false },
+      ],
+    })
+    expect(codes(signals)).toEqual(['unreconciled_account'])
+    expect(signals[0]?.categoryName).toBe('Savings')
+    expect(signals[0]?.metrics).toEqual({ days: 120, limitDays: 45 })
+  })
+
+  it('treats never reconciled as its own case and ignores closed accounts', () => {
+    const { signals } = hygieneSignals({
+      ...clean,
+      accounts: [
+        { accountId: 'a1', name: 'Cash', lastReconciled: null, closed: false },
+        // A closed account's balance is final; nagging about it is pure noise.
+        { accountId: 'a2', name: 'Old card', lastReconciled: '2020-01-01', closed: true },
+      ],
+    })
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.metrics.days).toBe(-1)
+  })
+
+  it('reports exactly at the reconciliation limit as still fine', () => {
+    // 45 days is the limit, so day 45 passes and day 46 does not — an off-by-one
+    // here would flag every account on the same day every month.
+    const at = hygieneSignals({
+      ...clean,
+      accounts: [{ accountId: 'a1', name: 'Current', lastReconciled: '2026-01-15', closed: false }],
+    })
+    expect(at.signals).toEqual([])
+    const past = hygieneSignals({
+      ...clean,
+      accounts: [{ accountId: 'a1', name: 'Current', lastReconciled: '2026-01-14', closed: false }],
+    })
+    expect(codes(past.signals)).toEqual(['unreconciled_account'])
+  })
+
+  it('flags a stale portfolio snapshot but says nothing when there is none', () => {
+    const stale = hygieneSignals({ ...clean, latestPortfolioSnapshot: '2026-02-01' })
+    expect(codes(stale.signals)).toEqual(['stale_prices'])
+    expect(stale.signals[0]?.metrics).toEqual({ count: 1, days: 28, limitDays: 5 })
+    expect(stale.score.scoreBp).toBe(8_500)
+
+    // No snapshot at all is not stale data, it is no data: net worth simply has
+    // no portfolio component yet, and `unresolvedGroups` is where that shows up.
+    expect(hygieneSignals({ ...clean, latestPortfolioSnapshot: null }).signals).toEqual([])
+  })
+
+  it('accumulates deductions and never falls below zero', () => {
+    const accounts = Array.from({ length: 12 }, (_, index) => ({
+      accountId: `a${index}`,
+      name: `Account ${index}`,
+      lastReconciled: null,
+      closed: false,
+    }))
+    const mismatches = Array.from({ length: 9 }, (_, index) => ({
+      month: '2026-01',
+      categoryId: `c${index}`,
+      categoryName: `Category ${index}`,
+      actualCents: 1_000,
+      recomputedCents: 2_000,
+      differenceCents: 1_000,
+    }))
+    const { score } = hygieneSignals({
+      ...clean,
+      uncategorised: [{ month: '2026-01', txnCount: 500, amountCents: 100_000 }],
+      mismatches,
+      accounts,
+      latestPortfolioSnapshot: '2025-01-01',
+    })
+    // Every category capped, and the caps themselves total more than 10000.
+    expect(score.deductions).toEqual([
+      { reason: 'uncategorised', bp: 2_500 },
+      { reason: 'recompute_mismatch', bp: 4_000 },
+      { reason: 'unreconciled', bp: 2_000 },
+      { reason: 'stale_prices', bp: 1_500 },
+    ])
+    expect(score.scoreBp).toBe(0)
+  })
+
+  it('sorts the alert above the warnings', () => {
+    const { signals } = hygieneSignals({
+      ...clean,
+      uncategorised: [{ month: '2026-01', txnCount: 50, amountCents: 90_000 }],
+      mismatches: [
+        {
+          month: '2026-01',
+          categoryId: 'food',
+          categoryName: 'Food',
+          actualCents: 1_000,
+          recomputedCents: 2_000,
+          differenceCents: 1_000,
+        },
+      ],
+      latestPortfolioSnapshot: '2026-01-01',
+    })
+    expect(codes(signals)[0]).toBe('recompute_mismatch')
   })
 })
 
