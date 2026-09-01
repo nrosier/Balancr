@@ -22,6 +22,7 @@
     "none": "Er is niets dat je aandacht vraagt.",
     "over_assigned": "{{category}}: {{spent}} uitgegeven tegenover {{assigned}} toegewezen.",
     "over_available": "{{category}} staat {{overspend}} boven het beschikbare saldo.",
+    "recompute_mismatch": "{{category}} klopt niet: onze eigen som wijkt {{difference}} af van die van Actual.",
     "savings_rate_low": "Je spaarde {{rate}} van je inkomen, tegenover een doel van {{target}}.",
     "savings_rate_up": "Spaarquote gestegen tot {{rate}}, {{delta}} beter dan voordien.",
     "stale_prices": "{{count}} posities hebben koersen ouder dan {{days}}.",

@@ -20,9 +20,36 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   premium is compared as a rate rather than flagged every year.
 - The 53 roadmap issues on GitHub, seeded idempotently by
   `scripts/seed-issues.mjs` so the tracker can be rebuilt from the file.
-- Golden tests for both: hand-computed EWMA and interpolated quantiles, the
-  annual-premium case the frequency window exists to handle, and the Brussels
-  midnight case where UTC still says the previous month.
+- **Spend aggregation** (`src/domain/aggregate/spend.ts`): dense facts per
+  (month, category), Actual's own figure alongside our AQL sum on one sign
+  convention, the uncategorised backlog, and a signed report of any difference
+  between the two — a wrong hygiene rule announces itself instead of quietly
+  feeding every baseline downstream.
+- **Overspend signals** (`src/domain/aggregate/overspend.ts`): the four questions
+  kept separate — over assigned, over available, over your own baseline, over the
+  external benchmark — plus a mid-month burn-rate projection, good news when a
+  category drops below its norm, and `irregular_expense` for a first-ever cost.
+  Every relative signal is gated on an absolute floor, because a EUR 7 envelope
+  40% over is EUR 2.80.
+- **Hygiene signals** (`src/domain/aggregate/hygiene.ts`): uncategorised backlog
+  and recomputation mismatch. Deliberately no hygiene *score* yet: two of its
+  four inputs do not exist, and a number computed from half of them would move
+  when the rest arrive with no visible reason.
+- **Idempotent fact persistence** (`src/domain/aggregate/facts.ts`): upsert rather
+  than delete-then-insert, so no page load can catch a month mid-rebuild; stale
+  rows for categories that vanished are removed explicitly. `category_meta`
+  tracks renames without ever overwriting what the user typed.
+- `assertDenseMonths` in `src/util/month.ts`, shared with the baseline engine.
+- `recompute_mismatch` finding code — the cross-check had no way to speak.
+- `capSeverity`, so the ceiling declared in `FINDING_SPECS` is a rule that applies
+  to the model's output and our own signals alike, not documentation.
+- `GET /` answers with the version and where the UI will be, instead of a bare
+  Fastify 404 that reads as a broken deployment.
+- Golden tests throughout: hand-computed EWMA and interpolated quantiles, the
+  annual-premium case the frequency window exists to handle, the Brussels midnight
+  case where UTC still says the previous month, sign normalisation in both
+  directions, the chunk boundary in the writer, and each overspend signal proven
+  to fire on its own.
 
 ### Changed
 - `BaselineResult` reports `winsorEffectBp` — how far winsorisation moved the
@@ -30,6 +57,8 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
   the p5/p95 clamp nudges the extremes of every series that is not perfectly
   flat, so the boolean was true for nearly every category and told a reader
   nothing.
+- `above_baseline` may now carry `alert`. It was capped at `warn`, which made
+  `overspend.baselineAlertBp` a threshold that could not change anything.
 
 ## [0.2.0] — 2026-09-01
 

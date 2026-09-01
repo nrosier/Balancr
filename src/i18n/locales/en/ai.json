@@ -22,6 +22,7 @@
     "none": "Nothing needs your attention.",
     "over_assigned": "{{category}}: {{spent}} spent against {{assigned}} assigned.",
     "over_available": "{{category}} is {{overspend}} over its available balance.",
+    "recompute_mismatch": "{{category}} does not reconcile: our own sum is {{difference}} away from Actual's.",
     "savings_rate_low": "You saved {{rate}} of your income, against a target of {{target}}.",
     "savings_rate_up": "Savings rate up to {{rate}}, {{delta}} better than before.",
     "stale_prices": "{{count}} holdings have prices older than {{days}}.",
