@@ -127,6 +127,19 @@ scheme in [README](README.md#versioning) — `0.x` marks progress toward 1.0, an
 - `unreconciled_account` carries the account id as its subject. With a null
   subject two stale accounts landed in the household group, deduped into one
   finding, and left the redaction boundary with no id to turn into a label.
+- The Docker build moved out of `ci.yml` into `image.yml`, and no longer runs on
+  every pull request. On a source-only change it re-verified nothing: the image's
+  build stage runs the same `npm run build` the `verify` job already ran, and every
+  merge to main publishes `edge` from `release.yml` regardless, so the
+  pull-request build was a third build of the same artefact. It now triggers on the
+  paths that decide how the image is *assembled* — `Dockerfile`, `.dockerignore`,
+  the lockfile, `tsconfig.build.json`, the two build scripts. `package.json` is on
+  that list, which makes it the milestone gate too: the version bump that closes a
+  milestone builds the image before it merges.
+- Workflow actions are referenced by version tag rather than by pinned digest, so
+  the files match the rule `renovate.json` already states. A `@<40 hex> # v7` diff
+  cannot be reviewed — a patch bump and a hijacked tag read identically — and
+  Renovate would have kept proposing exactly those diffs.
 
 ### Fixed
 - Pluralised sentences print a Belgian number. i18next writes an interpolated

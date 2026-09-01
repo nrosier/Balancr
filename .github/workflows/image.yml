@@ -1,0 +1,55 @@
+name: Image
+
+# The Docker build is not run on every pull request, deliberately.
+#
+# On a source-only change it re-verifies almost nothing: the image's build stage
+# runs the same `npm run build` that the `verify` job in ci.yml already ran, so a
+# second pass proves the same `tsc` invocation twice and costs a minute and a half
+# of runner time doing it. And every merge to main publishes `edge` from
+# release.yml anyway, so the image is built once per change regardless — the
+# pull-request build was a third one, a few minutes earlier.
+#
+# What the image build *does* verify uniquely is how the image is assembled: the
+# production install (`npm ci --omit=dev` plus the runtime prune) against the
+# lockfile, the multi-stage copy, and the Dockerfile itself. None of that can
+# change without one of the paths below changing with it.
+#
+# `package.json` is on that list, which also makes this the milestone gate: the
+# version bump that closes a milestone touches it, so the last pull request of
+# every milestone builds the image before it merges.
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - tsconfig.build.json
+      - scripts/copy-assets.mjs
+      - scripts/prune-runtime-deps.mjs
+      - .github/workflows/image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # Build only — publishing happens in release.yml, so a pull request proves
+      # the Dockerfile works without pushing anything.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
