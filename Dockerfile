@@ -7,7 +7,7 @@
 #
 # amd64 only for now — that is what the target host runs, and cross-building the
 # native modules (better-sqlite3, argon2) for arm64 doubles CI time for nothing.
-ARG NODE_VERSION=26-alpine
+ARG NODE_VERSION=26.8.1-alpine
 
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
