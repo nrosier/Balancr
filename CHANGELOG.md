@@ -6,7 +6,7 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
-## [Unreleased]
+## [0.5.0] — 2026-09-02
 
 ### Added
 - **The read-only API the views read from** — `GET /api/overview`, `/api/budget`,

@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.4.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.5.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -182,7 +182,7 @@ same reason.
 not the version where the first piece of it landed.
 
 Work merged on the way there releases as a **patch of the current minor**. The
-`0.5.0` milestone is in progress now, so its slices release as `0.4.1`, `0.4.2`, …
+`0.6.0` milestone is in progress now, so its slices release as `0.5.1`, `0.5.2`, …
 — each one a real version for a real merge, none of them claiming a milestone that
 is not finished yet. The minor is the promise kept; the patches are the progress
 toward it.
@@ -197,8 +197,8 @@ ends.
 | `0.2.0` | Actual and Ghostfolio adapters, capability probe | ✅ |
 | `0.3.0` | Aggregation, portfolio snapshots, job scheduler | ✅ |
 | `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ✅ |
-| `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | 🔄 `0.4.x` |
-| `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ⬜ |
+| `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
+| `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | 🔄 `0.5.x` |
 | `0.7.0` | Backups, monthly digest, operational hardening | ⬜ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
@@ -207,20 +207,21 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.5.0`, slice 4 of 4: the read-only API the views read
-from ([#26](https://github.com/nrosier/Balancr/issues/26)) — `/api/overview`,
-`/api/budget`, `/api/portfolio` and `/api/insights`, every one of them served out
-of Balancr's own SQLite. A request never calls Actual, Ghostfolio or Gemini, which
-is what makes a page load cheap and what stops a broken upstream from becoming a
-broken page; the price is that what is served can be out of date, so every
-response carries a `freshness` field rather than a banner a client might forget to
-draw. On top of slice 3's break-glass local login
-([#25](https://github.com/nrosier/Balancr/issues/25)), slice 2's sessions and OIDC
-code flow against Authentik ([#24](https://github.com/nrosier/Balancr/issues/24))
-and slice 1's Fastify app ([#23](https://github.com/nrosier/Balancr/issues/23),
-[#27](https://github.com/nrosier/Balancr/issues/27)). That closes the milestone, so
-the next release is the minor `0.5.0` and the next milestone is the web UI
-([#28](https://github.com/nrosier/Balancr/issues/28)–[#35](https://github.com/nrosier/Balancr/issues/35)).
+**Where it is now** — `0.5.0` is released, and with it the API-and-auth
+milestone: the Fastify app with proxy trust, security headers, CSRF and rate
+limits ([#23](https://github.com/nrosier/Balancr/issues/23),
+[#27](https://github.com/nrosier/Balancr/issues/27)), the OIDC code flow against
+Authentik with server-side sessions and a deny-by-default guard
+([#24](https://github.com/nrosier/Balancr/issues/24)), the break-glass local login
+gated on the TCP peer address ([#25](https://github.com/nrosier/Balancr/issues/25)),
+and the read-only API the views read from
+([#26](https://github.com/nrosier/Balancr/issues/26)). There is now a server that
+answers every figure Balancr computes, over an authenticated session, without ever
+calling an upstream to do it — and no screens yet.
+
+Next is the web UI ([#28](https://github.com/nrosier/Balancr/issues/28)–[#35](https://github.com/nrosier/Balancr/issues/35)),
+shipping as `0.5.1`, `0.5.2`, … until every issue in that milestone is closed and
+`0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
