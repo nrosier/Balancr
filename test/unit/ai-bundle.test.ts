@@ -11,20 +11,12 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
-import { createTestDb, type Db } from '../../src/db/index.ts'
+import { createTestDb } from '../../src/db/index.ts'
 import { syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
-import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
-import { persistMismatches, persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { persistSignals } from '../../src/domain/aggregate/signals-store.ts'
-import type { HygieneScore } from '../../src/domain/aggregate/hygiene.ts'
-import type { Signal } from '../../src/domain/aggregate/overspend.ts'
-import type {
-  MonthlyFact,
-  MonthTotals,
-  RecomputeMismatch,
-  UncategorisedBucket,
-} from '../../src/domain/aggregate/spend.ts'
+import type { RecomputeMismatch } from '../../src/domain/aggregate/spend.ts'
+import { clean, fact, seedMonth, totals } from '../fixtures/month.ts'
 import { collectBundle, collectPortfolio } from '../../src/domain/ai/bundle.ts'
 import { PAYLOAD_KEYS, redact } from '../../src/domain/ai/redact.ts'
 import type { HoldingSnapshot } from '../../src/domain/portfolio/snapshot.ts'
@@ -39,40 +31,6 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
 })
-
-const clean: HygieneScore = { scoreBp: 10_000, deductions: [] }
-
-function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotals {
-  return {
-    month,
-    incomeCents: 380_000,
-    spentCents: 310_000,
-    budgetedCents: 320_000,
-    toBudgetCents: 0,
-    fromLastMonthCents: 12_000,
-    balanceCents: 70_000,
-    savingsRateBp: 1_842,
-    ...overrides,
-  }
-}
-
-function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): MonthlyFact {
-  return {
-    month,
-    categoryId: id,
-    categoryName: id,
-    isIncome: false,
-    hidden: false,
-    spentCents: 10_000,
-    budgetedCents: 12_000,
-    availableCents: 2_000,
-    carryoverEnabled: false,
-    txnCount: 3,
-    recomputedSpentCents: 10_000,
-    baseline: null,
-    ...overrides,
-  }
-}
 
 function holding(overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot {
   return {
@@ -89,26 +47,6 @@ function holding(overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot {
     assetSubClass: 'ETF',
     ...overrides,
   }
-}
-
-/** A month with facts, totals and a hygiene row — the minimum for a bundle. */
-function seedMonth(
-  db: Db,
-  month: string,
-  opts: {
-    facts?: readonly MonthlyFact[]
-    uncategorised?: readonly UncategorisedBucket[]
-    mismatches?: readonly RecomputeMismatch[]
-    signals?: readonly Signal[]
-    judged?: boolean
-  } = {},
-): void {
-  const facts = opts.facts ?? [fact(month, 'food'), fact(month, 'rent')]
-  persistMonthTotals(db, [totals(month)], opts.uncategorised ?? [])
-  syncCategoryMeta(db, facts)
-  persistFacts(db, facts, [month])
-  persistMismatches(db, opts.mismatches ?? [], [month])
-  if (opts.judged !== false) persistSignals(db, month, opts.signals ?? [], clean)
 }
 
 describe('collectBundle refuses to invent a month', () => {

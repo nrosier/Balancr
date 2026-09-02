@@ -35,7 +35,9 @@
     "generatedAt": "Written {{when}} by {{model}}",
     "stale": "Based on data from {{when}}.",
     "title": "This month in words",
-    "translate": "Write this in {{language}}"
+    "translate": "Write this in {{language}}",
+    "unnamedAccount": "an unnamed account",
+    "unnamedCategory": "an unnamed category"
   },
   "privacy": {
     "hint": "Category names and amounts only. No payees, no transactions.",

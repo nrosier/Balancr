@@ -6,6 +6,56 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The analysis runner** (`src/domain/ai/analysis.ts`): the one place the bundle,
+  the ranking, the redaction, the prompt, the wire call, the schema, the grounding
+  and the ledger are wired together — in the one order that keeps the guarantees.
+  Rank *before* redacting, so the model is charged for two dozen findings rather
+  than two hundred; check the budget *before* calling; render sentences *after*
+  grounding, from the deterministic signal rather than from anything the model
+  returned. The model's entire contribution is the order of the list and one
+  severity it may lower, which is why a hallucinated finding cannot become a
+  sentence: there is no code path from a model response to a rendered figure.
+- **A signal the payload cannot explain is not sent.** `redact` gives a signal
+  about an unknown category a null label, and null is the household sentinel — so
+  a category's numbers would have arrived as a household finding. Those signals are
+  filtered out of the payload and kept in the local list, where they are still real
+  findings.
+- **Every ending is a recorded run, except a month nobody attempted.** Over budget
+  writes a `capped` row at zero cost carrying the payload it *would* have sent, so
+  the audit view shows what was withheld; a transport failure and an unparseable
+  answer write `error` rows, the latter billed for the tokens it spent, because a
+  model stuck in a loop must not be free. All three return the deterministic list,
+  so the page degrades to real findings in a defensible order rather than to an
+  error. A month with no facts records nothing at all — an `error` row for a month
+  that has simply not been aggregated yet would be a permanent false failure.
+- **Findings are stored as numbers, not sentences** (`ai_findings`): a stored
+  sentence would be in one language for good, and re-rendering from the metrics is
+  what makes switching language free.
+- **The monthly narrative** (`src/domain/ai/narrative.ts`), the one place the model
+  writes prose. Cached per `(period, locale)`, so a language toggle cannot quietly
+  spend money on the deep model; switching language offers an **explicit translate
+  action** that sends a page of text to the fast model instead of a month of facts
+  to the expensive one — and gives the reader the same review in their own
+  language, not a second opinion about the same month.
+- **What is stored is what the model wrote.** Labels stay in `ai_narratives`, and
+  the household's own names are substituted on the way to the screen. That is what
+  keeps a sensitive category's name out of the row the translate action later sends
+  back to Google, and a label whose category has since disappeared renders as "an
+  unnamed category" rather than as a bare `c9`.
+- **A strict local Markdown renderer** (`src/util/markdown.ts`): no CDN, no
+  dependency, and the safety argument is the ordering — every character is escaped
+  before any tag is produced, and no branch ever writes an attribute, so
+  `ALLOWED_TAGS` is the complete list of what can appear on the page. Link syntax
+  collapses to its label, images to their alt text. Substitution happens in the
+  Markdown, before rendering, so a category called `<script>` is escaped like any
+  other text instead of injected.
+- Shared month fixtures (`test/fixtures/month.ts`) built through the real
+  persistence functions, so a fixture cannot set up a state the aggregation layer
+  could not actually produce.
+
 ## [0.3.2] — 2026-09-02
 
 ### Added
