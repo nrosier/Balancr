@@ -54,6 +54,15 @@ const peek = (store: Store, key: string, window = 60_000): Promise<Result> =>
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * Route config for the ad-hoc routes below: a limit small enough to trip in a
+ * test, and public, because the auth guard is deny-by-default and there is no
+ * session behind an injected request.
+ */
+const limitedTo = (max: number): { config: { rateLimit: object; auth: false } } => ({
+  config: { rateLimit: { max, timeWindow: '1 minute' }, auth: false },
+})
+
 beforeEach(async () => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
@@ -133,9 +142,7 @@ describe('the store', () => {
 
 describe('through the app', () => {
   it('refuses past the limit with the shared error envelope', async () => {
-    app.get('/t/limited', { config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, () => ({
-      ok: true,
-    }))
+    app.get('/t/limited', limitedTo(2), () => ({ ok: true }))
     await app.ready()
 
     expect((await app.inject({ method: 'GET', url: '/t/limited' })).statusCode).toBe(200)
@@ -152,9 +159,7 @@ describe('through the app', () => {
   })
 
   it('exempts the health check, where a 429 reads as a dead container', async () => {
-    app.get('/t/probe', { config: { rateLimit: { max: 1, timeWindow: '1 minute' } } }, () => ({
-      ok: true,
-    }))
+    app.get('/t/probe', limitedTo(1), () => ({ ok: true }))
     await app.ready()
     await app.inject({ method: 'GET', url: '/t/probe' })
     expect((await app.inject({ method: 'GET', url: '/t/probe' })).statusCode).toBe(429)
@@ -166,10 +171,9 @@ describe('through the app', () => {
   })
 
   it('spends an AI route’s allowance separately from ordinary reads', async () => {
-    app.get('/t/read', { config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, () => ({
-      ok: true,
-    }))
-    app.get('/api/ai/ask', { ...aiRateLimit() }, () => ({ ok: true }))
+    app.get('/t/read', limitedTo(2), () => ({ ok: true }))
+    const ai = { config: { ...aiRateLimit().config, auth: false } }
+    app.get('/api/ai/ask', ai, () => ({ ok: true }))
     await app.ready()
 
     await app.inject({ method: 'GET', url: '/t/read' })
@@ -188,9 +192,7 @@ describe('through the app', () => {
   })
 
   it('writes its counters where they can be inspected', async () => {
-    app.get('/t/counted', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, () => ({
-      ok: true,
-    }))
+    app.get('/t/counted', limitedTo(5), () => ({ ok: true }))
     await app.ready()
     await app.inject({ method: 'GET', url: '/t/counted' })
 

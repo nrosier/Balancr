@@ -31,9 +31,11 @@ beforeEach(async () => {
   applyMigrations(ctx.db as never)
   app = await buildApp({ db: ctx.db })
 
-  app.get('/t/read', { config: { rateLimit: false } }, () => ({ ok: true }))
-  app.post('/t/write', { config: { rateLimit: false } }, () => ({ ok: true }))
-  app.post('/t/open', { config: { rateLimit: false, csrf: false } }, () => ({ ok: true }))
+  app.get('/t/read', { config: { rateLimit: false, auth: false } }, () => ({ ok: true }))
+  app.post('/t/write', { config: { rateLimit: false, auth: false } }, () => ({ ok: true }))
+  app.post('/t/open', { config: { rateLimit: false, csrf: false, auth: false } }, () => ({
+    ok: true,
+  }))
 })
 
 afterEach(async () => {
@@ -135,7 +137,7 @@ describe('mutation guard', () => {
       app.route({
         method,
         url: `/t/${method}`,
-        config: { rateLimit: false },
+        config: { rateLimit: false, auth: false },
         handler: () => ({ ok: true }),
       })
     }
@@ -156,7 +158,7 @@ describe('mutation guard', () => {
   it('applies to a route registered after the hook', async () => {
     // The reason this is tested through the app: a hook added after the routes
     // would silently protect nothing.
-    app.post('/t/late', { config: { rateLimit: false } }, () => ({ ok: true }))
+    app.post('/t/late', { config: { rateLimit: false, auth: false } }, () => ({ ok: true }))
     await app.ready()
     const res = await app.inject({ method: 'POST', url: '/t/late' })
     expect(res.statusCode).toBe(403)
