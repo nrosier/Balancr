@@ -19,6 +19,7 @@ import {
   loadMonthTotals,
   loadTrailingTotals,
   loadUncategorised,
+  storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { badRequest } from '../../errors.ts'
@@ -69,8 +70,10 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
   return budgetSchema.parse({
     freshness: freshness(db),
     month: resolved,
-    // Descending, so the picker's first entry is the most recent month.
-    months: history.map((entry) => entry.month).reverse(),
+    // Every stored month, not the window `history` covers: the picker has to keep
+    // offering August while July is on screen, and a month that was never computed
+    // still needs somewhere to navigate to.
+    months: storedMonths(db),
     totals:
       totals === null
         ? null

@@ -94,8 +94,7 @@
   },
   "page": {
     "budget": {
-      "lede": "Waar het geld deze maand naartoe ging, en of je op schema zit.",
-      "soon": "Binnenkort: geldstroom van inkomen naar categorie, budget tegenover werkelijkheid, verbruikstempo tegenover het verloop van de maand en trends per categorie."
+      "lede": "Waar het geld deze maand naartoe ging, en of je op schema zit."
     },
     "insights": {
       "lede": "Wat de analyse vond, en wat ze je wil laten bevestigen.",

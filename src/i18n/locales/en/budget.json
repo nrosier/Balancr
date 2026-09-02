@@ -9,10 +9,24 @@
   "chart": {
     "axisMoney": "Euro",
     "axisMonth": "Month",
+    "bulletItem": "{{category}} spent {{spent}} of {{assigned}}",
+    "bulletSummary": "Assigned against spent, largest envelope first: {{list}}.",
     "bulletTitle": "Budget versus actual",
     "burnTitle": "Spending pace this month",
+    "sankeyOther": "Other categories",
+    "sankeySaved": "Not spent",
+    "sankeySummary": "{{income}} came in and {{spent}} went out. The largest envelope was {{largest}} at {{amount}}.",
     "sankeyTitle": "Where the money goes",
-    "trendTitle": "Spending per category"
+    "sankeyTotals": "{{income}} came in and {{spent}} went out.",
+    "trendSummary": "{{category}}: {{amount}} in {{month}}, against a norm of {{baseline}}.",
+    "trendSummaryPlain": "{{category}}: {{amount}} in {{month}}.",
+    "trendTitle": "Spending per category",
+    "trendWindow": "The last {{window}}, oldest first."
+  },
+  "empty": {
+    "categories": "No category has any spending in this month.",
+    "month": "Nothing has been computed for {{month}} yet.",
+    "monthHint": "Pick another month, or run a sync to aggregate this one."
   },
   "group": {
     "hidden": "Hidden categories",
@@ -37,10 +51,24 @@
     "baseline": "12-month norm",
     "burnRate": "Burn rate",
     "carryover": "Carried over",
+    "fromLastMonth": "From last month",
     "income": "Income",
     "projected": "Projected month end",
     "savingsRate": "Savings rate",
-    "spent": "Spent"
+    "spent": "Spent",
+    "toBudget": "Left to assign"
   },
-  "title": "Budget"
+  "pace": {
+    "monthProgress": "{{progress}} of the month has passed",
+    "overrun": "Projected overrun {{amount}}",
+    "summary": "{{category}}: {{spent}} spent of {{assigned}} assigned, with {{progress}} of the month gone."
+  },
+  "picker": {
+    "month": "Month"
+  },
+  "title": "Budget",
+  "uncategorised": {
+    "notice_one": "{{value}} transaction worth {{amount}} has no category, so the figures below are incomplete.",
+    "notice_other": "{{value}} transactions worth {{amount}} have no category, so the figures below are incomplete."
+  }
 }

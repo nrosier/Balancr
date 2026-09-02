@@ -32,6 +32,7 @@ import type { Db } from '../../src/db/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { SESSION_COOKIE } from '../../src/server/cookies.ts'
+import { TREND_MONTHS } from '../../src/server/routes/api/budget.ts'
 import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
@@ -162,16 +163,70 @@ describe('GET /api/budget', () => {
 
   it('returns findings as codes and integers, never as sentences', async () => {
     const body = (await get('/api/budget')).json()
-    expect(body.signals).toHaveLength(1)
+    expect(body.signals).toHaveLength(2)
     expect(body.signals[0].code).toBe('above_baseline')
     expect(body.signals[0].severity).toBe('warn')
     expect(body.signals[0].metrics.deltaBp).toBe(1_803)
+  })
+
+  it('passes an alert through under the name the database stores it by', async () => {
+    // `codes.ts`, `SEVERITY_RANK`, `capSeverity` and the `signals` column all say
+    // `alert`; the response schema briefly said `critical`, and since nothing
+    // translated between them every genuine alert came back as a 500 from here.
+    const body = (await get('/api/budget')).json()
+    const alert = body.signals.find(
+      (row: { severity: string }) => row.severity === 'alert',
+    )
+
+    expect(alert.code).toBe('over_available')
+    expect(alert.metrics.overspendCents).toBe(9_500)
+  })
+
+  it('carries a trend series per category, aligned to one shared window', async () => {
+    const body = (await get('/api/budget')).json()
+
+    // One window for the whole screen: twelve small charts are only comparable if
+    // they share an x axis, and the client indexes into this list.
+    expect(body.trendMonths).toHaveLength(TREND_MONTHS)
+    expect(body.trendMonths.at(-1)).toBe(MONTH)
+    expect(body.trendMonths.at(-2)).toBe(PREVIOUS_MONTH)
+
+    for (const row of body.categories) {
+      expect(row.trendCents, row.categoryId).toHaveLength(TREND_MONTHS)
+    }
+
+    const groceries = body.categories.find(
+      (row: { categoryId: string }) => row.categoryId === 'cat-groceries',
+    )
+    // The two stored months at the end, zeroes before them: the fixture holds two
+    // months of history, and a category spent nothing in a month it has no row for.
+    expect(groceries.trendCents.slice(-2)).toEqual([60_000, 72_000])
+    expect(groceries.trendCents.slice(0, -2).every((cents: number) => cents === 0)).toBe(true)
+  })
+
+  it('ends the trend window at the month asked for, not at today', async () => {
+    // Pointing the picker at an older month should describe that month rather than
+    // drawing a line that runs past it.
+    const body = (await get(`/api/budget?month=${PREVIOUS_MONTH}`)).json()
+    expect(body.trendMonths.at(-1)).toBe(PREVIOUS_MONTH)
+
+    const groceries = body.categories.find(
+      (row: { categoryId: string }) => row.categoryId === 'cat-groceries',
+    )
+    expect(groceries.trendCents.at(-1)).toBe(60_000)
   })
 
   it('honours ?month= for a month it has', async () => {
     const body = (await get(`/api/budget?month=${PREVIOUS_MONTH}`)).json()
     expect(body.month).toBe(PREVIOUS_MONTH)
     expect(body.totals.spentCents).toBe(310_000)
+  })
+
+  it('keeps offering every stored month, whichever one is being viewed', async () => {
+    // The picker is how the reader got here, so looking at July must not take August
+    // out of the list — a window ending at the month on screen would.
+    const body = (await get(`/api/budget?month=${PREVIOUS_MONTH}`)).json()
+    expect(body.months).toEqual([MONTH, PREVIOUS_MONTH])
   })
 
   it('answers a month it never computed with the empty state, not a 404', async () => {
@@ -182,6 +237,8 @@ describe('GET /api/budget', () => {
     expect(res.json().month).toBe('2019-03')
     expect(res.json().totals).toBeNull()
     expect(res.json().categories).toEqual([])
+    // And still offers the months that do exist, or the reader is stranded there.
+    expect(res.json().months).toEqual([MONTH, PREVIOUS_MONTH])
   })
 
   it('refuses a month that is not a month', async () => {
@@ -332,9 +389,18 @@ describe('money', () => {
       // `metrics` is a free-form map whose keys carry the unit, so its values are
       // amounts whatever they are called.
       const inMetrics = /\.metrics$/.test(path)
-      return named || inMetrics
-        ? [{ path: here, value: child }, ...amounts(child, here)]
-        : amounts(child, here)
+      if (!named && !inMetrics) return amounts(child, here)
+      // A series under an amount-named key — `trendCents` is one spend figure per
+      // month — is checked element by element. The array is not the number; its
+      // entries are, and asserting on the array would only prove it is an array.
+      if (Array.isArray(child)) {
+        return child.flatMap((item, i) =>
+          item !== null && typeof item === 'object'
+            ? amounts(item, `${here}[${i}]`)
+            : [{ path: `${here}[${i}]`, value: item }],
+        )
+      }
+      return [{ path: here, value: child }, ...amounts(child, here)]
     })
   }
 

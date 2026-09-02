@@ -7,18 +7,18 @@
  * an unknown path is not a page at all — because those are the cases a `switch` in a
  * component would get subtly wrong and nothing would notice.
  *
- * Four of the five pages are still placeholders that #30–#33 replace wholesale, so the
+ * Three of the five pages are still placeholders that #31–#33 replace wholesale, so the
  * test is not about their content. It is about the two things that stay true
- * afterwards, and stay true for the overview page that has already been filled in:
- * every page has exactly one level-one heading, and every string on it comes from the
- * catalogue rather than being written into the component. A hardcoded English word
- * survives a Dutch UI without failing anything, which is precisely why it is checked
- * here rather than left to a reading.
+ * afterwards, and stay true for the pages that have already been filled in: every page
+ * has exactly one level-one heading, and every string on it comes from the catalogue
+ * rather than being written into the component. A hardcoded English word survives a
+ * Dutch UI without failing anything, which is precisely why it is checked here rather
+ * than left to a reading.
  *
- * The overview page reads `/api/overview`, so `fetch` is stubbed for the whole file.
- * Not because this test is about the payload — `overview.test.tsx` is — but because a
- * page component left to reach the network in jsdom fails on the machine with no
- * server and passes on the machine with one.
+ * The filled-in pages read their own endpoint, so `fetch` is stubbed for the whole
+ * file. Not because this test is about the payload — `overview.test.tsx` and
+ * `budget.test.tsx` are — but because a page component left to reach the network in
+ * jsdom fails on the machine with no server and passes on the machine with one.
  */
 import { screen } from '@testing-library/react'
 import i18next from 'i18next'
@@ -27,15 +27,16 @@ import { NotFound } from '../src/pages/NotFound.tsx'
 import { ROUTES, routeFor } from '../src/routes.ts'
 import { apiStub, clickLink, i18nReady, renderApp } from './helpers.tsx'
 
-/** The four that #30–#33 still have to fill in. */
-const PLACEHOLDERS = ROUTES.filter((route) => route.path !== '/')
+/** The three that #31–#33 still have to fill in. */
+const REAL_PAGES = new Set(['/', '/budget'])
+const PLACEHOLDERS = ROUTES.filter((route) => !REAL_PAGES.has(route.path))
 
 beforeAll(async () => {
   await i18nReady()
 })
 
 beforeEach(() => {
-  // The overview page renders its empty state, which is all this file needs from it.
+  // Each real page renders its empty state, which is all this file needs from them.
   vi.stubGlobal('fetch', (path: string) => {
     const stub = apiStub(path)
     if (stub === null) throw new Error(`unstubbed request: ${path}`)

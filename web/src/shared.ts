@@ -13,6 +13,11 @@
  *    authentication and bootstrap shapes come from `src/server/contract.ts`, which
  *    the handlers annotate themselves with, so renaming a field there fails both
  *    builds.
+ *  - **The finding vocabulary.** `domain/ai/codes.ts` and `domain/ai/vars.ts` are
+ *    written to be importable here — no `config`, no i18next instance, no `node:`
+ *    anything — because the API returns findings as codes and this side renders them.
+ *    A browser-side copy of that table is how `{{delta}}` ends up printed literally on
+ *    one screen and as `18%` on another.
  *  - **The catalogues.** The same JSON files, not a copy: `npm run i18n:check`
  *    guarantees `en` and `nl` parity for one set of files, and a build-time copy is
  *    how a Dutch string gets fixed in the place nothing renders.
@@ -50,6 +55,12 @@ export type {
   Overview,
   Portfolio,
 } from '../../src/server/routes/api/schemas.ts'
+
+export { FINDING_SPECS, isFindingCode, missingVars } from '../../src/domain/ai/codes.ts'
+export type { FindingCode, Severity } from '../../src/domain/ai/codes.ts'
+
+export { findingVars, isNeverReconciled } from '../../src/domain/ai/vars.ts'
+export type { SignalFacts, Translate } from '../../src/domain/ai/vars.ts'
 
 export type {
   BootstrapResponse,

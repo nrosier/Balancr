@@ -63,7 +63,15 @@ export const signalSchema = z.object({
   code: z.string(),
   categoryId: z.string().nullable(),
   categoryName: z.string().nullable(),
-  severity: z.enum(['info', 'warn', 'critical']),
+  /**
+   * The same three words `codes.ts` and the `signals` table use.
+   *
+   * `alert` rather than a friendlier `critical`: the value is stored, ranked and capped
+   * under that name everywhere behind this schema, and a rename at the wire would have
+   * meant translating it in both directions — the direction that was missing turned
+   * every genuine alert into a 500 from this endpoint.
+   */
+  severity: z.enum(['info', 'warn', 'alert']),
   /**
    * Cents as integer cents, ratios as basis points, the unit named in the key.
    * Not `cents()`, because the map holds both — but still integers throughout.
