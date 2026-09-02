@@ -9,6 +9,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import {
   accountMap,
   aiRuns,
+  auditLog,
   clarificationQueue,
   prompts,
   proposals,
@@ -177,5 +178,116 @@ describe('ai_runs', () => {
     const [run] = ctx.db.select().from(aiRuns).all()
     expect(run?.payloadJson).toBe('{"categories":[]}')
     expect(run?.costMicroEur).toBe(0)
+  })
+})
+
+describe('audit_log survives everything it refers to', () => {
+  /** One entry with every reference populated, plus the rows it points at. */
+  function seedApprovedChange(): void {
+    ctx.db.insert(users).values({ id: 'u1', locale: 'en' }).run()
+    ctx.db
+      .insert(aiRuns)
+      .values({
+        id: 'run-1',
+        kind: 'findings',
+        model: 'gemini-3.7-flash',
+        locale: 'en',
+        payloadJson: '{}',
+        status: 'ok',
+      })
+      .run()
+    ctx.db
+      .insert(proposals)
+      .values({
+        id: 'prop-1',
+        runId: 'run-1',
+        type: 'category_meta.set',
+        targetRef: 'cat-1',
+        payloadJson: '{"nature":"variable"}',
+        status: 'applied',
+      })
+      .run()
+    ctx.db
+      .insert(auditLog)
+      .values({
+        action: 'proposal.apply',
+        actorId: 'u1',
+        entity: 'category_meta',
+        entityRef: 'cat-1',
+        runId: 'run-1',
+        proposalId: 'prop-1',
+        beforeJson: '{"nature":null}',
+        afterJson: '{"nature":"variable"}',
+      })
+      .run()
+  }
+
+  it('accepts references to rows that no longer exist', () => {
+    // No foreign keys at all, on purpose: an entry that can only be written while
+    // its run is still around is not an audit trail.
+    ctx.db
+      .insert(auditLog)
+      .values({
+        action: 'proposal.apply',
+        actorId: 'deleted-user',
+        entity: 'category_meta',
+        entityRef: 'cat-1',
+        runId: 'pruned-run',
+        proposalId: 'pruned-proposal',
+      })
+      .run()
+
+    expect(ctx.db.select().from(auditLog).all()).toHaveLength(1)
+  })
+
+  it('keeps the run id after the run has been pruned', () => {
+    seedApprovedChange()
+    ctx.sqlite.prepare('delete from ai_runs where id = ?').run('run-1')
+
+    const [entry] = ctx.db.select().from(auditLog).all()
+    // `proposals.run_id` is nulled by its cascade; the trail is not.
+    expect(ctx.db.select().from(proposals).all()[0]?.runId).toBeNull()
+    expect(entry?.runId).toBe('run-1')
+  })
+
+  it('keeps the change after the proposal it came from is gone', () => {
+    seedApprovedChange()
+    ctx.sqlite.prepare('delete from proposals where id = ?').run('prop-1')
+
+    const [entry] = ctx.db.select().from(auditLog).all()
+    expect(entry?.proposalId).toBe('prop-1')
+    expect(entry?.afterJson).toBe('{"nature":"variable"}')
+  })
+
+  it('keeps who approved it after the account is deleted', () => {
+    seedApprovedChange()
+    ctx.sqlite.prepare('delete from users where id = ?').run('u1')
+
+    expect(ctx.db.select().from(auditLog).all()[0]?.actorId).toBe('u1')
+  })
+})
+
+describe('clarification_queue.run_id', () => {
+  it('outlives the run that asked the question', () => {
+    // Also unconstrained: the queue is the record of what was asked, and a run
+    // pruned by the cost view must not blank it.
+    ctx.db
+      .insert(aiRuns)
+      .values({
+        id: 'run-1',
+        kind: 'findings',
+        model: 'gemini-3.7-flash',
+        locale: 'en',
+        payloadJson: '{}',
+        status: 'ok',
+      })
+      .run()
+    ctx.db
+      .insert(clarificationQueue)
+      .values({ categoryId: 'cat-1', questionCode: 'purpose_unknown', runId: 'run-1' })
+      .run()
+
+    ctx.sqlite.prepare('delete from ai_runs where id = ?').run('run-1')
+    expect(ctx.db.select().from(clarificationQueue).all()[0]?.runId).toBe('run-1')
   })
 })

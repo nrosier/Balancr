@@ -1,4 +1,16 @@
 {
+  "answer": {
+    "annual": "Eén keer per jaar",
+    "discretionary": "Vrij besteedbaar",
+    "fixed": "Vaste kost",
+    "income": "Inkomen",
+    "irregular": "Af en toe",
+    "monthly": "Elke maand",
+    "no": "Nee",
+    "quarterly": "Elk kwartaal",
+    "variable": "Variabele kost",
+    "yes": "Ja"
+  },
   "clarify": {
     "custody_shared_unknown": "Deel je {{category}} met de andere ouder?",
     "frequency_unknown": "Hoe vaak komt {{category}} terug?",
@@ -47,8 +59,22 @@
   "proposal": {
     "diff": "Nu / voorstel",
     "expiresAt": "Verloopt op {{when}}",
+    "field": {
+      "coicopCode": "Bestedingsklasse",
+      "custodyShared": "Gedeeld met de andere ouder",
+      "expectedFrequency": "Hoe vaak",
+      "nature": "Soort kost",
+      "sensitive": "Naam verborgen voor de AI",
+      "userDescription": "Waarvoor het dient"
+    },
     "hint": "Er verandert niets tot je het toepast.",
-    "title": "Voorgestelde wijzigingen"
+    "title": "Voorgestelde wijzigingen",
+    "value": {
+      "unset": "niet ingesteld"
+    },
+    "warn": {
+      "privacy": "Hierdoor wordt de naam van de categorie naar de AI gestuurd."
+    }
   },
   "title": "Inzichten",
   "variant": {

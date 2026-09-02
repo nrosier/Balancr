@@ -6,6 +6,51 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The clarification queue** (`src/domain/ai/clarify.ts`): the mechanism that turns
+  "what is this budget for?" from a question asked every month into knowledge stored
+  once. A card carries the model's **guess** for confirm-or-edit rather than an open
+  question, because confirming a guess is one click and answering an interrogation is
+  a chore — and an unanswered guess costs nothing, since every downstream computation
+  already works without it.
+- **Two materiality floors, both required**: 2% of the month's spend *and* €50. A
+  relative floor alone interrogates you about every envelope in a quiet month; an
+  absolute floor alone asks about a €60 line in a €4,000 month. The queue is then
+  capped at five open questions, applied *after* sorting by share, so the five you
+  see are the five worth answering.
+- **Asked once, permanently.** Three of the five question codes write columns whose
+  default is indistinguishable from an answer — `expected_frequency` defaults to
+  `monthly`, and answering "monthly" would look exactly like never having been asked.
+  So "asked once" lives in the queue's own history: `answered` and `dismissed` rows
+  are kept for ever, and a dismissal is as final as an answer.
+- **An answer writes straight through** (`answerClarification`), because the value is
+  the *user's own* words, and it raises `category_meta.confidence` by 20 in the same
+  transaction as the audit entry. A model's words never take that path — they go
+  through a proposal.
+- **Propose-and-apply** (`src/domain/ai/proposals.ts`): nothing the model suggests
+  takes effect until someone approves it. The payload is validated twice — once when
+  the proposal is stored, and **again at apply time**, because the gap between the two
+  can be a version upgrade, and a partial write from a payload nothing understands any
+  more is worse than a visible refusal. Handlers live in a closed map, and v1 ships
+  only local-effect ones: nothing here can write to Actual.
+- **The diff is recomputed when it is applied.** The card shows what *would* change;
+  the audit trail records what *did*. If someone set the value by hand in between, the
+  trail says the write changed nothing rather than repeating a prediction made weeks
+  earlier.
+- **A privacy warning on the one change that leaks a name.** Clearing `sensitive`
+  starts sending the category name to the AI, so that field is flagged `privacy` in
+  the diff and the review card says so in plain language.
+- **The audit trail** (`src/domain/audit.ts`, `audit_log`): the record of every change
+  a human approved, over the one table whose contents cannot be regenerated from
+  Actual or Ghostfolio. Append-only — the absence of an `updateAudit` is the guarantee
+  — with **no foreign keys at all**, because an entry whose run id a cascade can blank
+  is not an audit trail but a cache of one. It stores field pairs rather than
+  sentences, so a change approved during a Dutch session reads correctly in English.
+- Applying a proposal deliberately does **not** raise `confidence`: that number
+  measures what the user stated themselves, and the approval is already in the trail.
+
 ## [0.3.3] — 2026-09-02
 
 ### Added
