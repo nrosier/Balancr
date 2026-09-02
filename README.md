@@ -393,14 +393,45 @@ chart draws a single dot ([#114](https://github.com/nrosier/Balancr/issues/114))
 both series are written one row per nightly run, so they begin the day Balancr is
 installed rather than the day the data does.
 
+**The first clean production run then found the rest by being readable.** With both
+Ghostfolio defects fixed, every job finished `ok` and the log became legible enough to
+read for what it was still getting wrong. Three things in it were about starting up
+rather than about the numbers. Copying `.env.example` and filling in only what you use
+refused to boot, because six optional variables were declared as optional *and* as
+needing at least one character — so a variable left deliberately blank was reported as
+too short, which reads as a rule about length and invites typing a placeholder into a
+password field ([#118](https://github.com/nrosier/Balancr/issues/118)). A blank now
+means "not set" for exactly those six, and a test copies the real `.env.example` to
+prove it. `ACTUAL_E2E_PASSWORD` was the variable that happened to, and it turns out
+Actual only reads that password when the budget is genuinely encrypted — so leaving it
+empty was always correct, and when it is *not* correct the error now names the variable
+instead of relaying Actual's own wording, which was written for someone standing in
+front of Actual ([#119](https://github.com/nrosier/Balancr/issues/119)). And Actual's
+sync engine had been writing ten lines of plain text through `console.log` into the
+middle of pino's JSON on every hourly pass, because its verbose mode defaults to on;
+it is now tied to `LOG_LEVEL`, quiet at `info` and back at `debug`
+([#123](https://github.com/nrosier/Balancr/issues/123)).
+
+The same log also named two things that are about the numbers, both filed rather than
+fixed here. Net worth counts bank cash twice for anyone syncing accounts into
+Ghostfolio as well as Actual — roughly a third of the reported total, entered once from
+each source — and Ghostfolio can already tell the two kinds of account apart, so the
+fix is to derive the classification and let it be overridden rather than ask for it
+([#124](https://github.com/nrosier/Balancr/issues/124)). Gemini's context caching has
+never once engaged, because the system prompt is about half the 1024-token minimum: it
+degrades exactly as designed, which is why nothing noticed
+([#121](https://github.com/nrosier/Balancr/issues/121)).
+
 Next are portfolio and insights
 ([#31](https://github.com/nrosier/Balancr/issues/31),
 [#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
 ([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
 responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
-the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) — shipping
-as `0.5.10`, `0.5.11`, … until every issue in that milestone is closed and `0.6.0`
-lands.
+the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)), the
+double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) and a
+read-only guard for Ghostfolio to match the one Actual already has
+([#120](https://github.com/nrosier/Balancr/issues/120)) — shipping as `0.5.11`,
+`0.5.12`, … until every issue in that milestone is closed and `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
