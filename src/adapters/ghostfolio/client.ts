@@ -152,12 +152,46 @@ export async function fetchPortfolioDetails(): Promise<PortfolioDetails> {
  * Value and performance series. `range=max` because the net-worth chart wants
  * all of history, and Ghostfolio computes it far more cheaply than we could
  * from orders.
+ *
+ * **The only endpoint Balancr reads that is versioned twice.** Current Ghostfolio
+ * answers on `/api/v2` and 404s on `/api/v1`; releases this adapter was written
+ * against do the opposite. So v2 is tried first and a 404 falls back — the same
+ * rule the two `holdings` layouts follow in `types.ts`, and for the same reason:
+ * an upgrade in either direction has to keep working, and a version probe would
+ * be a second thing to keep true.
+ *
+ * A 404 is the only status that falls back. Every other failure is the instance
+ * telling us something — 401 is a bad token, 500 is Ghostfolio in trouble — and
+ * retrying those against an older path would replace one clear error with a
+ * confusing one.
+ *
+ * The v2 response is a superset: the same `date`, `value` and
+ * `netPerformanceInPercentage` this schema reads, plus fields `.loose()` ignores.
+ * That is why there is one schema for both.
  */
 export async function fetchPortfolioPerformance(
   range = 'max',
 ): Promise<PortfolioPerformance> {
-  const path = `/api/v1/portfolio/performance?range=${encodeURIComponent(range)}`
-  return parse(path, performanceSchema, await request(path))
+  const query = `?range=${encodeURIComponent(range)}`
+  const paths = [`/api/v2/portfolio/performance${query}`, `/api/v1/portfolio/performance${query}`]
+
+  for (const [index, path] of paths.entries()) {
+    const last = index === paths.length - 1
+    try {
+      const raw = await request(path)
+      // Logged once per pass and at debug, because the answer is stable for the
+      // life of an instance — but the next time this moves, the log says where it
+      // was last found.
+      log.debug({ path }, 'Ghostfolio performance series answered')
+      return parse(path, performanceSchema, raw)
+    } catch (error) {
+      if (last || !(error instanceof GhostfolioError) || error.status !== 404) throw error
+      log.debug({ path }, 'Ghostfolio performance series absent here; trying the older path')
+    }
+  }
+
+  // Unreachable: the final iteration either returns or rethrows.
+  throw new GhostfolioError('no performance endpoint was tried', paths[0] ?? '')
 }
 
 /**

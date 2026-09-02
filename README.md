@@ -347,12 +347,37 @@ the function whose whole purpose is to print the effective configuration with ev
 secret masked was never called, so `PUBLIC_BASE_URL` had never been logged either. It
 is logged now, one line after the version, and a test is what keeps it safe to log.
 
+**And that log, in turn, found two more.** With `PUBLIC_BASE_URL` corrected and the
+UI up, the portfolio job was still failing every pass — and the diagnostic `0.5.7`
+had just added is what named the cause. It printed the keys the holding did have,
+and `assetProfile` was among them while `symbol`, `isin`, `name`, `currency` and
+`assetClass` were all absent: current Ghostfolio moved every identity field one
+level down ([#113](https://github.com/nrosier/Balancr/issues/113)). They are lifted
+out of `assetProfile` now when the holding does not carry them itself. `assetClass`
+matters most there and fails most quietly — it is what the allocation chart groups
+by, and reading it from the wrong level would not error, it would put every
+position in `unknown` and draw one grey block.
+
+Probing the same instance to confirm that fix turned up the second one:
+`/api/v1/portfolio/performance` returns `404`, because Ghostfolio moved the series
+to `/api/v2` ([#115](https://github.com/nrosier/Balancr/issues/115)). Return was
+permanently null and the value chart permanently empty, and nothing said so —
+the details call refused first, so the pass never reached this one and two defects
+hid behind one error. v2 is tried first with a fallback to v1 on a `404` only, so
+both generations of server work and neither fails silently. That endpoint turns out
+to hold **401 daily value points**, which is most of the answer to why the net-worth
+chart draws a single dot ([#114](https://github.com/nrosier/Balancr/issues/114)):
+both series are written one row per nightly run, so they begin the day Balancr is
+installed rather than the day the data does.
+
 Next are portfolio, insights and settings
 ([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
 language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
 and the accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.8`,
-`0.5.9`, … until every issue in that milestone is closed and `0.6.0` lands.
+([#35](https://github.com/nrosier/Balancr/issues/35)), together with the history
+backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) — shipping as
+`0.5.9`, `0.5.10`, … until every issue in that milestone is closed and `0.6.0`
+lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

@@ -40,61 +40,119 @@ export const authSchema = z.object({
 
 const money = z.number().finite()
 
-export const holdingSchema = z
-  .object({
+/**
+ * The identity fields Balancr consumes, wherever Ghostfolio decided to put them.
+ *
+ * Current releases moved all of them one level down into `assetProfile`
+ * (`PortfolioPosition.assetProfile`, verified against a live 2026 instance and
+ * against Ghostfolio's own interface), leaving the holding itself with nothing but
+ * figures. Older releases carry them on the holding. Both are accepted, for the
+ * reason recorded above `withKeyAsSymbol`: Balancr has to survive an upgrade in
+ * either direction, and a version probe would be a second thing to keep true.
+ *
+ * `assetClass` is in this list for a sharper reason than the rest. It is what the
+ * allocation treemap groups by, and reading it from the level Ghostfolio no longer
+ * uses does not fail — it puts every position in `unknown` and draws one grey
+ * block. A wrong answer is worse than a refused payload, so it is hoisted with the
+ * identity rather than left to fall back to a default.
+ */
+const PROFILE_FIELDS = [
+  'assetClass',
+  'assetSubClass',
+  'currency',
+  'dataSource',
+  'isin',
+  'name',
+  'symbol',
+] as const
+
+/**
+ * Lifts `assetProfile`'s fields onto the holding, without overriding what the
+ * holding already says.
+ *
+ * A fallback and never an override, the same rule `withKeyAsSymbol` follows: on a
+ * release that sends both, the outer object is the one this schema was written
+ * against and the one a future release is more likely to keep. Absent and empty
+ * are treated alike, because an empty ISIN identifies nothing.
+ */
+function withProfileFields(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const holding = value as Record<string, unknown>
+  const profile = holding['assetProfile']
+  if (profile === null || typeof profile !== 'object' || Array.isArray(profile)) return value
+
+  const lifted: Record<string, unknown> = { ...holding }
+  for (const field of PROFILE_FIELDS) {
+    const own = lifted[field]
+    if (own !== undefined && own !== null && own !== '') continue
+    const fromProfile = (profile as Record<string, unknown>)[field]
+    if (fromProfile !== undefined) lifted[field] = fromProfile
+  }
+  return lifted
+}
+
+export const holdingSchema = z.preprocess(
+  withProfileFields,
+  z
+    .object({
+      /**
+       * Nullish, because Ghostfolio ships releases whose holdings carry no `symbol`
+       * inside the object at all: it is the key of the record they arrive in, and
+       * `holdingsSchema` folds it back in below.
+       *
+       * Requiring it here failed the entire portfolio pass on a live instance for a
+       * value that was sitting in the response one level up. What actually has to be
+       * true is weaker — *something* identifies the position — and that is checked
+       * once, after the ISIN has had its say, by the `refine` at the bottom.
+       */
+      symbol: z.string().nullish(),
+      /** Absent for some data sources; the symbol is the fallback label. */
+      name: z.string().nullish(),
+      /**
+       * Nullish, and deliberately never read.
+       *
+       * `toHoldingSnapshots` labels every row with the base currency and says why:
+       * the value it stores is already converted, so the instrument's own currency
+       * would misdescribe the number beside it. A required field that nothing
+       * consumes can only ever do one thing, and on a live instance it did it —
+       * failing every pass over a label no code would have looked at.
+       */
+      currency: z.string().nullish(),
+      quantity: money,
+      marketPrice: money.nullish(),
+      valueInBaseCurrency: money.nullish(),
+      /** Fraction of the portfolio, not a percentage. */
+      allocationInPercentage: money.nullish(),
+      assetClass: z.string().nullish(),
+      assetSubClass: z.string().nullish(),
+      dataSource: z.string().nullish(),
+      /** ISIN when the data source provides one — the identifier Belgian brokers use. */
+      isin: z.string().nullish(),
+      netPerformancePercent: money.nullish(),
+      grossPerformancePercent: money.nullish(),
+    })
+    .loose()
     /**
-     * Nullish, because Ghostfolio ships releases whose holdings carry no `symbol`
-     * inside the object at all: it is the key of the record they arrive in, and
-     * `holdingsSchema` folds it back in below.
+     * The one identity requirement, checked here rather than field by field.
      *
-     * Requiring it here failed the entire portfolio pass on a live instance for a
-     * value that was sitting in the response one level up. What actually has to be
-     * true is weaker — *something* identifies the position — and that is checked
-     * once, after the ISIN has had its say, by the `refine` at the bottom.
-     */
-    symbol: z.string().nullish(),
-    /** Absent for some data sources; the symbol is the fallback label. */
-    name: z.string().nullish(),
-    /**
-     * Nullish, and deliberately never read.
+     * `toHoldingSnapshots` keys a row on `isin ?? symbol`, so either will do and
+     * neither alone is mandatory. A position with no ISIN, no symbol and no record
+     * key cannot be stored — and must not simply be skipped, because
+     * `totalValueCents` is the sum of the holdings that *were* stored: dropping one
+     * would quietly shrink the portfolio total and every allocation share computed
+     * from it. Refusing the payload is the honest outcome, and the message carries
+     * the keys the object did have so the next shape change diagnoses itself.
      *
-     * `toHoldingSnapshots` labels every row with the base currency and says why:
-     * the value it stores is already converted, so the instrument's own currency
-     * would misdescribe the number beside it. A required field that nothing
-     * consumes can only ever do one thing, and on a live instance it did it —
-     * failing every pass over a label no code would have looked at.
+     * The key list is taken after `withProfileFields` has run, so it names what was
+     * actually available — including anything lifted out of `assetProfile`. That is
+     * the list worth printing: it says what Balancr could see, not where it looked.
      */
-    currency: z.string().nullish(),
-    quantity: money,
-    marketPrice: money.nullish(),
-    valueInBaseCurrency: money.nullish(),
-    /** Fraction of the portfolio, not a percentage. */
-    allocationInPercentage: money.nullish(),
-    assetClass: z.string().nullish(),
-    assetSubClass: z.string().nullish(),
-    dataSource: z.string().nullish(),
-    /** ISIN when the data source provides one — the identifier Belgian brokers use. */
-    isin: z.string().nullish(),
-    netPerformancePercent: money.nullish(),
-    grossPerformancePercent: money.nullish(),
-  })
-  .loose()
-  /**
-   * The one identity requirement, checked here rather than field by field.
-   *
-   * `toHoldingSnapshots` keys a row on `isin ?? symbol`, so either will do and
-   * neither alone is mandatory. A position with no ISIN, no symbol and no record
-   * key cannot be stored — and must not simply be skipped, because
-   * `totalValueCents` is the sum of the holdings that *were* stored: dropping one
-   * would quietly shrink the portfolio total and every allocation share computed
-   * from it. Refusing the payload is the honest outcome, and the message carries
-   * the keys the object did have so the next shape change diagnoses itself.
-   */
-  .refine((holding) => (holding.isin ?? holding.symbol ?? '') !== '', {
-    error: (issue) =>
-      'holding has neither an ISIN nor a symbol, so it cannot be identified; ' +
-      `keys present: ${Object.keys(issue.input as object).sort().join(', ')}`,
-  })
+    .refine((holding) => (holding.isin ?? holding.symbol ?? '') !== '', {
+      error: (issue) =>
+        'holding has neither an ISIN nor a symbol, so it cannot be identified; ' +
+        `keys present: ${Object.keys(issue.input as object).sort().join(', ')}`,
+    }),
+)
 
 /**
  * Ghostfolio has shipped `holdings` both ways: keyed by symbol

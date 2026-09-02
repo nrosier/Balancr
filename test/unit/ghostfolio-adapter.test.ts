@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GhostfolioError,
   fetchPortfolioDetails,
+  fetchPortfolioPerformance,
   resetGhostfolioToken,
 } from '../../src/adapters/ghostfolio/client.ts'
 import { probeGhostfolio } from '../../src/adapters/ghostfolio/probe.ts'
@@ -81,7 +82,9 @@ function healthyRoutes(): Record<string, Route | Route[]> {
         summary: { currentValueInBaseCurrency: 1264.8, totalInvestment: 1100 },
       },
     },
-    '/api/v1/portfolio/performance': {
+    // v2, which is where current Ghostfolio serves this and where the client looks
+    // first. v1 is left unstubbed, so it 404s here exactly as it does live.
+    '/api/v2/portfolio/performance': {
       body: {
         chart: [{ date: '2026-08-01', value: 1264.8 }],
         performance: { netPerformancePercentage: 0.15 },
@@ -185,6 +188,60 @@ describe('errors carry the offending path', () => {
   })
 })
 
+describe('the twice-versioned performance endpoint (#115)', () => {
+  const performancePaths = (): string[] =>
+    calls.map((c) => c.path).filter((path) => path.includes('portfolio/performance'))
+
+  it('reads v2 and never asks v1, on a server that has both', async () => {
+    routes['/api/v1/portfolio/performance'] = { body: { chart: [{ date: '1970-01-01' }] } }
+
+    const performance = await fetchPortfolioPerformance()
+
+    expect(performance.chart[0]?.date).toBe('2026-08-01')
+    expect(performancePaths()).toEqual(['/api/v2/portfolio/performance'])
+  })
+
+  it('falls back to v1 when v2 is not there', async () => {
+    // The releases this adapter was written against. Deleting the v2 route rather
+    // than stubbing a 404 on it, because an absent path is what an old server has.
+    delete routes['/api/v2/portfolio/performance']
+    routes['/api/v1/portfolio/performance'] = {
+      body: { chart: [{ date: '2024-01-31', value: 100 }] },
+    }
+
+    const performance = await fetchPortfolioPerformance()
+
+    expect(performance.chart[0]?.date).toBe('2024-01-31')
+    expect(performancePaths()).toEqual([
+      '/api/v2/portfolio/performance',
+      '/api/v1/portfolio/performance',
+    ])
+  })
+
+  it('does not fall back on any status but 404', async () => {
+    // A 500 is the instance in trouble and a 401 is a bad token. Retrying either
+    // against the older path would answer a different question than the one asked,
+    // and would report the wrong path in the error.
+    routes['/api/v2/portfolio/performance'] = { status: 500 }
+    routes['/api/v1/portfolio/performance'] = { body: { chart: [] } }
+
+    await expect(fetchPortfolioPerformance()).rejects.toThrow(GhostfolioError)
+    expect(performancePaths()).toEqual(['/api/v2/portfolio/performance'])
+  })
+
+  it('reports the older path when neither version answers', async () => {
+    delete routes['/api/v2/portfolio/performance']
+
+    const error = await fetchPortfolioPerformance().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(GhostfolioError)
+    // v1, because that was the last one tried: the message has to name the request
+    // that actually failed rather than the first one attempted.
+    expect((error as GhostfolioError).path).toContain('/api/v1/portfolio/performance')
+    expect((error as GhostfolioError).status).toBe(404)
+  })
+})
+
 describe('probe', () => {
   it('passes against a healthy server and reports shapes, not amounts', async () => {
     const report = await probeGhostfolio()
@@ -194,7 +251,8 @@ describe('probe', () => {
     expect(report.checks.map((c) => c.path)).toEqual([
       '/api/v1/health',
       '/api/v1/portfolio/details',
-      '/api/v1/portfolio/performance',
+      // Unversioned on purpose: the client decides which of the two answered.
+      'portfolio/performance',
       '/api/v1/account',
     ])
     // 1264.8 is the holding's value; a probe report must not carry it.
@@ -261,7 +319,7 @@ describe('probe', () => {
   })
 
   it('warns on an empty performance chart and empty account list', async () => {
-    routes['/api/v1/portfolio/performance'] = { body: { chart: [] } }
+    routes['/api/v2/portfolio/performance'] = { body: { chart: [] } }
     routes['/api/v1/account'] = { body: { accounts: [] } }
 
     const report = await probeGhostfolio()
