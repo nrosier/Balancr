@@ -305,6 +305,10 @@ describe('the account mapping', () => {
     const account = settings.accounts.find((row) => row.id === id)
     expect(account?.kind).toBe('savings')
     expect(account?.includeInNetWorth).toBe(false)
+    // The screen has to be able to say *why* a value reads the way it does, because
+    // "a rule guessed this" and "you set this" invite different actions from the
+    // reader — and #124's classifier will only overwrite the former.
+    expect(account?.decidedFields.sort()).toEqual(['includeInNetWorth', 'kind'])
     // The whole payload, so the screen replaces its state rather than patching it.
     expect(settings.params).toEqual(DEFAULT_PARAMS)
     expect(settings.prompts).toHaveLength(4)
@@ -323,6 +327,9 @@ describe('the account mapping', () => {
 
     const grouped = res.json<Settings>().accounts.filter((row) => row.dedupeGroup !== null)
     expect(grouped).toHaveLength(2)
+    for (const row of grouped) {
+      expect(row.decidedFields.sort()).toEqual(['dedupeGroup', 'isSourceOfTruth'])
+    }
     expect(grouped.filter((row) => row.isSourceOfTruth)).toHaveLength(1)
     expect(grouped.find((row) => row.isSourceOfTruth)?.id).toBe(second)
     // One entry per account touched, because the change is to both rows.

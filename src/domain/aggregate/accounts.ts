@@ -25,6 +25,7 @@ import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap } from '../../db/schema.ts'
 import type { AccountKind } from '../../db/schema.ts'
+import type { Transaction } from '../audit.ts'
 
 export type AccountSource = 'actual' | 'ghostfolio'
 
@@ -174,7 +175,38 @@ export function setDedupeGroup(
       .set({ isSourceOfTruth: true })
       .where(eq(accountMap.id, sourceOfTruthId))
       .run()
+    // Grouping two accounts is a judgement about which of them is real, so a
+    // matcher that later disagrees has to leave it alone — including the dismissal
+    // in #131, which is a decision that two accounts are *not* the same and is worth
+    // exactly as much as the decision that they are.
+    markDecided(tx, accountMapIds, ['dedupeGroup', 'isSourceOfTruth'])
   })
+}
+
+/**
+ * Records that these fields on these rows are now a person's answer.
+ *
+ * Read-modify-write per row rather than one bulk `UPDATE`, because the value is a
+ * set and the rows do not start from the same one. Rows whose set is unchanged are
+ * skipped, so re-grouping an already-grouped account writes nothing.
+ */
+function markDecided(
+  tx: Transaction,
+  ids: readonly string[],
+  fields: readonly DecidableField[],
+): void {
+  if (ids.length === 0) return
+
+  for (const row of tx.select().from(accountMap).where(inArray(accountMap.id, [...ids])).all()) {
+    const decided = decidedFields(row)
+    const before = decided.size
+    for (const field of fields) decided.add(field)
+    if (decided.size === before) continue
+    tx.update(accountMap)
+      .set({ decidedFields: encodeDecidedFields(decided) })
+      .where(eq(accountMap.id, row.id))
+      .run()
+  }
 }
 
 /** One account as the settings screen may change it. */
@@ -211,9 +243,134 @@ export function updateAccountMap(
     return db.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
   }
 
-  return (
-    db.update(accountMap).set(changes).where(eq(accountMap.id, id)).returning().all()[0] ?? null
-  )
+  return db.transaction((tx) => {
+    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    if (row === undefined) return null
+
+    // The fields this patch names are now decided, and stay decided even if the
+    // value happens to equal what a rule would have produced. The point is not that
+    // the answer differs — it is that a person answered, and answering "yes, this is
+    // a current account" has to survive a rule that later disagrees.
+    const decided = decidedFields(row)
+    for (const field of Object.keys(changes)) {
+      if (isDecidableField(field)) decided.add(field)
+    }
+
+    return (
+      tx
+        .update(accountMap)
+        .set({ ...changes, decidedFields: encodeDecidedFields(decided) })
+        .where(eq(accountMap.id, id))
+        .returning()
+        .all()[0] ?? null
+    )
+  })
+}
+
+// ---------------------------------------------------------------------------
+//  Provenance: which answers came from a person
+// ---------------------------------------------------------------------------
+
+/**
+ * The fields a person can decide, and a rule can therefore not overwrite.
+ *
+ * Every one of these is a judgement Balancr cannot derive with certainty, which is
+ * exactly why both a person and a rule might want to write it — and why the two
+ * have to be told apart. `source`, `externalId` and `name` are absent because they
+ * belong to the source system and are refreshed on every pass.
+ */
+export const DECIDABLE_FIELDS = [
+  'kind',
+  'includeInNetWorth',
+  'dedupeGroup',
+  'isSourceOfTruth',
+] as const
+
+export type DecidableField = (typeof DECIDABLE_FIELDS)[number]
+
+function isDecidableField(field: string): field is DecidableField {
+  return (DECIDABLE_FIELDS as readonly string[]).includes(field)
+}
+
+/**
+ * The fields a person has decided on this row.
+ *
+ * Tolerant on the way in on purpose. The column holds JSON written by an earlier
+ * version of this code and by a migration, so a null, an empty string, a
+ * non-array, or an array with an unknown name in it are all possible — and every
+ * one of them means the same useful thing here: treat what we cannot read as
+ * undecided. The alternative is throwing while loading the settings page, which
+ * would make an unreadable provenance record worse than no provenance record.
+ *
+ * Erring towards undecided is also the safe direction: it risks a rule overwriting
+ * something a person chose, which they can see and set again, rather than freezing
+ * a row against every future improvement with no way to tell why.
+ */
+export function decidedFields(row: Pick<AccountMapRow, 'decidedFields'>): Set<DecidableField> {
+  const out = new Set<DecidableField>()
+  if (row.decidedFields === null || row.decidedFields === '') return out
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(row.decidedFields)
+  } catch {
+    return out
+  }
+  if (!Array.isArray(parsed)) return out
+
+  for (const entry of parsed) {
+    if (typeof entry === 'string' && isDecidableField(entry)) out.add(entry)
+  }
+  return out
+}
+
+/** The stored form: sorted, so two equal sets compare equal as text too. */
+export function encodeDecidedFields(fields: ReadonlySet<DecidableField>): string {
+  return JSON.stringify([...fields].sort())
+}
+
+/**
+ * Writes derived values, skipping every field a person has decided.
+ *
+ * This is the function a classifier calls, and the whole reason `decided_fields`
+ * exists. `syncAccountMap` may never overwrite a decision and only runs
+ * `defaultKind` on insert, so before this there was no path at all by which a
+ * better rule could reach an account that already existed — and adding one that
+ * wrote unconditionally would have erased the manual exclusions that are the only
+ * thing currently keeping net worth right.
+ *
+ * `classifiedAt` is stamped whenever the classifier ran, including when it changed
+ * nothing, because "the rule has seen this row and had nothing to add" and "the
+ * rule has never looked" are different states and only the timestamp can tell them
+ * apart.
+ */
+export function applyDerivedFields(
+  db: Db,
+  id: string,
+  derived: AccountMapPatch,
+  now = new Date(),
+): AccountMapRow | null {
+  return db.transaction((tx) => {
+    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    if (row === undefined) return null
+
+    const decided = decidedFields(row)
+    const changes = {
+      ...(derived.kind === undefined || decided.has('kind') ? {} : { kind: derived.kind }),
+      ...(derived.includeInNetWorth === undefined || decided.has('includeInNetWorth')
+        ? {}
+        : { includeInNetWorth: derived.includeInNetWorth }),
+    }
+
+    return (
+      tx
+        .update(accountMap)
+        .set({ ...changes, classifiedAt: now })
+        .where(eq(accountMap.id, id))
+        .returning()
+        .all()[0] ?? null
+    )
+  })
 }
 
 /**
@@ -234,10 +391,19 @@ export function setSourceOfTruth(db: Db, id: string): AccountMapRow | null {
 
   return db.transaction((tx) => {
     if (row.dedupeGroup !== null) {
+      const group = tx
+        .select()
+        .from(accountMap)
+        .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+        .all()
       tx.update(accountMap)
         .set({ isSourceOfTruth: false })
         .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
         .run()
+      // The whole group, not just the row named: choosing one source of truth is
+      // simultaneously a decision that the others are not, and a rule that flipped
+      // the losers back would undo half of one answer.
+      markDecided(tx, group.map((member) => member.id), ['isSourceOfTruth'])
     }
     return (
       tx.update(accountMap)
@@ -274,12 +440,18 @@ export function groupAccounts(
  * missing an account with nothing on screen to say so.
  */
 export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
-  return (
-    db
-      .update(accountMap)
-      .set({ dedupeGroup: null, isSourceOfTruth: true })
-      .where(eq(accountMap.id, id))
-      .returning()
-      .all()[0] ?? null
-  )
+  return db.transaction((tx) => {
+    const row =
+      tx
+        .update(accountMap)
+        .set({ dedupeGroup: null, isSourceOfTruth: true })
+        .where(eq(accountMap.id, id))
+        .returning()
+        .all()[0] ?? null
+    if (row === null) return null
+    // Ungrouping is as much a decision as grouping was — it says these two accounts
+    // are not one — so a matcher must not simply re-propose what was just undone.
+    markDecided(tx, [id], ['dedupeGroup', 'isSourceOfTruth'])
+    return tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+  })
 }

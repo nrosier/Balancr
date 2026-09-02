@@ -57,6 +57,13 @@
       "when": 1788388766673,
       "tag": "0007_far_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788389842274,
+      "tag": "0008_wild_legion",
+      "breakpoints": true
     }
   ]
 }
