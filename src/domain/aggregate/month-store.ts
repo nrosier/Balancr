@@ -13,7 +13,7 @@
  * rows and rewriting all of them for a one-cent change is real write
  * amplification; a month here is one row and at most a handful of drift rows.
  */
-import { desc, eq, inArray } from 'drizzle-orm'
+import { desc, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { monthlyTotals, recomputeMismatches } from '../../db/schema.ts'
 import { addMonths, monthsBefore } from '../../util/month.ts'
@@ -66,6 +66,23 @@ export function persistMonthTotals(
   })
 
   return rows.length
+}
+
+/**
+ * The earliest month the sync job has stored totals for, or null before its first run.
+ *
+ * The backfill clamps to this. `getAccountBalance` answers any date, including dates
+ * before the budget existed, and it answers zero — so an install whose Actual file is
+ * three months old would otherwise get twenty-one month-ends of flat zero net worth
+ * ahead of its real history. A zero that means "there was nothing" and a zero that
+ * means "we did not look" render identically on a chart, and only one of them is true.
+ */
+export function earliestStoredMonth(db: Db): string | null {
+  const row = db
+    .select({ month: sql<string | null>`min(${monthlyTotals.month})` })
+    .from(monthlyTotals)
+    .get()
+  return row?.month ?? null
 }
 
 /** The stored months, ascending, skipping any that has never been computed. */

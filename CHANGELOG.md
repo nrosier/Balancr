@@ -18,6 +18,47 @@ rather than when the feature list ends.
   card that always reads "not known yet" teaches a reader that the placeholder means
   nothing.
 
+- **Both charts now start where the data starts, not where the install does**
+  ([#114](https://github.com/nrosier/Balancr/issues/114)). `net_worth_snapshots` and
+  `portfolio_metrics` are written one row per day a job ran, so a fortnight-old
+  install had a fortnight of history and a time axis with a dot on it — while Actual
+  had been answering `getAccountBalance` for any date all along and Ghostfolio had
+  been answering `range=max` with a dated series. A nightly `backfill` job now reads
+  both, at month-end granularity, and fills in what was never asked for.
+
+  The two halves fail independently on purpose. The portfolio-value chart is a
+  per-date total, so the chart's value *is* the row and that half always runs.
+  Net worth is stored per account, and Ghostfolio's chart is a portfolio total, so
+  the total is used only where it demonstrably *is* one account's value: Ghostfolio
+  counts exactly one account and that account survives the dedupe. Otherwise the
+  month-ends inside the chart's range are left alone — an install where Ghostfolio
+  counts seven accounts and one of them is mapped would otherwise have its history
+  overstated by six accounts every month, in the flattering direction.
+
+  A date that cannot be completed is skipped rather than written and flagged. What
+  the reader gets is a series that starts where both halves are known instead of one
+  joined to today at a step, and a cliff where a backfill meets live data is worse
+  than a shorter chart, because the cliff looks like an event. Nothing has to be
+  cleared later either: the next pass still sees the date missing. Month-ends
+  *before* the chart begins are a different case and are written in full — Actual
+  alone is the whole truth of a date when there was no portfolio.
+
+  Cost is why it is a separate job. It is the only pass that talks to Actual once per
+  account per month, so it reads both date sets before opening a connection and never
+  asks Actual again once the net-worth half is complete. It is also left out of the
+  freshness banner: every figure it writes is for a settled month-end in the past, so
+  its failure leaves the charts shorter and leaves nothing on them wrong.
+
+### Changed
+
+- The net-worth history is clamped to the months Actual actually has a budget for.
+  `getAccountBalance` answers a date before the budget existed with zero, and a zero
+  that means "there was nothing" renders identically to one that means "we did not
+  look" — only one of them is true.
+- Jobs that need the current month now derive it from the instant the runner recorded
+  rather than reading the clock again, so a run starting seconds before midnight
+  cannot write one half of its output into one month and the other half into the next.
+
 ### Fixed
 
 - **A holding's price is labelled with the currency it is quoted in**, rather than
