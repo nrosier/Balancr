@@ -1,0 +1,1 @@
+ALTER TABLE `local_credentials` ADD `last_totp_step` integer;

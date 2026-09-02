@@ -6,6 +6,72 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The break-glass local login** (`src/server/auth/local.ts`, `POST /auth/local/login`),
+  for when Authentik itself is what broke. Which means it cannot lean on any of
+  Authentik's protections, so it carries its own and they are stricter than an ordinary
+  password login would be: both factors always — `local_credentials.totp_secret` is not
+  nullable, so a password-only local account cannot exist — one identical message for
+  every kind of failure, and an argon2id verification against a decoy hash when the
+  address is unknown, because argon2 takes long enough that skipping it would answer
+  "is there an account here?" through the response time alone.
+- **The gate is the TCP peer address, never `X-Forwarded-For`** (`AUTH_LOCAL_ALLOWED_CIDRS`).
+  That distinction is the whole value of the setting: a forwarded header is exactly what
+  a request arriving through the public tunnel would set. Which also means Traefik's own
+  address must not be inside the range — noted in `.env.example` and the README, and the
+  reason `config.ts` already refuses a loopback-only `TRUSTED_PROXY_CIDRS` in production.
+  Tested by sending `X-Forwarded-For: 127.0.0.1` from outside the range and asserting it
+  changes nothing.
+- **A used code is a spent code** (`local_credentials.last_totp_step`, migration `0006`).
+  A six-digit code is valid for its whole thirty-second step and for the step either side
+  of it once clock skew is allowed for, so a code read off a screen is replayable for up
+  to ninety seconds. The highest step already accepted is remembered and anything at or
+  below it is refused. Worth closing on this path specifically: it is the one used under
+  pressure, on whatever screen is to hand.
+- **Lockout after five failures, counted across both factors** (`LOCKOUT_THRESHOLD`,
+  fifteen minutes). A wrong code is as much a guess as a wrong password, and a second
+  factor that can be retried freely is a formality. Attempts made while the lock is in
+  force do not extend it — otherwise a script pointed at the endpoint holds the account
+  shut indefinitely, which on the break-glass path is the outage it exists to survive.
+  The trade is stated in the module header: someone already inside the allowed range can
+  be a nuisance, and the CIDR gate is what keeps that on the LAN.
+- **A third rate-limit bucket** (`LOGIN_RATE_LIMIT`, ten attempts per quarter hour per
+  address). Fixed rather than configurable, because the knob would only ever be turned
+  the wrong way. The per-account lockout is the real defence; this stops one client
+  spending the server's argon2 budget across many accounts.
+- **`npm run auth:local -- --email you@example.com`** (`scripts/local-user.ts`,
+  `src/server/auth/provision.ts`): sets or resets the password and prints the TOTP
+  enrolment URI once. A command-line tool rather than a settings screen for a reason that
+  is not laziness — the credential exists for when nobody can sign in, so it cannot live
+  behind a login, and running it on the host keeps the secret out of an HTTP response a
+  reverse proxy might log. A reset mints a *new* TOTP secret, deliberately: an operator
+  resetting this because they suspect a leak should not be left with half the compromise
+  intact. Provisioning lives in its own module so nothing on the request path can write a
+  password hash, which `grep` over `src/server/routes` can prove.
+- `GET /auth/session` reports `methods.local` for **this connection** — the feature being
+  on *and* the peer being inside the range — so the login screen never draws a form that
+  is guaranteed to 404.
+
+### Security
+- The endpoint answers **404, not 403**, both when the feature is off and when the peer
+  is outside the range. The interesting fact about a break-glass endpoint is that it
+  exists; an attacker who learns "there is a password login here, just not for you" has
+  learned where to go looking for a foothold. The operator's diagnostic is a `warn` line
+  naming the refused address, and the response says nothing.
+- `POST` means the ordinary CSRF check applies to it, so the login is not a hole in it.
+- The attempted address is not logged. It is the one piece of an attempt that is personal
+  data, and an operator diagnosing a failure does not need it — the CIDR gate's own line
+  already says where the request came from.
+- Setting a local password is **not** a promotion: the role rule matches the OIDC path,
+  so only the first account in an empty database owns it. A break-glass account must not
+  be a way to mint write access.
+- An address matching more than one account is refused rather than guessed at, at both
+  provisioning and login. `users.email` is deliberately not unique — the OIDC path needs
+  an address to be able to move between subjects — so two matches is a situation for a
+  person to resolve, not for a login to pick a row out of.
+
 ## [0.4.2] — 2026-09-02
 
 ### Added

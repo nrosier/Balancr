@@ -43,6 +43,13 @@
       "when": 1788341869747,
       "tag": "0005_wooden_trish_tilby",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788348718291,
+      "tag": "0006_worthless_exodus",
+      "breakpoints": true
     }
   ]
 }

@@ -142,6 +142,20 @@ when the token arrives straight from the token endpoint over TLS, and the librar
 takes that permission — so over plain `http://` on the container network, anything
 that can answer the token request can name itself as any user.
 
+The break-glass login is set from the command line, not from a screen:
+
+```sh
+npm run auth:local -- --email you@example.com
+```
+
+It asks for a password, prints the TOTP enrolment URI once, and that is the only
+time the secret is readable. There is deliberately no web UI for it — the
+credential exists for when nobody can sign in, so it cannot live behind a login.
+Both factors are mandatory, five failures shut the account for fifteen minutes,
+and `AUTH_LOCAL_ALLOWED_CIDRS` is matched against the TCP peer address rather than
+`X-Forwarded-For`: a header is exactly what a request through the tunnel would
+set. Which also means Traefik's own address must not be in that range.
+
 ## Architecture
 
 ```
@@ -193,13 +207,15 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.5.0`, slice 2 of 4: server-side sessions and the OIDC
-code flow against Authentik, with a deny-by-default route guard
-([#24](https://github.com/nrosier/Balancr/issues/24)), on top of the Fastify app
-from slice 1 — proxy trust, security headers, CSRF, one error envelope and the two
-rate-limit buckets ([#23](https://github.com/nrosier/Balancr/issues/23),
-[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: the CIDR-gated
-break-glass local login ([#25](https://github.com/nrosier/Balancr/issues/25)).
+**Where it is now** — `0.5.0`, slice 3 of 4: the break-glass local login
+([#25](https://github.com/nrosier/Balancr/issues/25)) — password plus mandatory
+TOTP, off by default, and gated on the TCP peer address so it works over LAN or
+VPN and never through the tunnel. On top of slice 2's sessions and OIDC code flow
+against Authentik ([#24](https://github.com/nrosier/Balancr/issues/24)) and slice
+1's Fastify app ([#23](https://github.com/nrosier/Balancr/issues/23),
+[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: the read-only API
+the views read from ([#26](https://github.com/nrosier/Balancr/issues/26)), which
+closes the milestone.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

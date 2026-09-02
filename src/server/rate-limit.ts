@@ -1,5 +1,5 @@
 /**
- * Two buckets: one against noise, one against cost.
+ * Three buckets: one against noise, one against cost, one against guessing.
  *
  * The global bucket is ordinary hygiene — it keeps a loop in a broken client from
  * saturating a single-process server. The bucket in front of `/api/ai/*` is a
@@ -8,6 +8,8 @@
  * the ones that are correctly authenticated. So the AI bucket is deliberately
  * small and measured in hours rather than minutes: it is a spend limit expressed
  * as a request limit, sitting in front of the cost guard rather than instead of it.
+ * The third sits in front of the break-glass password login, where each attempt
+ * costs an argon2 hash and the thing being guessed is six digits long.
  *
  * Counters live in SQLite. See `rate_limits` in the schema for why: an hourly
  * money limit that resets on restart is not a limit, and this process restarts on
@@ -51,6 +53,26 @@ export const AI_RATE_LIMIT = {
  */
 export const aiRateLimit = (): { config: { rateLimit: typeof AI_RATE_LIMIT } } => ({
   config: { rateLimit: AI_RATE_LIMIT },
+})
+
+/**
+ * The bucket in front of the break-glass password login.
+ *
+ * Fixed rather than configurable, because there is no deployment that wants this
+ * looser and the knob would only ever be turned the wrong way. Ten attempts a
+ * quarter of an hour per address is far above what a person needs — a password and
+ * a six-digit code, mistyped a few times — and far below what guessing needs. The
+ * per-account lockout in `auth/local.ts` is the real defence; this is what stops
+ * one client spending the server's argon2 budget on many accounts.
+ */
+export const LOGIN_RATE_LIMIT = {
+  max: 10,
+  timeWindow: '15 minutes',
+} as const
+
+/** Spreadable route options for the local login route. See `LOGIN_RATE_LIMIT`. */
+export const loginRateLimit = (): { config: { rateLimit: typeof LOGIN_RATE_LIMIT } } => ({
+  config: { rateLimit: LOGIN_RATE_LIMIT },
 })
 
 /** What the plugin hands the store's constructor and `child`. */
