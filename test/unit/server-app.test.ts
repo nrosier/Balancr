@@ -132,7 +132,7 @@ describe('error handling', () => {
   })
 
   it('replaces the message of an unexpected error', async () => {
-    app.get('/boom', { config: { rateLimit: false } }, () => {
+    app.get('/boom', { config: { rateLimit: false, auth: false } }, () => {
       // The shape of a message that must never be echoed: it names the database
       // file and a constraint.
       throw new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed at /data/balancr.db')
@@ -146,10 +146,10 @@ describe('error handling', () => {
   })
 
   it('echoes the message of an error the code chose', async () => {
-    app.get('/bad', { config: { rateLimit: false } }, () => {
+    app.get('/bad', { config: { rateLimit: false, auth: false } }, () => {
       throw badRequest('Month must be YYYY-MM.')
     })
-    app.get('/missing', { config: { rateLimit: false } }, () => {
+    app.get('/missing', { config: { rateLimit: false, auth: false } }, () => {
       throw notFound('No facts for that month yet.')
     })
 
@@ -163,7 +163,7 @@ describe('error handling', () => {
   })
 
   it('keeps details out of the response', async () => {
-    app.get('/detailed', { config: { rateLimit: false } }, () => {
+    app.get('/detailed', { config: { rateLimit: false, auth: false } }, () => {
       throw badRequest('That is not a month.', { received: 'secret-internal-value' })
     })
     const res = await app.inject({ method: 'GET', url: '/detailed' })

@@ -35,11 +35,22 @@ export const SESSION_COOKIE = named('balancr_sid')
  */
 export const CSRF_COOKIE = named('balancr_csrf')
 
+/**
+ * The `state` of a login in progress, for the ten minutes one takes.
+ *
+ * Separate from the session cookie because it means something different: it binds
+ * a callback to the browser that started the flow, so a callback URL on its own
+ * cannot log anyone in. See `auth/login-flow.ts`.
+ */
+export const LOGIN_FLOW_COOKIE = named('balancr_login')
+
 export interface CookieAttributes {
   path: string
   httpOnly: boolean
   secure: boolean
   sameSite: 'lax' | 'strict' | 'none'
+  /** Seconds. Absent means a session cookie, which dies with the browser. */
+  maxAge?: number
 }
 
 /**
@@ -49,6 +60,23 @@ export interface CookieAttributes {
  * login would fail on the last step. `Lax` still withholds it from cross-site
  * POSTs, which is the case that matters.
  */
-export function cookieAttributes(httpOnly: boolean): CookieAttributes {
-  return { path: '/', httpOnly, secure: secureCookies, sameSite: 'lax' }
+export function cookieAttributes(httpOnly: boolean, maxAgeSeconds?: number): CookieAttributes {
+  const base: CookieAttributes = { path: '/', httpOnly, secure: secureCookies, sameSite: 'lax' }
+  // Built conditionally rather than with `maxAge: maxAgeSeconds`, because under
+  // `exactOptionalPropertyTypes` an explicit `undefined` is not the same as an
+  // absent key — and an absent key is what makes it a browser-session cookie.
+  return maxAgeSeconds === undefined ? base : { ...base, maxAge: maxAgeSeconds }
+}
+
+/**
+ * Attributes that delete a cookie.
+ *
+ * The attributes have to match the ones it was set with or the browser treats it
+ * as a different cookie and leaves the original in place — which on a logout means
+ * the session cookie is still there, pointing at a row that no longer exists. It
+ * works out because the lookup fails, but "it works out" is not what a logout
+ * should rest on.
+ */
+export function clearedCookie(httpOnly: boolean): CookieAttributes {
+  return { ...cookieAttributes(httpOnly), maxAge: 0 }
 }

@@ -29,6 +29,16 @@ import type {} from '@fastify/cookie'
 import { cookieAttributes, CSRF_COOKIE } from './cookies.ts'
 import { forbidden } from './errors.ts'
 
+declare module 'fastify' {
+  interface FastifyContextConfig {
+    /**
+     * `false` exempts the route entirely — no token checked, and none issued. Only
+     * for endpoints with no browser on the other end; see `routes/health.ts`.
+     */
+    csrf?: boolean
+  }
+}
+
 /** The header the SPA echoes the cookie in. */
 export const CSRF_HEADER = 'x-csrf-token'
 
@@ -95,8 +105,7 @@ export function csrfHook(request: FastifyRequest, reply: FastifyReply): void {
   // Checked before anything else, so an exempt route neither validates a token nor
   // gets handed one — `/healthz` should not answer a container health check with a
   // Set-Cookie every thirty seconds.
-  const routeConfig = request.routeOptions.config as { csrf?: boolean } | undefined
-  if (routeConfig?.csrf === false) return
+  if (request.routeOptions.config.csrf === false) return
 
   if (SAFE_METHODS.has(request.method)) {
     ensureCsrfToken(request, reply)

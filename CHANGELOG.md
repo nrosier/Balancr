@@ -6,6 +6,85 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **Server-side sessions** (`src/server/auth/sessions.ts`, table `sessions`): the cookie
+  carries 32 random bytes and nothing else — no claims, no signature. What is stored is
+  `sha256(token)`, never the token, because `/data` is backed up nightly and a backup is
+  a file that travels; read access to a snapshot of that table should yield no working
+  cookie. No salt and no slow KDF, deliberately: the input is 32 uniformly random bytes,
+  so there is no dictionary to build. Expiry is renewed only once less than half the
+  window remains, which makes an active session effectively permanent and an abandoned
+  one expire on schedule, for one write every few days instead of one per request.
+- **The OIDC code flow against Authentik** (`src/server/auth/oidc.ts`, `openid-client` 6):
+  issuer discovery, PKCE `S256`, `state` and `nonce`, with discovery performed lazily and
+  cached only on success — so Authentik booting after Balancr in the same compose stack
+  cannot poison logins until a restart. A failed discovery is somebody else's outage and
+  answers 503.
+- **Logins in flight as a table** (`src/server/auth/login-flow.ts`, table `login_flows`):
+  the PKCE verifier, the expected `state` and the expected `nonce` must survive the
+  round trip without travelling through the browser, or the protections they provide are
+  handed to whoever is being defended against. A row rather than a signed cookie because
+  single use is then a `delete` with a checked row count — a captured callback URL fails
+  on the second attempt — and because a cookie big enough for all three would be sent on
+  every request for the sake of ten seconds of a login.
+- **The callback is looked up by cookie, not by the `state` in the URL.** Otherwise an
+  attacker starts their own login and hands the victim the resulting link, and the victim
+  ends up signed in to the attacker's account, typing their finances into it. The
+  victim's browser has no matching flow cookie, so the link is useless on its own.
+- **`sub`-keyed user rows** (`src/server/auth/users.ts`): the subject claim is the key,
+  not the email address, so an address change keeps the account's history and whoever
+  later inherits the old address is not handed it. The first subject through the door
+  becomes `owner` and everyone after is `viewer` — a default rather than a flag, because
+  the failure it avoids is silent: an Authentik policy widened to a group, and the second
+  person holding write access to someone else's money. `locale` and `role`, which Balancr
+  owns, survive a login; the display name is refreshed from the provider.
+- **A deny-by-default route guard** (`src/server/auth/guard.ts`): the same shape as the
+  CSRF hook, for the same reason — a route added in six months is protected because it
+  exists, not because someone remembered a list. Opting out is `config: { auth: false }`,
+  which is greppable. It runs at `preHandler`, after the rate limiter, so an anonymous
+  flood is throttled before it costs a session lookup.
+- **Endpoints**: `GET /auth/login`, `GET /auth/callback`, `GET /auth/session` and
+  `POST /auth/logout`. The first two exist only when OIDC is configured — a 404 is the
+  honest answer for a capability a deployment does not have. Logout is a POST and so
+  still carries the CSRF check, and rotates both cookies.
+- **A test issuer instead of a mocked library** (`test/helpers/oidc-issuer.ts`): a fake
+  Authentik reached through `openid-client`'s `customFetch`, signing real RS256 ID tokens
+  with `jose`. Mocking the client would have left the questions worth asking — is PKCE
+  actually sent, is `state` actually compared, is a token minted for another application
+  refused — answered by construction rather than by the code that ships. All three are
+  now tested against the real library, along with replay, a missing flow cookie, a
+  disabled account and a failed discovery.
+
+### Security
+- **`AUTH_OIDC_ISSUER` must be `https://` in production**, refused at startup rather
+  than warned about. Found while writing the signature test: OIDC Core 3.1.3.7 condition
+  6 lets a client skip verifying the ID token's signature when the token arrives over a
+  direct TLS channel from the token endpoint, and `openid-client` takes that permission.
+  So TLS to Authentik *is* what authenticates the claims — over plain `http://` on the
+  container network, anything that can answer the token request can name itself as any
+  user. There is now a test documenting the library's actual behaviour, so a change in it
+  fails loudly instead of quietly making the reasoning wrong.
+- **Cookie deletion uses the attributes the cookie was set with** (`clearedCookie`),
+  because a mismatch leaves the original in place: a logout would leave the session
+  cookie pointing at a deleted row. It works out, since the lookup fails — but "it works
+  out" is not what a logout should rest on.
+- **A login ends any session already in the browser**, so nothing chosen before
+  authentication survives it.
+- The production cross-field config rules — the loopback-only `TRUSTED_PROXY_CIDRS`
+  check, the `PUBLIC_BASE_URL` HTTPS check and the new issuer check — now have tests
+  (`test/unit/config-guards.test.ts`). A guard that silently stops firing is worse than
+  no guard, because `.env.example` still promises it.
+
+### Fixed
+- An unmatched path answered 401 rather than 404 once the guard was deny-by-default:
+  `routeOptions.url` is undefined on the way to the not-found handler and there is
+  nothing there to protect. It also made every "this deployment has no such endpoint"
+  answer a lie, including the 404 that `/auth/login` relies on when OIDC is unconfigured.
+- `csrf.ts` declares its own `FastifyContextConfig` field instead of casting
+  `routeOptions.config`, so a typo in a route's exemption is a type error.
+
 ## [0.4.1] — 2026-09-02
 
 ### Added

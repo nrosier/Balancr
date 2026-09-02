@@ -66,6 +66,16 @@ const EnvSchema = z.object({
   AUTH_OIDC_CLIENT_SECRET: z.string().min(1).optional(),
   AUTH_LOCAL_ENABLED: bool('false'),
   AUTH_LOCAL_ALLOWED_CIDRS: csv('127.0.0.1/32'),
+  /**
+   * How long a session stays valid, counted from its last renewal.
+   *
+   * A week rather than a day because Authentik is the thing being trusted to
+   * decide who you are, and re-running a full SSO round trip every morning adds
+   * friction without adding a decision — Authentik's own session policy is where
+   * that belongs. Short enough that a forgotten browser on a borrowed laptop
+   * stops working on its own.
+   */
+  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(8760).default(168),
 
   // Rate limiting
   /**
@@ -165,6 +175,24 @@ function crossFieldErrors(env: Env): string[] {
     errors.push('PUBLIC_BASE_URL must be https:// in production (cookies are Secure)')
   }
 
+  // Not cosmetic, and not the same rule as the one above. OpenID Connect permits a
+  // client to skip verifying the ID token's signature when the token arrives over
+  // a direct, TLS-authenticated channel from the token endpoint (OIDC Core
+  // 3.1.3.7, condition 6), and `openid-client` takes that permission. So TLS to
+  // Authentik *is* the thing authenticating the claims: over plain HTTP, anything
+  // on the container network that can answer the token request can name itself as
+  // any user. Refused rather than warned about, because the failure is silent.
+  if (
+    env.NODE_ENV === 'production' &&
+    env.AUTH_OIDC_ISSUER !== undefined &&
+    !env.AUTH_OIDC_ISSUER.startsWith('https://')
+  ) {
+    errors.push(
+      'AUTH_OIDC_ISSUER must be https:// in production (the TLS channel to the ' +
+        'token endpoint is what authenticates the ID token claims)',
+    )
+  }
+
   return errors
 }
 
@@ -220,6 +248,7 @@ export function configSummary(): Record<string, unknown> {
     oidcEnabled: config.oidcEnabled,
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
+    SESSION_TTL_HOURS: config.SESSION_TTL_HOURS,
     RATE_LIMIT_API_PER_MINUTE: config.RATE_LIMIT_API_PER_MINUTE,
     RATE_LIMIT_AI_PER_HOUR: config.RATE_LIMIT_AI_PER_HOUR,
     JOBS_ENABLED: config.JOBS_ENABLED,
