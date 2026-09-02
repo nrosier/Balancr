@@ -123,7 +123,9 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
       return `${holdings.length} holdings, ${valued} valued, ${withIsin} with ISIN`
     }))
 
-    checks.push(await check('/api/v1/portfolio/performance', async () => {
+    // Not `/api/v1/…`: the client tries v2 first and falls back, so naming one
+    // version here would report a path that may not be the one that answered.
+    checks.push(await check('portfolio/performance', async () => {
       const performance = await fetchPortfolioPerformance()
       if (performance.chart.length === 0) {
         warnings.push('portfolio/performance returned an empty chart')

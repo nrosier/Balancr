@@ -168,6 +168,83 @@ describe('toHoldingSnapshots', () => {
     expect(rows.find((row) => row.instrument === 'IE00B4L5Y983')?.quantity).toBe('15')
   })
 
+  it('finds the identity Ghostfolio moved into `assetProfile` (#113)', () => {
+    // The live shape, verified against a 2026 instance: the holding carries figures
+    // only, and every identity field sits one level down. There is no `isin` at all
+    // on that instance — the symbol is the identifier — which is why the refine asks
+    // for either and not for both.
+    const position = {
+      quantity: 12,
+      marketPrice: 105.4,
+      valueInBaseCurrency: 1_264.8,
+      allocationInPercentage: 0.42,
+      assetProfile: {
+        symbol: 'IWDA.AS',
+        name: 'iShares Core MSCI World',
+        currency: 'EUR',
+        dataSource: 'YAHOO',
+        assetClass: 'EQUITY',
+        assetSubClass: 'ETF',
+      },
+    }
+
+    const [row] = toHoldingSnapshots(
+      '2026-03-01',
+      portfolioDetailsSchema.parse({ holdings: [position] }),
+      'EUR',
+    )
+    expect(row?.instrument).toBe('IWDA.AS')
+    expect(row?.symbol).toBe('IWDA.AS')
+    expect(row?.name).toBe('iShares Core MSCI World')
+    // The sharper half of #113: this is what the allocation treemap groups by, and
+    // reading it from the level Ghostfolio no longer uses would not fail — it would
+    // put every position in `unknown` and draw one grey block.
+    expect(row?.assetClass).toBe('EQUITY')
+  })
+
+  it('lets a holding that names itself outrank its own `assetProfile` (#113)', () => {
+    // A release that sends both. The outer object wins because that is the level
+    // this schema was written against, and a fallback that overrides is not a
+    // fallback. Nothing is known to send disagreeing values; the rule is here so
+    // that if one ever does, the answer is decided rather than incidental.
+    const [row] = toHoldingSnapshots(
+      '2026-03-01',
+      portfolioDetailsSchema.parse({
+        holdings: [
+          {
+            symbol: 'IWDA.AS',
+            assetClass: 'EQUITY',
+            quantity: 1,
+            valueInBaseCurrency: 100,
+            assetProfile: { symbol: 'WRONG', assetClass: 'LIQUIDITY', name: 'From the profile' },
+          },
+        ],
+      }),
+      'EUR',
+    )
+    expect(row?.symbol).toBe('IWDA.AS')
+    expect(row?.assetClass).toBe('EQUITY')
+    // Absent above, so the profile's copy is used: a fallback per field, not per
+    // object. Taking the profile wholesale or not at all would lose this name.
+    expect(row?.name).toBe('From the profile')
+  })
+
+  it('still refuses a holding whose profile names it no better (#113)', () => {
+    // The hoist must not turn an unidentifiable position into a silently stored one:
+    // `totalValueCents` is the sum of the rows that were stored, so a skipped
+    // holding shrinks the total and every share computed from it.
+    const result = portfolioDetailsSchema.safeParse({
+      holdings: [{ quantity: 1, valueInBaseCurrency: 100, assetProfile: { currency: 'EUR' } }],
+    })
+
+    expect(result.success).toBe(false)
+    const message = result.success ? '' : z.prettifyError(result.error)
+    expect(message).toContain('cannot be identified')
+    // The key list is taken after the hoist, so it names what was available rather
+    // than where the schema looked — `currency` came out of the profile.
+    expect(message).toContain('currency')
+  })
+
   it('stores a holding that names itself only by ISIN (#107)', () => {
     // The live shape from #107: no `symbol` and no `currency` inside the object.
     // Neither is missing information — the identifier is the ISIN, and the value is
