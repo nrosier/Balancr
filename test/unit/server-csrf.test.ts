@@ -29,7 +29,7 @@ let app: FastifyInstance
 beforeEach(async () => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  app = await buildApp({ db: ctx.db })
+  app = await buildApp({ db: ctx.db, web: null })
 
   app.get('/t/read', { config: { rateLimit: false, auth: false } }, () => ({ ok: true }))
   app.post('/t/write', { config: { rateLimit: false, auth: false } }, () => ({ ok: true }))

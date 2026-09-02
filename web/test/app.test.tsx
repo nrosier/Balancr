@@ -1,0 +1,217 @@
+/**
+ * The session gate: what the application shows before it knows who you are, and what
+ * it does when the answer changes.
+ *
+ * The rule under all of it is that **the session is asked for, never inferred**. A
+ * cookie visible in `document.cookie` proves nothing — the row may be revoked, expired
+ * or gone — so `/auth/session` is the first call and every transition re-asks instead
+ * of patching a local copy. The failure this prevents is a UI showing an account that
+ * no longer exists, and it only shows up in a test that changes the server's answer
+ * between two renders, which is what the sign-in and sign-out cases here do.
+ *
+ * The unreachable-server case is tested because it is the one an operator meets first:
+ * a container that is still starting, or a proxy pointed at nothing. It has to offer a
+ * retry rather than an empty dashboard, and the retry has to actually re-ask.
+ */
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { App } from '../src/App.tsx'
+import type { BootstrapResponse, SessionResponse } from '../src/shared.ts'
+import { clickLink, i18nReady, renderApp, resetTheme } from './helpers.tsx'
+
+/** What `/bootstrap` answered. The version is what the header prints. */
+const BOOTSTRAP: BootstrapResponse = {
+  version: '0.5.1',
+  locales: { supported: ['en', 'nl'], default: 'en' },
+  format: { locale: 'nl-BE', currency: 'EUR', timeZone: 'Europe/Brussels' },
+  csrf: { cookie: 'balancr_csrf', header: 'x-csrf-token' },
+}
+
+const ANONYMOUS: SessionResponse = {
+  authenticated: false,
+  user: null,
+  methods: { oidc: true, local: false },
+}
+
+const SIGNED_IN: SessionResponse = {
+  authenticated: true,
+  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
+  methods: { oidc: true, local: false },
+}
+
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+/** Answers `/auth/session` with each queued reply in turn, repeating the last. */
+function serveSessions(
+  first: Response | Error,
+  ...rest: (Response | Error)[]
+): ReturnType<typeof vi.fn> {
+  const replies = [first, ...rest]
+  let call = 0
+  const mock = vi.fn(() => {
+    // Repeating the last reply rather than running out: a component that asks twice
+    // where the test expected once should show up as a wrong assertion, not as an
+    // unhandled rejection from somewhere inside React.
+    const reply = replies[Math.min(call, replies.length - 1)] ?? first
+    call += 1
+    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply.clone())
+  })
+  vi.stubGlobal('fetch', mock)
+  return mock
+}
+
+beforeAll(async () => {
+  await i18nReady()
+})
+
+beforeEach(resetTheme)
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+describe('before the server has answered', () => {
+  it('shows a live region rather than a spinner that flashes', () => {
+    serveSessions(json(SIGNED_IN))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+
+    // Against a local server this lasts milliseconds; what a screen reader needs is
+    // the status, not an animation.
+    expect(screen.getByRole('status').textContent).toBe('Loading…')
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull()
+  })
+})
+
+describe('when nobody is signed in', () => {
+  it('offers the sign-in screen the server said would work', async () => {
+    serveSessions(json(ANONYMOUS))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+
+    const oidc = await screen.findByRole('link', { name: 'Sign in with Authentik' })
+    expect(oidc.getAttribute('href')).toContain('/auth/login?return_to=')
+    // No shell: the sign-in screen is not a page inside the application.
+    expect(screen.queryByRole('navigation')).toBeNull()
+  })
+
+  it('re-asks the server rather than trusting the login response', async () => {
+    // The login response carries a user, and assembling a session out of it would
+    // work — right up to the point where the two answers disagree.
+    const fetchMock = serveSessions(
+      json({ ...ANONYMOUS, methods: { oidc: false, local: true } }),
+      json({ authenticated: true, user: SIGNED_IN.user }),
+      json(SIGNED_IN),
+    )
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+
+    const form = await screen.findByRole('button', { name: 'Sign in' })
+    fireEvent.change(screen.getByLabelText('Email address'), {
+      target: { value: 'nick@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse' } })
+    fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '123456' } })
+    fireEvent.click(form)
+
+    await screen.findByRole('navigation', { name: 'Sections' })
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      '/auth/session',
+      '/auth/local/login',
+      '/auth/session',
+    ])
+  })
+})
+
+describe('when someone is signed in', () => {
+  const signedIn = async (path = '/'): Promise<void> => {
+    serveSessions(json(SIGNED_IN))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path })
+    await screen.findByRole('navigation', { name: 'Sections' })
+  }
+
+  it('renders the page inside the shell', async () => {
+    await signedIn('/portfolio')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portfolio')
+    expect(screen.getByText('Nick')).toBeTruthy()
+    expect(screen.getByText('v0.5.1')).toBeTruthy()
+  })
+
+  it('titles the document with the page and the application', async () => {
+    await signedIn('/budget')
+    await waitFor(() => {
+      expect(document.title).toBe('Budget · Balancr')
+    })
+  })
+
+  it('retitles on a navigation', async () => {
+    await signedIn('/')
+    await waitFor(() => {
+      expect(document.title).toBe('Overview · Balancr')
+    })
+
+    const insights = [...screen.getByRole('navigation').querySelectorAll('a')].find(
+      (a) => a.textContent === 'Insights',
+    )
+    clickLink(insights ?? document.createElement('a'))
+    await waitFor(() => {
+      expect(document.title).toBe('Insights · Balancr')
+    })
+  })
+
+  it('shows the not-found page inside the shell for a path no route owns', async () => {
+    // The server hands any navigation the same `index.html`, so a mistyped address
+    // arrives here rather than at a Fastify 404 — and it should still have a nav.
+    await signedIn('/nope')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Page not found')
+    expect(screen.getByRole('navigation', { name: 'Sections' })).toBeTruthy()
+    await waitFor(() => {
+      expect(document.title).toBe('Page not found · Balancr')
+    })
+  })
+
+  it('returns to the sign-in screen once the server says the session is gone', async () => {
+    serveSessions(json(SIGNED_IN), json(ANONYMOUS))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+    await screen.findByRole('navigation', { name: 'Sections' })
+
+    clickLink(screen.getByRole('button', { name: 'Sign out' }))
+    // The sign-out POST is answered by the same queue, and the re-ask after it is what
+    // decides the screen — not the button that was pressed.
+    await screen.findByRole('link', { name: 'Sign in with Authentik' })
+  })
+})
+
+describe('when the server cannot be reached', () => {
+  it('says so, quotes nothing it does not know, and offers a retry', async () => {
+    serveSessions(new TypeError('fetch failed'))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Balancr could not be reached.')
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+  })
+
+  it('actually re-asks on retry', async () => {
+    const fetchMock = serveSessions(new TypeError('fetch failed'), json(SIGNED_IN))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+    await screen.findByRole('alert')
+
+    clickLink(screen.getByRole('button', { name: 'Try again' }))
+    await screen.findByRole('navigation', { name: 'Sections' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the request id when the server gave one, since it is the only way to look it up', async () => {
+    serveSessions(
+      json(
+        { error: { code: 'internal_error', message: 'Something went wrong.', requestId: 'req-42' } },
+        500,
+      ),
+    )
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/' })
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Something went wrong.')
+    expect(alert.textContent).toContain('req-42')
+  })
+})
