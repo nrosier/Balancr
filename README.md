@@ -69,8 +69,12 @@ half-English, and costs a fraction of what shipping raw transactions would.
 - **A golden test enforces it** — the redaction test fails if any payee string
   from the fixture appears in a payload. It is load-bearing, not decorative.
 - **Nothing the AI suggests takes effect on its own.** Proposals are reviewed and
-  applied by you; v1 never writes to Actual at all, and a test scans the adapter
-  to keep it that way.
+  applied by you.
+- **Neither source is ever written to.** Not Actual, not Ghostfolio, and not as a
+  matter of intent: the Actual client re-exports no method that mutates a budget, the
+  Ghostfolio client's read type cannot express an HTTP method or a body, and a test
+  per adapter scans the source so a future edit that goes around either one fails
+  before it ships.
 - **No CDN, no external assets.** All JavaScript, CSS and fonts are bundled and
   served from the container, so the UI works on a locked-down network and leaks
   nothing to a third party by loading a page.
@@ -427,11 +431,10 @@ Next are portfolio and insights
 [#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
 ([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
 responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
-the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)), the
-double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) and a
-read-only guard for Ghostfolio to match the one Actual already has
-([#120](https://github.com/nrosier/Balancr/issues/120)) — shipping as `0.5.11`,
-`0.5.12`, … until every issue in that milestone is closed and `0.6.0` lands.
+the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) and the
+double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) —
+shipping as `0.5.11`, `0.5.12`, … until every issue in that milestone is closed and
+`0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

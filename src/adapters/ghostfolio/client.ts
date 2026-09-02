@@ -9,6 +9,17 @@
  * The public-share endpoint (`/api/v1/public/<accessId>/portfolio`) is
  * deliberately not used: it would require exposing an unauthenticated URL
  * containing the whole portfolio.
+ *
+ * **Nothing here may write to Ghostfolio, and the types are what say so.** These are
+ * somebody's real accounts on an instance Balancr shares with nothing else, and v1's
+ * proposal machinery is deliberately local-effect only — no handler mutates either
+ * source. Actual's half of that promise is enforced by not re-exporting a single
+ * mutating method; this file's half is `ReadOptions`, which cannot express a method or
+ * a body, and one POST that takes no arguments at all. It matters more here than the
+ * endpoint count suggests: `POST /api/v1/order` and `POST /api/v1/import` are real
+ * endpoints on the instance we authenticate against, and this is the file somebody
+ * reaching for "while I'm in here, let me just record that transaction" would open.
+ * `test/unit/ghostfolio-guard.test.ts` is the tripwire under both halves.
  */
 import { z } from 'zod'
 import { config } from '../../config.ts'
@@ -50,41 +61,38 @@ function url(path: string): string {
   return `${config.GHOSTFOLIO_URL.replace(/\/+$/, '')}${path}`
 }
 
-async function request(
-  path: string,
-  init: RequestInit & { authenticated?: boolean } = {},
-): Promise<unknown> {
-  const { authenticated = true, ...rest } = init
+/**
+ * Everything a read is allowed to ask for.
+ *
+ * This used to be `RequestInit & { authenticated?: boolean }`, and that is the door
+ * #120 closes. `RequestInit` carries `method`, `body` and arbitrary headers, so any
+ * caller holding one could place an order or start an import; the fact that no caller
+ * did was a property of today's code rather than a property of the type. Every read
+ * below needs exactly one thing to vary, so exactly one thing is on offer, and a write
+ * is no longer a change to a string literal — it has to get past the compiler.
+ */
+interface ReadOptions {
+  /**
+   * False for the liveness check, which runs before there is a token to send and is
+   * the only endpoint Ghostfolio answers without one.
+   */
+  authenticated?: boolean
+}
 
-  const send = async (token: string | null): Promise<Response> =>
-    fetch(url(path), {
-      ...rest,
-      headers: {
-        accept: 'application/json',
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...rest.headers,
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
+/**
+ * A fetch rejection, named.
+ *
+ * Timeouts and DNS failures arrive as TypeError/DOMException with a message that never
+ * mentions the URL, so the path has to be added here or the log says only "fetch
+ * failed" about one of three upstreams.
+ */
+function networkError(path: string, cause: unknown): GhostfolioError {
+  const detail = cause instanceof Error ? cause.message : String(cause)
+  return new GhostfolioError(`request to ${path} failed: ${detail}`, path)
+}
 
-  let response: Response
-  try {
-    response = await send(authenticated ? await token() : null)
-  } catch (error) {
-    // Timeouts and DNS failures arrive as TypeError/DOMException, with a message
-    // that never mentions the URL.
-    throw new GhostfolioError(
-      `request to ${path} failed: ${error instanceof Error ? error.message : String(error)}`,
-      path,
-    )
-  }
-
-  if (response.status === 401 && authenticated) {
-    log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
-    cachedToken = null
-    response = await send(await token())
-  }
-
+/** The decoded JSON body, or a GhostfolioError that says which of the two went wrong. */
+async function decode(path: string, response: Response): Promise<unknown> {
   if (!response.ok) {
     throw new GhostfolioError(
       `${path} returned HTTP ${response.status}`,
@@ -92,12 +100,52 @@ async function request(
       response.status,
     )
   }
-
   try {
     return await response.json()
   } catch {
     throw new GhostfolioError(`${path} did not return JSON`, path, response.status)
   }
+}
+
+/**
+ * One GET, with a single re-authentication if the token has expired.
+ *
+ * There is no `method` here and no way to pass one: `fetch` defaults to GET, and the
+ * default is the only thing this function can issue.
+ */
+async function request(path: string, options: ReadOptions = {}): Promise<unknown> {
+  const authenticated = options.authenticated ?? true
+
+  const get = async (bearer: string | null): Promise<Response> =>
+    fetch(url(path), {
+      headers: {
+        accept: 'application/json',
+        ...(bearer === null ? {} : { authorization: `Bearer ${bearer}` }),
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+
+  let response: Response
+  try {
+    response = await get(authenticated ? await token() : null)
+  } catch (error) {
+    throw networkError(path, error)
+  }
+
+  if (response.status === 401 && authenticated) {
+    log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
+    cachedToken = null
+    // Wrapped too: the retry can fail the same way the first attempt can, and an
+    // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
+    // jobs could not tell apart from a bug in themselves.
+    try {
+      response = await get(await token())
+    } catch (error) {
+      throw networkError(path, error)
+    }
+  }
+
+  return decode(path, response)
 }
 
 /** Parses a response, naming the path so a shape change is legible. */
@@ -113,17 +161,39 @@ function parse<T>(path: string, schema: z.ZodType<T>, raw: unknown): T {
   return result.data
 }
 
+/**
+ * The one POST this adapter issues, written out here rather than routed through
+ * `request`.
+ *
+ * Authentication is not a mutation — it exchanges the security token from `.env` for a
+ * JWT and changes nothing on the instance — but it is the only call that needs a method
+ * and a body, so it is the only place either appears. Two things fall out of that.
+ * `request` no longer has to accept them from anybody, which is the guarantee; and the
+ * reentrancy is gone, where `request` called `token`, which called `request` again with
+ * `authenticated: false` so as not to recurse for ever.
+ *
+ * It takes no arguments, so there is nothing here for a future caller to point at a
+ * different path or fill with a different body.
+ */
 async function token(): Promise<string> {
-  if (cachedToken) return cachedToken
+  if (cachedToken !== null) return cachedToken
 
   const path = '/api/v1/auth/anonymous'
-  const raw = await request(path, {
-    authenticated: false,
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ accessToken: config.GHOSTFOLIO_SECURITY_TOKEN }),
-  })
-  cachedToken = parse(path, authSchema, raw).authToken
+  let response: Response
+  try {
+    response = await fetch(url(path), {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ accessToken: config.GHOSTFOLIO_SECURITY_TOKEN }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (error) {
+    throw networkError(path, error)
+  }
+
+  // `authSchema` requires a non-empty string, so the cache can never hold a token that
+  // would go out as a bare `Bearer`.
+  cachedToken = parse(path, authSchema, await decode(path, response)).authToken
   return cachedToken
 }
 
