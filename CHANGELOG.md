@@ -6,6 +6,98 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The budget page** (`web/src/pages/Budget.tsx`,
+  [#30](https://github.com/nrosier/Balancr/issues/30)) — one month over one request to
+  `GET /api/budget`, answered in the order someone actually asks: four totals, then where
+  the money went, then whether each envelope held, then whether the month is on pace, then
+  a year of shape per envelope. Each answer narrower than the one before it, which is also
+  why the charts sit in that order — nobody wants a wall of sparklines before they know
+  whether the month balanced.
+- **Income to envelopes as a Sankey** (`web/src/charts/SpendSankey.tsx`). Three columns —
+  income sources, a pooled hub, envelopes — rather than income drawn straight to
+  categories, because that second shape claims to know which euro bought the groceries and
+  nothing in Actual knows that. It draws no total it was not handed: the pool's inflow is
+  the sum of the income categories rather than `totals.incomeCents`, no negative flow gets
+  a ribbon, and a "not spent" node appears only when the pool really has money left.
+  Duplicate names are disambiguated, because a link addresses its endpoints by name while
+  Actual scopes names to a group, so two envelopes really can share one.
+- **Assigned against spent as a bullet chart** (`web/src/charts/BudgetBullet.tsx`) —
+  assignment as a wide bar, spend as a narrow bar laid over it, the twelve-month norm as a
+  tick. Rows are ordered by the further of the two figures rather than by spend, so an
+  envelope holding €400 with nothing spent still appears: that it is untouched is an answer
+  to "budget versus actual", not a reason to leave it out.
+- **Spending pace against the month's own progress** (`web/src/ui/PaceBar.tsx`), in CSS
+  rather than a twelfth chart instance — twelve observers, twelve SVG trees and twelve
+  tooltips would cost more than the rest of the page put together for a shape a rectangle
+  draws exactly. Every figure it prints — spent, assigned, projected month end, projected
+  overrun, how far through the month today is — comes from the server's `burn_rate_over`
+  finding. The only arithmetic in the browser is the width of the bar, and a width prints
+  no number.
+- **A wall of small multiples** (`web/src/charts/CategoryTrend.tsx`), each sparkline
+  carrying its own category's EWMA norm dashed through it — which is why the trend window
+  is twelve months rather than the twenty-four the history chart uses: the line and the
+  average then describe the same period, where two years of line against a one-year mean
+  invites reading the gap as a trend.
+- **Trailing per-category spend on the wire** (`loadCategoryTrends` in
+  `src/domain/aggregate/facts.ts`). Twelve months per category, dense, and every series
+  aligned to the same months — dense because a line with holes in it makes a different
+  claim from one that touches zero, and shared because a per-category window would hand the
+  newest envelope the shortest axis and make its line look the steepest.
+
+### Changed
+- **Each sparkline scales to itself**, against the usual shared-axis rule, and the argument
+  is written into the file. Rent is thirty times groceries, so one shared maximum draws ten
+  flat lines and a single real chart. Magnitude is what the bullet chart one card above is
+  for, and every sparkline prints its own figure, so height is never the thing being read.
+- **Findings are rendered in the browser from the catalogue the digest already uses**
+  (`web/src/ai/signals.ts` over a new dependency-free `src/domain/ai/vars.ts`).
+  `/api/budget` carries a finding as a code, a severity and a map of integers — never prose
+  — so the same finding reads identically in an email and on screen, and a third language
+  costs a catalogue rather than a model call. A code this bundle has no sentence for is
+  dropped rather than printed as its own name, and a sentence missing one of its figures is
+  dropped rather than interpolated with a hole in it: `€ 0` standing in for "the server did
+  not say" is a number someone would act on.
+- **The month is a query parameter, not a route.** `?month=` on the endpoint and one piece
+  of state in the page, because the resource hook already refetches on a path change and
+  that is the whole mechanism. The picker lists the months the database actually holds
+  rather than a window derived from the one on screen — a trailing window would drop August
+  out of the list the moment July was picked.
+- **The browser bundle passes Vite's 500 kB warning**, at 913 kB and 303 kB gzipped: this
+  page registers the Sankey, scatter and markLine renderers on top of what the overview
+  already pulled in. It is still one file served from Balancr with no external origin and
+  nothing inline, which is the property the build actually enforces. Splitting it is worth
+  doing once the last screen has added the last chart type, and not before — the set is
+  still growing.
+- The stale `## [Unreleased]` heading this file carried between 0.5.2 and 0.5.1 is gone. It
+  was the section 0.5.2 was rewritten from, left in place by the release that superseded
+  it, and it made the overview screen appear twice in a file whose first line promises
+  newest first.
+
+### Fixed
+- **Every genuine `alert` made `/api/budget` and `/api/insights` answer 500.**
+  `signalSchema.severity` said `z.enum(['info', 'warn', 'critical'])` while `codes.ts`,
+  `SEVERITY_RANK`, `capSeverity` and both `severity` columns say `alert`. Nothing
+  translated between the two vocabularies, so the response schema rejected the value the
+  database had just handed it and `parse` threw. Only the two mildest severities were
+  reachable: `over_available`, `above_baseline` past its second threshold,
+  `emergency_fund_short` and `recompute_mismatch` would each have taken both endpoints
+  down. The wire now uses the database's word, and the API fixture carries an `alert` so
+  the top severity is exercised from here on — reverting the one-line fix now fails twelve
+  tests across both endpoints. Found while building this page's own fixture, which is the
+  argument for fixtures that span a vocabulary instead of sampling the middle of it.
+
+### Security
+- **Names are escaped on their way into a chart tooltip** (`web/src/charts/tooltip.ts`).
+  ECharts renders a tooltip formatter's return value as HTML, and the names going into one
+  arrived from a bank feed. The CSP already stops the damage — it permits no external
+  origin and carries no `'unsafe-inline'`, so an injected handler never runs — and this is
+  the layer that stops the *display* from breaking, which is the failure a good CSP leaves
+  behind: a category called `Rent <shared>` should print its own name rather than lose half
+  of it to a tag nobody wrote.
+
 ## [0.5.4] — 2026-09-02
 
 ### Fixed
@@ -100,45 +192,6 @@ rather than when the feature list ends.
 - The overview section is no longer a placeholder, so `common.page.overview.soon` is gone
   from both catalogues and `web/test/pages.test.tsx` checks the "coming next" note on the
   four sections that still have one.
-
-## [Unreleased]
-
-### Added
-- **The overview screen** (`web/src/pages/Overview.tsx`) — the first page that shows your
-  own figures: net worth with its liquid, invested and debt parts, the savings rate for the
-  month, how many months the buffer covers, net worth over time as a chart, and the
-  data-quality score with what is costing it points. One `GET /api/overview` against
-  Balancr's own SQLite, so opening the page triggers no sync and no AI call, and nothing on
-  it is computed in the browser — the one arithmetic operation on the page is dividing
-  centimonths of cover back into months.
-- **A null prints "not known yet", never `€ 0`.** Every figure the endpoint can return is
-  nullable, because a job that has not run has produced no balance, and a zero in that
-  slot is a wrong number where a blank is a missing one. The card stays, so the reader can
-  see *which* figure is missing rather than wondering where it went.
-- **Four states per endpoint, not two** (`web/src/api/resource.tsx`,
-  `web/src/ui/DataState.tsx`). `useResource` and `DataState` are one hook and one wrapper
-  covering waiting, unreachable, answered-with-nothing and answered — with a reload that
-  keeps the figures on screen instead of blanking them, a failed refresh that keeps the
-  last good ones and notes the failure above them, and an out-of-order answer that cannot
-  overwrite a newer one. Built once here because #30–#33 each read one endpoint the same
-  way.
-- **A session that expires under an open dashboard is handed upward.** A `401` from any
-  read reaches `App.tsx` through `SessionExpiryProvider`, which re-asks `/auth/session` and
-  lands on the sign-in screen by exactly the path a first visit takes — rather than leaving
-  a page to decide, or showing a dashboard of empty charts for an account that no longer
-  exists.
-- **A freshness note that names what broke** (`web/src/ui/Freshness.tsx`). A failed
-  background job is reported as the job and the message it recorded, restricted to the four
-  jobs that produce these numbers — a failed AI run does not make a net-worth figure wrong,
-  so it does not get offered as the reason one might be. A scheduler switched off gets its
-  own note, and a fresh install with nothing to report shows nothing at all.
-- **The net-worth chart** (`web/src/charts/NetWorthChart.tsx`), carrying integer cents all
-  the way into the series so that every rendered string — axis, tooltip, and the sentence
-  behind its `role="img"` — goes through `format.ts`. Daily snapshots get one month label
-  where the month changes rather than an axis of unreadable dates.
-- `formatDateTime` in `src/i18n/format.ts`, for the freshness note. `formatDate` takes a
-  `YYYY-MM-DD` day and throws on a timestamp, and the difference between a sync that ran at
-  breakfast and one that stopped at midnight is the whole point of showing the hour.
 
 ## [0.5.1] — 2026-09-02
 
