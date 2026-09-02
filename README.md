@@ -274,12 +274,17 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, slice 4 of 8: the settings page
+**Where it is now** — `0.6.0`, slice 4 of 8: the web UI. The settings page is in
 ([#33](https://github.com/nrosier/Balancr/issues/33)) — the one screen in the
-application that writes, and the eleven routes behind it. Language, the seventeen
+application that writes, and the eleven routes behind it: language, the seventeen
 thresholds the aggregation engine judges by, the prompt editor with its diff and its
 priced dry run, the account mapping that decides which of two tools counts a shared
-investment account, and what the assistant has cost this month.
+investment account, and what the assistant has cost this month. So is the portfolio
+page ([#31](https://github.com/nrosier/Balancr/issues/31)), and the history both
+charts had been drawing without
+([#114](https://github.com/nrosier/Balancr/issues/114)) — a nightly backfill over
+Actual's dated balances and Ghostfolio's value series, so a fresh install shows two
+years rather than one night. Insights is being built now.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -395,7 +400,9 @@ both generations of server work and neither fails silently. That endpoint turns 
 to hold **401 daily value points**, which is most of the answer to why the net-worth
 chart draws a single dot ([#114](https://github.com/nrosier/Balancr/issues/114)):
 both series are written one row per nightly run, so they begin the day Balancr is
-installed rather than the day the data does.
+installed rather than the day the data does. A nightly backfill now reads those
+points, and Actual's dated balances beside them, so both charts start where the data
+starts.
 
 **The first clean production run then found the rest by being readable.** With both
 Ghostfolio defects fixed, every job finished `ok` and the log became legible enough to
@@ -436,9 +443,8 @@ Next are insights
 ([#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
 ([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
 responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
-the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) and the
-double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) —
-shipping as `0.5.11`, `0.5.12`, … until every issue in that milestone is closed and
+the double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) —
+shipping as `0.5.13`, `0.5.14`, … until every issue in that milestone is closed and
 `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),

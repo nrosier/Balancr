@@ -6,6 +6,60 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Both charts now start where the data starts, not where the install does**
+  ([#114](https://github.com/nrosier/Balancr/issues/114)). `net_worth_snapshots` and
+  `portfolio_metrics` are written one row per day a job ran, so a fortnight-old
+  install had a fortnight of history and a time axis with a dot on it — while Actual
+  had been answering `getAccountBalance` for any date all along and Ghostfolio had
+  been answering `range=max` with a dated series. A nightly `backfill` job now reads
+  both, at month-end granularity, and fills in what was never asked for.
+
+  The two halves fail independently on purpose. The portfolio-value chart is a
+  per-date total, so the chart's value *is* the row and that half always runs. Net
+  worth is stored per account, so it needs a value per account rather than a
+  portfolio total — and the performance endpoint takes `accounts=<id>`, so each
+  Ghostfolio account that actually counts is asked for its own series. One request
+  per counted account buys a whole dated history, which makes this N calls for the
+  job rather than N per date, and N the accounts that count rather than the accounts
+  that exist. The unfiltered total is never split across accounts: on an install
+  where Ghostfolio counts seven accounts and one of them is mapped, splitting it
+  would overstate history by six accounts every month, in the flattering direction.
+
+  Asking per account is also what lets a month-end predate one holding and not
+  another. `range=max` begins at an account's first order, so a month-end before it
+  is a month that account held nothing rather than a month whose value is unknown —
+  an account opened last year no longer shortens the history of one opened five years
+  ago, and Actual alone is the whole truth of a date when there was no portfolio at
+  all.
+
+  A date that genuinely cannot be completed — a hole inside a series, or an account
+  with no dated value anywhere, which is what a cash-only Ghostfolio account looks
+  like — is skipped rather than written and flagged. What the reader gets is a series
+  that starts where both halves are known instead of one joined to today at a step,
+  and a cliff where a backfill meets live data is worse than a shorter chart, because
+  the cliff looks like an event. Nothing has to be cleared later either: the next
+  pass still sees the date missing.
+
+  Cost is why it is a separate job. It is the only pass that talks to Actual once per
+  account per month, so it reads both date sets before opening a connection and never
+  asks Actual again once the net-worth half is complete. It is also left out of the
+  freshness banner: every figure it writes is for a settled month-end in the past, so
+  its failure leaves the charts shorter and leaves nothing on them wrong.
+
+### Changed
+
+- The net-worth history is clamped to the months Actual actually has a budget for.
+  `getAccountBalance` answers a date before the budget existed with zero, and a zero
+  that means "there was nothing" renders identically to one that means "we did not
+  look" — only one of them is true.
+- Jobs that need the current month now derive it from the instant the runner recorded
+  rather than reading the clock again, so a run starting seconds before midnight
+  cannot write one half of its output into one month and the other half into the next.
+
 ## [0.5.12] — 2026-09-03
 
 ### Added

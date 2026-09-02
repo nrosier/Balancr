@@ -28,6 +28,13 @@ import { loadJobRows, type JobRow } from '../../../jobs/index.ts'
  * which the insights endpoint reports on its own terms. It does not make the
  * budget or net-worth numbers untrustworthy, and marking the whole dashboard
  * stale because Gemini was rate-limited would train the reader to ignore the flag.
+ *
+ * `backfill` is out for the same kind of reason and a sharper one. Every figure it
+ * writes is for a settled month-end in the past, so its failure leaves the charts
+ * shorter than they could be and leaves nothing on them wrong. It is also the job
+ * most likely to fail on a slow Actual instance, being the only one that makes a
+ * call per account per month — so including it would put a staleness warning over
+ * correct, current numbers on exactly the installs least able to act on it.
  */
 export const DATA_JOBS = ['sync', 'portfolio', 'networth', 'signals'] as const
 

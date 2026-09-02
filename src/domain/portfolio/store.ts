@@ -9,6 +9,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
+import type { ValuePoint } from './history.ts'
 import type { AllocationSlice, PortfolioMetricsResult } from './metrics.ts'
 import type { HoldingSnapshot } from './snapshot.ts'
 
@@ -105,6 +106,81 @@ export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult):
       },
     })
     .run()
+}
+
+/**
+ * Dates that already have a metrics row.
+ *
+ * Read before the backfill fetches anything, so a pass with nothing to do costs one
+ * query and no network at all. That matters more than it looks: this is the only job
+ * that talks to Actual once per month per account, and a backfill that re-derived
+ * twenty-four settled month-ends every night would be indistinguishable from a bug.
+ */
+export function metricsDates(db: Db): Set<string> {
+  return new Set(
+    db.select({ date: portfolioMetrics.date }).from(portfolioMetrics).all().map((row) => row.date),
+  )
+}
+
+export interface BackfillResult {
+  written: number
+  /** Dates that already had a row, which is the steady state. */
+  kept: number
+}
+
+/**
+ * Value-only metrics rows for past month-ends, out of Ghostfolio's own chart.
+ *
+ * `onConflictDoNothing`, not the upsert the nightly pass uses, and that is the whole
+ * design of this function. A row the portfolio job wrote carries allocation and
+ * Ghostfolio's reported return alongside the total; a chart point carries the total
+ * and nothing else. Upserting would silently downgrade a real row to a poorer one the
+ * first time a backfill ran over a date the nightly pass had already done — worse
+ * data after a job succeeded, which is the failure nobody goes looking for.
+ *
+ * Everything but the total is null rather than empty. `twrBp` is the sharp one: the
+ * chart carries `netPerformanceInPercentage` per point, so a return figure per
+ * month-end looks available — but whether that field is a fraction or a percentage is
+ * not settled by anything in this repo, and `reportedTwrBp` reads its sibling on the
+ * summary as a fraction. Getting it backwards is a hundredfold error on a percentage,
+ * which renders as a number rather than as a gap. `loadPortfolioMetrics` reads null
+ * back as "not available yet", which is true.
+ *
+ * Nothing is written to `portfolio_snapshots`: there are no historical holdings to
+ * write. That is also what keeps these rows out of every existing reader —
+ * `latestSnapshotDate` looks at the holdings table, so the portfolio page and the AI
+ * bundle still read a fully computed date, and only `loadPortfolioValueHistory`,
+ * which selects the date and the total, ever sees a backfilled row.
+ */
+export function backfillPortfolioValues(
+  db: Db,
+  points: readonly ValuePoint[],
+): BackfillResult {
+  const computedAt = new Date()
+  const out: BackfillResult = { written: 0, kept: 0 }
+
+  db.transaction((tx) => {
+    for (const point of points) {
+      const changes = tx
+        .insert(portfolioMetrics)
+        .values({
+          date: point.date,
+          twrBp: null,
+          mwrBp: null,
+          totalValueCents: point.valueCents,
+          allocationJson: null,
+          driftJson: null,
+          terAnnualCents: null,
+          computedAt,
+        })
+        .onConflictDoNothing({ target: portfolioMetrics.date })
+        .run().changes
+      if (changes > 0) out.written += 1
+      else out.kept += 1
+    }
+  })
+
+  return out
 }
 
 /**

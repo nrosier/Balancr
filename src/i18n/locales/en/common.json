@@ -68,6 +68,7 @@
   },
   "job": {
     "ai": "AI analysis",
+    "backfill": "History backfill",
     "networth": "Net worth",
     "portfolio": "Portfolio",
     "signals": "Signals",
