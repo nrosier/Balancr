@@ -1,4 +1,16 @@
 {
+  "answer": {
+    "annual": "Once a year",
+    "discretionary": "Free spending",
+    "fixed": "Fixed cost",
+    "income": "Income",
+    "irregular": "Now and then",
+    "monthly": "Every month",
+    "no": "No",
+    "quarterly": "Every quarter",
+    "variable": "Variable cost",
+    "yes": "Yes"
+  },
   "clarify": {
     "custody_shared_unknown": "Do you share {{category}} with your co-parent?",
     "frequency_unknown": "How often does {{category}} come up?",
@@ -47,8 +59,22 @@
   "proposal": {
     "diff": "Now / proposed",
     "expiresAt": "Expires {{when}}",
+    "field": {
+      "coicopCode": "Spending class",
+      "custodyShared": "Shared with your co-parent",
+      "expectedFrequency": "How often",
+      "nature": "Type of cost",
+      "sensitive": "Name kept from the AI",
+      "userDescription": "What it is for"
+    },
     "hint": "Nothing is changed until you apply it.",
-    "title": "Proposed changes"
+    "title": "Proposed changes",
+    "value": {
+      "unset": "not set"
+    },
+    "warn": {
+      "privacy": "Applying this starts sending the category name to the AI."
+    }
   },
   "title": "Insights",
   "variant": {

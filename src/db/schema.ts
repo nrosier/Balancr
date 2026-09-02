@@ -178,7 +178,10 @@ export const categoryMeta = sqliteTable(
      * plus COICOP class and nature — never its name. See domain/ai/redact.ts.
      */
     sensitive: integer({ mode: 'boolean' }).notNull().default(false),
-    /** 0..1 — how much of the above was confirmed by the user vs inferred. */
+    /**
+     * 0..100 — how much of the above the user confirmed rather than Balancr
+     * inferred. Each answered clarification raises it; nothing lowers it.
+     */
     confidence: integer().notNull().default(0),
     updatedAt: createdAt(),
   },
@@ -197,10 +200,25 @@ export const clarificationQueue = sqliteTable(
     categoryId: text('category_id').notNull(),
     /** i18n key for the question, so it renders in the user's language. */
     questionCode: text('question_code').notNull(),
+    /**
+     * The run whose payload produced the guess, for the audit trail. Plain text
+     * rather than a foreign key, for the same reason `audit_log` has none: the
+     * question outlives the ledger row that suggested it, and a pruned run must
+     * neither block the delete nor blank the provenance of a question the user
+     * still has to answer.
+     */
+    runId: text('run_id'),
     /** Share of total spend, basis points. Drives ordering. */
     materialityBp: integer('materiality_bp').notNull().default(0),
     /** The model's proposed answer — the user confirms or edits, not writes. */
     suggestionJson: text('suggestion_json'),
+    /**
+     * `answered` and `dismissed` rows are kept for ever, and they are what makes
+     * "asked once" true: the queue is its own record of every question already
+     * put to the user, including the ones whose answer is not visible in a
+     * `category_meta` column (a frequency of `monthly` is both the default and a
+     * legitimate answer).
+     */
     status: text({ enum: ['open', 'answered', 'dismissed'] })
       .notNull()
       .default('open'),
@@ -656,6 +674,45 @@ export const proposals = sqliteTable(
 //  Ops
 // ============================================================================
 
+/**
+ * Every change a human approved, and what it changed.
+ *
+ * Deliberately has **no foreign keys**. An audit row whose `run_id` a cascade can
+ * blank, or whose actor disappears when the account is deleted, is not an audit
+ * trail — it is a cache of one. The ids are stored as plain text so the row stays
+ * exactly as it was written even when the run it came from has been pruned, and
+ * the reader treats a dangling id as "no longer available" rather than as "never
+ * happened".
+ *
+ * `before_json`/`after_json` hold the field-level pair, not a sentence: the same
+ * reason findings store numbers rather than prose, so a trail written in a Dutch
+ * session reads correctly in English.
+ */
+export const auditLog = sqliteTable(
+  'audit_log',
+  {
+    id: uuid().primaryKey(),
+    at: createdAt(),
+    /** `proposal.apply`, `clarification.answer`, … See domain/audit.ts. */
+    action: text().notNull(),
+    /** Who approved it. Null for a change the system made on its own. */
+    actorId: text('actor_id'),
+    /** The table the change landed in, e.g. `category_meta`. */
+    entity: text().notNull(),
+    /** Which row: a category id, an account id, a proposal id. */
+    entityRef: text('entity_ref').notNull(),
+    /** The AI run that suggested it, when one did. */
+    runId: text('run_id'),
+    proposalId: text('proposal_id'),
+    beforeJson: text('before_json'),
+    afterJson: text('after_json'),
+  },
+  (t) => [
+    index('audit_log_at_idx').on(t.at),
+    index('audit_log_entity_idx').on(t.entity, t.entityRef, t.at),
+  ],
+)
+
 export const jobs = sqliteTable('jobs', {
   name: text().primaryKey(),
   lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
@@ -705,6 +762,7 @@ export const schema = {
   aiFindings,
   aiNarratives,
   proposals,
+  auditLog,
   jobs,
   settings,
 }
