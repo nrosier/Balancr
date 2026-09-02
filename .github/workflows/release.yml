@@ -47,6 +47,11 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          # Stamped into the image so the startup log names the commit, not just
+          # the version. `github.sha` is the merge commit for a branch push and the
+          # tagged commit for a tag, which is the commit that was built either way.
+          build-args: |
+            BALANCR_REVISION=${{ github.sha }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

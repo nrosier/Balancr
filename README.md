@@ -240,8 +240,8 @@ number and a blank is a missing one. And **a session can vanish while a dashboar
 open**, so a `401` from any endpoint is handed back up to the session gate, which
 re-asks and lands on the sign-in screen by exactly the path a first visit takes.
 
-**Running it against the real Actual and Ghostfolio found two integration defects**,
-both filed. Ghostfolio has shipped `/api/v1/portfolio/details` with `holdings` as a
+**Running it against the real Actual and Ghostfolio found three defects**, all
+filed. Ghostfolio has shipped `/api/v1/portfolio/details` with `holdings` as a
 symbol-keyed map and as a plain list; only the map was read, so the portfolio job failed
 every run and no holdings, allocation or TWR were stored
 ([#95](https://github.com/nrosier/Balancr/issues/95)) — fixed in `0.5.3` by accepting
@@ -253,6 +253,17 @@ path was built for, and still a bug. Two causes: four draft-7 keywords the provi
 not accept, and `maxItems: 48`, which it does accept but refuses at that size. Both fixed
 in `0.5.4`, and verified against the live API rather than against the documentation —
 the second cause only showed up when the first fix was tried for real.
+
+The third was found while diagnosing the first two, and it is the one that cost the
+most time: **nothing in the logs said which build was running**
+([#104](https://github.com/nrosier/Balancr/issues/104)). A container reporting
+`0.5.0` had been pulled at `0.5.4` — pulled, but never recreated — and establishing
+that took matching the digest `docker compose pull` printed against manifest digests
+read out of CI logs. Until it was established, both fixes above looked like fixes that
+had not worked. Startup now names the version first, before any step that can fail,
+and the commit is stamped into the image as `revision`: every push to `main` publishes
+`edge` from the same `package.json` as the last tag, so a version identifies a release
+while only the commit identifies a build.
 
 Next are portfolio, insights and settings
 ([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
