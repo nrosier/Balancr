@@ -6,6 +6,49 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The HTTP server, as its own module** (`src/server/app.ts`): a factory rather than a
+  module-level instance, so a test builds a real app against an in-memory database.
+  Registration order is the security order — cookies before the CSRF hook that reads
+  them, headers before any route can reply, rate limits before CSRF so a flood of
+  tokenless requests is throttled like any other flood. `src/main.ts` keeps the
+  lifecycle and hands the HTTP surface off to it.
+- **Peer-versus-client address handling** (`src/server/net.ts`): the file that decides
+  whether a forwarded header may be believed. `peerAddress` reads the TCP socket,
+  which an HTTP client cannot choose; `request.ip` is used for logging and rate
+  limiting only. `ipaddr.js` does the matching, so an IPv4 client on a dual-stack
+  listener (`::ffff:10.0.0.5`) still matches an IPv4 range instead of silently
+  matching nothing. A malformed CIDR is a startup failure naming the entry, never a
+  range that quietly matches everything or nothing.
+- **Security headers** (`src/server/security.ts`): a content-security policy that
+  permits no external origin at all — the same decision as bundling every asset
+  locally. `'unsafe-inline'` appears nowhere, `frame-ancestors` and `base-uri` are
+  `'none'`, and HSTS is sent only on an HTTPS deployment so a developer's localhost is
+  never pinned.
+- **Double-submit CSRF** (`src/server/csrf.ts`): sound here because of the `__Host-`
+  cookie prefix — a token no sibling host can set is a token an attacker cannot know.
+  One token per browser rather than per form, so two tabs and the back button work.
+  A route opts out with `config: { csrf: false }`, which is greppable, unlike a route
+  someone forgot to add to a list.
+- **One error envelope** (`src/server/errors.ts`): `{ error: { code, message, requestId } }`.
+  A message reaches the client only when the code chose it; Fastify's default echoes
+  the thrown message, and the messages within reach include SQLite constraint text,
+  better-sqlite3 paths and internal Actual and Ghostfolio host:port pairs.
+- **Two rate-limit buckets** (`src/server/rate-limit.ts`, `RATE_LIMIT_API_PER_MINUTE`
+  and `RATE_LIMIT_AI_PER_HOUR`): an ordinary per-minute bucket against noise, and a
+  small hourly bucket in front of anything that can reach Gemini. The second is a
+  spend limit wearing a request limit's clothes — a correctly authenticated caller is
+  exactly the expensive one, so Authentik cannot help. Counters live in the new
+  `rate_limits` table rather than in memory, because an hourly money limit that resets
+  on deploy is not a limit. `/healthz` is exempt: a 429 there reads as a dead container.
+
+### Changed
+- `src/main.ts` is now lifecycle only — migrations, prompt seeding, i18n, the port and
+  the shutdown order. The Fastify instance it used to build inline moved to
+  `server/app.ts`.
+
 ## [0.4.0] — 2026-09-02
 
 ### Added

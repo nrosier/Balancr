@@ -187,6 +187,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
+**Where it is now** — `0.5.0`, slice 1 of 4: the Fastify app itself, with proxy
+trust, security headers, CSRF, one error envelope and the two rate-limit buckets
+([#23](https://github.com/nrosier/Balancr/issues/23),
+[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: server-side
+sessions and OIDC against Authentik
+([#24](https://github.com/nrosier/Balancr/issues/24)).
+
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
 
