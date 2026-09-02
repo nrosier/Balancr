@@ -379,6 +379,14 @@ export const accountSettingSchema = z.object({
   includeInNetWorth: z.boolean(),
   dedupeGroup: z.string().nullable(),
   isSourceOfTruth: z.boolean(),
+  /**
+   * Which of this row's fields a person decided, rather than a rule.
+   *
+   * On screen so that a suggestion can say what it would overwrite and a reader can
+   * tell an answer they gave from one that was derived for them. Sent as an array
+   * rather than the stored JSON string: the client should not be parsing a column.
+   */
+  decidedFields: z.array(z.enum(['kind', 'includeInNetWorth', 'dedupeGroup', 'isSourceOfTruth'])),
 })
 
 export const spendMonthSchema = z.object({
