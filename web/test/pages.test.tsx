@@ -7,22 +7,44 @@
  * an unknown path is not a page at all — because those are the cases a `switch` in a
  * component would get subtly wrong and nothing would notice.
  *
- * The pages themselves are placeholders that #29–#33 replace wholesale, so the test
- * is not about their content. It is about the two things that stay true afterwards:
+ * Four of the five pages are still placeholders that #30–#33 replace wholesale, so the
+ * test is not about their content. It is about the two things that stay true
+ * afterwards, and stay true for the overview page that has already been filled in:
  * every page has exactly one level-one heading, and every string on it comes from the
  * catalogue rather than being written into the component. A hardcoded English word
  * survives a Dutch UI without failing anything, which is precisely why it is checked
  * here rather than left to a reading.
+ *
+ * The overview page reads `/api/overview`, so `fetch` is stubbed for the whole file.
+ * Not because this test is about the payload — `overview.test.tsx` is — but because a
+ * page component left to reach the network in jsdom fails on the machine with no
+ * server and passes on the machine with one.
  */
 import { screen } from '@testing-library/react'
 import i18next from 'i18next'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotFound } from '../src/pages/NotFound.tsx'
 import { ROUTES, routeFor } from '../src/routes.ts'
-import { clickLink, i18nReady, renderApp } from './helpers.tsx'
+import { apiStub, clickLink, i18nReady, renderApp } from './helpers.tsx'
+
+/** The four that #30–#33 still have to fill in. */
+const PLACEHOLDERS = ROUTES.filter((route) => route.path !== '/')
 
 beforeAll(async () => {
   await i18nReady()
+})
+
+beforeEach(() => {
+  // The overview page renders its empty state, which is all this file needs from it.
+  vi.stubGlobal('fetch', (path: string) => {
+    const stub = apiStub(path)
+    if (stub === null) throw new Error(`unstubbed request: ${path}`)
+    return Promise.resolve(stub)
+  })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('routeFor', () => {
@@ -47,7 +69,7 @@ describe('routeFor', () => {
 })
 
 describe('the pages', () => {
-  it.each(ROUTES.map((route) => [route.labelKey, route] as const))(
+  it.each(PLACEHOLDERS.map((route) => [route.labelKey, route] as const))(
     'gives %s one heading, a lede and a note, all translated',
     (_key, route) => {
       renderApp(<route.Page />, { path: route.path })

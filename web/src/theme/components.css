@@ -180,3 +180,139 @@
   font-size: var(--type-xs);
   color: var(--text-muted);
 }
+
+/* ── Notice variants ─────────────────────────────────────────────────────── */
+
+/*
+ * `--warn` is for "the figures may be wrong", `--info` for "nothing is broken and
+ * here is why it looks old". Two colours rather than one, because a reader who sees
+ * the same box for both learns to ignore the one that matters.
+ */
+.notice--warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.notice--info {
+  border-color: var(--info);
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.notice__lead {
+  margin: 0;
+}
+
+.notice__list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+}
+
+/* ── Page sections ───────────────────────────────────────────────────────── */
+
+/*
+ * The vertical rhythm between a page's sections. `.main` deliberately has no gap of
+ * its own — a page decides its own spacing, and the shell should not put one between
+ * a heading and its own lede.
+ */
+.stack {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+/* Loading, failed and empty all render here, and all three read as one line of text. */
+.state {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+}
+
+.state__title {
+  margin: 0;
+  font-size: var(--type-md);
+  font-weight: var(--weight-semibold);
+}
+
+/* The quiet "updated at" line, when there is nothing wrong to say. */
+.freshness {
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+/* ── Metrics ─────────────────────────────────────────────────────────────── */
+
+.metric__value {
+  margin: 0;
+  font-size: var(--type-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--lead-tight);
+}
+
+.metric__value--positive {
+  color: var(--positive);
+}
+
+.metric__value--negative {
+  color: var(--negative);
+}
+
+/* A figure no job has produced yet is not a figure; it should not read like one. */
+.metric__value--unknown {
+  font-size: var(--type-md);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+
+.metric__note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-sm);
+}
+
+.metric__rows {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--type-sm);
+}
+
+/*
+ * Label left, figure right, on one row each. `flex` rather than a two-column grid
+ * because the label and the value are wrapped in a `<div>` inside the `<dl>` — the
+ * markup a definition list needs to keep pairs together for a screen reader.
+ */
+.metric__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.metric__row + .metric__row {
+  margin-top: var(--space-1);
+}
+
+.metric__row dt {
+  color: var(--text-muted);
+}
+
+.metric__row dd {
+  margin: 0;
+  text-align: right;
+}
+
+/* ── Data quality ────────────────────────────────────────────────────────── */
+
+.hygiene__heading {
+  margin: var(--space-4) 0 0;
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+}
+
+.hygiene__clean {
+  margin: var(--space-3) 0 0;
+  font-size: var(--type-sm);
+  color: var(--positive);
+}

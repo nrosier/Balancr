@@ -17,6 +17,11 @@
  * `resetTheme` is here rather than in `setup.ts` because it is not "what jsdom is
  * missing" — it is state the application deliberately persists, and a test file that
  * checks a stored theme must not change what the next one sees.
+ *
+ * `apiStub` is here for the same reason `renderApp` is: from #29 onwards a page fetches
+ * its own endpoint as soon as it mounts, so a test about routing, the session or the
+ * shell has to answer for a page it is not testing. Left to reach the network, those
+ * tests would fail on a machine with no server and pass on one with a server running.
  */
 import { fireEvent, render, type RenderResult } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -71,6 +76,35 @@ function Providers({ children }: { children: ReactNode }): ReactNode {
 export function renderApp(ui: ReactNode, options: RenderAppOptions = {}): RenderResult {
   if (options.path !== undefined) visit(options.path)
   return render(ui, { wrapper: Providers })
+}
+
+/**
+ * What each read endpoint answers on a deployment whose jobs have never run: every
+ * field null, every list empty, so the page renders its "no data yet" state.
+ *
+ * Keyed by path rather than answering everything, so a test's own queue still gets the
+ * `/auth/*` calls it was written for. Grows a row per page as #30–#33 land.
+ */
+const EMPTY_READS: Record<string, unknown> = {
+  '/api/overview': {
+    freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    netWorth: null,
+    history: [],
+    month: null,
+    totals: null,
+    emergencyFundCentimonths: null,
+    hygiene: null,
+  },
+}
+
+/** That answer as a `Response`, or null for a path no page reads. */
+export function apiStub(path: string): Response | null {
+  const body = EMPTY_READS[path]
+  if (body === undefined) return null
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
 }
 
 /** Forgets a remembered theme and the attribute it stamps on `<html>`. */

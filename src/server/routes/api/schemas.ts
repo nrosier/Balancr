@@ -279,6 +279,16 @@ export const insightsSchema = z.object({
   }),
 })
 
+/**
+ * The two shapes that appear inside more than one response, named because the
+ * client renders each with one component. Structurally identical to the interfaces
+ * in `freshness.ts` and `hygiene.ts`, which is the point: those describe what the
+ * builders produce, these describe what the SPA is allowed to rely on, and the
+ * `parse` in each handler is where the two are made to agree.
+ */
+export type Freshness = z.infer<typeof freshnessSchema>
+export type Hygiene = z.infer<typeof hygieneSchema>
+
 export type Overview = z.infer<typeof overviewSchema>
 export type Budget = z.infer<typeof budgetSchema>
 export type Portfolio = z.infer<typeof portfolioSchema>

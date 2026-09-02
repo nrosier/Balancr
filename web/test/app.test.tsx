@@ -17,7 +17,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App.tsx'
 import type { BootstrapResponse, SessionResponse } from '../src/shared.ts'
-import { clickLink, i18nReady, renderApp, resetTheme } from './helpers.tsx'
+import { apiStub, clickLink, i18nReady, renderApp, resetTheme } from './helpers.tsx'
 
 /** What `/bootstrap` answered. The version is what the header prints. */
 const BOOTSTRAP: BootstrapResponse = {
@@ -42,14 +42,23 @@ const SIGNED_IN: SessionResponse = {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-/** Answers `/auth/session` with each queued reply in turn, repeating the last. */
+/**
+ * Answers `/auth/session` with each queued reply in turn, repeating the last.
+ *
+ * `/api/*` is answered out of `apiStub` instead, and never consumes the queue: the page
+ * inside the shell fetches its own endpoint the moment it mounts, and a session payload
+ * handed back to it would leave these tests failing on the page rather than on the
+ * session they are about.
+ */
 function serveSessions(
   first: Response | Error,
   ...rest: (Response | Error)[]
 ): ReturnType<typeof vi.fn> {
   const replies = [first, ...rest]
   let call = 0
-  const mock = vi.fn(() => {
+  const mock = vi.fn((path: string) => {
+    const stub = apiStub(path)
+    if (stub !== null) return Promise.resolve(stub)
     // Repeating the last reply rather than running out: a component that asks twice
     // where the test expected once should show up as a wrong assertion, not as an
     // unhandled rejection from somewhere inside React.
@@ -60,6 +69,12 @@ function serveSessions(
   vi.stubGlobal('fetch', mock)
   return mock
 }
+
+/** The paths asked of the auth endpoints, in order. What these tests assert on. */
+const authCalls = (mock: ReturnType<typeof vi.fn>): string[] =>
+  mock.mock.calls
+    .map((call) => String(call[0]))
+    .filter((path) => !path.startsWith('/api/'))
 
 beforeAll(async () => {
   await i18nReady()
@@ -114,7 +129,7 @@ describe('when nobody is signed in', () => {
     fireEvent.click(form)
 
     await screen.findByRole('navigation', { name: 'Sections' })
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+    expect(authCalls(fetchMock)).toEqual([
       '/auth/session',
       '/auth/local/login',
       '/auth/session',
@@ -198,7 +213,7 @@ describe('when the server cannot be reached', () => {
 
     clickLink(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByRole('navigation', { name: 'Sections' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(authCalls(fetchMock)).toEqual(['/auth/session', '/auth/session'])
   })
 
   it('shows the request id when the server gave one, since it is the only way to look it up', async () => {

@@ -215,23 +215,28 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, slice 1 of 8: the shell the screens go in
-([#28](https://github.com/nrosier/Balancr/issues/28)) — a React SPA with routing,
-navigation, the light/dark theme, both languages, the sign-in screen and the chart
-wrapper every view will use. There is a UI you can log into and move around; the
-five sections are still placeholders, and each gets filled in its own slice. Two
-constraints shaped it: **no external origin** — fonts, icons and charts are all
-bundled, because the CSP names none and a dashboard that fetches a script from
-someone else's domain hands that domain the page — and **language and formatting
-stay separate**, so choosing English does not turn `€ 1.234,56` into `€ 1,234.56`.
+**Where it is now** — `0.6.0`, slice 2 of 8: the overview screen
+([#29](https://github.com/nrosier/Balancr/issues/29)) — the first page with real
+figures on it. Net worth with its liquid, invested and debt parts, the savings rate
+for the month, how many months the buffer covers, the net-worth line over time, and
+the data-quality score with what is costing it points. Every number is read from
+Balancr's own SQLite, computed by the aggregation jobs, and formatted through
+`format.ts`, including the chart's axis and tooltip.
 
-Next is the overview screen ([#29](https://github.com/nrosier/Balancr/issues/29)),
-then budget, portfolio, insights and settings
+Two things it establishes for the four screens still to come. **A page has four
+states, not one**: waiting, unreachable, answered-with-nothing and answered — and a
+figure the jobs have not produced yet says "not known yet" rather than `€ 0`, because
+a zero is a wrong number and a blank is a missing one. And **a session can vanish
+while a dashboard sits open**, so a `401` from any endpoint is handed back up to the
+session gate, which re-asks and lands on the sign-in screen by exactly the path a
+first visit takes.
+
+Next are budget, portfolio, insights and settings
 ([#30](https://github.com/nrosier/Balancr/issues/30)–[#33](https://github.com/nrosier/Balancr/issues/33)),
 language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
 and the accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.1`,
-`0.5.2`, … until every issue in that milestone is closed and `0.6.0` lands.
+([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.2`,
+`0.5.3`, … until every issue in that milestone is closed and `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

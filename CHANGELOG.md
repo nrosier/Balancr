@@ -6,6 +6,86 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The overview screen** (`web/src/pages/Overview.tsx`) — net worth with its liquid,
+  invested and debt parts, the savings rate for the month with the income, spend and
+  assigned figures behind it, how many months the emergency buffer covers, the net-worth
+  line over time, and the data-quality score with each deduction that is costing it
+  points. One request to `GET /api/overview`, and **nothing on the page is computed in the
+  browser**: the single piece of arithmetic is turning centimonths of cover back into
+  months, because everything else was already decided by the aggregation jobs and a second
+  implementation in the client is a second answer.
+- **Four states for one endpoint, shared by every page still to come**
+  (`web/src/ui/DataState.tsx`, `web/src/api/resource.tsx`). Waiting announces itself in a
+  live region rather than flashing a spinner; unreachable says so and quotes the request
+  id, which is the only way to find the cause in the log; answered-with-nothing offers a
+  refresh instead of a page of zeroes; and a refresh that *fails* keeps the figures it
+  already had with a note above them, because throwing away good numbers to show an error
+  is a net loss of information.
+- **A missing figure says so.** Every field on the overview payload can legitimately be
+  null — the net-worth job has run but the budget sync has not, the buffer needs both —
+  and each renders "Not known yet" rather than `€ 0`. A zero is a wrong number; a blank is
+  a missing one, and only one of the two is honest.
+- **A vanished session is reported, not absorbed** (`SessionExpiryProvider`). A cookie can
+  be revoked from another device while a dashboard sits open, so a `401` from any endpoint
+  is handed up to the session gate in `App.tsx`, which re-asks the server and lands on the
+  sign-in screen by exactly the path a first visit takes. Wired once around the whole
+  shell, so the four remaining screens inherit it.
+- **Freshness told plainly** (`web/src/ui/Freshness.tsx`). A failed job names itself and
+  what it said; a deployment with the scheduler switched off explains why the figures are
+  not moving; an ordinary instance gets a quiet "Updated 02/09/2026, 07:30"; and a new
+  install with nothing to report says nothing at all, because a notice about "not yet" is
+  a worry manufactured out of an empty database. A failed **AI** run does not claim the
+  numbers are stale — it is not one of the four jobs that produce them.
+- `formatDateTime` in `src/i18n/format.ts`, for the one place an hour matters. "Updated
+  02/09/2026" for a sync that stopped at midnight reads as this morning's figure.
+
+### Changed
+- The overview section is no longer a placeholder, so `common.page.overview.soon` is gone
+  from both catalogues and `web/test/pages.test.tsx` checks the "coming next" note on the
+  four sections that still have one.
+
+## [Unreleased]
+
+### Added
+- **The overview screen** (`web/src/pages/Overview.tsx`) — the first page that shows your
+  own figures: net worth with its liquid, invested and debt parts, the savings rate for the
+  month, how many months the buffer covers, net worth over time as a chart, and the
+  data-quality score with what is costing it points. One `GET /api/overview` against
+  Balancr's own SQLite, so opening the page triggers no sync and no AI call, and nothing on
+  it is computed in the browser — the one arithmetic operation on the page is dividing
+  centimonths of cover back into months.
+- **A null prints "not known yet", never `€ 0`.** Every figure the endpoint can return is
+  nullable, because a job that has not run has produced no balance, and a zero in that
+  slot is a wrong number where a blank is a missing one. The card stays, so the reader can
+  see *which* figure is missing rather than wondering where it went.
+- **Four states per endpoint, not two** (`web/src/api/resource.tsx`,
+  `web/src/ui/DataState.tsx`). `useResource` and `DataState` are one hook and one wrapper
+  covering waiting, unreachable, answered-with-nothing and answered — with a reload that
+  keeps the figures on screen instead of blanking them, a failed refresh that keeps the
+  last good ones and notes the failure above them, and an out-of-order answer that cannot
+  overwrite a newer one. Built once here because #30–#33 each read one endpoint the same
+  way.
+- **A session that expires under an open dashboard is handed upward.** A `401` from any
+  read reaches `App.tsx` through `SessionExpiryProvider`, which re-asks `/auth/session` and
+  lands on the sign-in screen by exactly the path a first visit takes — rather than leaving
+  a page to decide, or showing a dashboard of empty charts for an account that no longer
+  exists.
+- **A freshness note that names what broke** (`web/src/ui/Freshness.tsx`). A failed
+  background job is reported as the job and the message it recorded, restricted to the four
+  jobs that produce these numbers — a failed AI run does not make a net-worth figure wrong,
+  so it does not get offered as the reason one might be. A scheduler switched off gets its
+  own note, and a fresh install with nothing to report shows nothing at all.
+- **The net-worth chart** (`web/src/charts/NetWorthChart.tsx`), carrying integer cents all
+  the way into the series so that every rendered string — axis, tooltip, and the sentence
+  behind its `role="img"` — goes through `format.ts`. Daily snapshots get one month label
+  where the month changes rather than an axis of unreadable dates.
+- `formatDateTime` in `src/i18n/format.ts`, for the freshness note. `formatDate` takes a
+  `YYYY-MM-DD` day and throws on a timestamp, and the difference between a sync that ran at
+  breakfast and one that stopped at midnight is the whole point of showing the hour.
+
 ## [0.5.1] — 2026-09-02
 
 ### Added

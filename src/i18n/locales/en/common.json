@@ -46,7 +46,8 @@
   },
   "empty": {
     "noData": "No data yet",
-    "noDataHint": "Run a sync to pull in your budget and portfolio."
+    "noDataHint": "Run a sync to pull in your budget and portfolio.",
+    "unknown": "Not known yet"
   },
   "error": {
     "generic": "Something went wrong.",
@@ -59,6 +60,18 @@
     "irregular": "Irregular",
     "monthly": "Monthly",
     "quarterly": "Quarterly"
+  },
+  "freshness": {
+    "jobFailed": "{{job}} — {{error}}",
+    "jobsOff": "Scheduled jobs are switched off on this instance, so these figures stay as old as the last run.",
+    "stale": "A background job last failed, so these figures may be out of date."
+  },
+  "job": {
+    "ai": "AI analysis",
+    "networth": "Net worth",
+    "portfolio": "Portfolio",
+    "signals": "Signals",
+    "sync": "Budget sync"
   },
   "nature": {
     "discretionary": "Discretionary",
@@ -89,8 +102,7 @@
       "soon": "Coming next: findings by severity, the monthly narrative, the clarification queue and proposal review."
     },
     "overview": {
-      "lede": "Net worth, savings rate and the health of the underlying data.",
-      "soon": "Coming next: net worth over time, savings rate, emergency-fund months and a data hygiene score."
+      "lede": "Net worth, savings rate and the health of the underlying data."
     },
     "portfolio": {
       "lede": "Allocation, return and what the holdings cost you each year.",

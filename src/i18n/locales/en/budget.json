@@ -19,7 +19,15 @@
     "uncategorised": "Uncategorised"
   },
   "hygiene": {
+    "clean": "Nothing is costing points.",
+    "deductions": "What is costing points",
     "hint": "Analysis is only as good as the bookkeeping behind it.",
+    "reason": {
+      "recompute_mismatch": "Recomputed totals disagree with Actual",
+      "stale_prices": "Prices past their staleness limit",
+      "uncategorised": "Uncategorised transactions",
+      "unreconciled": "Accounts not reconciled lately"
+    },
     "score": "Quality score",
     "title": "Data quality"
   },

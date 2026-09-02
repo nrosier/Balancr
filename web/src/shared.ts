@@ -28,6 +28,7 @@ export {
   firstDayOfWeek,
   formatBp,
   formatDate,
+  formatDateTime,
   formatDecimal,
   formatMonth,
   formatMonthShort,
@@ -43,6 +44,8 @@ export type { FormatSettings } from '../../src/i18n/format-config.ts'
 
 export type {
   Budget,
+  Freshness,
+  Hygiene,
   Insights,
   Overview,
   Portfolio,

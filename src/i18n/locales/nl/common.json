@@ -46,7 +46,8 @@
   },
   "empty": {
     "noData": "Nog geen gegevens",
-    "noDataHint": "Voer een synchronisatie uit om je budget en portefeuille op te halen."
+    "noDataHint": "Voer een synchronisatie uit om je budget en portefeuille op te halen.",
+    "unknown": "Nog niet bekend"
   },
   "error": {
     "generic": "Er is iets misgegaan.",
@@ -59,6 +60,18 @@
     "irregular": "Onregelmatig",
     "monthly": "Maandelijks",
     "quarterly": "Per kwartaal"
+  },
+  "freshness": {
+    "jobFailed": "{{job}} — {{error}}",
+    "jobsOff": "Geplande taken staan uit op deze instantie; deze cijfers blijven even oud als de laatste uitvoering.",
+    "stale": "Een achtergrondtaak is de laatste keer mislukt; deze cijfers kunnen verouderd zijn."
+  },
+  "job": {
+    "ai": "AI-analyse",
+    "networth": "Nettovermogen",
+    "portfolio": "Portefeuille",
+    "signals": "Signalen",
+    "sync": "Budgetsynchronisatie"
   },
   "nature": {
     "discretionary": "Vrij besteedbaar",
@@ -89,8 +102,7 @@
       "soon": "Binnenkort: bevindingen per ernst, het maandverslag, de vragenlijst en het nazicht van voorstellen."
     },
     "overview": {
-      "lede": "Nettowaarde, spaarquote en de kwaliteit van de onderliggende gegevens.",
-      "soon": "Binnenkort: vermogen doorheen de tijd, spaarquote, maanden noodfonds en een score voor de kwaliteit van je gegevens."
+      "lede": "Nettowaarde, spaarquote en de kwaliteit van de onderliggende gegevens."
     },
     "portfolio": {
       "lede": "Spreiding, rendement en wat de posities je jaarlijks kosten.",

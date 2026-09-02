@@ -1,6 +1,7 @@
 {
   "chart": {
     "allocationTitle": "Spreiding",
+    "netWorthSummary": "Nettovermogen tussen {{from}} en {{to}}: {{start}} bij het begin, {{end}} op het einde.",
     "netWorthTitle": "Nettovermogen in de tijd",
     "twrTitle": "Rendement in de tijd"
   },
@@ -17,9 +18,12 @@
     "weight": "Gewicht"
   },
   "metric": {
+    "debt": "Schulden",
     "emergencyFund": "Noodbuffer",
+    "emergencyFundHint": "Hoe lang het direct beschikbare saldo een gemiddelde maand zou dekken.",
     "gain": "Resultaat",
     "invested": "Geïnvesteerd",
+    "liquid": "Direct beschikbaar",
     "mwr": "Geldgewogen rendement",
     "netWorth": "Nettovermogen",
     "ter": "Jaarlijkse kosten",
