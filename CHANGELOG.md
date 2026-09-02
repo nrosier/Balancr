@@ -43,8 +43,16 @@ rather than when the feature list ends.
   the provider compares it byte for byte. It was also the one value nothing printed,
   and the provider refuses the authorization request before the browser ever returns,
   so there was no failed login for Balancr to log and no message for it to improve.
-  Startup now logs the issuer, the client id and the exact redirect URI it will send;
-  the startup dump names both non-secret OIDC inputs instead of a single boolean.
+  Startup now logs the issuer, the client id and the exact redirect URI it will send.
+
+  Found while fixing it: `configSummary` — the function whose entire purpose is to be
+  loggable, naming every variable and masking every secret — was exported and never
+  called, so `PUBLIC_BASE_URL` had never been printed either and the only way to read
+  the effective configuration was `docker compose exec … printenv`. It is now logged
+  once at startup, right after the version, and gains the two non-secret OIDC inputs
+  instead of a single `oidcEnabled` boolean. What makes that safe is a test: every
+  secret-shaped field is asserted masked, and no secret value may appear anywhere in
+  the object.
 
 ### Added
 - **The Authentik provider setup is documented**

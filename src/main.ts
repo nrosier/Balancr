@@ -24,7 +24,7 @@
  * process exits — and nothing else.
  */
 import { closeActual } from './adapters/actual/client.ts'
-import { config } from './config.ts'
+import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
@@ -45,6 +45,14 @@ async function main(): Promise<void> {
     { version: APP_VERSION, revision: APP_REVISION, node: process.version, env: config.NODE_ENV },
     'balancr starting',
   )
+
+  // The effective configuration, once, right after the version. `configSummary`
+  // exists precisely to be loggable — it names every variable and masks every
+  // secret — and until now nothing called it, so a value that was wrong could only
+  // be found by reading the container's environment. That is one `docker` command
+  // too many for the question "is PUBLIC_BASE_URL what I think it is", which is
+  // the question behind a rejected OIDC redirect URI (#110).
+  log.info(configSummary(), 'configuration')
 
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')

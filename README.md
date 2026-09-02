@@ -342,7 +342,10 @@ refused by Authentik for a mismatched `redirect_uri` that Balancr never printed
 before the browser returns — so there was no request to log and no error to
 improve. Startup now names the exact string it will send, and the Authentik section
 above says what to register and why it is derived rather than configured
-([#109](https://github.com/nrosier/Balancr/issues/109)).
+([#109](https://github.com/nrosier/Balancr/issues/109)). Found while fixing that one:
+the function whose whole purpose is to print the effective configuration with every
+secret masked was never called, so `PUBLIC_BASE_URL` had never been logged either. It
+is logged now, one line after the version, and a test is what keeps it safe to log.
 
 Next are portfolio, insights and settings
 ([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
