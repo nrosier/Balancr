@@ -50,6 +50,26 @@ rather than when the feature list ends.
   sentences, so a change approved during a Dutch session reads correctly in English.
 - Applying a proposal deliberately does **not** raise `confidence`: that number
   measures what the user stated themselves, and the approval is already in the trail.
+- **The nightly AI pass** (`src/jobs/ai.ts`), last in the job registry and the only
+  job that spends money. It exists so that opening a page never triggers a model
+  call: the ranked findings, the month's narrative and the clarification queue are
+  all written hours earlier and read from SQLite. Local housekeeping — expiring
+  stale proposals — runs *before* any call, so it still happens on a night when
+  Gemini is unreachable.
+- **A budget of zero turns the AI off** rather than capping it nightly: a user who
+  set the budget to nothing does not want a `capped` ledger row every 24 hours
+  telling them so.
+- **The month that just ended is analysed once more, then left alone.** Its final
+  days of spend landed after the previous night's run, so the figures it was judged
+  on were never its final ones — but re-analysing a closed month every night for
+  ever is paying repeatedly for an answer that cannot change. Three catch-up
+  nights, read in the configured timezone, and never reaching back from a month
+  that is already in the past.
+- **A provider fault fails the job; a month-shaped one does not.** A spent budget
+  and a month with no facts are states to report in the ops table. A call that
+  could not be made, or an answer that could not be grounded, is a broken
+  integration — and "no findings for four days" is only visible if that shows up as
+  an error.
 
 ## [0.3.3] — 2026-09-02
 
