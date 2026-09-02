@@ -6,6 +6,40 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **Copying `.env.example` refused to boot, complaining that a variable left
+  deliberately blank was too short**
+  ([#118](https://github.com/nrosier/Balancr/issues/118)). Nine variables ship empty
+  in that file and six of them were declared `z.string().min(1).optional()` —
+  optional, so absent was fine, but `.min(1)` rejected the empty string the file
+  actually supplies. The message read as a rule about length, which invites putting a
+  placeholder into a security-relevant slot to get past it. A blank or whitespace-only
+  value now means "not set" for those six, via `optionalText()`/`optionalUrl()`
+  helpers; required variables still reject an empty string, because a blank
+  `ACTUAL_PASSWORD` is a misconfiguration and not booting is the right answer. A test
+  reads the real `.env.example`, fills in only what it asks for, and asserts it boots.
+- **`ACTUAL_E2E_PASSWORD` failures blamed the wrong thing, or nothing at all**
+  ([#119](https://github.com/nrosier/Balancr/issues/119)). Actual only reads that
+  password when the budget carries an `encryptKeyId`, so a blank value on an
+  unencrypted budget is a complete configuration and always was. When it *is*
+  encrypted, Actual's own error — "File Household is encrypted. Please provide a
+  password." — names neither the variable to set nor the file it lives in, and it is a
+  different password from `ACTUAL_PASSWORD` two lines above it. `missing-key`,
+  `decrypt-failure` and `file-has-new-key` now say `ACTUAL_E2E_PASSWORD` by name and
+  keep Actual's wording, which identifies the budget; `old-key-style` points at Actual
+  instead, because no configuration change can fix it. Everything else passes through
+  untouched — blaming encryption for a wrong sync id would send someone to the wrong
+  line of `.env`.
+- **Actual's sync engine wrote plain text into an otherwise structured log**
+  ([#123](https://github.com/nrosier/Balancr/issues/123)). Its logger gates progress
+  and breadcrumbs behind a `verboseMode` that defaults to on, so every hourly sync put
+  ten unparseable lines through `console.log` in the middle of pino's JSON — one of
+  them naming the budget file path. `init` is now passed `verbose` tied to
+  `LOG_LEVEL`: off at `info`, on at `debug` and `trace`. Quiet rather than silenced,
+  because when a budget will not load that chatter is the only view into why.
+
 ## [0.5.9] — 2026-09-02
 
 ### Added

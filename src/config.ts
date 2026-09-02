@@ -26,6 +26,35 @@ const bool = (fallback: 'true' | 'false') =>
     .default(fallback)
     .transform((v) => v === 'true')
 
+/**
+ * A blank value is not a value.
+ *
+ * `.env.example` ships every optional variable empty, because an empty slot with a
+ * comment above it is how you say "fill this in if you need it". Copying that file
+ * and filling in only what you use is the documented way to start, so a blank must
+ * mean the same thing as an absent line. Without this it does not: Zod sees a string
+ * of length zero and reports it as too short, which reads as a rule about length and
+ * invites you to put a placeholder in a security-relevant slot to get past it (#118).
+ *
+ * Only whitespace-only strings are converted, and nothing else is touched. A value
+ * with real content keeps its spaces: two of these variables are secrets, and a
+ * password or client secret is entitled to end in a space if its owner says so.
+ */
+const blankToUndefined = (value: unknown): unknown =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value
+
+/**
+ * An optional string, where blank means unset.
+ *
+ * Deliberately not applied to required variables: there, a blank `ACTUAL_PASSWORD` is
+ * a misconfiguration and refusing to boot is the whole point. The distinction is
+ * optional versus required, not empty versus absent.
+ */
+const optionalText = () => z.preprocess(blankToUndefined, z.string().min(1).optional())
+
+/** As `optionalText`, for a variable that must parse as a URL when it is set. */
+const optionalUrl = () => z.preprocess(blankToUndefined, z.url().optional())
+
 const EnvSchema = z.object({
   // App
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -42,7 +71,7 @@ const EnvSchema = z.object({
   ACTUAL_SERVER_URL: z.url(),
   ACTUAL_PASSWORD: z.string().min(1),
   ACTUAL_SYNC_ID: z.string().min(1),
-  ACTUAL_E2E_PASSWORD: z.string().min(1).optional(),
+  ACTUAL_E2E_PASSWORD: optionalText(),
   ACTUAL_DATA_DIR: z.string().min(1).default('./data/actual'),
 
   // Ghostfolio
@@ -51,19 +80,19 @@ const EnvSchema = z.object({
 
   // Gemini
   GEMINI_PROVIDER: z.enum(['aistudio', 'vertex']).default('vertex'),
-  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_API_KEY: optionalText(),
   GEMINI_MODEL_FAST: z.string().min(1).default('gemini-3.7-flash'),
   GEMINI_MODEL_DEEP: z.string().min(1).default('gemini-3.1-pro-preview'),
   GEMINI_MONTHLY_BUDGET_EUR: z.coerce.number().nonnegative().default(15),
-  GOOGLE_CLOUD_PROJECT: z.string().min(1).optional(),
+  GOOGLE_CLOUD_PROJECT: optionalText(),
   GOOGLE_CLOUD_LOCATION: z.string().min(1).default('europe-west1'),
 
   // Auth
   SESSION_SECRET: z.string().min(32),
   TRUSTED_PROXY_CIDRS: csv('127.0.0.1/32'),
-  AUTH_OIDC_ISSUER: z.url().optional(),
-  AUTH_OIDC_CLIENT_ID: z.string().min(1).optional(),
-  AUTH_OIDC_CLIENT_SECRET: z.string().min(1).optional(),
+  AUTH_OIDC_ISSUER: optionalUrl(),
+  AUTH_OIDC_CLIENT_ID: optionalText(),
+  AUTH_OIDC_CLIENT_SECRET: optionalText(),
   AUTH_LOCAL_ENABLED: bool('false'),
   AUTH_LOCAL_ALLOWED_CIDRS: csv('127.0.0.1/32'),
   /**

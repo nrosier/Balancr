@@ -34,6 +34,9 @@ const log = logger.child({ module: 'actual' })
  */
 export const EXPECTED_API_VERSION = '26.9.0'
 
+/** Log levels at which Actual's own console output is wanted rather than noise. */
+const VERBOSE_LOG_LEVELS: ReadonlySet<string> = new Set(['debug', 'trace'])
+
 export interface ActualHealth {
   opened: boolean
   /** Version reported by the Actual server, or null when unreachable. */
@@ -79,6 +82,70 @@ function majorMinor(version: string): string {
   return match ? `${match[1]}.${match[2]}` : version
 }
 
+/**
+ * What Actual's error codes about encryption mean in terms of Balancr's `.env`.
+ *
+ * `ACTUAL_E2E_PASSWORD` is a different password from `ACTUAL_PASSWORD` two lines
+ * above it in `.env`, and it is only consulted when the budget is end-to-end
+ * encrypted — Actual's own handler reads it inside `if (activeFile.encryptKeyId)`
+ * and ignores it entirely otherwise. So a blank value on an unencrypted budget is
+ * a complete, correct configuration, and this maps the cases where it is not.
+ *
+ * The reason for translating at all is that Actual's messages are written for
+ * someone standing in front of its own UI: "File Household is encrypted. Please
+ * provide a password." names neither the variable to set nor the file to set it in,
+ * and the person reading it has no way to know that Balancr spells that password
+ * `ACTUAL_E2E_PASSWORD`.
+ */
+const E2E_ERRORS: Readonly<Record<string, string>> = {
+  'missing-key':
+    'this budget is end-to-end encrypted; set ACTUAL_E2E_PASSWORD in .env to its ' +
+    'encryption password (which is not ACTUAL_PASSWORD)',
+  'decrypt-failure':
+    'ACTUAL_E2E_PASSWORD does not decrypt this budget; it is the budget\'s ' +
+    'encryption password, not the Actual server password',
+  'file-has-new-key':
+    'this budget\'s encryption key has been changed in Actual since ' +
+    'ACTUAL_E2E_PASSWORD was set; update it to the current password',
+  // Not fixable through configuration, so it must not suggest one: the key itself
+  // has to be recreated in Actual, on a device that still has the file.
+  'old-key-style':
+    'this budget uses an unsupported old encryption key style; recreate the key in ' +
+    'Actual on a device where the budget is available, then set ACTUAL_E2E_PASSWORD',
+}
+
+/**
+ * `downloadBudget`, with encryption failures rephrased.
+ *
+ * Deliberately no pre-flight check for whether the budget is encrypted. That would
+ * be a second round trip to learn something this call is about to tell us, and the
+ * answer would go stale the moment encryption is switched on. Every other error —
+ * `budget-not-found`, `out-of-sync-migrations`, a network failure — passes through
+ * untouched, because blaming encryption for a wrong sync id would send someone to
+ * the wrong line of `.env`.
+ */
+async function download(): Promise<void> {
+  try {
+    await api.downloadBudget(
+      config.ACTUAL_SYNC_ID,
+      // Spread rather than `{ password: undefined }`: Actual tests the property for
+      // truthiness, and an explicitly-undefined key is a claim we did not mean to make.
+      config.ACTUAL_E2E_PASSWORD ? { password: config.ACTUAL_E2E_PASSWORD } : {},
+    )
+  } catch (error) {
+    if (!(error instanceof Error)) throw error
+    const { code } = error as { code?: unknown }
+    const explanation = typeof code === 'string' ? E2E_ERRORS[code] : undefined
+    if (explanation === undefined) throw error
+
+    // The original message is kept: it names the budget file, which is the one
+    // detail Balancr cannot supply and which identifies *which* budget is encrypted.
+    throw new Error(`Cannot open the Actual budget: ${explanation}. Actual said: ${error.message}`, {
+      cause: error,
+    })
+  }
+}
+
 async function open(): Promise<void> {
   if (opened) return
 
@@ -89,14 +156,17 @@ async function open(): Promise<void> {
     serverURL: config.ACTUAL_SERVER_URL,
     password: config.ACTUAL_PASSWORD,
     dataDir: config.ACTUAL_DATA_DIR,
+    // Actual's engine logs breadcrumbs and sync progress through `console.log`, and
+    // its `verboseMode` defaults to on — ten unparseable lines per sync landing in
+    // the middle of pino's JSON stream (#123). Off by default, but not silenced:
+    // when a budget will not load, that chatter is the only view into why, and
+    // asking for it is what LOG_LEVEL=debug means.
+    verbose: VERBOSE_LOG_LEVELS.has(config.LOG_LEVEL),
   })
 
   // Pulls the budget into the local cache. Every read below is invalid until
   // this has run at least once.
-  await api.downloadBudget(
-    config.ACTUAL_SYNC_ID,
-    config.ACTUAL_E2E_PASSWORD ? { password: config.ACTUAL_E2E_PASSWORD } : {},
-  )
+  await download()
 
   opened = true
   health.opened = true
