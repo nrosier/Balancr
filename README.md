@@ -136,6 +136,12 @@ otherwise render amounts that no longer match your bank statements.
 honoured only from peers inside that range; without it, anyone who reaches the
 container directly authenticates as you by setting a header.
 
+`AUTH_OIDC_ISSUER` must be `https://` in production, and the app refuses to start
+otherwise. OpenID Connect lets a client skip verifying the ID token's signature
+when the token arrives straight from the token endpoint over TLS, and the library
+takes that permission — so over plain `http://` on the container network, anything
+that can answer the token request can name itself as any user.
+
 ## Architecture
 
 ```
@@ -187,12 +193,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.5.0`, slice 1 of 4: the Fastify app itself, with proxy
-trust, security headers, CSRF, one error envelope and the two rate-limit buckets
-([#23](https://github.com/nrosier/Balancr/issues/23),
-[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: server-side
-sessions and OIDC against Authentik
-([#24](https://github.com/nrosier/Balancr/issues/24)).
+**Where it is now** — `0.5.0`, slice 2 of 4: server-side sessions and the OIDC
+code flow against Authentik, with a deny-by-default route guard
+([#24](https://github.com/nrosier/Balancr/issues/24)), on top of the Fastify app
+from slice 1 — proxy trust, security headers, CSRF, one error envelope and the two
+rate-limit buckets ([#23](https://github.com/nrosier/Balancr/issues/23),
+[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: the CIDR-gated
+break-glass local login ([#25](https://github.com/nrosier/Balancr/issues/25)).
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

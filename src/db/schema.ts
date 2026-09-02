@@ -70,10 +70,23 @@ export const localCredentials = sqliteTable('local_credentials', {
   passwordChangedAt: createdAt(),
 })
 
+/**
+ * Server-side sessions.
+ *
+ * The cookie carries a 32-byte random token and nothing else — no user id, no
+ * claims, no signature. Everything about the session is looked up here, so
+ * revoking one is a delete rather than a hope that a signed cookie expires.
+ *
+ * What is stored is the SHA-256 of that token, not the token. The difference
+ * matters because `/data` is backed up nightly and the backup is a file: read
+ * access to a snapshot of this table yields no usable cookie. It costs one hash
+ * per request and there is nothing to trade against it, since a random token has
+ * no structure worth preserving and needs no salt or slow KDF.
+ */
 export const sessions = sqliteTable(
   'sessions',
   {
-    /** Opaque random id; the cookie carries this and nothing else. */
+    /** SHA-256 of the cookie token, hex. The token itself is never stored. */
     id: text().primaryKey(),
     userId: text('user_id')
       .notNull()
@@ -89,6 +102,41 @@ export const sessions = sqliteTable(
     index('sessions_user_idx').on(t.userId),
     index('sessions_expires_idx').on(t.expiresAt),
   ],
+)
+
+/**
+ * A login in flight: one row per authorization request, deleted when consumed.
+ *
+ * The OIDC code flow has to remember three things between the redirect out and
+ * the callback back — the PKCE verifier, the expected `state` and the expected
+ * `nonce` — and they must not travel through the browser, or the protections
+ * they provide are handed to whoever is being defended against.
+ *
+ * A table rather than a signed cookie for two reasons. Single use is a `delete`
+ * with a checked row count, so replaying a captured callback URL fails on the
+ * second attempt; and a cookie big enough to hold all three would be sent on
+ * every request for the sake of ten seconds of a login.
+ *
+ * The row is keyed by `state`, and the same value is also set as a short-lived
+ * cookie. Both must agree on the callback, which is what stops an attacker from
+ * starting a flow and feeding the victim the resulting callback URL: the
+ * victim's browser has no matching cookie, so there is nothing to look up.
+ */
+export const loginFlows = sqliteTable(
+  'login_flows',
+  {
+    /** The `state` parameter. Also the value of the short-lived flow cookie. */
+    state: text().primaryKey(),
+    /** PKCE verifier. Proves the token request comes from the same client. */
+    codeVerifier: text('code_verifier').notNull(),
+    /** Expected `nonce` claim, which binds the ID token to this request. */
+    nonce: text().notNull(),
+    /** Where to send the browser afterwards. A local path, never a URL. */
+    returnTo: text('return_to').notNull().default('/'),
+    createdAt: createdAt(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('login_flows_expires_idx').on(t.expiresAt)],
 )
 
 // ============================================================================
@@ -770,6 +818,7 @@ export const schema = {
   users,
   localCredentials,
   sessions,
+  loginFlows,
   accountMap,
   categoryMeta,
   clarificationQueue,

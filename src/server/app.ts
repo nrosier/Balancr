@@ -16,9 +16,12 @@
  *     of requests with no token should be throttled like any other flood, not given
  *     a free 403 each time.
  *  4. **CSRF** — after rate limiting, before any route.
- *  5. **error handling** — replaces Fastify's default, which echoes the thrown
+ *  5. **authentication** — a `preHandler`, so it runs after all of the above and
+ *     an anonymous flood is throttled before it costs a session lookup. Deny by
+ *     default; a route opts out with `config: { auth: false }`.
+ *  6. **error handling** — replaces Fastify's default, which echoes the thrown
  *     message and would leak SQLite and upstream detail.
- *  6. **routes** — last, so every hook above already applies to them.
+ *  7. **routes** — last, so every hook above already applies to them.
  */
 import cookie from '@fastify/cookie'
 import Fastify, { LogController } from 'fastify'
@@ -26,9 +29,12 @@ import type { FastifyBaseLogger, FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
 import { logger } from '../logger.ts'
+import { registerAuth } from './auth/guard.ts'
+import { oidcClientFromConfig, type OidcClient } from './auth/oidc.ts'
 import { registerCsrf } from './csrf.ts'
 import { registerErrorHandling } from './errors.ts'
 import { registerRateLimits } from './rate-limit.ts'
+import { registerAuthRoutes } from './routes/auth.ts'
 import { registerHealthRoutes } from './routes/health.ts'
 import { registerSecurityHeaders } from './security.ts'
 import { TRUSTED_PROXIES } from './trust.ts'
@@ -46,11 +52,20 @@ declare module 'fastify' {
 }
 
 export interface BuildAppOptions {
-  /** The database the rate-limit counters live in, and later sessions and reads. */
+  /** Where the rate-limit counters, the sessions and the login flows live. */
   db: Db
+  /**
+   * The OIDC client, for tests that drive a fake issuer.
+   *
+   * Undefined means "build it from configuration", which is what production does.
+   * Explicit `null` means "this deployment has no OIDC", which is a case a test
+   * needs to be able to state — otherwise the only way to reach that path would be
+   * to mutate the environment after `config.ts` has already read it.
+   */
+  oidc?: OidcClient | null
 }
 
-export async function buildApp({ db }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ db, oidc }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     // Cast so the instance keeps Fastify's default generic parameters. Passing the
     // pino logger through unwidened specialises `FastifyInstance` on pino's own
@@ -90,14 +105,19 @@ export async function buildApp({ db }: BuildAppOptions): Promise<FastifyInstance
   await registerSecurityHeaders(app)
   await registerRateLimits(app, db)
   registerCsrf(app)
+  registerAuth(app, db)
   registerErrorHandling(app)
+
   registerHealthRoutes(app)
+  registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
 
   log.debug(
     {
       trustedProxies: config.TRUSTED_PROXY_CIDRS,
       rateLimitPerMinute: config.RATE_LIMIT_API_PER_MINUTE,
       rateLimitAiPerHour: config.RATE_LIMIT_AI_PER_HOUR,
+      oidc: config.AUTH_OIDC_ISSUER !== undefined,
+      localLogin: config.AUTH_LOCAL_ENABLED,
     },
     'server built',
   )
