@@ -270,7 +270,30 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, slice 3 of 8: the budget page
+**Where it is now** — `0.6.0`, slice 4 of 8: the settings page
+([#33](https://github.com/nrosier/Balancr/issues/33)) — the one screen in the
+application that writes, and the eleven routes behind it. Language, the seventeen
+thresholds the aggregation engine judges by, the prompt editor with its diff and its
+priced dry run, the account mapping that decides which of two tools counts a shared
+investment account, and what the assistant has cost this month.
+
+**Three decisions are what make it safe to hand someone.** Every write answers with
+the whole settings payload rather than the row it changed, so the page is a projection
+of the server's state and never a local copy patched to match. The thresholds form is
+rendered from that payload — `params` and `paramDefaults` are the domain schema itself,
+so a threshold added to the aggregator appears on the page with no client edit, and a
+test fails if its label is missing rather than letting it appear untranslated. And a
+grouping mark in a whole-number field is handed back to be retyped instead of guessed
+at: `2.000` in a basis-points field is 20% to anyone typing Belgian grouping and 0,02%
+to a decimal parser, and there is no reading of it worth saving silently.
+
+The prompt editor separates saving from activating, because activating an older version
+*is* the rollback — and its dry run is a real model call on real figures, so the button
+does not appear until the free estimate has priced it. The AI spend panel is read-only
+on purpose: the monthly cap lives in the environment, and a cap editable by whoever
+reached it is not a cap.
+
+Before it, the budget page
 ([#30](https://github.com/nrosier/Balancr/issues/30)) — a month in the order someone
 asks about it. Where the money went as an income-to-envelope Sankey, whether each
 envelope held as a budget-versus-actual bullet chart, whether this month is on pace
@@ -370,13 +393,13 @@ chart draws a single dot ([#114](https://github.com/nrosier/Balancr/issues/114))
 both series are written one row per nightly run, so they begin the day Balancr is
 installed rather than the day the data does.
 
-Next are portfolio, insights and settings
-([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
-language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
-and the accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)), together with the history
-backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) — shipping as
-`0.5.9`, `0.5.10`, … until every issue in that milestone is closed and `0.6.0`
+Next are portfolio and insights
+([#31](https://github.com/nrosier/Balancr/issues/31),
+[#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
+([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
+responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
+the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) — shipping
+as `0.5.10`, `0.5.11`, … until every issue in that milestone is closed and `0.6.0`
 lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),

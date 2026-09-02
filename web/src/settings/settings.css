@@ -1,0 +1,510 @@
+/*
+ * The settings page.
+ *
+ * Its own stylesheet rather than more rules in `theme/components.css` for one reason:
+ * everything here is a *form*, and nothing else in the application has one. The shared
+ * sheet describes cards, metrics and notices — the vocabulary five read-only views
+ * share — and adding twelve form layouts to it would make every page's stylesheet
+ * carry the one page that writes.
+ *
+ * Three things below are load-bearing rather than decorative:
+ *
+ *  - **`.diff` and `.prompt__body` scroll themselves.** A prompt is a few kilobytes of
+ *    English with lines longer than any column; a diff of one is wider still. Left to
+ *    the page they would give the whole layout a horizontal scrollbar on a phone, which
+ *    is the one layout failure that makes a page feel broken rather than cramped.
+ *  - **Every disabled control still reads.** `opacity` alone on a disabled input drops
+ *    body text under the contrast floor, so the disabled state changes the background
+ *    and keeps the text colour — a viewer has to be able to read the thresholds they
+ *    cannot change.
+ *  - **`.account` is a list, not a table.** A table of six accounts with a select and a
+ *    checkbox per row has nowhere to go at 375px except sideways. Each account is a
+ *    block that stacks, and the label beside each control is what carries the meaning a
+ *    column header would have.
+ */
+
+/* ---------------------------------------------------------------------------
+   The shared frame
+   --------------------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel__hint,
+.panel__meta {
+  margin: 0;
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  max-width: 60ch;
+}
+
+.panel__subtitle {
+  margin: 0;
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The panel owns the gap, so a field inside it must not add a second one. */
+.panel > .field {
+  margin: 0;
+}
+
+.field__issue {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-sm);
+  color: var(--negative);
+}
+
+.field__input:disabled,
+.field__input[aria-disabled='true'] {
+  background: var(--surface-sunken);
+  cursor: not-allowed;
+}
+
+/*
+ * A short label the eye reads as a state rather than as a word: the active prompt
+ * version, a finding's severity, a run's outcome. Neutral by default — the tone
+ * modifiers below are the only places colour carries meaning, and each is paired with
+ * text so colour is never the only signal.
+ */
+.badge {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.badge--truth,
+.badge--ok {
+  background: var(--positive-soft);
+  color: var(--positive);
+}
+
+.badge--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.badge--warn,
+.badge--capped {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge--alert,
+.badge--error {
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+.build {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+.build dt {
+  color: var(--text-muted);
+}
+
+.build dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------------
+   Thresholds
+   --------------------------------------------------------------------------- */
+
+.thresholds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.thresholds__group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.thresholds__legend {
+  padding: 0 0 var(--space-3);
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.thresholds__field {
+  display: grid;
+  /* Wide enough for the longest Dutch label, then the input; one column below it. */
+  grid-template-columns: minmax(0, 1fr) 10rem;
+  align-items: start;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.thresholds__field .field__label {
+  margin: 0;
+}
+
+.thresholds__field .field__input {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.thresholds__note,
+.thresholds__field .field__issue {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--type-xs);
+  color: var(--text-faint);
+}
+
+.thresholds__field .field__issue {
+  color: var(--negative);
+}
+
+.thresholds__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+@media (max-width: 30rem) {
+  .thresholds__field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thresholds__field .field__input {
+    grid-column: 1;
+    grid-row: auto;
+    text-align: left;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Accounts
+   --------------------------------------------------------------------------- */
+
+.accounts,
+.dedupe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dedupe__pair {
+  padding: var(--space-3);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-md);
+  background: var(--warn-soft);
+}
+
+.dedupe__text {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-sm);
+  color: var(--text);
+}
+
+.dedupe__actions,
+.account__controls,
+.account__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.account__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+.account__name {
+  margin: 0;
+  font-size: var(--type-base);
+  font-weight: var(--weight-semibold);
+}
+
+.account__source {
+  font-size: var(--type-xs);
+  color: var(--text-muted);
+}
+
+.account__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   Prompts
+   --------------------------------------------------------------------------- */
+
+.prompt__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.prompt__pickers .field {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.prompt__body {
+  min-height: 18rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  /* Wrapping rather than scrolling: a prompt is prose, and horizontal scroll in the
+     box someone is editing loses the start of every line they are reading. */
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+.prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.prompt__diff,
+.prompt__dryrun {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.prompt__diff > p,
+.prompt__dryrun > p {
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   The diff
+   --------------------------------------------------------------------------- */
+
+.diff {
+  margin: 0;
+  padding: 0;
+  max-height: 26rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: 1.6;
+  list-style: none;
+}
+
+.diff__line {
+  display: flex;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.diff__line--add {
+  background: var(--positive-soft);
+}
+
+.diff__line--del {
+  background: var(--negative-soft);
+}
+
+.diff__gutter {
+  flex: 0 0 2.5rem;
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.diff__text {
+  flex: 1 1 auto;
+  white-space: pre;
+  /* The one place a horizontal scrollbar is right: a wrapped diff line no longer lines
+     up with its neighbours, which is the only thing a diff is for. */
+  overflow-x: auto;
+}
+
+.diff__line--add .diff__text::before {
+  content: '+ ';
+}
+
+.diff__line--del .diff__text::before {
+  content: '- ';
+}
+
+.diff__line--same .diff__text::before {
+  content: '  ';
+}
+
+/* ---------------------------------------------------------------------------
+   The dry run
+   --------------------------------------------------------------------------- */
+
+.dryrun {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.dryrun__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+.dryrun__subtitle {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.dryrun__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  font-size: var(--type-sm);
+  list-style: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Version history
+   --------------------------------------------------------------------------- */
+
+.versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.version__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.version__number {
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.version__meta,
+.version__note {
+  margin: 0;
+  font-size: var(--type-xs);
+}
+
+.version__note {
+  color: var(--text);
+}
+
+.version__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------------
+   AI spend history
+   --------------------------------------------------------------------------- */
+
+.months {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.months__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--type-sm);
+}
+
+.months__month {
+  flex: 1 1 8rem;
+  font-weight: var(--weight-medium);
+}
+
+.months__cost {
+  font-variant-numeric: tabular-nums;
+}
+
+.months__meta {
+  flex: 1 1 100%;
+  font-size: var(--type-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

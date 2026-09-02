@@ -178,3 +178,26 @@ export function saveParams(db: Db, patch: AggregateParamsPatch): AggregateParams
 
   return next
 }
+
+/**
+ * Field names in a patch that no group actually has.
+ *
+ * `aggregateParamsSchema` strips them, which is the right behaviour for *reading* a
+ * stored row written by an older shape and the wrong answer for a form: a request
+ * that misspells `windowMonths` would be accepted, stored without it, and answered
+ * with a payload that looks saved. The settings screen would show the old value
+ * back with no error anywhere.
+ *
+ * Derived from `DEFAULT_PARAMS` rather than from a list, so it cannot fall behind
+ * the schema. Group names themselves are the wire schema's job — it knows the five.
+ */
+export function unknownParamFields(patch: AggregateParamsPatch): string[] {
+  const known = DEFAULT_PARAMS as unknown as Record<string, Record<string, unknown>>
+  const incoming = (patch ?? {}) as Record<string, Record<string, unknown> | undefined>
+
+  return Object.entries(incoming).flatMap(([group, values]) =>
+    Object.keys(values ?? {})
+      .filter((field) => !Object.hasOwn(known[group] ?? {}, field))
+      .map((field) => `${group}.${field}`),
+  )
+}

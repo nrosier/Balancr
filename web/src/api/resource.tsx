@@ -59,6 +59,18 @@ export function SessionExpiryProvider({
   return <SessionExpiryContext.Provider value={onExpired}>{children}</SessionExpiryContext.Provider>
 }
 
+/**
+ * The same reporting channel, for a request this hook did not make.
+ *
+ * A *write* can be told the session is gone exactly as a read can — the settings page
+ * is the first screen that writes — and the answer has to be the same one: hand it to
+ * `App.tsx` and let it re-ask `/auth/session`, rather than each page inventing its own
+ * behaviour for a cookie that expired mid-form.
+ */
+export function useSessionExpiry(): SessionExpired {
+  return useContext(SessionExpiryContext)
+}
+
 export interface Resource<T> {
   /** The last payload that arrived. Kept across a reload, so a refresh does not blank the page. */
   data: T | null

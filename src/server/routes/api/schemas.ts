@@ -17,6 +17,7 @@
  * what the SPA in `0.6.0` may rely on, expressed once, next to nothing else.
  */
 import { z } from 'zod'
+import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 
 /**
  * An amount of money: whole cents, and never a float.
@@ -29,6 +30,15 @@ export const cents = (): z.ZodType<number> => z.int()
 
 /** Basis points. 10 000 = 100%, and again an integer, for the same reason. */
 export const basisPoints = (): z.ZodType<number> => z.int()
+
+/**
+ * Micro-euros: a millionth of a euro, and the unit every AI cost is stored in.
+ *
+ * Not cents, and not for consistency's sake either — a single model call can cost
+ * €0,0004, so a ledger in cents would record a month of them as zero and a budget
+ * built on it would never trip. Integer for the same reason as `cents()`.
+ */
+export const microEur = (): z.ZodType<number> => z.int().nonnegative()
 
 /** `YYYY-MM`. */
 export const monthKey = (): z.ZodType<string> => z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
@@ -298,6 +308,248 @@ export const insightsSchema = z.object({
   }),
 })
 
+// ---------------------------------------------------------------------------
+//  Settings
+//
+//  Served from `src/server/routes/settings.ts` rather than from this directory,
+//  because the settings screen writes. The schema still belongs here: this file is
+//  the client contract, and splitting it by which handler happens to answer would
+//  leave the SPA importing its types from two places.
+// ---------------------------------------------------------------------------
+
+/**
+ * One stored prompt version, without its text.
+ *
+ * `chars` instead of `body` on purpose. The version list exists to be scanned —
+ * four keys times two locales times every edit ever made — and shipping every body
+ * would put the whole editing history of a multi-kilobyte prompt into a payload
+ * that renders as a list of dates. The body arrives from
+ * `GET /api/settings/prompts/:id` when a version is opened.
+ */
+export const promptVersionSchema = z.object({
+  id: z.string(),
+  version: z.int().positive(),
+  active: z.boolean(),
+  note: z.string().nullable(),
+  createdBy: z.string().nullable(),
+  createdAt: z.string(),
+  chars: z.int().nonnegative(),
+})
+
+export const promptSchema = z.object({
+  key: z.string(),
+  locale: z.string(),
+  /**
+   * What a run would use right now — which is not always a row in `versions`.
+   *
+   * `resolvePrompt` falls back to `DEFAULT_LOCALE`'s active version and then to the
+   * built-in text, and the editor has to say which of the three it is looking at:
+   * editing "the active prompt" that is really the English one, or really the
+   * built-in constant, is how someone saves a Dutch prompt over nothing. `id: null`
+   * with `version: 0` is the built-in text.
+   */
+  active: z.object({
+    id: z.string().nullable(),
+    version: z.int().nonnegative(),
+    locale: z.string(),
+    body: z.string(),
+  }),
+  versions: z.array(promptVersionSchema),
+})
+
+/**
+ * An account as the mapping panel shows it.
+ *
+ * `externalId` is deliberately absent. The panel keys on Balancr's own id, and the
+ * upstream account identifier is the one field here that names something inside
+ * Actual or Ghostfolio — no screen needs it, so it does not leave the server.
+ */
+export const accountSettingSchema = z.object({
+  id: z.string(),
+  source: z.enum(['actual', 'ghostfolio']),
+  name: z.string(),
+  kind: z.enum(['checking', 'savings', 'credit', 'investment', 'cash', 'other']),
+  includeInNetWorth: z.boolean(),
+  dedupeGroup: z.string().nullable(),
+  isSourceOfTruth: z.boolean(),
+})
+
+export const spendMonthSchema = z.object({
+  month: monthKey(),
+  runCount: z.int().nonnegative(),
+  inputTokens: z.int().nonnegative(),
+  outputTokens: z.int().nonnegative(),
+  cachedTokens: z.int().nonnegative(),
+  costMicroEur: microEur(),
+})
+
+/**
+ * `GET /api/settings` — everything the settings screen shows, in one response.
+ *
+ * One request rather than six, because every panel on that page is small and the
+ * page is opened to compare them: which prompt is active, what the thresholds are,
+ * what the month has cost. Six endpoints would each carry a round trip and none of
+ * them would be reusable elsewhere.
+ *
+ * `params` and `paramDefaults` are the domain schema itself rather than a copy of
+ * its twenty-odd fields. A hand-written mirror would drift on the first threshold
+ * anyone adds, and drift here means a form that silently drops a field.
+ */
+export const settingsSchema = z.object({
+  /**
+   * Which build is answering.
+   *
+   * On this page rather than on `/bootstrap`, which is public: the commit a
+   * container was built from is exactly the fact an unauthenticated caller should
+   * not be handed, and the person who needs it is signed in and looking at
+   * settings.
+   */
+  build: z.object({ version: z.string().nullable(), revision: z.string().nullable() }),
+  profile: z.object({
+    email: z.string().nullable(),
+    displayName: z.string().nullable(),
+    locale: z.string(),
+    role: z.enum(['owner', 'viewer']),
+  }),
+  /** What the language control may offer, from `SUPPORTED_LOCALES`. */
+  locales: z.object({ supported: z.array(z.string()), default: z.string() }),
+  params: aggregateParamsSchema,
+  paramDefaults: aggregateParamsSchema,
+  prompts: z.array(promptSchema),
+  accounts: z.array(accountSettingSchema),
+  /**
+   * Accounts that may be the same money, as ids rather than rows.
+   *
+   * The rows are already in `accounts`; repeating them would leave two copies of
+   * `isSourceOfTruth` in one payload, and the copy the screen happened to read
+   * would decide whether it drew the warning.
+   */
+  dedupe: z.array(
+    z.object({ ghostfolioId: z.string(), possibleMirrorIds: z.array(z.string()) }),
+  ),
+  ai: z.object({
+    /** From `.env`, not editable here: a model is a deployment decision. */
+    models: z.object({ fast: z.string(), deep: z.string() }),
+    month: monthKey(),
+    spentMicroEur: microEur(),
+    budgetMicroEur: microEur(),
+    remainingMicroEur: microEur(),
+    usedBp: basisPoints(),
+    exceeded: z.boolean(),
+    /** Newest first, so the page can show this month and the trend behind it. */
+    history: z.array(spendMonthSchema),
+  }),
+})
+
+/** `GET /api/settings/prompts/:id` — one version, text included. */
+export const promptBodySchema = promptVersionSchema.extend({
+  key: z.string(),
+  locale: z.string(),
+  body: z.string(),
+})
+
+/** `POST /api/settings/prompts/diff` and the dry run's `diff` field. */
+export const promptDiffSchema = z.object({
+  active: z.object({
+    id: z.string().nullable(),
+    version: z.int().nonnegative(),
+    locale: z.string(),
+  }),
+  stat: z.object({
+    added: z.int().nonnegative(),
+    removed: z.int().nonnegative(),
+    identical: z.boolean(),
+  }),
+  lines: z.array(
+    z.object({
+      op: z.enum(['same', 'add', 'del']),
+      text: z.string(),
+      oldLine: z.int().positive().nullable(),
+      newLine: z.int().positive().nullable(),
+    }),
+  ),
+})
+
+/**
+ * `GET /api/ai/estimate` — what a run on this month would cost, having spent
+ * nothing to find out.
+ */
+export const aiEstimateSchema = z.object({
+  month: monthKey(),
+  model: z.string(),
+  /** Null when the month has no facts, which is also when a dry run is pointless. */
+  payloadChars: z.int().nonnegative().nullable(),
+  estimateMicroEur: microEur(),
+  allowed: z.boolean(),
+  /** A code for the catalogue, never a sentence. Null when allowed. */
+  reason: z.string().nullable(),
+})
+
+/**
+ * `POST /api/ai/dry-run` — a real analysis whose findings are thrown away.
+ *
+ * `costMicroEur` is what it actually cost, not an estimate: the run happened, the
+ * ledger row was written, and the editor has to show the price of what was just
+ * pressed rather than the guess from before.
+ */
+export const aiDryRunSchema = z.object({
+  status: z.enum(['ok', 'capped', 'error', 'skipped']),
+  reason: z.string(),
+  runId: z.string().nullable(),
+  month: monthKey(),
+  locale: z.string(),
+  promptId: z.string().nullable(),
+  promptVersion: z.int().nonnegative(),
+  degraded: z.boolean(),
+  costMicroEur: microEur(),
+  /**
+   * The findings the run produced, sentences included.
+   *
+   * The one place the API returns rendered text alongside the codes, and for the
+   * same reason the clarification cards do: what is being judged here is the
+   * model's output, and a reviewer comparing two prompt versions needs to read
+   * what each one would have put on the page. `code` and `metrics` come too, so
+   * nothing forces the editor to trust the sentence.
+   */
+  findings: z.array(
+    z.object({
+      code: z.string(),
+      categoryId: z.string().nullable(),
+      severity: z.enum(['info', 'warn', 'alert']),
+      negative: z.boolean(),
+      text: z.string(),
+      /** 0–100, or null on a degraded run where nothing judged the order. */
+      confidence: z.number().min(0).max(100).nullable(),
+      metrics: z.record(z.string(), z.int()),
+    }),
+  ),
+  /**
+   * What the model asked about, as it would have reached the queue. Nothing here
+   * is answerable — a dry run writes no rows — so it is a preview, not a card.
+   */
+  clarifications: z.array(
+    z.object({
+      code: z.string(),
+      categoryId: z.string(),
+      categoryName: z.string(),
+      guess: z.string(),
+    }),
+  ),
+  /**
+   * What grounding threw away: a code the signals never carried, a duplicate, a
+   * label that matches no category. Shown rather than swallowed, because it is a
+   * verdict on the prompt being tested — a version that produces six dropped
+   * findings is the version not to activate.
+   */
+  dropped: z.array(
+    z.object({
+      code: z.string(),
+      label: z.string(),
+      reason: z.enum(['no_signal', 'duplicate', 'unknown_label', 'bad_guess']),
+    }),
+  ),
+})
+
 /**
  * The two shapes that appear inside more than one response, named because the
  * client renders each with one component. Structurally identical to the interfaces
@@ -312,3 +564,12 @@ export type Overview = z.infer<typeof overviewSchema>
 export type Budget = z.infer<typeof budgetSchema>
 export type Portfolio = z.infer<typeof portfolioSchema>
 export type Insights = z.infer<typeof insightsSchema>
+export type Settings = z.infer<typeof settingsSchema>
+export type PromptSetting = z.infer<typeof promptSchema>
+export type PromptVersionSetting = z.infer<typeof promptVersionSchema>
+export type PromptBody = z.infer<typeof promptBodySchema>
+export type PromptDiff = z.infer<typeof promptDiffSchema>
+export type AccountSetting = z.infer<typeof accountSettingSchema>
+export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
+export type AiEstimate = z.infer<typeof aiEstimateSchema>
+export type AiDryRun = z.infer<typeof aiDryRunSchema>

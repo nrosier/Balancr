@@ -7,8 +7,8 @@
  * an unknown path is not a page at all — because those are the cases a `switch` in a
  * component would get subtly wrong and nothing would notice.
  *
- * Three of the five pages are still placeholders that #31–#33 replace wholesale, so the
- * test is not about their content. It is about the two things that stay true
+ * Two of the five pages are still placeholders that #31 and #32 replace wholesale, so
+ * the test is not about their content. It is about the two things that stay true
  * afterwards, and stay true for the pages that have already been filled in: every page
  * has exactly one level-one heading, and every string on it comes from the catalogue
  * rather than being written into the component. A hardcoded English word survives a
@@ -27,8 +27,8 @@ import { NotFound } from '../src/pages/NotFound.tsx'
 import { ROUTES, routeFor } from '../src/routes.ts'
 import { apiStub, clickLink, i18nReady, renderApp } from './helpers.tsx'
 
-/** The three that #31–#33 still have to fill in. */
-const REAL_PAGES = new Set(['/', '/budget'])
+/** The two that #31 and #32 still have to fill in. */
+const REAL_PAGES = new Set(['/', '/budget', '/settings'])
 const PLACEHOLDERS = ROUTES.filter((route) => !REAL_PAGES.has(route.path))
 
 beforeAll(async () => {

@@ -15,10 +15,11 @@
  * viewer is a database edit today; the UI for it belongs with the settings screen.
  */
 import { count, eq } from 'drizzle-orm'
+import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
-import { forbidden } from '../errors.ts'
+import { badRequest, forbidden } from '../errors.ts'
 import type { OidcIdentity } from './oidc.ts'
 import type { SessionUser } from './sessions.ts'
 
@@ -82,7 +83,11 @@ export function upsertOidcUser(db: Db, identity: OidcIdentity): SessionUser {
       oidcSub: identity.sub,
       email: identity.email ?? null,
       displayName: identity.name ?? null,
-      locale: 'en',
+      // `DEFAULT_LOCALE`, not `'en'`. A deployment that set the default to Dutch
+      // means it for the first login too, and the alternative is every new account
+      // starting in a language nobody asked for and having to be corrected on the
+      // settings page.
+      locale: config.DEFAULT_LOCALE,
       role: isFirstUser ? 'owner' : 'viewer',
       lastSeenAt: new Date(),
     })
@@ -93,4 +98,35 @@ export function upsertOidcUser(db: Db, identity: OidcIdentity): SessionUser {
 
   log.info({ userId: created.id, role: created.role }, 'user created from OIDC identity')
   return toSessionUser(created)
+}
+
+/**
+ * The one field of a user's own row that the user may change.
+ *
+ * Validated against `SUPPORTED_LOCALES` here rather than only at the route,
+ * because the value is read back into `<html lang>` and into every catalogue
+ * lookup: a locale nobody has a catalogue for would render an interface of raw
+ * key names. `badRequest` rather than a silent fallback — someone chose this, and
+ * quietly storing something else is how a settings page loses trust.
+ *
+ * Role is deliberately not settable. Promoting a viewer to owner from a page any
+ * viewer can open would make the distinction decorative; it stays a database edit
+ * until there is a reason for a second person to have write access at all.
+ */
+export function setUserLocale(db: Db, userId: string, locale: string): SessionUser {
+  if (!config.SUPPORTED_LOCALES.includes(locale)) {
+    throw badRequest(`Unsupported locale: ${locale}`, { supported: config.SUPPORTED_LOCALES })
+  }
+
+  const updated = db
+    .update(users)
+    .set({ locale })
+    .where(eq(users.id, userId))
+    .returning()
+    .all()[0]
+
+  if (updated === undefined) throw badRequest('No such user.')
+
+  log.info({ userId, locale }, 'user locale changed')
+  return toSessionUser(updated)
 }

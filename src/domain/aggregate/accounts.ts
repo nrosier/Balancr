@@ -176,3 +176,110 @@ export function setDedupeGroup(
       .run()
   })
 }
+
+/** One account as the settings screen may change it. */
+export interface AccountMapPatch {
+  kind?: AccountKind
+  includeInNetWorth?: boolean
+}
+
+/**
+ * Changes what an account contributes, and nothing about what it is.
+ *
+ * `source`, `externalId` and `name` are the source system's to own — they are
+ * refreshed by `syncAccountMap` on every pass, so an edit here would be silently
+ * reverted. What is editable is exactly the two judgements Balancr cannot derive:
+ * what kind of account this is, and whether its balance is part of net worth.
+ *
+ * Returns null for an unknown id rather than throwing, so the route can answer
+ * 404 rather than 500.
+ */
+export function updateAccountMap(
+  db: Db,
+  id: string,
+  patch: AccountMapPatch,
+): AccountMapRow | null {
+  const changes = {
+    ...(patch.kind === undefined ? {} : { kind: patch.kind }),
+    ...(patch.includeInNetWorth === undefined
+      ? {}
+      : { includeInNetWorth: patch.includeInNetWorth }),
+  }
+  // An empty patch is a read: `set({})` is invalid SQL, and a PATCH with nothing
+  // in it is a client bug that should not become a 500.
+  if (Object.keys(changes).length === 0) {
+    return db.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+  }
+
+  return (
+    db.update(accountMap).set(changes).where(eq(accountMap.id, id)).returning().all()[0] ?? null
+  )
+}
+
+/**
+ * Makes one account the one that counts, for its whole group.
+ *
+ * Exclusive by construction: every other row in the same `dedupeGroup` is set
+ * false in the same transaction. Two rows marked as the truth for one pot of
+ * money would double count it, which is the exact failure `dedupeGroup` exists to
+ * prevent — and it fails in the flattering direction, so nothing on the screen
+ * would look wrong.
+ *
+ * An ungrouped row is simply set true and affects nobody, because an account that
+ * mirrors nothing is its own source of truth.
+ */
+export function setSourceOfTruth(db: Db, id: string): AccountMapRow | null {
+  const row = db.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+  if (row === undefined) return null
+
+  return db.transaction((tx) => {
+    if (row.dedupeGroup !== null) {
+      tx.update(accountMap)
+        .set({ isSourceOfTruth: false })
+        .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+        .run()
+    }
+    return (
+      tx.update(accountMap)
+        .set({ isSourceOfTruth: true })
+        .where(eq(accountMap.id, id))
+        .returning()
+        .all()[0] ?? null
+    )
+  })
+}
+
+/**
+ * Groups accounts that hold the same money, generating the group's name.
+ *
+ * The name is a uuid rather than something readable, because the only thing that
+ * reads it is the query that joins the group back together, and a name derived
+ * from an account would go stale the moment that account was renamed upstream.
+ */
+export function groupAccounts(
+  db: Db,
+  accountMapIds: readonly string[],
+  sourceOfTruthId: string,
+): string {
+  const group = crypto.randomUUID()
+  setDedupeGroup(db, group, accountMapIds, sourceOfTruthId)
+  return group
+}
+
+/**
+ * Takes an account back out of its group.
+ *
+ * It becomes its own source of truth again — a row that is in no group and counts
+ * for nothing is invisible money, and the failure would be a net worth quietly
+ * missing an account with nothing on screen to say so.
+ */
+export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
+  return (
+    db
+      .update(accountMap)
+      .set({ dedupeGroup: null, isSourceOfTruth: true })
+      .where(eq(accountMap.id, id))
+      .returning()
+      .all()[0] ?? null
+  )
+}

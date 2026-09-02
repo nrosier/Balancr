@@ -25,7 +25,9 @@
  */
 import { fireEvent, render, type RenderResult } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { initI18n } from '../src/i18n.ts'
+import type { CsrfConfig } from '../src/api/client.ts'
+import { CsrfProvider } from '../src/api/csrf.tsx'
+import { initI18n, setLanguage } from '../src/i18n.ts'
 import { RouterProvider } from '../src/router.tsx'
 import { ThemeProvider } from '../src/theme/ThemeContext.tsx'
 
@@ -46,6 +48,14 @@ export function i18nReady(language = 'en'): Promise<unknown> {
   return started
 }
 
+/**
+ * The names `/bootstrap` gives the double-submit pair.
+ *
+ * Deliberately not the conventional ones: `useCsrf` throws rather than guessing, and a
+ * test that passed with a guessed name would hide the day a provider goes missing.
+ */
+export const CSRF: CsrfConfig = { cookie: 'balancr_csrf', header: 'x-csrf-token' }
+
 /** Sets the address the next `RouterProvider` will read as its starting path. */
 export function visit(path: string): void {
   window.history.pushState(null, '', path)
@@ -56,11 +66,20 @@ export interface RenderAppOptions {
   path?: string
 }
 
-/** The same two providers `main.tsx` mounts the application in. */
+/**
+ * The same providers `main.tsx` and `App.tsx` mount the application in.
+ *
+ * `CsrfProvider` joins them from #33: a page that writes reads the token config from
+ * context, because pages are rendered by the route table as `<route.Page />` and take
+ * no props. Every test rendering the settings page — including `pages.test.tsx`, which
+ * renders all five to count their headings — needs it, and `useCsrf` throws without it.
+ */
 function Providers({ children }: { children: ReactNode }): ReactNode {
   return (
     <ThemeProvider>
-      <RouterProvider>{children}</RouterProvider>
+      <CsrfProvider csrf={CSRF}>
+        <RouterProvider>{children}</RouterProvider>
+      </CsrfProvider>
     </ThemeProvider>
   )
 }
@@ -95,6 +114,31 @@ const EMPTY_READS: Record<string, unknown> = {
     emergencyFundCentimonths: null,
     hygiene: null,
   },
+  '/api/settings': {
+    build: { version: null, revision: null },
+    profile: { email: null, displayName: null, locale: 'en', role: 'owner' },
+    locales: { supported: ['en', 'nl'], default: 'en' },
+    // Deliberately empty rather than the real default grid: these are not job output,
+    // and half of `DEFAULT_PARAMS` copied here would be a second definition of it that
+    // drifts. The thresholds panel renders the fields the payload names, so an empty
+    // object renders an empty form, which is all a routing test needs. Fidelity to the
+    // real payload is `settings.test.tsx`'s job.
+    params: {},
+    paramDefaults: {},
+    prompts: [],
+    accounts: [],
+    dedupe: [],
+    ai: {
+      models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
+      month: '2026-09',
+      spentMicroEur: 0,
+      budgetMicroEur: 15_000_000,
+      remainingMicroEur: 15_000_000,
+      usedBp: 0,
+      exceeded: false,
+      history: [],
+    },
+  },
   '/api/budget': {
     freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
     // A month label the server invents when nothing has been computed, so the page
@@ -119,6 +163,17 @@ export function apiStub(path: string): Response | null {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+/**
+ * Puts i18next back into English.
+ *
+ * The counterpart to `resetTheme`, and needed for the same reason: i18next is a
+ * singleton per test file, so a test that proves the language control works leaves
+ * every test after it reading Dutch — and failing on a heading that is on screen.
+ */
+export async function resetLanguage(): Promise<void> {
+  await setLanguage('en')
 }
 
 /** Forgets a remembered theme and the attribute it stamps on `<html>`. */

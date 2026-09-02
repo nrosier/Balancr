@@ -108,8 +108,7 @@
       "soon": "Coming next: allocation treemap, time-weighted return and a holdings table with ISIN, currency and annual cost."
     },
     "settings": {
-      "lede": "Language, prompts, thresholds and which source owns each account.",
-      "soon": "Coming next: language, the prompt editor with diff and dry-run, thresholds, account mapping and AI spend to date."
+      "lede": "Language, prompts, thresholds and which source owns each account."
     }
   },
   "severity": {
@@ -136,7 +135,8 @@
     "open": "Open",
     "pending": "Awaiting review",
     "rejected": "Rejected",
-    "running": "Running"
+    "running": "Running",
+    "skipped": "Skipped"
   },
   "theme": {
     "dark": "Dark",
