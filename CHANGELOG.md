@@ -6,6 +6,34 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **The logs did not say which build was running**
+  ([#104](https://github.com/nrosier/Balancr/issues/104)). A container answering
+  `"version":"0.5.0"` had in fact been pulled at `0.5.4`; the image was pulled and
+  the container was never recreated. Establishing that took matching the digest
+  `docker compose pull` printed against manifest digests read out of workflow logs,
+  because no startup line named a version — and until it was established, two
+  already-released fixes looked like fixes that had not worked.
+
+  Startup now logs `version`, `revision`, `node` and `env` as its first line, before
+  any step that can fail, since a crash during startup is exactly when the build
+  matters most.
+
+### Added
+- **The commit is stamped into the image** as `BALANCR_REVISION`, a build argument
+  set from `github.sha` and logged as `revision`. The version alone cannot identify a
+  build: every push to `main` publishes `edge` from the same `package.json` as the
+  last tag, so `0.5.4` names the release and every `edge` build after it. A digest
+  now maps back to a commit without reading CI logs. `null` outside an image, where
+  the working tree is the answer.
+
+  The name has to be spelled identically in three files — `version.ts` reads it, the
+  `Dockerfile` declares it, `release.yml` passes it — and renaming any one of them
+  would make the field `null` in every log line forever, with nothing failing and
+  nothing warning. `test/unit/server-version.test.ts` asserts the agreement.
+
 ## [0.5.5] — 2026-09-02
 
 ### Added

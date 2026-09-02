@@ -50,6 +50,16 @@ VOLUME ["/data"]
 USER node
 EXPOSE 3000
 
+# The commit this image was built from, logged at startup so a running container
+# can be traced back to a commit — `edge` and a release tag can carry the same
+# package.json version, so the version alone does not identify a build.
+#
+# Declared last, and on purpose: an ARG is scoped to the stage that declares it,
+# and this value changes on every commit, so an ENV any earlier would invalidate
+# every layer below it — the dependency copy included — on each new build.
+ARG BALANCR_REVISION=""
+ENV BALANCR_REVISION=${BALANCR_REVISION}
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 

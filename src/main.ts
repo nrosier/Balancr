@@ -1,6 +1,11 @@
 /**
  * Process entry point.
  *
+ * The version and commit are logged first, before any startup step, so the logs
+ * always identify the running build. Nothing can precede it: the logger's own
+ * level comes from `config`, so a process that cannot read its environment dies
+ * before it has anywhere to say so.
+ *
  * Startup order is deliberate and each step is a hard failure:
  *  1. `config` validates the environment at import time — a half-configured
  *     advisor that silently skips auth is worse than one that refuses to boot.
@@ -27,10 +32,20 @@ import { initI18n } from './i18n/index.ts'
 import { createScheduler, registry } from './jobs/index.ts'
 import { logger } from './logger.ts'
 import { buildApp } from './server/app.ts'
+import { APP_REVISION, APP_VERSION } from './server/version.ts'
 
 const log = logger.child({ module: 'main' })
 
 async function main(): Promise<void> {
+  // The first line out of the process. When a container is misbehaving the first
+  // question is which build it is, and an answer that only arrives once the
+  // migrations have run is no answer at all — a crash during startup is exactly
+  // the case where the version matters most. `revision` is null outside an image.
+  log.info(
+    { version: APP_VERSION, revision: APP_REVISION, node: process.version, env: config.NODE_ENV },
+    'balancr starting',
+  )
+
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')
 
