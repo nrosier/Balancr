@@ -160,7 +160,17 @@ export function notFoundHandler(request: FastifyRequest, reply: FastifyReply): v
   void reply.status(404).send(body('not_found', 'Not found.', request.id))
 }
 
-export function registerErrorHandling(app: FastifyInstance): void {
+/**
+ * `notFound` is a parameter because the SPA has to widen it: an unknown path that a
+ * browser is navigating to must be answered with `index.html`, not with this
+ * envelope. Fastify permits exactly one not-found handler per prefix and throws on
+ * the second, so the two cannot simply both be registered — `spaNotFoundHandler`
+ * wraps this one and is passed in here.
+ */
+export function registerErrorHandling(
+  app: FastifyInstance,
+  notFound: (request: FastifyRequest, reply: FastifyReply) => void = notFoundHandler,
+): void {
   app.setErrorHandler(errorHandler)
-  app.setNotFoundHandler(notFoundHandler)
+  app.setNotFoundHandler(notFound)
 }

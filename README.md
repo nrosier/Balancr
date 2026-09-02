@@ -97,18 +97,26 @@ Actual and Ghostfolio stay on the internal network; only Balancr is published.
 npm ci
 npm run db:migrate     # create/upgrade the SQLite schema
 npm run probe          # validate both upstreams before trusting a number
-npm run dev
+npm run dev            # the server, on :3000
+npm run dev:web        # the UI, on :5173, proxying the server's routes to it
 ```
+
+Two processes in development, one in production: `npm run build` emits the bundle
+into `dist/web` and the server serves it, so a deployment has no second port and
+no CORS. The dev server exists for its hot reload, and proxies rather than mocking
+so the browser talks to the real API.
 
 | Script | What it does |
 |---|---|
-| `npm run dev` | Watch mode with `.env` loaded |
+| `npm run dev` | Server in watch mode with `.env` loaded |
+| `npm run dev:web` | Vite dev server for the UI, proxying to the above |
 | `npm run probe` | Read-only check of Actual and Ghostfolio, and a category-by-category reconciliation against Actual's own totals |
-| `npm test` | Unit tests |
-| `npm run typecheck` | TypeScript, no emit |
+| `npm test` | Unit tests — server under Node, UI under jsdom |
+| `npm run typecheck` | TypeScript, no emit — two programs, server and browser |
 | `npm run i18n:check` | Key, interpolation and plural parity between `en` and `nl` |
+| `npm run tokens:write` | Regenerate `tokens.css` after changing a design token |
 | `npm run db:generate` | Generate a migration from a schema change |
-| `npm run build` | Compile to `dist/` |
+| `npm run build` | Compile the server and bundle the UI into `dist/` |
 
 `npm run probe` is the one to run after upgrading Actual or Ghostfolio. Three of
 the four Ghostfolio endpoints Balancr reads are its frontend's internal,
@@ -207,21 +215,23 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.5.0` is released, and with it the API-and-auth
-milestone: the Fastify app with proxy trust, security headers, CSRF and rate
-limits ([#23](https://github.com/nrosier/Balancr/issues/23),
-[#27](https://github.com/nrosier/Balancr/issues/27)), the OIDC code flow against
-Authentik with server-side sessions and a deny-by-default guard
-([#24](https://github.com/nrosier/Balancr/issues/24)), the break-glass local login
-gated on the TCP peer address ([#25](https://github.com/nrosier/Balancr/issues/25)),
-and the read-only API the views read from
-([#26](https://github.com/nrosier/Balancr/issues/26)). There is now a server that
-answers every figure Balancr computes, over an authenticated session, without ever
-calling an upstream to do it — and no screens yet.
+**Where it is now** — `0.6.0`, slice 1 of 8: the shell the screens go in
+([#28](https://github.com/nrosier/Balancr/issues/28)) — a React SPA with routing,
+navigation, the light/dark theme, both languages, the sign-in screen and the chart
+wrapper every view will use. There is a UI you can log into and move around; the
+five sections are still placeholders, and each gets filled in its own slice. Two
+constraints shaped it: **no external origin** — fonts, icons and charts are all
+bundled, because the CSP names none and a dashboard that fetches a script from
+someone else's domain hands that domain the page — and **language and formatting
+stay separate**, so choosing English does not turn `€ 1.234,56` into `€ 1,234.56`.
 
-Next is the web UI ([#28](https://github.com/nrosier/Balancr/issues/28)–[#35](https://github.com/nrosier/Balancr/issues/35)),
-shipping as `0.5.1`, `0.5.2`, … until every issue in that milestone is closed and
-`0.6.0` lands.
+Next is the overview screen ([#29](https://github.com/nrosier/Balancr/issues/29)),
+then budget, portfolio, insights and settings
+([#30](https://github.com/nrosier/Balancr/issues/30)–[#33](https://github.com/nrosier/Balancr/issues/33)),
+language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
+and the accessibility and responsive pass
+([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.1`,
+`0.5.2`, … until every issue in that milestone is closed and `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

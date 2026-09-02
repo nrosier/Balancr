@@ -1,0 +1,136 @@
+/*
+ * The element defaults, written once so components carry layout rather than
+ * typography.
+ *
+ * Everything here reads a token; no literal colour or size appears below this
+ * comment. That is the rule that makes the light and dark themes one switch instead
+ * of a hunt.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Anchored deep links land below the sticky header rather than under it. */
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--type-base);
+  line-height: var(--lead-normal);
+  font-weight: var(--weight-regular);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: var(--lead-tight);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: var(--type-xl);
+}
+
+h2 {
+  font-size: var(--type-lg);
+}
+
+h3 {
+  font-size: var(--type-md);
+}
+
+h4 {
+  font-size: var(--type-base);
+}
+
+p {
+  margin: 0 0 var(--space-3);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+/*
+ * One focus style for everything, and `:focus-visible` rather than `:focus` so a
+ * mouse click does not draw a ring while a Tab key does. Two colours, because a
+ * single ring disappears against whichever surface happens to match it.
+ */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/*
+ * Every figure in the application is a number in a column next to other numbers.
+ * Tabular figures keep the digits aligned; proportional ones make a table of
+ * amounts look like a ransom note.
+ */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* Available to a screen reader, invisible on screen — chart text equivalents. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

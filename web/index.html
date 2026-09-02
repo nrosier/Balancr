@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  No inline script and no inline style, anywhere in this file.
+
+  `src/server/security.ts` sends a Content-Security-Policy with no 'unsafe-inline'
+  and no external origin, so an inline `<style>` block or a bootstrap `<script>`
+  would simply not run — and `scripts/check-web-assets.mjs` fails the build if one
+  appears in the output. The usual reason to want one, avoiding a theme flash on
+  load, is handled by CSS instead (see `src/theme/theme.ts`).
+
+  There is deliberately no `theme-color` meta: it would be the only copy of a palette
+  colour outside `tokens.ts`, and nothing would notice when the two drifted.
+  `color-scheme` gives the browser's own chrome the same information without
+  restating a colour.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/favicon.svg" />
+    <title>Balancr</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      Both languages, hardcoded: the catalogues arrive with the bundle, so if this
+      message is the one being read, there is nothing to translate it with.
+    -->
+    <noscript>
+      <p>Balancr needs JavaScript to draw its charts.</p>
+      <p>Balancr heeft JavaScript nodig om zijn grafieken te tekenen.</p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

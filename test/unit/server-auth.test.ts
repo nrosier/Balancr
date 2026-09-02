@@ -51,7 +51,7 @@ beforeEach(async () => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   issuer = await createFakeIssuer(REDIRECT_URI)
-  app = await buildApp({ db: ctx.db, oidc: createOidcClient(issuer.settings) })
+  app = await buildApp({ db: ctx.db, oidc: createOidcClient(issuer.settings), web: null })
 
   // No `auth` in the config: this is the deny-by-default case, and it is here
   // rather than in a fixture so the omission is visible.
@@ -433,7 +433,7 @@ describe('discovery', () => {
 
 describe('a deployment with no OIDC', () => {
   it('has no login endpoints at all, and says so in the session summary', async () => {
-    const plain = await buildApp({ db: ctx.db, oidc: null })
+    const plain = await buildApp({ db: ctx.db, oidc: null, web: null })
     try {
       // A 404 is the honest answer for a capability this deployment does not have,
       // and better than an endpoint that exists only to fail.

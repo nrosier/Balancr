@@ -66,7 +66,7 @@ const limitedTo = (max: number): { config: { rateLimit: object; auth: false } } 
 beforeEach(async () => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  app = await buildApp({ db: ctx.db })
+  app = await buildApp({ db: ctx.db, web: null })
 })
 
 afterEach(async () => {

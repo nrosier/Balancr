@@ -50,7 +50,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  app = await buildApp({ db: ctx.db, oidc: null })
+  app = await buildApp({ db: ctx.db, oidc: null, web: null })
 
   const row = ctx.db
     .insert(users)

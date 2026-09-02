@@ -23,17 +23,24 @@
   },
   "app": {
     "name": "Balancr",
-    "tagline": "Budget and portfolio, in one view"
+    "skipToContent": "Skip to content",
+    "tagline": "Budget and portfolio, in one view",
+    "version": "Version {{version}}"
   },
   "auth": {
+    "email": "Email address",
     "invalid": "Those details are not correct.",
     "localDisabled": "Local sign-in is not available from this network.",
     "lockedUntil": "Too many attempts. Locked until {{when}}.",
+    "noMethods": "No sign-in method is available from this network.",
+    "or": "or",
     "password": "Password",
     "signIn": "Sign in",
     "signInLocal": "Sign in with a local account",
     "signInOidc": "Sign in with Authentik",
     "signOut": "Sign out",
+    "signedInAs": "Signed in as {{name}}",
+    "signingIn": "Signing in…",
     "totp": "Authenticator code",
     "username": "Username"
   },
@@ -62,14 +69,45 @@
   "nav": {
     "budget": "Budget",
     "insights": "Insights",
+    "label": "Sections",
     "overview": "Overview",
     "portfolio": "Portfolio",
     "settings": "Settings"
+  },
+  "notFound": {
+    "back": "Back to overview",
+    "lede": "There is nothing at that address.",
+    "title": "Page not found"
+  },
+  "page": {
+    "budget": {
+      "lede": "Where the money went this month, and whether it is on track.",
+      "soon": "Coming next: income-to-category flow, budget against actual, burn rate against month progress and per-category trends."
+    },
+    "insights": {
+      "lede": "What the analysis found, and what it wants you to confirm.",
+      "soon": "Coming next: findings by severity, the monthly narrative, the clarification queue and proposal review."
+    },
+    "overview": {
+      "lede": "Net worth, savings rate and the health of the underlying data.",
+      "soon": "Coming next: net worth over time, savings rate, emergency-fund months and a data hygiene score."
+    },
+    "portfolio": {
+      "lede": "Allocation, return and what the holdings cost you each year.",
+      "soon": "Coming next: allocation treemap, time-weighted return and a holdings table with ISIN, currency and annual cost."
+    },
+    "settings": {
+      "lede": "Language, prompts, thresholds and which source owns each account.",
+      "soon": "Coming next: language, the prompt editor with diff and dry-run, thresholds, account mapping and AI spend to date."
+    }
   },
   "severity": {
     "alert": "Action needed",
     "info": "Info",
     "warn": "Attention"
+  },
+  "shell": {
+    "loading": "Loading…"
   },
   "source": {
     "actual": "Actual Budget",
@@ -88,6 +126,12 @@
     "pending": "Awaiting review",
     "rejected": "Rejected",
     "running": "Running"
+  },
+  "theme": {
+    "dark": "Dark",
+    "label": "Colour theme",
+    "light": "Light",
+    "system": "Follow system"
   },
   "time": {
     "dayCount_one": "{{value}} day",

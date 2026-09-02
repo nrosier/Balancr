@@ -10,5 +10,7 @@ data
 *.db
 *.db-*
 coverage
-test
+# `**` because a bare `test` matches only the top-level directory — the browser
+# tests live in web/test and would otherwise ride along into the build context.
+**/test
 *.log

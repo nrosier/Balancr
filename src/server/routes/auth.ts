@@ -48,6 +48,7 @@ import {
   SESSION_COOKIE,
 } from '../cookies.ts'
 import { newCsrfToken } from '../csrf.ts'
+import type { LocalLoginResponse, SessionResponse } from '../contract.ts'
 import { badRequest, HttpError, notFound } from '../errors.ts'
 import { inCidrs, peerAddress } from '../net.ts'
 import { loginRateLimit } from '../rate-limit.ts'
@@ -98,7 +99,7 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
    * what to render, and neither part is a secret — an unauthenticated caller can
    * already discover which endpoints exist.
    */
-  app.get('/auth/session', publicRoute, (request: FastifyRequest) => ({
+  app.get('/auth/session', publicRoute, (request: FastifyRequest): SessionResponse => ({
     authenticated: request.user !== undefined,
     user:
       request.user === undefined
@@ -183,7 +184,7 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
         )
         void reply.setCookie(CSRF_COOKIE, newCsrfToken(), cookieAttributes(false))
 
-        return reply.status(200).send({
+        const response: LocalLoginResponse = {
           authenticated: true,
           user: {
             email: user.email,
@@ -191,7 +192,8 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
             locale: user.locale,
             role: user.role,
           },
-        })
+        }
+        return reply.status(200).send(response)
       },
     )
   }

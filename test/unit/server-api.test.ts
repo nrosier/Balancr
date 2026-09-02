@@ -65,7 +65,7 @@ const get = (url: string, token = session) =>
 
 async function open(options: Parameters<typeof apiFixture>[0] = {}): Promise<void> {
   ctx = apiFixture(options)
-  app = await buildApp({ db: ctx.db })
+  app = await buildApp({ db: ctx.db, web: null })
   session = signIn(ctx.db)
 }
 

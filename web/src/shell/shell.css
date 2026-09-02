@@ -1,0 +1,298 @@
+/*
+ * The application frame: header, navigation, page.
+ *
+ * Mobile first, and one breakpoint. Below 60rem the nav is a fixed bottom tab bar
+ * with the thumb-reachable targets; above it, the same markup becomes a sticky
+ * sidebar. Same DOM order in both, so the tab order and the screen-reader order do
+ * not change with the viewport — a second markup tree per breakpoint is the usual
+ * way an application becomes unusable with a keyboard on a phone.
+ *
+ * Every colour, size and radius is a token; no literal colour appears below this
+ * comment. The theme is one switch, not a hunt.
+ */
+
+.shell {
+  display: grid;
+  min-height: 100dvh;
+  grid-template-areas:
+    'header'
+    'main'
+    'nav';
+  grid-template-rows: auto 1fr auto;
+}
+
+/*
+ * Off-screen until focused. The first Tab on any page hits this, which is the whole
+ * point: without it a keyboard user walks the five nav links again on every page.
+ */
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-3);
+  z-index: 3;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  transform: translateY(calc(-100% - var(--space-4)));
+  transition: transform var(--transition);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  grid-area: header;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--header-height);
+  padding-inline: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-card);
+}
+
+/*
+ * Brand and tagline together take the slack, so the theme control and the account
+ * stay pinned to the right edge at every width.
+ */
+.header__lead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-right: auto;
+  min-width: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: var(--weight-semibold);
+}
+
+.brand__mark {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  /* Baseline alignment on a glyph-shaped image sits it a shade too high. */
+  transform: translateY(0.15rem);
+}
+
+.brand__name {
+  font-size: var(--type-md);
+  letter-spacing: -0.01em;
+}
+
+.brand__version {
+  font-size: var(--type-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-faint);
+}
+
+/*
+ * The tagline is the first thing to go: on a phone the header has room for the name,
+ * the theme control and the account, and nothing else.
+ */
+.brand__tagline {
+  display: none;
+}
+
+/* ── Theme control ───────────────────────────────────────────────────────── */
+
+.theme-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.theme-toggle__option {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.theme-toggle__option:hover {
+  color: var(--text);
+}
+
+.theme-toggle__option[aria-pressed='true'] {
+  background: var(--surface-card);
+  color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Account ─────────────────────────────────────────────────────────────── */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.account__name {
+  overflow: hidden;
+  max-width: 12ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-sm);
+  color: var(--text-muted);
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────────── */
+
+.nav {
+  grid-area: nav;
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  border-top: 1px solid var(--border);
+  background: var(--surface-card);
+  /* iOS home-bar territory; without this the last row of labels is unreadable. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.nav__link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--nav-height);
+  padding: var(--space-1);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: var(--type-xs);
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+
+.nav__link:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.nav__link[aria-current='page'] {
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+.nav__label {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Page ────────────────────────────────────────────────────────────────── */
+
+.main {
+  grid-area: main;
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: var(--space-4);
+  /*
+   * The nav is `fixed`, so it is out of flow and would sit on top of the last card.
+   * A sticky element in the last grid row cannot stick to the viewport, which is why
+   * the nav is fixed and the clearance is manual.
+   */
+  padding-bottom: calc(var(--nav-height) + var(--space-6) + env(safe-area-inset-bottom, 0px));
+}
+
+.main:focus {
+  /* Focused programmatically on navigation; the heading announces, the ring does not. */
+  outline: none;
+}
+
+/* ── Desktop ─────────────────────────────────────────────────────────────── */
+
+@media (min-width: 60rem) {
+  .shell {
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-areas:
+      'header header'
+      'nav main';
+  }
+
+  .header {
+    padding-inline: var(--space-5);
+    gap: var(--space-4);
+  }
+
+  .brand__tagline {
+    display: block;
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--border);
+    margin-bottom: 0;
+    font-size: var(--type-sm);
+    font-weight: var(--weight-regular);
+    color: var(--text-muted);
+  }
+
+  .account__name {
+    max-width: 20ch;
+  }
+
+  .nav {
+    position: sticky;
+    top: var(--header-height);
+    bottom: auto;
+    align-self: start;
+    flex-direction: column;
+    gap: 2px;
+    height: calc(100dvh - var(--header-height));
+    padding: var(--space-3);
+    border-top: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface-page);
+    overflow-y: auto;
+  }
+
+  .nav__link {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    min-height: 2.5rem;
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--type-base);
+  }
+
+  .nav__link[aria-current='page'] {
+    background: var(--accent-soft);
+  }
+
+  .main {
+    padding: var(--space-6) var(--space-5);
+  }
+
+}

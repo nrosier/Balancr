@@ -1,0 +1,182 @@
+/*
+ * The primitives every screen shares: cards, buttons, form fields, notices, page
+ * headers.
+ *
+ * Separate from `shell.css` because the sign-in screen renders *outside* the shell.
+ * A `.button` defined in the shell's stylesheet would be unstyled on the one screen
+ * every user meets first — and unstyled in a way nothing fails on, which is worse.
+ * Imported once from `main.tsx`, so both trees get them.
+ *
+ * No literal colour appears below this comment.
+ */
+
+/* ── Page headers ────────────────────────────────────────────────────────── */
+
+.page__header {
+  margin-bottom: var(--space-5);
+}
+
+.page__title {
+  font-size: var(--type-xl);
+}
+
+.page__lede {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+  max-width: 60ch;
+  color: var(--text-muted);
+}
+
+@media (min-width: 60rem) {
+  .page__title {
+    font-size: var(--type-2xl);
+  }
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+
+.card {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card__title {
+  margin-bottom: var(--space-3);
+  font-size: var(--type-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/*
+ * `min(100%, 18rem)` rather than a bare `18rem`: on a 375px screen an 18rem minimum
+ * would overflow the track and push the card off the side.
+ */
+.grid-cards {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--type-base);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.button:hover {
+  background: var(--accent-hover);
+  color: var(--accent-text);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The default already is the primary; the modifier exists so a call site can say so. */
+.button--primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.button--quiet {
+  border-color: var(--border);
+  background: var(--surface-card);
+  color: var(--text-muted);
+}
+
+.button--quiet:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* Square, for a button whose entire label is an icon plus an `aria-label`. */
+.button--icon {
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+}
+
+/* ── Form fields ─────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__label {
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+}
+
+.field__input {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-page);
+  transition: border-color var(--transition);
+}
+
+.field__input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/*
+ * The ring is drawn by `base.css` for keyboard focus; this keeps the border change
+ * from being the only signal for a mouse user who clicked into the field.
+ */
+.field__input:focus-visible {
+  border-color: var(--accent);
+}
+
+/* One-time codes are read digit by digit off a phone screen. */
+.field__input--code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.2em;
+}
+
+/* ── Notices ─────────────────────────────────────────────────────────────── */
+
+.notice {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--type-sm);
+}
+
+.notice--error {
+  border-color: var(--negative);
+  background: var(--negative-soft);
+  color: var(--negative);
+}
+
+.notice__meta {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--text-muted);
+}

@@ -6,6 +6,72 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The shell the screens go in** (`web/`) — a Vite + React SPA with routing, navigation,
+  a light/dark theme, both languages, the sign-in screen and the chart wrapper every view
+  will use. The five sections are placeholders that name what is coming; each is filled in
+  its own slice. What is finished is everything a screen needs to exist inside.
+- **No external origin, enforced by the build.** `src/server/security.ts` sends a CSP that
+  names no outside host and permits nothing inline, so a webfont from Google, a chart
+  library from a CDN or a bootstrap `<script>` would not merely be a privacy question — it
+  would silently not run. Inter ships as two `woff2` files through `@fontsource-variable`,
+  the icons are hand-written SVG components, and `scripts/check-web-assets.mjs` fails the
+  build if any emitted file references an absolute URL or carries an inline `<style>` or
+  `<script>`. A comment in `web/index.html` says why, so the next person to want a CDN
+  finds the reason before the failure.
+- **Design tokens in one place, generated into CSS** (`web/src/theme/tokens.ts` →
+  `tokens.css`). Colours, spacing, radii and type scale are declared once in TypeScript,
+  because the ECharts option objects need the same palette the stylesheet uses and two
+  hand-kept copies of a colour drift the first time one is adjusted. The CSS is committed
+  rather than built, so the dev server, the tests and the bundle all read the same values
+  at first paint; `test/unit/web-tokens.test.ts` fails if the two disagree, which turns
+  forgetting `npm run tokens:write` into a failing test instead of a wrong colour.
+- **A theme with three states, not two.** Light, dark, and *follow the system* — and
+  `system` **removes** the `data-theme` attribute rather than writing the currently
+  resolved colour into it, which is the difference between a preference and a snapshot: a
+  laptop that switches to dark at sunset should follow, and a stored `"dark"` from last
+  night would not. The choice is remembered in `localStorage`, every access wrapped
+  because storage can be unavailable, and a junk stored value falls back rather than
+  throwing.
+- **Charts that dispose themselves** (`web/src/charts/Chart.tsx`). ECharts is registered by
+  hand from `echarts/core` — only the pieces used, with the SVG renderer — so the bundle
+  carries no chart type no view draws. Each instance is disposed on unmount and rebuilt
+  only when the theme changes; a data change updates the existing one. Every chart also
+  carries `role="img"` and a text summary of what it shows, because a chart is the one
+  component whose meaning is entirely visual.
+- **A sign-in screen that decides nothing.** Which methods to offer comes from
+  `/auth/session`: `local` is a judgement about the TCP peer address that a browser cannot
+  make, so the password form appears only when the server says it would be entertained,
+  and "no method available from this network" is a state the screen states plainly rather
+  than an empty card. A refused login shows the server's single message verbatim — the API
+  deliberately answers every failure the same way, since distinguishing "no such account"
+  from "wrong password" confirms a guess for whoever is guessing.
+- **The session is asked for, never inferred.** After a successful local login the client
+  re-asks `/auth/session` instead of trusting the login response, so the signed-in state
+  always comes from the cookie the browser actually holds. Asserted by a test on the exact
+  request sequence.
+- **The SPA fallback, matching the server's** — an unknown path renders "Page not found"
+  *inside* the shell, with the navigation still there, because `src/server/spa.ts` hands
+  every navigation the same `index.html` and the two have to agree about what happens next.
+- **100 browser tests** (`web/test/`, jsdom) alongside the 979 server ones, in a second
+  vitest project with its own setup and its own TypeScript program. They cover the
+  properties that are invisible when broken: a modified click stays a browser click and
+  never a route change, the back button works, a chart disposes, `system` theme leaves no
+  attribute behind, and `t('time.monthCount', { count: 2.4 })` is `2,4 months` in English
+  and `2,4 maanden` in Dutch — one catalogue, one formatter, two independent settings.
+  The catalogues are the server's own JSON files rather than a copy, which is what makes
+  `npm run i18n:check` cover what the browser renders.
+
+### Changed
+- `npm run typecheck` now checks two programs, the server's and the browser's; `npm test`
+  runs both projects; `npm run build` emits the bundle into `dist/web` and the server
+  serves it from there, so a deployment still has one port and no CORS.
+- `GET /` and an unknown path answer differently depending on whether a bundle is present.
+  Server tests pass `web: null` explicitly, so their behaviour does not depend on whether
+  `npm run build` happened to have been run.
+
 ## [0.5.0] — 2026-09-02
 
 ### Added

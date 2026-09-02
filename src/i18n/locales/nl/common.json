@@ -23,17 +23,24 @@
   },
   "app": {
     "name": "Balancr",
-    "tagline": "Budget en portefeuille, in één overzicht"
+    "skipToContent": "Naar de inhoud",
+    "tagline": "Budget en portefeuille, in één overzicht",
+    "version": "Versie {{version}}"
   },
   "auth": {
+    "email": "E-mailadres",
     "invalid": "Die gegevens zijn niet juist.",
     "localDisabled": "Lokaal aanmelden is niet beschikbaar vanaf dit netwerk.",
     "lockedUntil": "Te veel pogingen. Geblokkeerd tot {{when}}.",
+    "noMethods": "Er is geen aanmeldmethode beschikbaar vanaf dit netwerk.",
+    "or": "of",
     "password": "Wachtwoord",
     "signIn": "Aanmelden",
     "signInLocal": "Aanmelden met een lokaal account",
     "signInOidc": "Aanmelden met Authentik",
     "signOut": "Afmelden",
+    "signedInAs": "Aangemeld als {{name}}",
+    "signingIn": "Aanmelden…",
     "totp": "Authenticatorcode",
     "username": "Gebruikersnaam"
   },
@@ -62,14 +69,45 @@
   "nav": {
     "budget": "Budget",
     "insights": "Inzichten",
+    "label": "Onderdelen",
     "overview": "Overzicht",
     "portfolio": "Portefeuille",
     "settings": "Instellingen"
+  },
+  "notFound": {
+    "back": "Terug naar overzicht",
+    "lede": "Op dat adres staat niets.",
+    "title": "Pagina niet gevonden"
+  },
+  "page": {
+    "budget": {
+      "lede": "Waar het geld deze maand naartoe ging, en of je op schema zit.",
+      "soon": "Binnenkort: geldstroom van inkomen naar categorie, budget tegenover werkelijkheid, verbruikstempo tegenover het verloop van de maand en trends per categorie."
+    },
+    "insights": {
+      "lede": "Wat de analyse vond, en wat ze je wil laten bevestigen.",
+      "soon": "Binnenkort: bevindingen per ernst, het maandverslag, de vragenlijst en het nazicht van voorstellen."
+    },
+    "overview": {
+      "lede": "Nettowaarde, spaarquote en de kwaliteit van de onderliggende gegevens.",
+      "soon": "Binnenkort: vermogen doorheen de tijd, spaarquote, maanden noodfonds en een score voor de kwaliteit van je gegevens."
+    },
+    "portfolio": {
+      "lede": "Spreiding, rendement en wat de posities je jaarlijks kosten.",
+      "soon": "Binnenkort: spreiding als treemap, tijdgewogen rendement en een tabel met ISIN, munt en jaarlijkse kosten."
+    },
+    "settings": {
+      "lede": "Taal, prompts, drempels en welke bron elke rekening beheert.",
+      "soon": "Binnenkort: taal, de prompt-editor met verschilweergave en proefrun, drempelwaarden, rekeningtoewijzing en AI-kosten tot nu."
+    }
   },
   "severity": {
     "alert": "Actie nodig",
     "info": "Info",
     "warn": "Let op"
+  },
+  "shell": {
+    "loading": "Laden…"
   },
   "source": {
     "actual": "Actual Budget",
@@ -88,6 +126,12 @@
     "pending": "Wacht op nazicht",
     "rejected": "Afgewezen",
     "running": "Bezig"
+  },
+  "theme": {
+    "dark": "Donker",
+    "label": "Kleurthema",
+    "light": "Licht",
+    "system": "Systeem volgen"
   },
   "time": {
     "dayCount_one": "{{value}} dag",
