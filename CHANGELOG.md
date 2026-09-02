@@ -6,6 +6,42 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **Every AI analysis call was rejected before the model ever saw it**
+  ([#96](https://github.com/nrosier/Balancr/issues/96)). Gemini answered
+  `400 INVALID_ARGUMENT` to the structured findings pass while the free-text
+  narrative in the same run succeeded, so each nightly run recorded
+  `analysisStatus: error`, fell back to deterministic findings with nothing ranking
+  them, and still billed for the narrative. Two independent causes, both in the
+  response schema:
+
+  Zod emits correct draft-7, and correct draft-7 includes four keywords Gemini's
+  `responseJsonSchema` does not accept — `$schema`, `default`, `minLength`,
+  `maxLength`. The schema is now narrowed to the keywords the provider documents,
+  by allowlist rather than by removing those four, since the rejection names no
+  keyword and a Zod upgrade emitting a fifth would present as "the AI stopped
+  working".
+
+  That alone did not fix it. `maxItems: 48` on the findings array is *also*
+  refused — a keyword Gemini accepts, but array bounds are multiplied into an
+  undocumented complexity budget, and 48 on a four-field item is over it while 24
+  is not. Any cap chosen here would be a guess a single new finding code could
+  invalidate, so array bounds are no longer sent at all: the wire schema now
+  carries shape and vocabulary, `analysisInstruction` states the limits in words,
+  and `parseAnalysisResponse` keeps enforcing them on the way back in. Exceeding
+  one now costs a re-rank instead of the whole run.
+
+  Confirmed against the live API, not only against the documented subset: the
+  schema as it was is a 400 on both `gemini-3.7-flash` and `gemini-3.1-pro-preview`,
+  and the schema as it now stands returns grounded findings on both.
+
+### Changed
+- **A rejected structured call now says the schema is the likely cause.** Gemini
+  returns a bare 400 with no keyword and no field path, which reads exactly like a
+  bad key or a missing model — the reason #96 took an evening rather than an hour.
+
 ## [0.5.3] — 2026-09-02
 
 ### Fixed
