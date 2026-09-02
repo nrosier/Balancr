@@ -14,10 +14,12 @@
  *    side alone would put a step in the series at the point the backfill meets live
  *    data, and a step reads as an event — money that moved, on a date when nothing
  *    happened but a job giving up.
- *  - **A Ghostfolio total that is not one account's value is never attributed to one.**
- *    The chart is a portfolio total. On an install where Ghostfolio counts seven
- *    accounts and one of them is mapped into net worth, attributing it would overstate
- *    history by six accounts every month, in the flattering direction.
+ *  - **A Ghostfolio total is never attributed to one account.** The unfiltered chart is
+ *    a portfolio total; on an install where Ghostfolio counts seven accounts and one of
+ *    them is mapped into net worth, attributing it would overstate history by six
+ *    accounts every month, in the flattering direction. So each counted account is
+ *    asked for its own series, and the tests assert on which series answered which
+ *    account rather than on a total that happened to match.
  *  - **It does not spend Actual's time twice.** One `getAccountBalance` per account per
  *    month is the expensive thing in this codebase; after the first pass there are no
  *    calls left to make.
@@ -50,6 +52,12 @@ interface Account {
   last_reconciled: string | null
 }
 
+/** One point of a Ghostfolio value chart. A null value is a date it could not price. */
+interface ChartPoint {
+  date: string
+  value: number | null
+}
+
 /** A Ghostfolio account as the `/api/v1/account` payload carries it. */
 interface GfAccount {
   id: string
@@ -72,11 +80,27 @@ const gave = {
   /** Balance per account, keyed by the `YYYY-MM-DD` of the `asOf` date. */
   balances: {} as Record<string, Record<string, number>>,
   gfAccounts: [] as GfAccount[],
-  chart: [] as { date: string; value: number | null }[],
+  /** The unfiltered `range=max` chart: the portfolio total, which the metrics half wants. */
+  chart: [] as ChartPoint[],
+  /**
+   * Per-account series, keyed by Ghostfolio account id.
+   *
+   * An account with no entry here answers `chart`, which keeps every test that is not
+   * about attribution reading as it did when there was only one series.
+   */
+  charts: {} as Record<string, ChartPoint[]>,
   /** Set to have the performance endpoint fail the way an outage does. */
   chartError: null as Error | null,
+  /** Account ids whose own series must fail, for the one-of-many outage case. */
+  seriesErrors: [] as string[],
   balanceDates: [] as string[],
-  chartCalls: 0,
+  /**
+   * One entry per performance call: the account id it filtered on, `null` unfiltered.
+   *
+   * The cost surface. Per-account attribution costs one request per *counted* account,
+   * and the assertion that it is not one per date is the length of this array.
+   */
+  performanceCalls: [] as (string | null)[],
 }
 
 const day = (asOf: Date): string => asOf.toISOString().slice(0, 10)
@@ -97,10 +121,14 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
 vi.mock('../../src/adapters/ghostfolio/client.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/ghostfolio/client.ts')>()),
   fetchAccounts: () => Promise.resolve({ accounts: gave.gfAccounts }),
-  fetchPortfolioPerformance: () => {
-    gave.chartCalls += 1
+  fetchPortfolioPerformance: (_range?: string, accountId?: string) => {
+    gave.performanceCalls.push(accountId ?? null)
     if (gave.chartError !== null) return Promise.reject(gave.chartError)
-    return Promise.resolve({ chart: gave.chart })
+    if (accountId !== undefined && gave.seriesErrors.includes(accountId)) {
+      return Promise.reject(new Error(`no series for ${accountId}`))
+    }
+    const chart = accountId === undefined ? gave.chart : gave.charts[accountId] ?? gave.chart
+    return Promise.resolve({ chart })
   },
 }))
 
@@ -144,9 +172,11 @@ beforeEach(() => {
     { date: '2026-02-28', value: 3_200 },
     { date: '2026-03-14', value: 3_250 },
   ]
+  gave.charts = {}
   gave.chartError = null
+  gave.seriesErrors = []
   gave.balanceDates = []
-  gave.chartCalls = 0
+  gave.performanceCalls = []
 })
 
 const run = async (now = NIGHT): Promise<JobDetail> =>
@@ -182,7 +212,14 @@ describe('a first pass over a known fixture', () => {
     expect(detail.snapshotsWritten).toBe(2)
     expect(detail.snapshotsSkipped).toBe(0)
     expect(detail.metricsWritten).toBe(2)
-    expect(detail.investmentHalf).toBe('chart')
+    expect(detail.investmentHalf).toBe('accounts')
+  })
+
+  it('asks Ghostfolio once for the total and once per counted account', async () => {
+    await run()
+    // Not once per date, which is the reason to ask with `accounts=<id>` at all: the
+    // twenty-four-month window would otherwise be twenty-four requests per account.
+    expect(gave.performanceCalls).toEqual([null, 'g1'])
   })
 
   it('asks Actual for each month-end once, and for today once to classify', async () => {
@@ -252,24 +289,104 @@ describe('a month-end before the portfolio existed', () => {
   })
 })
 
-describe('when the chart is not one account', () => {
-  it('leaves net worth alone and backfills the value chart anyway', async () => {
-    // Ghostfolio counts two accounts; one is mapped here. Its chart is the total of
-    // both, and there is no honest way to split it.
+describe('two counted Ghostfolio accounts', () => {
+  /** Bolero and a pension account, each with its own series and its own history. */
+  beforeEach(() => {
     gave.gfAccounts = [
       { id: 'g1', name: 'Bolero', currency: 'EUR', balance: 0, valueInBaseCurrency: 4_000 },
       { id: 'g2', name: 'Pensioensparen', currency: 'EUR', balance: 0, valueInBaseCurrency: 900 },
     ]
+    syncAccountMap(db, [
+      { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
+      { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
+      { source: 'ghostfolio', externalId: 'g2', name: 'Pensioensparen' },
+    ])
+  })
+
+  it('attributes each month-end from the series of that account alone', async () => {
+    gave.charts = {
+      g1: [
+        { date: '2026-01-31', value: 3_000 },
+        { date: '2026-02-28', value: 3_200 },
+        { date: '2026-03-14', value: 3_250 },
+      ],
+      g2: [
+        { date: '2026-01-31', value: 800 },
+        { date: '2026-02-28', value: 900 },
+        { date: '2026-03-14', value: 910 },
+      ],
+    }
+    const detail = await run()
+
+    // The unfiltered chart is 3_250 + 910 in Ghostfolio's own arithmetic, and the point
+    // of asking per account is that this total is never what lands in a snapshot row.
+    expect(snapshots()).toEqual({
+      '2026-01-31': 100_000 + 300_000 + 80_000,
+      '2026-02-28': 120_000 + 320_000 + 90_000,
+    })
+    expect(detail.investmentHalf).toBe('accounts')
+    expect(gave.performanceCalls).toEqual([null, 'g1', 'g2'])
+  })
+
+  it('does not let the younger account shorten the history of the older', async () => {
+    // What the aggregate design got wrong and this one cannot: g2's first order is in
+    // February, and January is a complete month in which it held nothing.
+    gave.charts = {
+      g1: [
+        { date: '2026-01-31', value: 3_000 },
+        { date: '2026-02-28', value: 3_200 },
+        { date: '2026-03-14', value: 3_250 },
+      ],
+      g2: [
+        { date: '2026-02-10', value: 850 },
+        { date: '2026-02-28', value: 900 },
+        { date: '2026-03-14', value: 910 },
+      ],
+    }
+    const detail = await run()
+
+    expect(snapshots()).toEqual({
+      '2026-01-31': 100_000 + 300_000,
+      '2026-02-28': 120_000 + 320_000 + 90_000,
+    })
+    expect(detail.snapshotsSkipped).toBe(0)
+  })
+
+  it('writes no date at all when one account series is missing', async () => {
+    // All-or-nothing across the counted rows: a date answered from one of two accounts
+    // is the partial investment half this job exists not to write.
+    gave.seriesErrors = ['g2']
     const detail = await run()
 
     expect(snapshots()).toEqual({})
     expect(detail.investmentHalf).toBe('unavailable')
-    // The halves are independent, and this is where it pays: the portfolio-value
-    // chart is a total, so an unattributable total is exactly what it wants.
+    // The halves stay independent, and this is where it pays: the value chart is a
+    // total, so it is complete whether or not any of it can be attributed.
     expect(metrics()).toEqual({ '2026-01-31': 300_000, '2026-02-28': 320_000 })
   })
+})
 
-  it('writes Actual alone when no investment row counts at all', async () => {
+describe('a counted account with no dated value', () => {
+  it('leaves net worth alone and backfills the value chart anyway', async () => {
+    // A cash-only Ghostfolio account: its figure is `balance`, which is not dated, so
+    // its chart carries nulls throughout. Today's number exists and no past one does.
+    gave.charts = {
+      g1: [
+        { date: '2026-01-31', value: null },
+        { date: '2026-02-28', value: null },
+        { date: '2026-03-14', value: null },
+      ],
+    }
+    const detail = await run()
+
+    expect(snapshots()).toEqual({})
+    expect(detail.investmentHalf).toBe('unavailable')
+    expect(metrics()).toEqual({ '2026-01-31': 300_000, '2026-02-28': 320_000 })
+  })
+})
+
+describe('when no investment row counts at all', () => {
+  it('writes Actual alone, because today has no investment half either', async () => {
     // Ghostfolio's own exclusion flag, which `collectAccountValues` ANDs with ours.
     // This is `none`, not `unavailable`, and the difference is the whole point of the
     // skip rule: *today's* figure has no investment half either, so an Actual-only
@@ -289,6 +406,8 @@ describe('when the chart is not one account', () => {
     expect(snapshots()).toEqual({ '2026-01-31': 100_000, '2026-02-28': 120_000 })
     expect(detail.investmentHalf).toBe('none')
     expect(detail.snapshotsSkipped).toBe(0)
+    // And no per-account request was made, because there was no counted row to ask about.
+    expect(gave.performanceCalls).toEqual([null])
   })
 })
 
@@ -302,6 +421,8 @@ describe('when Ghostfolio cannot be reached', () => {
     expect(snapshots()).toEqual({})
     expect(metrics()).toEqual({})
     expect(detail.investmentHalf).toBe('unavailable')
+    // Short-circuited on the total rather than failing once per counted account.
+    expect(gave.performanceCalls).toEqual([null])
   })
 })
 
@@ -318,13 +439,16 @@ describe('the steady state', () => {
 
   it('still reads the chart, because months before the first order stay pending', async () => {
     await run()
-    const after = gave.chartCalls
+    gave.performanceCalls = []
 
     await run()
-    // Twenty-two month-ends predate this chart and can never be answered. One GET
-    // against a local Ghostfolio is the price of not storing a floor that would need
-    // invalidating the day an older order is imported.
-    expect(gave.chartCalls).toBe(after + 1)
+    // Twenty-two month-ends predate this chart and can never be answered, so the total
+    // is still asked for. One GET against a local Ghostfolio is the price of not
+    // storing a floor that would need invalidating the day an older order is imported.
+    //
+    // The per-account requests are gone, though: the net-worth half is complete, and
+    // that is what those cost money for.
+    expect(gave.performanceCalls).toEqual([null])
   })
 
   it('makes no call at all once nothing is pending', async () => {
@@ -342,11 +466,11 @@ describe('the steady state', () => {
     const firstPass = await run()
     expect(firstPass.metricsPending).toBe(0)
     gave.balanceDates = []
-    gave.chartCalls = 0
+    gave.performanceCalls = []
 
     const detail = await run()
     expect(gave.balanceDates).toEqual([])
-    expect(gave.chartCalls).toBe(0)
+    expect(gave.performanceCalls).toEqual([])
     expect(detail.pending).toBe(0)
   })
 })

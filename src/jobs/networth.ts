@@ -95,42 +95,29 @@ export async function actualValuesAt(
   return values
 }
 
-/** `account_map` rows paired with a value from their source, or dropped. */
-export interface CollectedValues {
-  values: AccountValue[]
-  /**
-   * How many accounts **Ghostfolio itself** counts — the ones it has not marked
-   * excluded — or null when Ghostfolio could not be reached.
-   *
-   * Here rather than derived from `values` because `values` cannot answer it: the
-   * Ghostfolio rows fold that flag into `includeInNetWorth` together with ours, and
-   * an account Ghostfolio counts but `account_map` does not have at all never
-   * produces a row. Both distinctions matter to exactly one caller, the backfill,
-   * which reads Ghostfolio's whole-portfolio value series and has to know whether
-   * that total is one account's history or several accounts' added together.
-   */
-  ghostfolioCounted: number | null
-}
-
+/**
+ * Every mapped account paired with a value from its source, or dropped.
+ *
+ * Exported for the history backfill, which needs today's picture of both sources to
+ * decide which rows count before it goes looking for their past.
+ */
 export async function collectAccountValues(
   db: Db,
   asOf: Date,
   log: Logger,
-): Promise<CollectedValues> {
+): Promise<AccountValue[]> {
   const rows = loadAccountMap(db)
-  const out: CollectedValues = { values: [], ghostfolioCounted: null }
+  const values: AccountValue[] = []
 
-  out.values.push(...(await actualValuesAt(await actualScope(rows), asOf)))
+  values.push(...(await actualValuesAt(await actualScope(rows), asOf)))
 
   const ghostfolioRows = accountMapBySource(rows, 'ghostfolio')
   if (ghostfolioRows.size > 0) {
     try {
-      const accounts = toAccountValues(await fetchGhostfolioAccounts())
-      out.ghostfolioCounted = accounts.filter((account) => !account.excluded).length
-      for (const account of accounts) {
+      for (const account of toAccountValues(await fetchGhostfolioAccounts())) {
         const row = ghostfolioRows.get(account.externalId)
         if (!row) continue
-        out.values.push({
+        values.push({
           accountMapId: row.id,
           source: 'ghostfolio',
           externalId: row.externalId,
@@ -153,12 +140,12 @@ export async function collectAccountValues(
     }
   }
 
-  return out
+  return values
 }
 
 async function run({ db, now, log }: JobContext): Promise<JobDetail> {
   const date = dateIn(now, config.TZ)
-  const { values } = await collectAccountValues(db, now, log)
+  const values = await collectAccountValues(db, now, log)
   const result = computeNetWorth(date, values)
   const stored = persistNetWorth(db, result)
 

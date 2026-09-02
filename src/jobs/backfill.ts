@@ -13,26 +13,29 @@
  * **`portfolio_metrics`** is a per-date total, so the chart's value *is* the row. That
  * half needs no decision and always runs.
  *
- * **`net_worth_snapshots`** is stored per `account_map` row, and Ghostfolio's chart is
- * a portfolio total rather than a per-account series. Splitting that total across
- * several Ghostfolio rows would be inventing figures, which is the one thing this
- * codebase does not do — so the total is used only when it demonstrably *is* one row's
- * value: Ghostfolio counts exactly one account, and that account's row survives
- * `computeNetWorth`'s dedupe. Anything else and the month-ends inside the chart's
- * range are left alone.
+ * **`net_worth_snapshots`** is stored per `account_map` row, so it needs a value per
+ * account rather than a portfolio total. The performance endpoint takes
+ * `accounts=<id>`, so it is asked once per Ghostfolio row that actually counts — the
+ * unfiltered total is never split across rows, because splitting it would be inventing
+ * figures. One request per counted account buys a whole dated series, so this is N
+ * calls for the job rather than N per date, and N is the accounts that count rather
+ * than the accounts that exist.
  *
- * Left alone, specifically, rather than written as an Actual-only total and marked
- * incomplete. A marker is a schema decision, and it would have to be cleared by
- * whatever eventually makes attribution possible; a missing date needs neither,
- * because the next pass still sees it missing and fills it in. What the reader gets
+ * A date is still skipped when one of those accounts has no value on it — a hole in
+ * Ghostfolio's series rather than a month without a portfolio. Left alone,
+ * specifically, rather than written as an Actual-only total and marked incomplete. A
+ * marker is a schema decision, and it would have to be cleared by whatever eventually
+ * makes attribution possible; a missing date needs neither, because the next pass
+ * still sees it missing and fills it in. What the reader gets
  * either way is the thing that matters: a series drawn from the point both halves are
  * known, rather than one joined to today at a step. A cliff where a backfill meets
  * live data is worse than a shorter chart, because the cliff looks like an event.
  *
- * Dates *before* the chart starts are a different case and are written in full. The
- * `max` range begins at the first order, so a month-end before it is a month when
- * there was no portfolio to value: Actual alone is the whole truth of that date, not
- * half of it.
+ * Dates before a series *starts* are a different case, and are counted as the zero
+ * they are. `range=max` begins at the account's first order, so a month-end before it
+ * is a month when that account held nothing — not a month whose value is unknown. Per
+ * account rather than per portfolio, which is what asking per account buys: an account
+ * opened last year no longer shortens the history of one opened five years ago.
  *
  * Cost is why this is its own job rather than a branch in `networth`. It is the only
  * pass that talks to Actual once per month per account, so it reads both date sets
@@ -58,12 +61,7 @@ import { chartStart, monthEndValues } from '../domain/portfolio/history.ts'
 import { backfillPortfolioValues, metricsDates } from '../domain/portfolio/store.ts'
 import type { Logger } from '../logger.ts'
 import { dateIn, endOfMonth, monthIn, monthsBefore } from '../util/month.ts'
-import {
-  actualScope,
-  actualValuesAt,
-  collectAccountValues,
-  type CollectedValues,
-} from './networth.ts'
+import { actualScope, actualValuesAt, collectAccountValues } from './networth.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
 /**
@@ -75,6 +73,15 @@ import type { Job, JobContext, JobDetail } from './runner.ts'
  */
 const asOf = (date: string): Date => new Date(`${date}T12:00:00Z`)
 
+/** One counted Ghostfolio account's dated value series, reduced to month-ends. */
+interface AccountSeries {
+  target: AccountValue
+  /** First date the series covers. Earlier month-ends predate this account. */
+  start: string
+  /** Month-end date to closing value. */
+  closing: Map<string, number>
+}
+
 /**
  * What the investment side of a past month-end can be filled from.
  *
@@ -84,72 +91,65 @@ const asOf = (date: string): Date => new Date(`${date}T12:00:00Z`)
 type InvestmentHalf =
   /** No Ghostfolio row counts, so no date is waiting on one. Actual is the total. */
   | { kind: 'none' }
-  /** One row owns the whole portfolio, and the chart can date it. */
-  | {
-      kind: 'chart'
-      target: AccountValue
-      /** First date the chart covers; earlier month-ends predate the portfolio. */
-      start: string
-      /** Month-end date to closing value. */
-      closing: Map<string, number>
-    }
+  /** Every counted row has a series, and each date is answered from all of them. */
+  | { kind: 'accounts'; series: AccountSeries[] }
   /** Nothing honest can be said about investments on a past date. `why` is logged. */
   | { kind: 'unavailable'; why: string }
 
 /**
- * Decides which of the three cases holds, from today's picture of both sources.
+ * Decides which of the three cases holds, and fetches a series for each counted row.
  *
  * The dedupe is not re-implemented here: `contributions` is `computeNetWorth`'s own
  * answer to "which rows count", so a group where Actual is the source of truth leaves
  * no Ghostfolio row to attribute to and lands in `none` — correctly, because Actual's
  * own historical balance for that account is then the investment half and
- * `actualValuesAt` already has it.
+ * `actualValuesAt` already has it. Rows excluded by `include_in_net_worth` are absent
+ * for the same reason, which is the whole advantage of asking per account: our
+ * exclusions never have to be reverse-engineered back out of a portfolio total.
  *
- * `ghostfolioCounted` is the second half of the test and the one that is easy to miss.
- * A single *contributing* row is not enough: the chart totals every account Ghostfolio
- * itself counts, so six accounts excluded by `include_in_net_worth` — our flag, not
- * Ghostfolio's — leave a total that spans seven and a row that owns one of them.
- * Using it would overstate the historical investment total by the other six, every
- * month, in the flattering direction.
+ * All-or-nothing across the counted rows. A series missing for one of them makes every
+ * date it covers unanswerable, so there is no point holding the others: a partial
+ * investment half is the Actual-only total this job exists to avoid writing. The one
+ * account this realistically happens to is a cash-only Ghostfolio account, whose chart
+ * carries null values throughout — its figure is `balance`, which is not dated and so
+ * cannot be backfilled at all.
  */
-function investmentHalf(
-  collected: CollectedValues,
+async function investmentHalf(
   contributions: readonly AccountValue[],
-  performance: PortfolioPerformance | null,
   months: readonly string[],
-): InvestmentHalf {
+  log: Logger,
+): Promise<InvestmentHalf> {
   const rows = contributions.filter((account) => account.source === 'ghostfolio')
-  const target = rows[0]
-  if (target === undefined) return { kind: 'none' }
+  if (rows.length === 0) return { kind: 'none' }
 
-  if (rows.length > 1) {
-    return { kind: 'unavailable', why: 'more than one Ghostfolio row counts toward net worth' }
-  }
-  if (performance === null) {
-    return { kind: 'unavailable', why: 'Ghostfolio performance series unavailable' }
-  }
-  if (collected.ghostfolioCounted !== 1) {
-    return {
-      kind: 'unavailable',
-      why:
-        `Ghostfolio counts ${collected.ghostfolioCounted ?? 'an unknown number of'} accounts, ` +
-        'so its portfolio total is not one account_map row',
+  const series: AccountSeries[] = []
+  for (const target of rows) {
+    let performance: PortfolioPerformance
+    try {
+      performance = await fetchPortfolioPerformance('max', target.externalId)
+    } catch (error) {
+      log.warn({ err: error, account: target.name }, 'Ghostfolio account series unavailable')
+      return { kind: 'unavailable', why: `no performance series for ${target.name}` }
     }
+
+    const start = chartStart(performance)
+    if (start === null) {
+      return {
+        kind: 'unavailable',
+        why: `${target.name} has no dated value; a cash-only account cannot be backfilled`,
+      }
+    }
+
+    series.push({
+      target,
+      start,
+      closing: new Map(
+        monthEndValues(performance, months).map((point) => [point.date, point.valueCents]),
+      ),
+    })
   }
 
-  const start = chartStart(performance)
-  if (start === null) {
-    return { kind: 'unavailable', why: 'Ghostfolio returned no usable performance history' }
-  }
-
-  return {
-    kind: 'chart',
-    target,
-    start,
-    closing: new Map(
-      monthEndValues(performance, months).map((point) => [point.date, point.valueCents]),
-    ),
-  }
+  return { kind: 'accounts', series }
 }
 
 /** Month-ends this install reports on, oldest first, excluding the current month. */
@@ -182,16 +182,15 @@ function targetMonths(db: Db, now: Date): { metrics: string[]; netWorth: string[
 async function backfillNetWorth(
   db: Db,
   months: readonly string[],
-  performance: PortfolioPerformance | null,
   now: Date,
   log: Logger,
 ): Promise<{ written: number; skipped: number; half: InvestmentHalf['kind'] }> {
-  const collected = await collectAccountValues(db, now, log)
+  const values = await collectAccountValues(db, now, log)
   // Today's figure, computed only to be asked which rows count. Cheap next to the
   // month-ends below, and it means the historical dates are classified by exactly the
   // function that classifies the live one.
-  const today = computeNetWorth(dateIn(now, config.TZ), collected.values)
-  const half = investmentHalf(collected, today.contributions, performance, months)
+  const today = computeNetWorth(dateIn(now, config.TZ), values)
+  const half = await investmentHalf(today.contributions, months, log)
 
   if (half.kind === 'unavailable') {
     log.warn(
@@ -207,24 +206,42 @@ async function backfillNetWorth(
 
   for (const month of months) {
     const date = endOfMonth(month)
-    const values = await actualValuesAt(scope, asOf(date))
+    const dated = await actualValuesAt(scope, asOf(date))
 
-    if (half.kind === 'chart' && date >= half.start) {
-      const valueCents = half.closing.get(date)
-      if (valueCents === undefined) {
-        // Inside the chart's range with no closing value: a hole in Ghostfolio's
-        // series, not a month without a portfolio. Nothing honest to write.
-        skipped += 1
-        continue
-      }
-      values.push({ ...half.target, valueCents })
+    if (half.kind === 'accounts' && !investmentsAt(date, half.series, dated)) {
+      skipped += 1
+      continue
     }
 
-    persistNetWorth(db, computeNetWorth(date, values))
+    persistNetWorth(db, computeNetWorth(date, dated))
     written += 1
   }
 
   return { written, skipped, half: half.kind }
+}
+
+/**
+ * Appends each counted account's value on `date` to `values`; false if one is missing.
+ *
+ * An account whose series starts later contributes nothing rather than blocking the
+ * date: it did not exist, and a month it did not exist in is a complete month without
+ * it. A missing value *inside* a series is the opposite — a hole in Ghostfolio's data —
+ * and one of those makes the whole date unanswerable, so the caller writes nothing.
+ * `values` may have been appended to by then, and that is harmless because it is built
+ * fresh per date.
+ */
+function investmentsAt(
+  date: string,
+  series: readonly AccountSeries[],
+  values: AccountValue[],
+): boolean {
+  for (const account of series) {
+    if (date < account.start) continue
+    const valueCents = account.closing.get(date)
+    if (valueCents === undefined) return false
+    values.push({ ...account.target, valueCents })
+  }
+  return true
 }
 
 async function run({ db, now, log }: JobContext): Promise<JobDetail> {
@@ -249,10 +266,16 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
       ? { written: 0, kept: 0 }
       : backfillPortfolioValues(db, monthEndValues(performance, months.metrics))
 
+  // An unreachable Ghostfolio short-circuits the net-worth half rather than letting it
+  // fail once per counted account, and it is a skip rather than an Actual-only history:
+  // that would be a net-worth series with the portfolio missing from every past month,
+  // which draws as a fall to zero and back.
   const netWorth =
     months.netWorth.length === 0
       ? { written: 0, skipped: 0, half: 'none' as const }
-      : await backfillNetWorth(db, months.netWorth, performance, now, log)
+      : performance === null
+        ? { written: 0, skipped: months.netWorth.length, half: 'unavailable' as const }
+        : await backfillNetWorth(db, months.netWorth, now, log)
 
   return {
     months: months.all.length,

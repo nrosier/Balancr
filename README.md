@@ -444,7 +444,7 @@ Next are insights
 ([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
 responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
 the double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) —
-shipping as `0.5.12`, `0.5.13`, … until every issue in that milestone is closed and
+shipping as `0.5.13`, `0.5.14`, … until every issue in that milestone is closed and
 `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
