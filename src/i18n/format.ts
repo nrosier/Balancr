@@ -49,15 +49,28 @@ export interface MoneyOptions {
   whole?: boolean
   /** Force a leading `+` on positives, for deltas. */
   signed?: boolean
+  /**
+   * Render in this ISO 4217 currency instead of the configured base one.
+   *
+   * For the few amounts that genuinely are not in base currency — a holding's
+   * quote is in the instrument's own currency while its value is converted — so
+   * the caller can say which. Unset means base, which is what nearly every call
+   * site wants and what every existing one gets.
+   */
+  currency?: string
 }
 
 export function formatMoney(cents: number, options: MoneyOptions = {}): string {
   const { bare = false, whole = false, signed = false } = options
-  const fmt = cached(`money:${bare}:${whole}`, () =>
+  const currency = options.currency ?? formatSettings().currency
+  // The currency belongs in the key: a cached formatter bakes in the code it was
+  // built with, so without it the first currency rendered would win for the rest
+  // of the session and every other row would carry the wrong symbol.
+  const fmt = cached(`money:${bare}:${whole}:${currency}`, () =>
     new Intl.NumberFormat(formatSettings().formatLocale, {
       ...(bare
         ? { style: 'decimal' as const }
-        : { style: 'currency' as const, currency: formatSettings().currency }),
+        : { style: 'currency' as const, currency }),
       minimumFractionDigits: whole ? 0 : 2,
       maximumFractionDigits: whole ? 0 : 2,
     }),

@@ -15,7 +15,8 @@
  *    hundreds.
  *
  * Series types are registered here as the pages that need them arrive: line, bar,
- * Sankey and scatter now, and the treemap with the portfolio page (#31).
+ * Sankey and scatter with the overview and budget pages, and the treemap with the
+ * portfolio page (#31), where allocation is a part-of-whole with one level.
  *
  * Scatter is here for an unobvious reason: it draws the comparative marker on the
  * budget-versus-actual bullet chart. A bullet chart's marker is a short tick at one
@@ -28,7 +29,7 @@
  * months with the twelve-month average drawn through them — is why `TREND_MONTHS`
  * matches the EWMA window.
  */
-import { BarChart, LineChart, SankeyChart, ScatterChart } from 'echarts/charts'
+import { BarChart, LineChart, SankeyChart, ScatterChart, TreemapChart } from 'echarts/charts'
 import {
   DatasetComponent,
   GridComponent,
@@ -44,6 +45,7 @@ echarts.use([
   BarChart,
   SankeyChart,
   ScatterChart,
+  TreemapChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,

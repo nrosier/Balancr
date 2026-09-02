@@ -426,9 +426,14 @@ never once engaged, because the system prompt is about half the 1024-token minim
 degrades exactly as designed, which is why nothing noticed
 ([#121](https://github.com/nrosier/Balancr/issues/121)).
 
-Next are portfolio and insights
-([#31](https://github.com/nrosier/Balancr/issues/31),
-[#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
+The portfolio page is up ([#31](https://github.com/nrosier/Balancr/issues/31)), and
+building it turned up a figure that was wrong rather than missing: Ghostfolio converts
+a position's value to euro but leaves its quoted price in the instrument's own
+currency, and we were drawing both with a euro sign
+([#134](https://github.com/nrosier/Balancr/issues/134)).
+
+Next are insights
+([#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
 ([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
 responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
 the history backfill ([#114](https://github.com/nrosier/Balancr/issues/114)) and the

@@ -6,6 +6,33 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Portfolio page** — the value of everything held, the reported time-weighted
+  return, an allocation treemap by asset class, and a holdings table of what is
+  actually held, largest first
+  ([#31](https://github.com/nrosier/Balancr/issues/31)).
+  Annual cost is deliberately not drawn: `ter_annual_cents` has no source yet, and a
+  card that always reads "not known yet" teaches a reader that the placeholder means
+  nothing.
+
+### Fixed
+
+- **A holding's price is labelled with the currency it is quoted in**, rather than
+  with the base currency ([#134](https://github.com/nrosier/Balancr/issues/134)).
+  Ghostfolio converts a position's *value* for us and leaves its *quote* in the
+  instrument's own currency, so one row carries two currencies — but the row had one
+  `currency` column and the table drew the price with a euro sign regardless. A
+  dollar-quoted position was shown as a plausible smaller number, which is worse than
+  an error. Prices now carry their own `price_currency`, whatever the provider
+  reported, with no currency treated as special; the migration backfills existing
+  rows from the value currency, which is what they were rendered with all along.
+  No column gains a currency label — under a Belgian format locale `Intl` already
+  tells `€ 1.234,56` from `US$ 1.234,56`, so an all-euro portfolio reads exactly as
+  it did.
+
 ## [0.5.11] — 2026-09-03
 
 ### Security
