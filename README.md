@@ -231,6 +231,18 @@ while a dashboard sits open**, so a `401` from any endpoint is handed back up to
 session gate, which re-asks and lands on the sign-in screen by exactly the path a
 first visit takes.
 
+**Running it against the real Actual and Ghostfolio found two integration defects**,
+both filed. Ghostfolio has shipped `/api/v1/portfolio/details` with `holdings` as a
+symbol-keyed map and as a plain list; only the map was read, so the portfolio job failed
+every run and no holdings, allocation or TWR were stored
+([#95](https://github.com/nrosier/Balancr/issues/95)) — fixed in `0.5.3` by accepting
+both shapes at the boundary. Net worth was never affected; it reads a different
+endpoint. And the AI pass's analysis call is refused by Gemini because the response
+schema carries keywords outside the provider's supported subset
+([#96](https://github.com/nrosier/Balancr/issues/96)), so the findings on the page are
+the deterministic ones with nothing ranking them — which is exactly what the degraded
+path was built for, and still a bug.
+
 Next are budget, portfolio, insights and settings
 ([#30](https://github.com/nrosier/Balancr/issues/30)–[#33](https://github.com/nrosier/Balancr/issues/33)),
 language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))

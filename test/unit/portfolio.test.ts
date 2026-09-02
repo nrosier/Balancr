@@ -7,12 +7,14 @@
  * other figure on the page, and they would be right to.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import type {
-  GhostfolioAccounts,
-  PortfolioDetails,
-  PortfolioPerformance,
+import {
+  portfolioDetailsSchema,
+  type GhostfolioAccounts,
+  type PortfolioDetails,
+  type PortfolioPerformance,
 } from '../../src/adapters/ghostfolio/types.ts'
 import {
   allocationByAssetClass,
@@ -32,7 +34,7 @@ import {
   persistPortfolioSnapshots,
 } from '../../src/domain/portfolio/store.ts'
 
-type RawHolding = PortfolioDetails['holdings'][string]
+type RawHolding = PortfolioDetails['holdings'][number]
 
 function holding(overrides: Partial<RawHolding> & { symbol: string }): RawHolding {
   return {
@@ -47,9 +49,7 @@ function holding(overrides: Partial<RawHolding> & { symbol: string }): RawHoldin
 }
 
 function details(...holdings: RawHolding[]): PortfolioDetails {
-  return {
-    holdings: Object.fromEntries(holdings.map((h) => [h.symbol, h])),
-  } as PortfolioDetails
+  return { holdings } as PortfolioDetails
 }
 
 describe('toHoldingSnapshots', () => {
@@ -141,6 +141,55 @@ describe('toHoldingSnapshots', () => {
 
   it('returns nothing for an empty portfolio', () => {
     expect(toHoldingSnapshots('2026-03-01', details(), 'EUR')).toEqual([])
+  })
+
+  it('reads a record of holdings and a list of holdings identically (#95)', () => {
+    // Ghostfolio has sent both, and the version that changed it broke the whole
+    // portfolio job. The two shapes have to reach the database as the same rows —
+    // including the ISIN merge, which is the one transform that could plausibly
+    // depend on the container.
+    const positions = [
+      { symbol: 'IWDA.AS', isin: 'IE00B4L5Y983', currency: 'EUR', quantity: 10,
+        marketPrice: 100, valueInBaseCurrency: 1_000, assetClass: 'EQUITY' },
+      { symbol: 'IWDA.L', isin: 'IE00B4L5Y983', currency: 'EUR', quantity: 5,
+        marketPrice: 100, valueInBaseCurrency: 500, assetClass: 'EQUITY' },
+      { symbol: 'BTC', currency: 'EUR', quantity: 1, marketPrice: 50_000,
+        valueInBaseCurrency: 50_000, assetClass: 'COMMODITY' },
+    ]
+
+    const asList = portfolioDetailsSchema.parse({ holdings: positions })
+    const asRecord = portfolioDetailsSchema.parse({
+      holdings: Object.fromEntries(positions.map((p) => [p.symbol, p])),
+    })
+
+    const rows = toHoldingSnapshots('2026-03-01', asList, 'EUR')
+    expect(toHoldingSnapshots('2026-03-01', asRecord, 'EUR')).toEqual(rows)
+    expect(rows.map((row) => row.instrument)).toEqual(['BTC', 'IE00B4L5Y983'])
+    expect(rows.find((row) => row.instrument === 'IE00B4L5Y983')?.quantity).toBe('15')
+  })
+
+  it('names the offending holding when a field is wrong, either shape (#95)', () => {
+    // The adapter's job on an upgrade is to say what changed. Accepting two
+    // containers must not cost that: a union of validated shapes would report only
+    // "invalid union" here, which is why the container is normalised first.
+    for (const holdings of [
+      [{ symbol: 'IWDA.AS', quantity: 10 }],
+      { 'IWDA.AS': { symbol: 'IWDA.AS', quantity: 10 } },
+    ]) {
+      const result = portfolioDetailsSchema.safeParse({ holdings })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(z.prettifyError(result.error)).toContain('holdings[0].currency')
+      }
+    }
+  })
+
+  it('still refuses a holdings field that is neither (#95)', () => {
+    const result = portfolioDetailsSchema.safeParse({ holdings: 'nonsense' })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(z.prettifyError(result.error)).toContain('array')
+    }
   })
 })
 

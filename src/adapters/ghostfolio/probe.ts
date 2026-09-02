@@ -103,7 +103,7 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
   if (checks[0]?.status === 'ok') {
     checks.push(await check('/api/v1/portfolio/details', async () => {
       const details = await fetchPortfolioDetails()
-      const holdings = Object.values(details.holdings)
+      const holdings = details.holdings
 
       if (holdings.length === 0) {
         warnings.push('portfolio/details returned no holdings')
