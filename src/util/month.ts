@@ -187,6 +187,17 @@ export function currentMonthIn(timeZone: string): string {
 }
 
 /**
+ * The month `instant` falls in, in `timeZone`, as `YYYY-MM`.
+ *
+ * What a job should use in place of `currentMonthIn`: the runner hands every job the
+ * instant the run started, and a job that reads the clock again can straddle midnight
+ * on the 1st — writing part of its output into one month and part into the next.
+ */
+export function monthIn(instant: Date, timeZone: string): string {
+  return dateIn(instant, timeZone).slice(0, 7)
+}
+
+/**
  * How far through `month` the instant `asOf` is, as 0..1.
  *
  * Used to project a month-end total from spend so far, so it must be the local

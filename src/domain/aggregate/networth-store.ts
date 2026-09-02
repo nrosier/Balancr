@@ -74,6 +74,25 @@ export function persistNetWorth(
 }
 
 /**
+ * Dates that already have snapshot rows.
+ *
+ * The backfill skips these rather than recomputing them, and the reason is not only
+ * cost. A row for a past date written by the nightly pass was written *on* that date,
+ * from that day's real balances — which is a better figure than a reconstruction, not
+ * a worse one. So "already present" is a reason to leave it alone, and the only date
+ * the nightly pass ever writes is its own.
+ */
+export function snapshotDates(db: Db): Set<string> {
+  return new Set(
+    db
+      .selectDistinct({ date: netWorthSnapshots.date })
+      .from(netWorthSnapshots)
+      .all()
+      .map((row) => row.date),
+  )
+}
+
+/**
  * Totals per date, ascending — the net-worth series, and the input to
  * `net_worth_high`.
  *

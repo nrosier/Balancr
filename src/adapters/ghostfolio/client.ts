@@ -238,11 +238,24 @@ export async function fetchPortfolioDetails(): Promise<PortfolioDetails> {
  * The v2 response is a superset: the same `date`, `value` and
  * `netPerformanceInPercentage` this schema reads, plus fields `.loose()` ignores.
  * That is why there is one schema for both.
+ *
+ * `accountId` narrows the series to one account. The parameter is `accounts=<id>`,
+ * repeated or comma-joined for several — **not** the `filters=[{id,type}]` array the
+ * frontend sends elsewhere, which answers 400 here. It is honoured, and the proof is
+ * a cash account: filtered to one it returns a shorter series of null values, where
+ * an ignored parameter would have returned the portfolio's. Filtering to the account
+ * that holds everything returns the unfiltered series byte for byte, which is the
+ * right answer rather than evidence of a no-op.
+ *
+ * This is what lets the history backfill attribute a value to an account instead of
+ * splitting a portfolio total across several, which would be inventing figures.
  */
 export async function fetchPortfolioPerformance(
   range = 'max',
+  accountId?: string,
 ): Promise<PortfolioPerformance> {
-  const query = `?range=${encodeURIComponent(range)}`
+  const filter = accountId === undefined ? '' : `&accounts=${encodeURIComponent(accountId)}`
+  const query = `?range=${encodeURIComponent(range)}${filter}`
   const paths = [`/api/v2/portfolio/performance${query}`, `/api/v1/portfolio/performance${query}`]
 
   for (const [index, path] of paths.entries()) {

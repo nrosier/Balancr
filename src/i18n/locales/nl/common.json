@@ -68,6 +68,7 @@
   },
   "job": {
     "ai": "AI-analyse",
+    "backfill": "Historiek aanvullen",
     "networth": "Nettovermogen",
     "portfolio": "Portefeuille",
     "signals": "Signalen",
