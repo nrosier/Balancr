@@ -168,18 +168,49 @@ describe('toHoldingSnapshots', () => {
     expect(rows.find((row) => row.instrument === 'IE00B4L5Y983')?.quantity).toBe('15')
   })
 
+  it('stores a holding that names itself only by ISIN (#107)', () => {
+    // The live shape from #107: no `symbol` and no `currency` inside the object.
+    // Neither is missing information — the identifier is the ISIN, and the value is
+    // already converted — so there is nothing here to refuse.
+    const position = {
+      isin: 'IE00B4L5Y983', quantity: 10, marketPrice: 100,
+      valueInBaseCurrency: 1_000, assetClass: 'EQUITY',
+    }
+
+    const [fromList] = toHoldingSnapshots(
+      '2026-03-01',
+      portfolioDetailsSchema.parse({ holdings: [position] }),
+      'EUR',
+    )
+    expect(fromList?.instrument).toBe('IE00B4L5Y983')
+    expect(fromList?.symbol).toBeNull()
+    // Not read from the holding, which carried none: the stored amount is in the
+    // base currency, so that is the only currency the row can honestly claim.
+    expect(fromList?.currency).toBe('EUR')
+
+    const [fromRecord] = toHoldingSnapshots(
+      '2026-03-01',
+      portfolioDetailsSchema.parse({ holdings: { IE00B4L5Y983: position } }),
+      'EUR',
+    )
+    // The record key becomes the symbol, and the ISIN still wins as the identifier,
+    // so the two shapes differ in the label they carry and never in the key.
+    expect(fromRecord?.instrument).toBe('IE00B4L5Y983')
+    expect(fromRecord?.symbol).toBe('IE00B4L5Y983')
+  })
+
   it('names the offending holding when a field is wrong, either shape (#95)', () => {
     // The adapter's job on an upgrade is to say what changed. Accepting two
     // containers must not cost that: a union of validated shapes would report only
     // "invalid union" here, which is why the container is normalised first.
     for (const holdings of [
-      [{ symbol: 'IWDA.AS', quantity: 10 }],
-      { 'IWDA.AS': { symbol: 'IWDA.AS', quantity: 10 } },
+      [{ symbol: 'IWDA.AS', quantity: 'ten' }],
+      { 'IWDA.AS': { symbol: 'IWDA.AS', quantity: 'ten' } },
     ]) {
       const result = portfolioDetailsSchema.safeParse({ holdings })
       expect(result.success).toBe(false)
       if (!result.success) {
-        expect(z.prettifyError(result.error)).toContain('holdings[0].currency')
+        expect(z.prettifyError(result.error)).toContain('holdings[0].quantity')
       }
     }
   })

@@ -6,6 +6,54 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **The portfolio job failed every pass on a Ghostfolio release whose holdings do not
+  name themselves** ([#107](https://github.com/nrosier/Balancr/issues/107)). The
+  symbol is the key of the map the holdings arrive in, not a field inside them — and
+  the code that flattened the map to a list dropped the key, then reported `symbol`
+  as missing. So a required field was reported absent by the same function that had
+  just discarded the only copy of it. The key is now folded in as the symbol, an
+  object that names itself keeps its own value, and the requirement moved from
+  `symbol` to the weaker thing that actually has to hold: an ISIN *or* a symbol.
+
+  A position with neither refuses the whole payload rather than being skipped.
+  `totalValueCents` is the sum of the holdings that were stored, so dropping one row
+  would quietly shrink the portfolio total and every allocation share derived from
+  it — a wrong number where the adapter promises a loud failure.
+
+  `currency` became optional in the same pass. Every stored amount is already in the
+  base currency, which is what the row is labelled with, so the field was required
+  and then never read — and on a live instance it failed every pass over a label no
+  code would have looked at.
+- **The envelope-budget warning fired on envelope budgets**
+  ([#108](https://github.com/nrosier/Balancr/issues/108)). Actual renamed its budget
+  styles: `rollover` became `envelope`, and `report` became `tracking`. The check
+  tested only the old name, so it warned about carryover figures on exactly the
+  configuration those figures assume — and would have stayed quiet on `tracking`,
+  the case it exists for. Both envelope spellings are accepted, because a deployment
+  running an older Actual still reports `rollover`. No figure was ever affected:
+  `budgetType` is read nowhere else. A warning that cries wolf on a correct setup
+  teaches the reader to skip the one that isn't a false alarm, which is the cost.
+- **An OIDC redirect URI mismatch could not be diagnosed**
+  ([#110](https://github.com/nrosier/Balancr/issues/110)). The value is derived from
+  `PUBLIC_BASE_URL` rather than configured — deliberately, since reading it from a
+  `Host` header would let a request choose where the authorization code is sent — and
+  the provider compares it byte for byte. It was also the one value nothing printed,
+  and the provider refuses the authorization request before the browser ever returns,
+  so there was no failed login for Balancr to log and no message for it to improve.
+  Startup now logs the issuer, the client id and the exact redirect URI it will send;
+  the startup dump names both non-secret OIDC inputs instead of a single boolean.
+
+### Added
+- **The Authentik provider setup is documented**
+  ([#109](https://github.com/nrosier/Balancr/issues/109)): which three values come
+  off the provider page, the redirect URI to register with a worked example and its
+  Strict matching mode, why it is derived rather than configured, what the resulting
+  error looks like when it does not match, and the scopes with the reason
+  `offline_access` is not among them.
+
 ## [0.5.6] — 2026-09-02
 
 ### Fixed
