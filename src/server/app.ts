@@ -34,6 +34,7 @@ import { oidcClientFromConfig, type OidcClient } from './auth/oidc.ts'
 import { registerCsrf } from './csrf.ts'
 import { registerErrorHandling } from './errors.ts'
 import { registerRateLimits } from './rate-limit.ts'
+import { registerApiRoutes } from './routes/api/index.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerHealthRoutes } from './routes/health.ts'
 import { registerSecurityHeaders } from './security.ts'
@@ -110,6 +111,7 @@ export async function buildApp({ db, oidc }: BuildAppOptions): Promise<FastifyIn
 
   registerHealthRoutes(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
+  registerApiRoutes(app, db)
 
   log.debug(
     {
