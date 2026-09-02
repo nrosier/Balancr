@@ -67,6 +67,22 @@ const EnvSchema = z.object({
   AUTH_LOCAL_ENABLED: bool('false'),
   AUTH_LOCAL_ALLOWED_CIDRS: csv('127.0.0.1/32'),
 
+  // Rate limiting
+  /**
+   * The ordinary bucket: enough headroom that a page loading a dozen panels is
+   * never throttled, low enough that a client stuck in a loop cannot saturate a
+   * single-process server.
+   */
+  RATE_LIMIT_API_PER_MINUTE: z.coerce.number().int().min(10).max(10_000).default(300),
+  /**
+   * The bucket in front of anything that can call Gemini. Measured in hours
+   * because it is a spend limit wearing a request limit's clothes: a correctly
+   * authenticated caller is exactly the one who can run up the bill, so Authentik
+   * cannot help here. Small on purpose — the nightly job precomputes, so normal
+   * use of the UI makes no AI calls at all.
+   */
+  RATE_LIMIT_AI_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(30),
+
   // Background jobs
   /**
    * Off leaves every pure function and every route intact and simply never
@@ -204,6 +220,8 @@ export function configSummary(): Record<string, unknown> {
     oidcEnabled: config.oidcEnabled,
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
+    RATE_LIMIT_API_PER_MINUTE: config.RATE_LIMIT_API_PER_MINUTE,
+    RATE_LIMIT_AI_PER_HOUR: config.RATE_LIMIT_AI_PER_HOUR,
     JOBS_ENABLED: config.JOBS_ENABLED,
     JOBS_SYNC_INTERVAL_MINUTES: config.JOBS_SYNC_INTERVAL_MINUTES,
     JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,

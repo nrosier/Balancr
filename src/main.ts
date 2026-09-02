@@ -14,42 +14,21 @@
  *     immediately, so starting it before the migrations ran would mean a job
  *     writing to a schema that does not exist yet.
  *
- * The HTTP surface here is liveness only. Routes, auth and the SPA arrive with
- * the server module (v0.5.0); this file will then hand off to it instead of
- * building the instance itself.
+ * The HTTP surface itself lives in `server/app.ts`. This file owns the lifecycle —
+ * what must be true before the port opens, and what must be released before the
+ * process exits — and nothing else.
  */
-import { readFileSync } from 'node:fs'
-import Fastify, { LogController } from 'fastify'
+import { closeActual } from './adapters/actual/client.ts'
 import { config } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
-import { initI18n } from './i18n/index.ts'
-import { logger } from './logger.ts'
-import { closeActual } from './adapters/actual/client.ts'
-import { createScheduler, registry } from './jobs/index.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
+import { initI18n } from './i18n/index.ts'
+import { createScheduler, registry } from './jobs/index.ts'
+import { logger } from './logger.ts'
+import { buildApp } from './server/app.ts'
 
 const log = logger.child({ module: 'main' })
-
-/**
- * Version reported by `/healthz`.
- *
- * Not `process.env.npm_package_version`: npm only sets that when the process is
- * started through an npm script, and the image runs `node dist/main.js` — so the
- * health endpoint answered `"version": null` in the container while looking
- * correct in development. package.json is copied next to `dist`, so read it.
- */
-function appVersion(): string | null {
-  try {
-    const raw = readFileSync(new URL('../package.json', import.meta.url), 'utf8')
-    return (JSON.parse(raw) as { version?: string }).version ?? null
-  } catch (error) {
-    log.warn({ err: error }, 'could not read package.json for the version')
-    return null
-  }
-}
-
-const VERSION = appVersion()
 
 async function main(): Promise<void> {
   applyMigrations(db as never)
@@ -60,34 +39,7 @@ async function main(): Promise<void> {
 
   await initI18n()
 
-  const app = Fastify({
-    loggerInstance: logger,
-    // Honoured only for peers inside TRUSTED_PROXY_CIDRS: without this, anyone
-    // reaching the container directly can forge X-Forwarded-For and, later,
-    // the Authentik identity headers.
-    trustProxy: config.TRUSTED_PROXY_CIDRS,
-    // The top-level `disableRequestLogging` is deprecated in Fastify 5.12 and
-    // goes away in 6; the controller is the supported route. Access logs are off
-    // in production because Traefik already writes them, and duplicating them
-    // here doubles the disk they occupy on the way to holding financial data.
-    logController: new LogController({
-      disableRequestLogging: config.NODE_ENV === 'production',
-    }),
-  })
-
-  // Liveness: no database, no upstreams. The container health check must not
-  // fail because Ghostfolio is restarting.
-  app.get('/healthz', () => ({ status: 'ok', version: VERSION }))
-
-  // The SPA is served from here once it exists (0.6.0). Until then this says so,
-  // because a bare Fastify `Route GET:/ not found` on the root of a fresh
-  // deployment reads as a broken container rather than as an unfinished one.
-  app.get('/', () => ({
-    name: 'balancr',
-    version: VERSION,
-    ui: 'not built yet — the web interface arrives in 0.6.0',
-    health: '/healthz',
-  }))
+  const app = await buildApp({ db })
 
   await app.listen({ host: '0.0.0.0', port: config.PORT })
   log.info({ port: config.PORT, env: config.NODE_ENV }, 'balancr listening')

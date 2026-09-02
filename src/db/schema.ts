@@ -725,6 +725,31 @@ export const jobs = sqliteTable('jobs', {
   error: text(),
 })
 
+/**
+ * Rate-limit counters, kept in SQLite rather than in memory.
+ *
+ * The in-memory store the plugin ships with is the right default for a stateless
+ * service behind a load balancer, and the wrong one here: the tighter bucket in
+ * front of the AI routes exists to cap *money* over an hour, and a process that
+ * restarts — a deploy, a crash loop, a container the watchdog bounced — starts
+ * that hour again from zero. A counter that survives a restart is the only version
+ * of an hourly spend limit that means anything.
+ *
+ * One row per `(bucket, client)`. `expires_at` is when the window ends, so an
+ * expired row is indistinguishable from a fresh start and can be pruned at any
+ * time without coordination.
+ */
+export const rateLimits = sqliteTable(
+  'rate_limits',
+  {
+    /** `<bucket>:<client key>` — the bucket keeps the AI window separate. */
+    key: text().primaryKey(),
+    count: integer().notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('rate_limits_expires_idx').on(t.expiresAt)],
+)
+
 /** Tunable thresholds, active prompt pointers, benchmark assumptions. */
 export const settings = sqliteTable('settings', {
   key: text().primaryKey(),
@@ -764,5 +789,6 @@ export const schema = {
   proposals,
   auditLog,
   jobs,
+  rateLimits,
   settings,
 }
