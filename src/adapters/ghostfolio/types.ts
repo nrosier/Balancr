@@ -109,13 +109,13 @@ export const holdingSchema = z.preprocess(
       /** Absent for some data sources; the symbol is the fallback label. */
       name: z.string().nullish(),
       /**
-       * Nullish, and deliberately never read.
+       * The instrument's own quote currency — the one `marketPrice` is in.
        *
-       * `toHoldingSnapshots` labels every row with the base currency and says why:
-       * the value it stores is already converted, so the instrument's own currency
-       * would misdescribe the number beside it. A required field that nothing
-       * consumes can only ever do one thing, and on a live instance it did it —
-       * failing every pass over a label no code would have looked at.
+       * Nullish because a live instance omits it on some data sources, and a
+       * required field we cannot guarantee would fail the whole pass over one
+       * label. `toHoldingSnapshots` falls back to the base currency when it is
+       * missing, which is the only assumption available and is at least the
+       * common case.
        */
       currency: z.string().nullish(),
       quantity: money,

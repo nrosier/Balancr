@@ -26,6 +26,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
@@ -274,6 +275,30 @@ describe('GET /api/portfolio', () => {
     const body = (await get('/api/portfolio')).json()
     expect(body.holdings[0].quantity).toBe('31.5')
     expect(typeof body.holdings[0].quantity).toBe('string')
+  })
+
+  it('labels each price with its own currency, not with the value currency', async () => {
+    // Two amounts in two currencies on one row: the value is converted for us, the
+    // quote is not. A client cannot recover the quote currency from anything else in
+    // the payload, so it travels with the price.
+    const body = (await get('/api/portfolio')).json()
+    for (const holding of body.holdings) {
+      expect(typeof holding.priceCurrency).toBe('string')
+      expect(holding.priceCurrency).toMatch(/^[A-Z]{3}$/)
+    }
+  })
+
+  it('falls back to the value currency for a row stored before the column existed', async () => {
+    // The migration backfills, so a null should not survive — this covers the row
+    // that reaches the reader anyway. Answering null would make the client choose
+    // between crashing on `Intl` and inventing a currency; the value currency is what
+    // those rows were rendered with all along.
+    ctx.db.run(sql`UPDATE portfolio_snapshots SET price_currency = NULL`)
+    const body = (await get('/api/portfolio')).json()
+    expect(body.holdings.length).toBeGreaterThan(0)
+    for (const holding of body.holdings) {
+      expect(holding.priceCurrency).toBe(holding.currency)
+    }
   })
 
   it('omits money-weighted return rather than reporting it as zero', async () => {

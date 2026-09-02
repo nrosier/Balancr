@@ -502,7 +502,23 @@ export const portfolioSnapshots = sqliteTable(
     quantity: text().notNull(),
     priceCents: integer('price_cents').notNull(),
     valueCents: integer('value_cents').notNull(),
+    /**
+     * The currency of `value_cents` — always the base currency, because
+     * Ghostfolio converts values for us.
+     */
     currency: text().notNull().default('EUR'),
+    /**
+     * The currency of `price_cents`, which is *not* necessarily the same one.
+     *
+     * A quote is in the instrument's own currency and Ghostfolio does not convert
+     * it, so a US-listed ETF in a euro portfolio has a dollar price beside a euro
+     * value. One column each is the only way to label both honestly.
+     *
+     * Nullable, and null means "written before this column existed": the native
+     * currency of those rows was never recorded and is not recoverable, so the
+     * migration backfills them from `currency` rather than inventing one.
+     */
+    priceCurrency: text('price_currency'),
     computedAt: createdAt(),
   },
   (t) => [

@@ -41,6 +41,7 @@ function holding(overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot {
     name: 'iShares Core MSCI World UCITS ETF',
     quantity: '42.5',
     priceCents: 9_812,
+    priceCurrency: 'EUR',
     valueCents: 417_010,
     currency: 'EUR',
     assetClass: 'EQUITY',

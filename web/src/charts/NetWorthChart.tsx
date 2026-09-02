@@ -38,6 +38,25 @@ export interface NetWorthPoint {
 export interface NetWorthChartProps {
   history: readonly NetWorthPoint[]
   height?: string
+  /**
+   * The series name, and what the tooltip calls the figure. Defaults to net worth.
+   *
+   * The portfolio page draws the same shape from a different series — invested value
+   * rather than everything — and the axis rules above are the part worth sharing.
+   * Duplicating this file to change one label would mean two places to fix the next
+   * time a formatter is missed, which is the specific mistake its doc comment warns
+   * about.
+   */
+  name?: string
+  /**
+   * The catalogue key for the spoken summary. Defaults to the net-worth wording.
+   *
+   * A key rather than a rendered sentence, so the four figures it interpolates —
+   * the first and last date, the first and last value — stay derived here. A caller
+   * passing finished text would have to reach into `history` for them, which is the
+   * duplication this prop exists to avoid.
+   */
+  summaryKey?: string
 }
 
 /** A month label where the month changes, an empty string everywhere else. */
@@ -49,8 +68,14 @@ function monthLabels(history: readonly NetWorthPoint[], language: string): strin
   })
 }
 
-export function NetWorthChart({ history, height }: NetWorthChartProps): ReactNode {
+export function NetWorthChart({
+  history,
+  height,
+  name,
+  summaryKey,
+}: NetWorthChartProps): ReactNode {
   const { t, language } = useT()
+  const seriesName = name ?? t('portfolio:metric.netWorth')
 
   const option = useMemo<EChartsCoreOption>(() => {
     const labels = monthLabels(history, language)
@@ -76,7 +101,7 @@ export function NetWorthChart({ history, height }: NetWorthChartProps): ReactNod
       series: [
         {
           type: 'line',
-          name: t('portfolio:metric.netWorth'),
+          name: seriesName,
           data: history.map((point) => point.totalCents),
           // Symbols on a year of daily points are a solid band; on a handful of
           // monthly ones they are the only thing that shows where the data is.
@@ -88,14 +113,14 @@ export function NetWorthChart({ history, height }: NetWorthChartProps): ReactNod
     }
     // `language` is not read in the body beyond the labels; it is a dependency because
     // every month name above changes with it.
-  }, [history, language, t])
+  }, [history, language, seriesName])
 
   const first = history[0]
   const last = history[history.length - 1]
   const summary =
     first === undefined || last === undefined
       ? t('empty.noData')
-      : t('portfolio:chart.netWorthSummary', {
+      : t(summaryKey ?? 'portfolio:chart.netWorthSummary', {
           from: formatDate(first.date),
           to: formatDate(last.date),
           start: formatMoney(first.totalCents, { whole: true }),

@@ -36,11 +36,29 @@ export interface HoldingSnapshot {
   name: string | null
   quantity: string
   priceCents: number
+  /** Currency of `priceCents`: the instrument's own, not necessarily the base. */
+  priceCurrency: string
   valueCents: number
+  /** Currency of `valueCents`: always the base currency. */
   currency: string
   /** Ghostfolio's own class labels, kept for the allocation view. */
   assetClass: string | null
   assetSubClass: string | null
+}
+
+/**
+ * The currency to label a quote with.
+ *
+ * Ghostfolio omits the field on some data sources, and nothing stops it sending
+ * something that is not an ISO 4217 code. `Intl.NumberFormat` throws a
+ * `RangeError` on a malformed one, which in the browser is a blank page instead
+ * of a table — so the shape is checked once, here, and anything else falls back
+ * to the base currency. Storing only codes that can be rendered means no reader
+ * downstream has to defend itself.
+ */
+function quoteCurrency(reported: string | null | undefined, baseCurrency: string): string {
+  if (reported === null || reported === undefined) return baseCurrency
+  return /^[A-Za-z]{3}$/.test(reported) ? reported.toUpperCase() : baseCurrency
 }
 
 export function toHoldingSnapshots(
@@ -68,11 +86,8 @@ export function toHoldingSnapshots(
       name: holding.name ?? null,
       quantity: String(holding.quantity),
       priceCents: price === null ? 0 : toCents(price),
+      priceCurrency: quoteCurrency(holding.currency, baseCurrency),
       valueCents: value === null ? 0 : toCents(value),
-      // `holding.currency` is the instrument's own currency; the value we store is
-      // already in base currency, so labelling the row with the instrument's
-      // currency would misdescribe the number next to it. Which is also why that
-      // field is optional in the schema — nothing here has ever read it.
       currency: baseCurrency,
       assetClass: holding.assetClass ?? null,
       assetSubClass: holding.assetSubClass ?? null,
@@ -94,8 +109,11 @@ export function toHoldingSnapshots(
       quantity: String(Number(seen.quantity) + Number(row.quantity)),
       valueCents: seen.valueCents + row.valueCents,
       // The price is per unit and identical for the same instrument; keeping the
-      // first is right, and summing it would be nonsense.
-      priceCents: seen.priceCents || row.priceCents,
+      // first is right, and summing it would be nonsense. The currency travels
+      // with whichever price is kept, or the two would stop describing each other.
+      ...(seen.priceCents === 0 && row.priceCents !== 0
+        ? { priceCents: row.priceCents, priceCurrency: row.priceCurrency }
+        : { priceCents: seen.priceCents, priceCurrency: seen.priceCurrency }),
       name: seen.name ?? row.name,
       isin: seen.isin ?? row.isin,
     })

@@ -32,6 +32,30 @@ describe('money formatting is Belgian in every UI language', () => {
     expect(norm(formatMoney(123_456))).not.toBe(norm(enBe))
   })
 
+  it('renders a foreign currency in Belgian conventions, symbol and all', () => {
+    // A holding's quote is in the instrument's own currency while its value is
+    // already converted, so one row can carry two. The separators stay Belgian —
+    // the currency changes, the formatting locale does not.
+    expect(norm(formatMoney(123_456, { currency: 'USD' }))).toBe('US$ 1.234,56')
+    expect(norm(formatMoney(123_456, { currency: 'GBP' }))).toBe('£ 1.234,56')
+    // A code with no symbol prints as the code, which is still unambiguous.
+    expect(norm(formatMoney(123_456, { currency: 'SEK' }))).toBe('SEK 1.234,56')
+  })
+
+  it('does not let the first currency rendered stick to every later one', () => {
+    // The regression: `Intl` formatters are cached and bake in the currency they
+    // were built with, so a cache key that omits it would render every row after the
+    // first with the first row's symbol — the same figure, silently mislabelled.
+    expect(norm(formatMoney(100_000, { currency: 'USD' }))).toBe('US$ 1.000,00')
+    expect(norm(formatMoney(100_000))).toBe('€ 1.000,00')
+    expect(norm(formatMoney(100_000, { currency: 'USD' }))).toBe('US$ 1.000,00')
+    expect(norm(formatMoney(100_000, { currency: 'EUR' }))).toBe('€ 1.000,00')
+  })
+
+  it('ignores the currency when the amount is bare, since there is no symbol', () => {
+    expect(norm(formatMoney(123_456, { bare: true, currency: 'USD' }))).toBe('1.234,56')
+  })
+
   it('supports bare, whole and signed variants for chart labels and deltas', () => {
     expect(norm(formatMoney(123_456, { bare: true }))).toBe('1.234,56')
     expect(norm(formatMoney(123_456, { whole: true }))).toBe('€ 1.235')

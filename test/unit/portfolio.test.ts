@@ -89,15 +89,78 @@ describe('toHoldingSnapshots', () => {
     expect(row).toMatchObject({ instrument: 'BTC', isin: null })
   })
 
-  it('labels the row with the base currency, not the instrument currency', () => {
-    // The stored value is already converted; labelling it USD would misdescribe
-    // the number sitting next to it.
+  it('labels the value with the base currency and the price with the quote one', () => {
+    // The two amounts in a row are in two currencies: Ghostfolio converts the value
+    // and leaves the quote alone. One label for both would misdescribe one of them,
+    // and the price is the one that would be silently wrong — a dollar figure with a
+    // euro sign reads as a smaller number, not as an error.
     const [row] = toHoldingSnapshots(
       '2026-03-01',
-      details(holding({ symbol: 'VTI', currency: 'USD', valueInBaseCurrency: 900 })),
+      details(
+        holding({ symbol: 'VTI', currency: 'USD', marketPrice: 100, valueInBaseCurrency: 900 }),
+      ),
       'EUR',
     )
-    expect(row).toMatchObject({ currency: 'EUR', valueCents: 90_000 })
+    expect(row).toMatchObject({
+      currency: 'EUR',
+      valueCents: 90_000,
+      priceCurrency: 'USD',
+      priceCents: 10_000,
+    })
+  })
+
+  it('carries whatever currency the provider reports, with no currency privileged', () => {
+    // Nothing here knows that a euro portfolio is more likely to hold dollars than
+    // krona. Each row is labelled with what its own instrument quoted in, and a
+    // portfolio that is entirely non-base is as ordinary as a mixed one.
+    const rows = toHoldingSnapshots(
+      '2026-03-01',
+      details(
+        holding({ symbol: 'A', isin: 'IE0000000001', currency: 'EUR' }),
+        holding({ symbol: 'B', isin: 'IE0000000002', currency: 'USD' }),
+        holding({ symbol: 'C', isin: 'IE0000000003', currency: 'SEK' }),
+        holding({ symbol: 'D', isin: 'IE0000000004', currency: 'JPY' }),
+      ),
+      'EUR',
+    )
+    expect(rows.map((row) => row.priceCurrency)).toEqual(['EUR', 'USD', 'SEK', 'JPY'])
+    // The value side is unaffected: every one of those was converted before it
+    // reached us.
+    expect(new Set(rows.map((row) => row.currency))).toEqual(new Set(['EUR']))
+  })
+
+  it('normalises the case the provider sent, so two spellings are one currency', () => {
+    const [row] = toHoldingSnapshots(
+      '2026-03-01',
+      details(holding({ symbol: 'VTI', currency: 'usd' })),
+      'EUR',
+    )
+    expect(row?.priceCurrency).toBe('USD')
+  })
+
+  it('falls back to the base currency when the provider omits the quote currency', () => {
+    // A live instance does omit it on some data sources. Base is the only assumption
+    // available and it is the common case; the alternative is an unrenderable row.
+    const [row] = toHoldingSnapshots(
+      '2026-03-01',
+      details(holding({ symbol: 'VTI', currency: null })),
+      'EUR',
+    )
+    expect(row?.priceCurrency).toBe('EUR')
+  })
+
+  it('refuses a currency code `Intl` could not render, rather than passing it on', () => {
+    // `Intl.NumberFormat` throws a RangeError on a malformed code, and in the browser
+    // that is a blank page where a table should be. Checked once, at the boundary, so
+    // that nothing downstream has to.
+    for (const bad of ['US', 'DOLLAR', '', '12']) {
+      const [row] = toHoldingSnapshots(
+        '2026-03-01',
+        details(holding({ symbol: 'VTI', currency: bad })),
+        'EUR',
+      )
+      expect(row?.priceCurrency).toBe('EUR')
+    }
   })
 
   it('treats a missing price or value as zero rather than crashing', () => {
@@ -336,6 +399,7 @@ describe('allocationByAssetClass', () => {
     name: key,
     quantity: '1',
     priceCents: valueCents,
+    priceCurrency: 'EUR',
     valueCents,
     currency: 'EUR',
     assetClass,

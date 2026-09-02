@@ -213,6 +213,13 @@ export const holdingSchema = z.object({
    */
   quantity: z.string(),
   priceCents: cents(),
+  /**
+   * ISO 4217 code for `priceCents`, which is the instrument's own quote currency
+   * and so need not match `currency`. A euro portfolio holding a US-listed ETF
+   * reports a dollar price beside a euro value; a client that assumed one code per
+   * row would render the price with the wrong symbol and understate it silently.
+   */
+  priceCurrency: z.string(),
   valueCents: cents(),
   currency: z.string(),
 })

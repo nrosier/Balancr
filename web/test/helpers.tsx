@@ -153,6 +153,15 @@ const EMPTY_READS: Record<string, unknown> = {
     signals: [],
     uncategorised: null,
   },
+  '/api/portfolio': {
+    freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    date: null,
+    totalValueCents: null,
+    twrBp: null,
+    allocation: [],
+    holdings: [],
+    history: [],
+  },
 }
 
 /** That answer as a `Response`, or null for a path no page reads. */

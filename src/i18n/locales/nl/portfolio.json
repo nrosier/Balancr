@@ -1,20 +1,35 @@
 {
+  "assetClass": {
+    "COMMODITY": "Grondstoffen",
+    "EQUITY": "Aandelen",
+    "FIXED_INCOME": "Obligaties",
+    "LIQUIDITY": "Cash",
+    "REAL_ESTATE": "Vastgoed",
+    "unknown": "Niet ingedeeld"
+  },
   "chart": {
+    "allocationSummary_one": "Eén categorie: {{top}}, {{share}} van de portefeuille.",
+    "allocationSummary_other": "Spreiding over {{value}} categorieën; de grootste is {{top}} met {{share}}.",
     "allocationTitle": "Spreiding",
     "netWorthSummary": "Nettovermogen tussen {{from}} en {{to}}: {{start}} bij het begin, {{end}} op het einde.",
     "netWorthTitle": "Nettovermogen in de tijd",
-    "twrTitle": "Rendement in de tijd"
+    "twrTitle": "Rendement in de tijd",
+    "valueSummary": "Marktwaarde tussen {{from}} en {{to}}: {{start}} bij het begin, {{end}} op het einde.",
+    "valueTitle": "Marktwaarde in de tijd"
   },
   "dedupe": {
     "hint": "Deze rekening staat in beide tools; alleen de brongegevens tellen mee voor het nettovermogen.",
     "title": "Eenmaal geteld"
   },
   "holding": {
+    "caption_one": "Eén positie.",
+    "caption_other": "{{value}} posities, grootste eerst.",
     "isin": "ISIN",
     "name": "Positie",
     "price": "Koers",
     "priceDate": "Koersdatum",
     "quantity": "Aantal",
+    "title": "Posities",
     "weight": "Gewicht"
   },
   "metric": {
@@ -28,6 +43,7 @@
     "netWorth": "Nettovermogen",
     "ter": "Jaarlijkse kosten",
     "twr": "Tijdgewogen rendement",
+    "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
     "value": "Marktwaarde"
   },
   "title": "Portefeuille"

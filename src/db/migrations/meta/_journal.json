@@ -50,6 +50,13 @@
       "when": 1788348718291,
       "tag": "0006_worthless_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788388766673,
+      "tag": "0007_far_vertigo",
+      "breakpoints": true
     }
   ]
 }

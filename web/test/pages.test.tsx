@@ -27,8 +27,8 @@ import { NotFound } from '../src/pages/NotFound.tsx'
 import { ROUTES, routeFor } from '../src/routes.ts'
 import { apiStub, clickLink, i18nReady, renderApp } from './helpers.tsx'
 
-/** The two that #31 and #32 still have to fill in. */
-const REAL_PAGES = new Set(['/', '/budget', '/settings'])
+/** The one that #32 still has to fill in. */
+const REAL_PAGES = new Set(['/', '/budget', '/portfolio', '/settings'])
 const PLACEHOLDERS = ROUTES.filter((route) => !REAL_PAGES.has(route.path))
 
 beforeAll(async () => {

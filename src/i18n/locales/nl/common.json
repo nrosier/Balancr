@@ -104,8 +104,7 @@
       "lede": "Nettowaarde, spaarquote en de kwaliteit van de onderliggende gegevens."
     },
     "portfolio": {
-      "lede": "Spreiding, rendement en wat de posities je jaarlijks kosten.",
-      "soon": "Binnenkort: spreiding als treemap, tijdgewogen rendement en een tabel met ISIN, munt en jaarlijkse kosten."
+      "lede": "Spreiding, rendement en elke positie erachter."
     },
     "settings": {
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."

@@ -104,8 +104,7 @@
       "lede": "Net worth, savings rate and the health of the underlying data."
     },
     "portfolio": {
-      "lede": "Allocation, return and what the holdings cost you each year.",
-      "soon": "Coming next: allocation treemap, time-weighted return and a holdings table with ISIN, currency and annual cost."
+      "lede": "Allocation, return and every position behind them."
     },
     "settings": {
       "lede": "Language, prompts, thresholds and which source owns each account."
