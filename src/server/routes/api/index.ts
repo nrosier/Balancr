@@ -1,0 +1,69 @@
+/**
+ * The read-only API the views read from.
+ *
+ * One rule holds this directory together: **a request never calls an upstream.**
+ * Everything served here comes out of Balancr's own SQLite, written by a job on a
+ * schedule. Three consequences, all of them the point:
+ *
+ *  - A page load cannot be slow because Ghostfolio's price provider is slow, and
+ *    cannot fail because Actual is mid-restart.
+ *  - Opening the insights page cannot spend money. The AI budget is a limit rather
+ *    than a hope precisely because reads are free.
+ *  - What is served can be out of date, so every response carries `freshness`.
+ *    That is a field, not a banner the client may forget to draw.
+ *
+ * The rule is enforced by a test that scans this directory for adapter imports,
+ * rather than by everyone remembering it.
+ *
+ * Every route is a GET and every route needs a session — they say nothing about
+ * `auth`, which is how the guard's deny-by-default works. The mutations that go
+ * with these reads (answering a clarification, applying a proposal, editing a
+ * prompt) arrive with the screens that use them in `0.6.0`.
+ */
+import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { config } from '../../../config.ts'
+import type { Db } from '../../../db/index.ts'
+import { buildBudget } from './budget.ts'
+import { buildInsights } from './insights.ts'
+import { buildOverview } from './overview.ts'
+import { buildPortfolio } from './portfolio.ts'
+
+/**
+ * Which language the rendered-text exceptions come back in.
+ *
+ * The signed-in user's own setting wins, because it is the one they chose in
+ * Balancr. `?locale=` is honoured after that for a client that wants to preview the
+ * other language without changing the setting — the monthly narrative is cached per
+ * locale, so a preview shows a cached translation or nothing rather than triggering
+ * a model call. An unsupported value falls through to the default instead of 400ing:
+ * the worst case is reading the dashboard in English.
+ *
+ * `Accept-Language` is deliberately not consulted here. It belongs with the screens
+ * in `0.6.0`, where there is a cookie to remember the answer in — negotiating it per
+ * API call would mean two tabs could disagree about the language of the same page.
+ */
+export function resolveLocale(request: FastifyRequest): string {
+  const supported = new Set(config.SUPPORTED_LOCALES)
+
+  const chosen = request.user?.locale
+  if (chosen !== undefined && supported.has(chosen)) return chosen
+
+  const asked = (request.query as { locale?: unknown } | undefined)?.locale
+  if (typeof asked === 'string' && supported.has(asked)) return asked
+
+  return config.DEFAULT_LOCALE
+}
+
+export function registerApiRoutes(app: FastifyInstance, db: Db): void {
+  app.get('/api/overview', () => buildOverview(db))
+
+  app.get('/api/budget', (request: FastifyRequest) =>
+    buildBudget(db, (request.query as { month?: unknown } | undefined)?.month),
+  )
+
+  app.get('/api/portfolio', () => buildPortfolio(db))
+
+  app.get('/api/insights', (request: FastifyRequest) =>
+    buildInsights(db, resolveLocale(request)),
+  )
+}
