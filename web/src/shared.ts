@@ -35,6 +35,7 @@ export {
   formatDate,
   formatDateTime,
   formatDecimal,
+  formatMicroEur,
   formatMonth,
   formatMonthShort,
   formatMoney,
@@ -48,12 +49,21 @@ export { configureFormatting, formatRevision, formatSettings } from '../../src/i
 export type { FormatSettings } from '../../src/i18n/format-config.ts'
 
 export type {
+  AccountSetting,
+  AiDryRun,
+  AiEstimate,
   Budget,
   Freshness,
   Hygiene,
   Insights,
   Overview,
   Portfolio,
+  PromptBody,
+  PromptDiff,
+  PromptSetting,
+  PromptVersionSetting,
+  Settings,
+  SpendMonthSetting,
 } from '../../src/server/routes/api/schemas.ts'
 
 export { FINDING_SPECS, isFindingCode, missingVars } from '../../src/domain/ai/codes.ts'

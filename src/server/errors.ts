@@ -39,6 +39,21 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number]
 
+/**
+ * One rejected field of a request body, by the name the client itself sent.
+ *
+ * The only structured thing that is ever returned about a failure, and it is safe
+ * for a narrow reason: these paths come from validating a request *body* against a
+ * schema over the wire shape, so they name the caller's own fields and disclose
+ * nothing about what is behind them. A settings form needs this — "the request body
+ * was not valid" is a sentence nobody can act on when the form has twenty numbers
+ * in it.
+ */
+export interface FieldIssue {
+  path: string
+  message: string
+}
+
 export interface ErrorBody {
   error: {
     code: ErrorCode
@@ -46,6 +61,8 @@ export interface ErrorBody {
     message: string
     /** Correlates with the log line that holds the real cause. */
     requestId: string
+    /** Present only on a rejected request body. See `FieldIssue`. */
+    issues?: FieldIssue[]
   }
 }
 
@@ -59,18 +76,22 @@ export class HttpError extends Error {
   readonly statusCode: number
   readonly code: ErrorCode
   readonly details: Record<string, unknown> | undefined
+  /** Returned, unlike `details`. Set through `invalidBody` and nowhere else. */
+  readonly issues: FieldIssue[] | undefined
 
   constructor(
     statusCode: number,
     code: ErrorCode,
     message: string,
     details?: Record<string, unknown>,
+    issues?: FieldIssue[],
   ) {
     super(message)
     this.name = 'HttpError'
     this.statusCode = statusCode
     this.code = code
     this.details = details
+    this.issues = issues
   }
 }
 
@@ -88,8 +109,24 @@ export const notFound = (message = 'Not found.'): HttpError =>
 
 export const conflict = (message: string): HttpError => new HttpError(409, 'conflict', message)
 
-const body = (code: ErrorCode, message: string, requestId: string): ErrorBody => ({
-  error: { code, message, requestId },
+/**
+ * A rejected request body, with the fields that were wrong.
+ *
+ * Separate from `badRequest` because the difference matters at the throw site: this
+ * one publishes what it is given. A caller reaching for it with anything other than
+ * field paths from the body it just parsed is making a disclosure decision by
+ * accident.
+ */
+export const invalidBody = (message: string, issues: FieldIssue[]): HttpError =>
+  new HttpError(400, 'bad_request', message, undefined, issues)
+
+const body = (
+  code: ErrorCode,
+  message: string,
+  requestId: string,
+  issues?: FieldIssue[],
+): ErrorBody => ({
+  error: { code, message, requestId, ...(issues === undefined ? {} : { issues }) },
 })
 
 /**
@@ -132,7 +169,9 @@ export function errorHandler(
       { code: error.code, statusCode: error.statusCode, details: error.details },
       error.message,
     )
-    void reply.status(error.statusCode).send(body(error.code, error.message, request.id))
+    void reply
+      .status(error.statusCode)
+      .send(body(error.code, error.message, request.id, error.issues))
     return
   }
 

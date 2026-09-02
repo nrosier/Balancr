@@ -82,6 +82,34 @@ export function formatMoneyCompact(cents: number): string {
 }
 
 /**
+ * An AI cost, from micro-euros.
+ *
+ * Micro-euros exist upstream because a single model call can cost €0,0004, and a
+ * month of them must not each round to zero on the way into the ledger. Printing
+ * them is the mirror of that problem: a month's total is money and should read as
+ * `€ 1,23`, but one call's estimate rounded to cents reads `€ 0,00` — which is the
+ * one figure the dry-run button must not show, because it is the price of pressing
+ * it.
+ *
+ * So the threshold is a cent: at or above one, this is `formatMoney`; below one, it
+ * keeps four decimals and stays a number rather than becoming "less than a cent",
+ * which a person tuning a prompt cannot add up.
+ */
+export function formatMicroEur(microEur: number): string {
+  if (Math.abs(microEur) >= 10_000) return formatMoney(Math.round(microEur / 10_000))
+
+  const fmt = cached('money:micro', () =>
+    new Intl.NumberFormat(formatSettings().formatLocale, {
+      style: 'currency',
+      currency: formatSettings().currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }),
+  ) as Intl.NumberFormat
+  return fmt.format(microEur / 1_000_000)
+}
+
+/**
  * Parses user-typed amounts to integer cents, accepting both Belgian
  * (`1.234,56`) and plain (`1234.56`) input. Returns null on anything
  * unparseable — never a silent 0, and never `parseFloat`, which turns

@@ -35,10 +35,12 @@ import { oidcClientFromConfig, type OidcClient } from './auth/oidc.ts'
 import { registerCsrf } from './csrf.ts'
 import { notFoundHandler, registerErrorHandling } from './errors.ts'
 import { registerRateLimits } from './rate-limit.ts'
+import { registerAiRoutes } from './routes/ai.ts'
 import { registerApiRoutes } from './routes/api/index.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerBootstrapRoute } from './routes/bootstrap.ts'
 import { registerHealthRoutes } from './routes/health.ts'
+import { registerSettingsRoutes } from './routes/settings.ts'
 import { registerSecurityHeaders } from './security.ts'
 import { registerSpa, spaNotFoundHandler, webRoot } from './spa.ts'
 import { TRUSTED_PROXIES } from './trust.ts'
@@ -135,6 +137,10 @@ export async function buildApp({ db, oidc, web }: BuildAppOptions): Promise<Fast
   registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
   registerApiRoutes(app, db)
+  // The two route modules that are allowed to write, kept out of `routes/api/` so
+  // that directory's read-only rule stays checkable by a test that scans it.
+  registerSettingsRoutes(app, db)
+  registerAiRoutes(app, db)
   await registerSpa(app, bundle)
 
   log.debug(

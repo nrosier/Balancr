@@ -1,16 +1,55 @@
 {
   "accounts": {
+    "dedupe": {
+      "hint": "Een Ghostfolio-rekening en een Actual-rekening kunnen dezelfde posities bevatten. Groepeer ze en duid aan welke meetelt, anders telt je nettovermogen hetzelfde geld twee keer.",
+      "pair": "{{ghostfolio}} is mogelijk hetzelfde geld als {{actual}}.",
+      "title": "Mogelijk dubbel geteld",
+      "useThis": "Groeperen, {{name}} telt"
+    },
+    "group": "Groep",
     "hint": "Duid één brongegeven aan per rekening die in beide tools staat.",
     "includeInNetWorth": "Meetellen in nettovermogen",
+    "kind": "Soort",
+    "none": "Er zijn nog geen rekeningen gekoppeld. Synchroniseer eerst.",
+    "onItsOwn": "Op zichzelf",
     "sourceOfTruth": "Brongegeven",
-    "title": "Rekeningen"
+    "title": "Rekeningen",
+    "ungroup": "Uit de groep halen",
+    "useAsTruth": "Als brongegeven instellen"
   },
   "ai": {
-    "lastRun": "Laatste analyse",
-    "model": "Model",
+    "budget": "Maandbudget",
+    "exceeded": "Het AI-budget van deze maand is opgebruikt. Analyses geven het laatst bewaarde antwoord tot de maand wisselt.",
+    "history": "Vorige maanden",
+    "model": {
+      "deep": "Model voor het verhaal",
+      "fast": "Model voor de analyse"
+    },
+    "month": "Maand",
+    "reason": {
+      "bad_response": "Het antwoord van het model paste niet in het schema, dus er is niets van gebruikt.",
+      "call_failed": "Het model was niet bereikbaar.",
+      "estimate_exceeds_remaining": "Een analyse zou meer kosten dan er deze maand nog over is.",
+      "month_budget_exceeded": "Het budget van deze maand is al opgebruikt.",
+      "no_facts": "Voor die maand zijn er geen samengevatte cijfers om te analyseren.",
+      "ok": "Afgerond."
+    },
+    "remaining": "Nog over deze maand",
     "runs": "Analyses",
     "spend": "{{spent}} van {{budget}} deze maand",
-    "title": "AI-gebruik"
+    "spent": "Uitgegeven",
+    "title": "AI-gebruik",
+    "tokens": {
+      "cached": "Uit cache",
+      "input": "In",
+      "output": "Uit"
+    },
+    "used": "{{used}} van het maandbudget"
+  },
+  "build": {
+    "revision": "Build",
+    "title": "Deze installatie",
+    "version": "Versie"
   },
   "language": {
     "en": "Engels",
@@ -18,29 +57,118 @@
     "nl": "Nederlands",
     "title": "Taal"
   },
+  "profile": {
+    "role": {
+      "owner": "Eigenaar",
+      "viewer": "Meelezer"
+    },
+    "signedInAs": "Aangemeld als {{email}}",
+    "title": "Account"
+  },
   "prompt": {
     "activate": "Activeren",
     "active": "Actief",
-    "dryRun": "Testen op vorige maand",
-    "dryRunCost": "Geschatte kost: {{cost}}",
+    "body": "Instructies",
+    "chars": "{{chars}} tekens",
+    "created": "{{when}}",
+    "diff": {
+      "added": "toegevoegd",
+      "compare": "Vergelijken met de actieve versie",
+      "identical": "Identiek aan de actieve versie.",
+      "removed": "verwijderd",
+      "stat": "{{added}} toegevoegd, {{removed}} verwijderd",
+      "title": "Tegenover de actieve versie",
+      "unchanged": "ongewijzigd"
+    },
+    "dryRun": {
+      "clarifications": "Het zou vragen over",
+      "confidence": "zekerheid {{confidence}}",
+      "cost": "Die test kostte {{cost}}.",
+      "degraded": "De volgorde is die van Balancr zelf: het antwoord van het model was niet bruikbaar.",
+      "dropped": "Weggelaten",
+      "droppedReason": {
+        "bad_guess": "de gok was onzinnig",
+        "duplicate": "twee keer dezelfde bevinding",
+        "no_signal": "geen signaal ondersteunt dit",
+        "unknown_label": "geen categorie met dat label"
+      },
+      "estimate": "Een test op {{month}} kost ongeveer {{cost}}.",
+      "findings": "Het zou melden",
+      "noMonth": "Er is nog geen maand samengevat, dus er is niets om op te testen.",
+      "nothing": "Het meldde helemaal niets.",
+      "run": "Testen op {{month}}",
+      "running": "Aan het testen…",
+      "title": "Testrun",
+      "warning": "Een testrun roept het model op en kost echt geld. Niets wat eruit komt, wordt bewaard."
+    },
+    "fallback": {
+      "builtIn": "Voor deze taal is niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
+      "otherLocale": "Voor deze taal is niets bewaard, dus versie {{version}} van de {{locale}} instructies is in gebruik."
+    },
     "hint": "In het Engels geschreven, ongeacht de interfacetaal; de assistent antwoordt in de jouwe.",
-    "rollback": "Terug naar versie {{version}}",
+    "key": {
+      "analysis": {
+        "system": "Bevindingen"
+      },
+      "narrative": {
+        "system": "Maandverhaal"
+      }
+    },
+    "locale": "Taal van de instructies",
+    "note": "Wat er veranderd is",
+    "notePlaceholder": "Waarom deze versie bestaat",
+    "save": "Bewaren als nieuwe versie",
+    "saveAndActivate": "Meteen activeren",
     "title": "Instructies voor de assistent",
-    "version": "Versie {{version}}"
-  },
-  "sync": {
-    "lastSync": "Laatste synchronisatie",
-    "nextSync": "Volgende synchronisatie",
-    "runNow": "Nu synchroniseren",
-    "title": "Synchronisatie"
+    "version": "Versie {{version}}",
+    "versions": "Versies",
+    "versionsNone": "Nog niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
+    "which": "Welke instructies"
   },
   "thresholds": {
-    "baselineMonths": "Maanden in het gemiddelde",
-    "emergencyTarget": "Doel noodbuffer",
-    "halfLife": "Halfwaardetijd",
-    "materiality": "Vraag enkel over categorieën boven",
-    "savingsTarget": "Spaardoel",
+    "default": "Standaard {{value}}",
+    "field": {
+      "baseline": {
+        "halfLifeMonths": "Halfwaardetijd, in maanden",
+        "minMonths": "Minimum aantal maanden voor een norm",
+        "windowMonths": "Maanden geschiedenis in de norm",
+        "winsorLowerPct": "Ondergrens, als fractie",
+        "winsorUpperPct": "Bovengrens, als fractie"
+      },
+      "burnRate": {
+        "minMonthProgress": "Geen projectie voor dit deel van de maand",
+        "toleranceBp": "Toegelaten overschrijding"
+      },
+      "household": {
+        "emergencyFundTargetMonths": "Noodbuffer, in maanden",
+        "savingsRateTargetBp": "Spaardoel"
+      },
+      "hygiene": {
+        "priceStaleDays": "Dagen voordat een koers veroudert",
+        "recomputationToleranceCents": "Toegelaten verschil met Actual",
+        "reconcileStaleDays": "Dagen voordat een saldo veroudert",
+        "uncategorisedWarnCount": "Toegelaten ongecategoriseerde transacties"
+      },
+      "overspend": {
+        "availableFloorCents": "Overbesteed zodra het beschikbare zakt onder",
+        "baselineAlertBp": "Alarm boven de norm",
+        "baselineWarnBp": "Waarschuwen boven de norm",
+        "materialityFloorCents": "Bedragen negeren onder"
+      }
+    },
+    "group": {
+      "baseline": "Je eigen norm",
+      "burnRate": "Tempo",
+      "household": "Doelen van het huishouden",
+      "hygiene": "Datakwaliteit",
+      "overspend": "Overbesteding"
+    },
+    "grouped": "Typ het zonder duizendscheiding — 2.000 kan 2000 of 2 betekenen.",
+    "hint": "Dit geldt vanaf de volgende samenvatting. Wat al berekend is, wordt niet herschreven.",
+    "notANumber": "Geef een getal in.",
+    "reads": "komt neer op {{value}}",
     "title": "Drempels"
   },
-  "title": "Instellingen"
+  "title": "Instellingen",
+  "viewerOnly": "Alleen de eigenaar kan dit wijzigen."
 }

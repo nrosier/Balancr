@@ -6,6 +6,40 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The settings page — the one screen in the application that writes**
+  ([#33](https://github.com/nrosier/Balancr/issues/33)). Six panels over the eleven
+  `/api/settings` routes and the two `/api/ai` ones: language, the thresholds the
+  aggregation engine judges by, the prompt editor with its diff and its priced dry run,
+  the account mapping that decides which of two tools counts a shared investment
+  account, this month's AI spend, and the build in front of you.
+- Every settings write answers with the **whole settings payload** rather than the row
+  it changed, so the page is a projection of the server's state and never a local copy
+  patched to match — a rejected field ends up beside the field that was rejected, and a
+  refused write leaves nothing half-applied on screen.
+- The thresholds form is **rendered from that payload**. `params` and `paramDefaults`
+  are the domain schema itself, so a threshold added to `aggregate/params.ts` appears on
+  the page with no client edit, its group and label read from the catalogue — and
+  `test/unit/web-contract.test.ts` fails if either is missing rather than letting it
+  ship untranslated. Only what actually changed is sent.
+- A **grouping mark in a whole-number field is handed back to be retyped**, not guessed
+  at. `2.000` in a basis-points field is 20% to anyone typing Belgian grouping and
+  0,02% to a decimal parser; neither the panel nor the server can tell which was meant,
+  and there is no reading worth saving silently. Which fields are whole numbers is read
+  from the stored value, so no list here can fall out of step with the aggregator.
+- The prompt editor keeps **saving separate from activating**, because activating an
+  earlier version *is* the rollback. Its dry run is a real model call on real figures,
+  so the button does not appear until the free estimate has priced it, and the estimate
+  refusing to price the run (no facts for the month) is shown as the reason rather than
+  as a failure.
+- A **viewer sees all of it and may change exactly one thing** — their own language.
+  Every other control is disabled with the reason next to it, which is the server's own
+  rule made visible instead of re-implemented.
+- The AI spend panel is **read-only on purpose**: the monthly cap lives in the
+  environment, and a cap editable by whoever reached it is not a cap.
+
 ## [0.5.8] — 2026-09-02
 
 ### Fixed

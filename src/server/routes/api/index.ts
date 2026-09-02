@@ -16,9 +16,10 @@
  * rather than by everyone remembering it.
  *
  * Every route is a GET and every route needs a session — they say nothing about
- * `auth`, which is how the guard's deny-by-default works. The mutations that go
- * with these reads (answering a clarification, applying a proposal, editing a
- * prompt) arrive with the screens that use them in `0.6.0`.
+ * `auth`, which is how the guard's deny-by-default works. The mutations live
+ * elsewhere on purpose: the settings writes in `../settings.ts`, the one call that
+ * can spend money in `../ai.ts`. Both still answer on `/api/…` URLs; it is the
+ * directory that is read-only, so the scanning test above has something to scan.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { config } from '../../../config.ts'

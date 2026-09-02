@@ -12,6 +12,10 @@
  * and both live in this tree. It is the one piece of chrome outside the shell that a
  * language switch has to reach.
  *
+ * `CsrfProvider` is here for the pages rather than for this component: the settings
+ * page writes, the route table hands pages no props, and the token config comes from
+ * the same bootstrap payload this component already holds.
+ *
  * `SessionExpiryProvider` is the other half of that rule. A page reading `/api/*` can
  * be told mid-session that the cookie is gone — revoked from another device, or simply
  * expired while a dashboard sat open — and the page has no business deciding what to
@@ -21,6 +25,7 @@
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, type CsrfConfig } from './api/client.ts'
+import { CsrfProvider } from './api/csrf.tsx'
 import { SessionExpiryProvider } from './api/resource.tsx'
 import { fetchSession, type SessionResponse } from './auth/session.ts'
 import { SignIn } from './auth/SignIn.tsx'
@@ -104,9 +109,11 @@ export function App({ bootstrap }: AppProps): ReactNode {
 
   return (
     <SessionExpiryProvider onExpired={load}>
-      <AppShell user={session.user} csrf={csrf} version={bootstrap.version} onSignedOut={load}>
-        {route === undefined ? <NotFound /> : <route.Page />}
-      </AppShell>
+      <CsrfProvider csrf={csrf}>
+        <AppShell user={session.user} csrf={csrf} version={bootstrap.version} onSignedOut={load}>
+          {route === undefined ? <NotFound /> : <route.Page />}
+        </AppShell>
+      </CsrfProvider>
     </SessionExpiryProvider>
   )
 }

@@ -19,7 +19,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Db } from '../../db/index.ts'
 import { SESSION_COOKIE } from '../cookies.ts'
-import { unauthenticated } from '../errors.ts'
+import { forbidden, unauthenticated } from '../errors.ts'
 import { readSession, type ActiveSession, type SessionUser } from './sessions.ts'
 
 declare module 'fastify' {
@@ -87,5 +87,24 @@ export function registerAuth(app: FastifyInstance, db: Db): void {
 export function requireUser(request: FastifyRequest): SessionUser {
   const user = request.user
   if (user === undefined) throw unauthenticated()
+  return user
+}
+
+/**
+ * The signed-in user, if they are the owner. A viewer gets a 403.
+ *
+ * Every write in this application goes through here, and they are all the same kind
+ * of write: a threshold, a prompt version, which account counts as the truth. None
+ * of it is data — it is the judgement the aggregation and the model run on, so a
+ * second person reading the dashboard should not be able to change what the first
+ * one sees. Read access is what the viewer role is for.
+ *
+ * `forbidden` rather than the 404 the local-login route uses: the existence of a
+ * settings page is not a secret from someone already signed in, and a viewer who
+ * got a 404 would file a bug about a broken page.
+ */
+export function requireOwner(request: FastifyRequest): SessionUser {
+  const user = requireUser(request)
+  if (user.role !== 'owner') throw forbidden('Only the owner can change settings.')
   return user
 }

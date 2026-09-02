@@ -1,16 +1,55 @@
 {
   "accounts": {
+    "dedupe": {
+      "hint": "A Ghostfolio account and an Actual account can hold the same positions. Group them and say which one counts, or net worth adds the same money twice.",
+      "pair": "{{ghostfolio}} may be the same money as {{actual}}.",
+      "title": "Possibly counted twice",
+      "useThis": "Group, {{name}} counts"
+    },
+    "group": "Group",
     "hint": "Mark one source of truth per account that exists in both tools.",
     "includeInNetWorth": "Count toward net worth",
+    "kind": "Kind",
+    "none": "No accounts have been mapped yet. Run a sync first.",
+    "onItsOwn": "On its own",
     "sourceOfTruth": "Source of truth",
-    "title": "Accounts"
+    "title": "Accounts",
+    "ungroup": "Ungroup",
+    "useAsTruth": "Make source of truth"
   },
   "ai": {
-    "lastRun": "Last analysis",
-    "model": "Model",
+    "budget": "Monthly budget",
+    "exceeded": "This month's AI budget is spent. Analyses serve the last cached answer until the month rolls over.",
+    "history": "Earlier months",
+    "model": {
+      "deep": "Narrative model",
+      "fast": "Analysis model"
+    },
+    "month": "Month",
+    "reason": {
+      "bad_response": "The model's answer did not match the schema, so nothing from it was used.",
+      "call_failed": "The model could not be reached.",
+      "estimate_exceeds_remaining": "A run would cost more than this month has left.",
+      "month_budget_exceeded": "This month's budget is already spent.",
+      "no_facts": "That month has no aggregated figures to analyse.",
+      "ok": "Completed."
+    },
+    "remaining": "Left this month",
     "runs": "Analyses",
     "spend": "{{spent}} of {{budget}} this month",
-    "title": "AI usage"
+    "spent": "Spent",
+    "title": "AI usage",
+    "tokens": {
+      "cached": "Cached",
+      "input": "In",
+      "output": "Out"
+    },
+    "used": "{{used}} of the monthly budget"
+  },
+  "build": {
+    "revision": "Build",
+    "title": "This instance",
+    "version": "Version"
   },
   "language": {
     "en": "English",
@@ -18,29 +57,118 @@
     "nl": "Dutch",
     "title": "Language"
   },
+  "profile": {
+    "role": {
+      "owner": "Owner",
+      "viewer": "Viewer"
+    },
+    "signedInAs": "Signed in as {{email}}",
+    "title": "Account"
+  },
   "prompt": {
     "activate": "Make active",
     "active": "Active",
-    "dryRun": "Test on last month",
-    "dryRunCost": "Estimated cost: {{cost}}",
+    "body": "Instructions",
+    "chars": "{{chars}} characters",
+    "created": "{{when}}",
+    "diff": {
+      "added": "added",
+      "compare": "Compare with the active version",
+      "identical": "Identical to the active version.",
+      "removed": "removed",
+      "stat": "{{added}} added, {{removed}} removed",
+      "title": "Against the active version",
+      "unchanged": "unchanged"
+    },
+    "dryRun": {
+      "clarifications": "It would ask about",
+      "confidence": "confidence {{confidence}}",
+      "cost": "That run cost {{cost}}.",
+      "degraded": "The order is Balancr's own: the model's answer could not be used.",
+      "dropped": "Thrown away",
+      "droppedReason": {
+        "bad_guess": "the guess made no sense",
+        "duplicate": "the same finding twice",
+        "no_signal": "no signal backs it up",
+        "unknown_label": "no category by that label"
+      },
+      "estimate": "A test run on {{month}} would cost about {{cost}}.",
+      "findings": "It would report",
+      "noMonth": "No month has been aggregated yet, so there is nothing to test against.",
+      "nothing": "It reported nothing at all.",
+      "run": "Test on {{month}}",
+      "running": "Testing…",
+      "title": "Test run",
+      "warning": "A test run calls the model and costs real money. Nothing it produces is kept."
+    },
+    "fallback": {
+      "builtIn": "Nothing is stored for this language, so the built-in instructions are in use.",
+      "otherLocale": "Nothing is stored for this language, so version {{version}} of the {{locale}} instructions is in use."
+    },
     "hint": "Written in English whatever the interface language; the assistant answers in yours.",
-    "rollback": "Roll back to {{version}}",
+    "key": {
+      "analysis": {
+        "system": "Findings"
+      },
+      "narrative": {
+        "system": "Monthly narrative"
+      }
+    },
+    "locale": "Language of the instructions",
+    "note": "What changed",
+    "notePlaceholder": "Why this version exists",
+    "save": "Save as a new version",
+    "saveAndActivate": "Make it active straight away",
     "title": "Assistant instructions",
-    "version": "Version {{version}}"
-  },
-  "sync": {
-    "lastSync": "Last sync",
-    "nextSync": "Next sync",
-    "runNow": "Sync now",
-    "title": "Synchronisation"
+    "version": "Version {{version}}",
+    "versions": "Versions",
+    "versionsNone": "Nothing saved yet, so the built-in instructions are in use.",
+    "which": "Which instructions"
   },
   "thresholds": {
-    "baselineMonths": "Months in the baseline",
-    "emergencyTarget": "Emergency buffer target",
-    "halfLife": "Half-life",
-    "materiality": "Only ask about categories above",
-    "savingsTarget": "Savings target",
+    "default": "Default {{value}}",
+    "field": {
+      "baseline": {
+        "halfLifeMonths": "Half-life, in months",
+        "minMonths": "Fewest months before a norm is shown",
+        "windowMonths": "Months of history in the norm",
+        "winsorLowerPct": "Lower clamp, as a fraction",
+        "winsorUpperPct": "Upper clamp, as a fraction"
+      },
+      "burnRate": {
+        "minMonthProgress": "No projection before this share of the month",
+        "toleranceBp": "Tolerated overrun"
+      },
+      "household": {
+        "emergencyFundTargetMonths": "Emergency buffer, in months",
+        "savingsRateTargetBp": "Savings target"
+      },
+      "hygiene": {
+        "priceStaleDays": "Days before a price is stale",
+        "recomputationToleranceCents": "Tolerated difference with Actual",
+        "reconcileStaleDays": "Days before a balance is stale",
+        "uncategorisedWarnCount": "Uncategorised transactions tolerated"
+      },
+      "overspend": {
+        "availableFloorCents": "Overspent once available falls below",
+        "baselineAlertBp": "Alert above the norm",
+        "baselineWarnBp": "Warn above the norm",
+        "materialityFloorCents": "Ignore amounts under"
+      }
+    },
+    "group": {
+      "baseline": "Your own norm",
+      "burnRate": "Pace",
+      "household": "Household targets",
+      "hygiene": "Data hygiene",
+      "overspend": "Overspending"
+    },
+    "grouped": "Type it without a thousands separator — 2.000 could mean 2000 or 2.",
+    "hint": "These take effect on the next aggregation pass. Nothing already computed is rewritten.",
+    "notANumber": "Enter a number.",
+    "reads": "reads as {{value}}",
     "title": "Thresholds"
   },
-  "title": "Settings"
+  "title": "Settings",
+  "viewerOnly": "Only the owner can change this."
 }
