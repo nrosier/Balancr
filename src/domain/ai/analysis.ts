@@ -40,6 +40,7 @@ import type { Signal } from '../aggregate/overspend.ts'
 import { checkBudget } from './budget.ts'
 import type { ClarificationCode } from './codes.ts'
 import { collectBundle } from './bundle.ts'
+import { enqueueClarifications } from './clarify.ts'
 import { DEFAULT_CAPS, rankSignals, type RankCaps } from './findings.ts'
 import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
 import { redact, type AnalysisBundle, type RedactedPayload } from './redact.ts'
@@ -103,6 +104,12 @@ export interface AnalysisOutcome {
   degraded: boolean
   findings: AnalysisFinding[]
   clarifications: AnalysisClarification[]
+  /**
+   * How many of those questions the queue accepted. Lower than
+   * `clarifications.length` whenever one was immaterial, already answered, or hit
+   * the queue cap — see `clarify.ts`.
+   */
+  queued: number
   /** What the model returned and grounding threw away. Recorded, not hidden. */
   dropped: DroppedItem[]
   costMicroEur: number
@@ -298,7 +305,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   const now = options.now ?? new Date()
   const month = options.month
 
-  const base = { month, locale, dropped: [] as DroppedItem[], clarifications: [] }
+  const base = { month, locale, dropped: [] as DroppedItem[], clarifications: [], queued: 0 }
 
   const prepared = prepareMonth(db, month, locale, options.caps ?? DEFAULT_CAPS)
   if (prepared === null) {
@@ -431,6 +438,17 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     log.warn({ month, dropped: grounded.dropped }, 'grounding discarded model findings')
   }
 
+  const clarifications = resolveClarifications(grounded.clarifications, categoryIdFor, nameFor)
+  // Enqueued here rather than by the caller: the guesses exist only inside this
+  // function, and the one output of a run that accumulates value across months is
+  // exactly the one a caller could forget to persist.
+  const queued = enqueueClarifications(db, {
+    month,
+    candidates: clarifications,
+    runId,
+    now,
+  }).enqueued.length
+
   return {
     month,
     locale,
@@ -439,7 +457,8 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     runId,
     degraded: false,
     findings,
-    clarifications: resolveClarifications(grounded.clarifications, categoryIdFor, nameFor),
+    clarifications,
+    queued,
     dropped: grounded.dropped,
     costMicroEur: cost,
   }
