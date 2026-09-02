@@ -125,6 +125,8 @@ const account = (overrides: Partial<AccountMapRow> = {}): AccountMapRow => ({
   externalId: 'acct-current',
   name: 'KBC Zichtrekening ...6703',
   kind: 'checking',
+  decidedFields: null,
+  classifiedAt: null,
   includeInNetWorth: true,
   dedupeGroup: null,
   isSourceOfTruth: true,

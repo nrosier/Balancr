@@ -29,6 +29,7 @@ import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import {
+  decidedFields,
   dedupeCandidates,
   groupAccounts,
   loadAccountMap,
@@ -179,6 +180,7 @@ const toAccountSetting = (row: AccountMapRow): AccountSetting =>
     includeInNetWorth: row.includeInNetWorth,
     dedupeGroup: row.dedupeGroup,
     isSourceOfTruth: row.isSourceOfTruth,
+    decidedFields: [...decidedFields(row)].sort(),
   })
 
 /**

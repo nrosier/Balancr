@@ -135,6 +135,7 @@ const PAYLOAD: Payload = {
       includeInNetWorth: true,
       dedupeGroup: null,
       isSourceOfTruth: false,
+      decidedFields: [],
     },
     {
       id: 'a-mirror',
@@ -144,6 +145,7 @@ const PAYLOAD: Payload = {
       includeInNetWorth: true,
       dedupeGroup: null,
       isSourceOfTruth: false,
+      decidedFields: [],
     },
     {
       id: 'g-broker',
@@ -153,6 +155,7 @@ const PAYLOAD: Payload = {
       includeInNetWorth: true,
       dedupeGroup: null,
       isSourceOfTruth: false,
+      decidedFields: [],
     },
   ],
   dedupe: [{ ghostfolioId: 'g-broker', possibleMirrorIds: ['a-mirror'] }],

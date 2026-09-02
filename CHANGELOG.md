@@ -6,6 +6,39 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Every `account_map` row now records which of its fields a person decided**, so a
+  derived classifier can improve a guess without erasing an answer
+  ([#132](https://github.com/nrosier/Balancr/issues/132)). `kind` said `savings` and
+  nothing distinguished a rule having said so from a person having said so, which made
+  the classifier #124 needs unbuildable: `defaultKind` runs only on insert, so it can
+  never reach an existing account, and a version that re-derived unconditionally would
+  have silently reinstated the six accounts held out of net worth by hand — overstating
+  net worth with nothing on the chart saying why.
+
+  Four fields are decidable — `kind`, `includeInNetWorth`, `dedupeGroup` and
+  `isSourceOfTruth` — and naming one in a settings write marks it decided, including
+  when the value chosen matches what a rule would have produced: confirming a guess has
+  to be worth more than never looking. Grouping, choosing a source of truth and
+  ungrouping all record themselves too, and choosing a winner marks the whole group,
+  because deciding one row is the source is simultaneously deciding the others are not.
+
+  Derived writes go through `applyDerivedFields`, which skips every decided field, does
+  *not* claim the fields it does write, and stamps `classified_at` even when it changed
+  nothing — "the rule looked and had nothing to add" and "the rule has never run" are
+  different states, and only the timestamp separates them.
+
+  The migration infers provenance for existing rows from the only evidence there is: a
+  stored value that differs from what the insert-time default would have produced. It is
+  deliberately conservative, so it can under-report a decision but never invent one —
+  under-reporting costs a re-derivation that agrees with the person anyway, while
+  over-reporting would freeze a row against every future improvement. An Actual account
+  still reading `checking` or `other` stays undecided on purpose: those are the vague
+  ones a better classifier exists to sharpen.
+
 ## [0.5.13] — 2026-09-03
 
 ### Added

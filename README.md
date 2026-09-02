@@ -439,12 +439,19 @@ a position's value to euro but leaves its quoted price in the instrument's own
 currency, and we were drawing both with a euro sign
 ([#134](https://github.com/nrosier/Balancr/issues/134)).
 
-Next are insights
+Account settings now record *who* decided each field
+([#132](https://github.com/nrosier/Balancr/issues/132)). That sounds like
+bookkeeping and is really a precondition: `kind` said `savings` and nothing
+distinguished a rule from a person, so the classifier that fixes the double-counted
+cash ([#124](https://github.com/nrosier/Balancr/issues/124)) could not be written
+without also reinstating the accounts held out of net worth by hand.
+
+Next are that classifier, insights
 ([#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
-([#34](https://github.com/nrosier/Balancr/issues/34)) and the accessibility and
-responsive pass ([#35](https://github.com/nrosier/Balancr/issues/35)), together with
-the double-counted cash ([#124](https://github.com/nrosier/Balancr/issues/124)) —
-shipping as `0.5.13`, `0.5.14`, … until every issue in that milestone is closed and
+([#34](https://github.com/nrosier/Balancr/issues/34)), the accessibility and responsive
+pass ([#35](https://github.com/nrosier/Balancr/issues/35)) and the duplicate-account
+matcher ([#131](https://github.com/nrosier/Balancr/issues/131)) —
+shipping as `0.5.14`, `0.5.15`, … until every issue in that milestone is closed and
 `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),

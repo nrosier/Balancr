@@ -182,6 +182,28 @@ export const accountMap = sqliteTable(
     isSourceOfTruth: integer('is_source_of_truth', { mode: 'boolean' })
       .notNull()
       .default(true),
+    /**
+     * Which of this row's fields a person decided, as a JSON array of patch field
+     * names: `["kind","includeInNetWorth"]`.
+     *
+     * This column exists so that a *derived* classifier can be run again without
+     * destroying an answer someone gave by hand. Without it the two are
+     * indistinguishable — `kind` says `savings` and nothing records whether that
+     * came from a rule or from a person — so re-deriving is either impossible or
+     * silently destructive, and today it is impossible: `defaultKind` runs only on
+     * insert, so a better rule can never reach an account that already exists.
+     *
+     * Nullable only because a row written before the column existed has no value;
+     * null and `'[]'` mean the same thing — the empty set — and readers normalise
+     * both to that. Two spellings of one state would be a third state waiting to be
+     * mishandled.
+     */
+    decidedFields: text('decided_fields'),
+    /**
+     * When a derived classifier last wrote to this row. Null means never — either
+     * because it has not run yet or because every field it would touch is decided.
+     */
+    classifiedAt: integer('classified_at', { mode: 'timestamp_ms' }),
     createdAt: createdAt(),
   },
   (t) => [
