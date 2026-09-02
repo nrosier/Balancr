@@ -23,6 +23,7 @@
  * shows the previous one.
  */
 import { z } from 'zod'
+import { toGeminiSchema } from './json-schema.ts'
 import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from '../../domain/ai/codes.ts'
 import type { ClarificationCode, FindingCode, Severity } from '../../domain/ai/codes.ts'
 import type { RedactedPayload, RedactedSignal } from '../../domain/ai/redact.ts'
@@ -67,9 +68,19 @@ export const clarificationSelectionSchema = z.object({
   guess: z.string().max(GUESS_MAX_CHARS).default(''),
 })
 
+/**
+ * How many of each a response may carry.
+ *
+ * Exported because these numbers are stated twice on purpose: enforced here, and
+ * said in words in `analysisInstruction`. They cannot be sent as `maxItems` — see
+ * `json-schema.ts` for the provider budget that refuses them (#96) — so prose is
+ * the only way the model learns of them, and this constant keeps the two in step.
+ */
+export const RESPONSE_LIMITS = { findings: 48, clarifications: 12 } as const
+
 export const analysisResponseSchema = z.object({
-  findings: z.array(findingSelectionSchema).max(48),
-  clarifications: z.array(clarificationSelectionSchema).max(12),
+  findings: z.array(findingSelectionSchema).max(RESPONSE_LIMITS.findings),
+  clarifications: z.array(clarificationSelectionSchema).max(RESPONSE_LIMITS.clarifications),
 })
 
 export type FindingSelection = z.infer<typeof findingSelectionSchema>
@@ -90,9 +101,15 @@ export const CLARIFICATION_GUESS_VALUES: Partial<Record<ClarificationCode, reado
   sensitive_unknown: ['yes', 'no'],
 }
 
-/** The JSON schema handed to Gemini as `responseJsonSchema`. */
+/**
+ * The JSON schema handed to Gemini as `responseJsonSchema`.
+ *
+ * Emitted as draft-7 and then narrowed to the keywords Gemini accepts. Without
+ * that second step every structured call is rejected outright — see
+ * `json-schema.ts` for which four keywords do it and why dropping them is free.
+ */
 export function analysisJsonSchema(): unknown {
-  return z.toJSONSchema(analysisResponseSchema, { target: 'draft-7' })
+  return toGeminiSchema(z.toJSONSchema(analysisResponseSchema, { target: 'draft-7' }))
 }
 
 export class GeminiResponseError extends Error {

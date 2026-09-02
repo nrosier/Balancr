@@ -25,6 +25,7 @@ import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
 import {
   analysisJsonSchema,
+  RESPONSE_LIMITS,
   groundResponse,
   HOUSEHOLD_LABEL,
   parseAnalysisResponse,
@@ -141,6 +142,10 @@ export function analysisInstruction(payload: RedactedPayload): string {
     'been computed. Return the ones a person should read first, in that order, using',
     'only code and label pairs that appear in that array. Ask for a clarification',
     'only where a category’s purpose cannot be inferred, and propose a guess.',
+    // Said in words because it cannot be said in the schema: Gemini refuses the
+    // request outright when an array bound is large enough to matter (#96).
+    `Return at most ${RESPONSE_LIMITS.findings} findings and`,
+    `${RESPONSE_LIMITS.clarifications} clarifications.`,
   ].join(' ')
 }
 

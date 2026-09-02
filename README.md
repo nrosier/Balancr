@@ -237,11 +237,13 @@ symbol-keyed map and as a plain list; only the map was read, so the portfolio jo
 every run and no holdings, allocation or TWR were stored
 ([#95](https://github.com/nrosier/Balancr/issues/95)) — fixed in `0.5.3` by accepting
 both shapes at the boundary. Net worth was never affected; it reads a different
-endpoint. And the AI pass's analysis call is refused by Gemini because the response
-schema carries keywords outside the provider's supported subset
-([#96](https://github.com/nrosier/Balancr/issues/96)), so the findings on the page are
+endpoint. And every AI analysis call was refused by Gemini before the model saw it
+([#96](https://github.com/nrosier/Balancr/issues/96)), so the findings on the page were
 the deterministic ones with nothing ranking them — which is exactly what the degraded
-path was built for, and still a bug.
+path was built for, and still a bug. Two causes: four draft-7 keywords the provider does
+not accept, and `maxItems: 48`, which it does accept but refuses at that size. Both fixed
+in `0.5.4`, and verified against the live API rather than against the documentation —
+the second cause only showed up when the first fix was tried for real.
 
 Next are budget, portfolio, insights and settings
 ([#30](https://github.com/nrosier/Balancr/issues/30)–[#33](https://github.com/nrosier/Balancr/issues/33)),

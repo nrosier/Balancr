@@ -350,6 +350,32 @@ describe('callGemini', () => {
     }
   })
 
+  it('names the response schema when a structured call is rejected (#96)', async () => {
+    // Gemini answers a schema it dislikes with a bare 400 and no keyword, which
+    // reads exactly like a bad key. The hint is the difference between an hour
+    // and an evening.
+    const cause = new Error('got status: 400 Bad Request. INVALID_ARGUMENT')
+    const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+    setGeminiClient(client)
+
+    await expect(
+      callGemini({ ...call, responseJsonSchema: { type: 'object' } }),
+    ).rejects.toThrow(/response schema/)
+  })
+
+  it('does not blame the schema on a call that carried none', async () => {
+    const cause = new Error('got status: 400 Bad Request. INVALID_ARGUMENT')
+    const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+    setGeminiClient(client)
+
+    try {
+      await callGemini(call)
+      expect.unreachable()
+    } catch (error) {
+      expect((error as GeminiError).message).not.toContain('response schema')
+    }
+  })
+
   it('refuses before any request when the payload could forge the fence', async () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
