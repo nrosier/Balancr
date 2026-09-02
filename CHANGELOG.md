@@ -6,6 +6,25 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Security
+- **Ghostfolio could be written to by anyone who added a line, and only the absence
+  of that line was stopping it**
+  ([#120](https://github.com/nrosier/Balancr/issues/120)). The adapter's one request
+  helper took `RequestInit`, so `method` and `body` were caller-supplied: every read
+  omitted them and got a GET, which made the read-only promise a property of today's
+  code rather than of its types. `POST /api/v1/order` and `POST /api/v1/import` are
+  real endpoints on the instance Balancr authenticates against, and this is the file
+  somebody reaching for "while I'm in here, let me record that transaction" opens.
+  Reads now take a `ReadOptions` offering one flag and nothing else, so a write no
+  longer compiles; the anonymous-token call — authentication, not a mutation — is
+  written out on its own, taking no arguments and hardcoding both its method and its
+  path, which also removed the reentrancy where the helper called the token function,
+  which called the helper back. A guard test mirrors Actual's: the type protects this
+  adapter's callers, and a source scan catches a future file that reaches for `fetch`
+  itself.
+
 ## [0.5.10] — 2026-09-03
 
 ### Fixed
