@@ -235,6 +235,8 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
   persistPortfolioMetrics(db, {
     date: SNAPSHOT_DATE,
     totalValueCents: 382_143,
+    investedValueCents: 382_143,
+    cashValueCents: 0,
     twrBp: 742,
     mwrBp: null,
     allocation: [{ key: 'EQUITY', valueCents: 382_143, shareBp: 10_000 }],

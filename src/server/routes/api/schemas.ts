@@ -228,6 +228,18 @@ export const portfolioSchema = z.object({
   freshness: freshnessSchema,
   date: dateKey().nullable(),
   totalValueCents: cents().nullable(),
+  /**
+   * The invested and cash halves of the total.
+   *
+   * A tool that syncs bank accounts into Ghostfolio leaves the bank balance there as
+   * a `LIQUIDITY` holding, and on the reporting instance that was about half the
+   * portfolio. `allocation` covers the invested half only, so a client adding up its
+   * slices and comparing them with `totalValueCents` needs to be told where the rest
+   * went. Null for a date whose row predates the split, or one the history backfill
+   * wrote — the total is all those dates have.
+   */
+  investedValueCents: cents().nullable(),
+  cashValueCents: cents().nullable(),
   twrBp: basisPoints().nullable(),
   allocation: z.array(
     z.object({

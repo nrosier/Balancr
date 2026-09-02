@@ -88,6 +88,8 @@ export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult):
       twrBp: result.twrBp,
       mwrBp: result.mwrBp,
       totalValueCents: result.totalValueCents,
+      investedValueCents: result.investedValueCents,
+      cashValueCents: result.cashValueCents,
       allocationJson: JSON.stringify(result.allocation),
       driftJson: result.driftJson,
       terAnnualCents: result.terAnnualCents,
@@ -99,6 +101,8 @@ export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult):
         twrBp: sql`excluded.twr_bp`,
         mwrBp: sql`excluded.mwr_bp`,
         totalValueCents: sql`excluded.total_value_cents`,
+        investedValueCents: sql`excluded.invested_value_cents`,
+        cashValueCents: sql`excluded.cash_value_cents`,
         allocationJson: sql`excluded.allocation_json`,
         driftJson: sql`excluded.drift_json`,
         terAnnualCents: sql`excluded.ter_annual_cents`,
@@ -168,6 +172,11 @@ export function backfillPortfolioValues(
           twrBp: null,
           mwrBp: null,
           totalValueCents: point.valueCents,
+          // The backfill reads a dated total and nothing else, so the split is not
+          // knowable for these dates. Null says that; a copy of the total would
+          // claim the whole of a past portfolio was invested.
+          investedValueCents: null,
+          cashValueCents: null,
           allocationJson: null,
           driftJson: null,
           terAnnualCents: null,
@@ -233,6 +242,13 @@ export function loadPortfolioMetrics(db: Db, date: string): PortfolioMetricsResu
   return {
     date: row.date,
     totalValueCents: row.totalValueCents,
+    // Null on a row written before the split existed, and on every backfilled date.
+    // The total is the only figure those rows have, and reading the split back as the
+    // total would say a cash balance was invested — the exact claim this split exists
+    // to stop making. Zero is the honest reading of "no invested value recorded", and
+    // the caller can tell the two apart by comparing against the total.
+    investedValueCents: row.investedValueCents ?? 0,
+    cashValueCents: row.cashValueCents ?? 0,
     twrBp: row.twrBp,
     // Both are `null` in the type until the deferred tax and drift work lands;
     // reading them back as anything else would be inventing a figure.

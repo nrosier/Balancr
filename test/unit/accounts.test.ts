@@ -15,12 +15,15 @@ import { accountMap } from '../../src/db/schema.ts'
 import {
   accountMapBySource,
   applyDerivedFields,
+  applyDerivedMirror,
+  deriveMirrors,
   DECIDABLE_FIELDS,
   decidedFields,
   dedupeCandidates,
   defaultKind,
   groupAccounts,
   loadAccountMap,
+  normaliseAccountName,
   setDedupeGroup,
   setSourceOfTruth,
   syncAccountMap,
@@ -43,11 +46,15 @@ const actual = (id: string, name: string, offBudget = false): AccountSighting =>
   offBudget,
 })
 
-const ghostfolio = (id: string, name: string): AccountSighting => ({
+const ghostfolio = (id: string, name: string, holdsInvestments?: boolean): AccountSighting => ({
   source: 'ghostfolio',
   externalId: id,
   name,
+  ...(holdsInvestments === undefined ? {} : { holdsInvestments }),
 })
+
+/** A Ghostfolio account the classifier read as a mirror of a bank balance. */
+const mirror = (id: string, name: string): AccountSighting => ghostfolio(id, name, false)
 
 const rows = () => loadAccountMap(ctx.db).sort((a, b) => a.externalId.localeCompare(b.externalId))
 
@@ -524,5 +531,178 @@ describe('the 0008 backfill', () => {
       expect(row.decidedFields).toMatch(/^\[.*\]$/)
       expect(() => JSON.parse(row.decidedFields ?? '')).not.toThrow()
     }
+  })
+})
+
+/**
+ * The mirror rule: one Ghostfolio cash account, one Actual account, one name.
+ *
+ * Both halves of the asymmetry are asserted here, because they are the whole design.
+ * A pair that should have matched and did not leaves net worth too big, which anyone
+ * looking at the chart will notice. A pair that matched wrongly drops an account out
+ * of net worth entirely, and a total that is too small looks exactly like a total
+ * that was always that size. So every case below that is *refused* is refused on
+ * purpose, and the refusal is the assertion.
+ */
+describe('deriveMirrors', () => {
+  const derive = (): ReturnType<typeof deriveMirrors> => deriveMirrors(loadAccountMap(ctx.db))
+
+  const idOf = (externalId: string): string => {
+    const row = rows().find((candidate) => candidate.externalId === externalId)
+    if (row === undefined) throw new Error(`no row for ${externalId}`)
+    return row.id
+  }
+
+  it('pairs a Ghostfolio cash account with the Actual account of the same name', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta zichtrekening'), mirror('g1', 'Argenta zichtrekening')])
+
+    expect(derive()).toEqual([
+      { actualId: idOf('a1'), ghostfolioId: idOf('g1'), matchedOn: 'argenta zichtrekening' },
+    ])
+  })
+
+  it('matches through case, diacritics and punctuation', () => {
+    // One tool's em dash is the other's space, and Dutch account names carry
+    // diacritics that survive one export and not the other.
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta — Zichtrekening'), mirror('g1', 'argenta zichtrekéning')])
+
+    expect(derive().map((pair) => pair.matchedOn)).toEqual(['argenta zichtrekening'])
+  })
+
+  it('leaves a Ghostfolio account that holds positions alone', () => {
+    // The names agreeing is not evidence of anything here: a brokerage account and the
+    // off-budget Actual account tracking it are the same money, but grouping them is
+    // #131's question and needs the balances to agree, not just the labels.
+    syncAccountMap(ctx.db, [actual('a1', 'Bolero'), ghostfolio('g1', 'Bolero', true)])
+
+    expect(derive()).toEqual([])
+  })
+
+  it('refuses a name two Actual accounts share', () => {
+    // Grouping the Ghostfolio row against either one would be a coin flip, and the
+    // wrong call silently removes an account's balance from net worth.
+    syncAccountMap(ctx.db, [actual('a1', 'Spaarrekening'), actual('a2', 'spaarrekening'), mirror('g1', 'Spaarrekening')])
+
+    expect(derive()).toEqual([])
+  })
+
+  it('refuses a name two Ghostfolio accounts share', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Spaarrekening'), mirror('g1', 'Spaarrekening'), mirror('g2', 'spaarrekening ')])
+
+    expect(derive()).toEqual([])
+  })
+
+  it('says nothing about a Ghostfolio account with no twin', () => {
+    // It keeps counting, which is right: on a deployment where a bank exists in
+    // Ghostfolio only, excluding it would lose the money.
+    syncAccountMap(ctx.db, [actual('a1', 'Current'), mirror('g1', 'Revolut')])
+
+    expect(derive()).toEqual([])
+  })
+
+  it('ignores a name that normalises to nothing', () => {
+    // An account called "—" matches every other account called "-", and the empty
+    // string is not a name two tools agreed on.
+    syncAccountMap(ctx.db, [actual('a1', '—'), mirror('g1', '-')])
+
+    expect(normaliseAccountName('—')).toBe('')
+    expect(derive()).toEqual([])
+  })
+
+  it('skips rows that are already grouped, however they got that way', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta'), mirror('g1', 'Argenta')])
+    setDedupeGroup(ctx.db, 'grp', [idOf('a1')], idOf('a1'))
+
+    expect(derive()).toEqual([])
+  })
+
+  it('orders pairs by the name they matched on, so a log reads the same twice', () => {
+    syncAccountMap(ctx.db, [
+      actual('a1', 'Zichtrekening'),
+      mirror('g1', 'Zichtrekening'),
+      actual('a2', 'Argenta'),
+      mirror('g2', 'Argenta'),
+    ])
+
+    expect(derive().map((pair) => pair.matchedOn)).toEqual(['argenta', 'zichtrekening'])
+  })
+})
+
+describe('applyDerivedMirror', () => {
+  const seedPair = (): { actualId: string; ghostfolioId: string } => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta'), mirror('g1', 'Argenta')])
+    const [mirrorPair] = deriveMirrors(loadAccountMap(ctx.db))
+    if (mirrorPair === undefined) throw new Error('the fixture produced no pair')
+    return { actualId: mirrorPair.actualId, ghostfolioId: mirrorPair.ghostfolioId }
+  }
+
+  const byId = (id: string) => {
+    const row = loadAccountMap(ctx.db).find((candidate) => candidate.id === id)
+    if (row === undefined) throw new Error(`no row for ${id}`)
+    return row
+  }
+
+  it('groups the pair and makes Actual the side that counts', () => {
+    const { actualId, ghostfolioId } = seedPair()
+    const group = applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })
+
+    expect(group).not.toBeNull()
+    // Actual, because that is where the account is reconciled against statements —
+    // Ghostfolio's copy is whatever the syncing tool last wrote.
+    expect(byId(actualId).isSourceOfTruth).toBe(true)
+    expect(byId(ghostfolioId).isSourceOfTruth).toBe(false)
+    expect(byId(actualId).dedupeGroup).toBe(group)
+    expect(byId(ghostfolioId).dedupeGroup).toBe(group)
+  })
+
+  it('records no decision, so a better rule may revise it', () => {
+    const { actualId, ghostfolioId } = seedPair()
+    applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })
+
+    for (const id of [actualId, ghostfolioId]) {
+      expect([...decidedFields(byId(id))]).toEqual([])
+      expect(byId(id).classifiedAt).not.toBeNull()
+    }
+  })
+
+  it('leaves a pair alone once a person has ungrouped either half', () => {
+    // The stored dismissal. Without this the next sync regroups what was just taken
+    // apart, and the panel becomes a fight the job always wins.
+    const { actualId, ghostfolioId } = seedPair()
+    applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })
+    ungroupAccount(ctx.db, ghostfolioId)
+    // Both are loose again, so the rule would match them a second time.
+    ungroupAccount(ctx.db, actualId)
+
+    expect(deriveMirrors(loadAccountMap(ctx.db))).toHaveLength(1)
+    expect(applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })).toBeNull()
+    expect(byId(actualId).dedupeGroup).toBeNull()
+    expect(byId(ghostfolioId).dedupeGroup).toBeNull()
+  })
+
+  it('refuses rather than half-grouping when one row has gone', () => {
+    // A group of one whose source of truth sits outside it counts for nothing, so the
+    // pair is written together or not at all.
+    const { actualId } = seedPair()
+    const missing = applyDerivedMirror(ctx.db, {
+      actualId,
+      ghostfolioId: 'a-row-that-never-existed',
+      matchedOn: 'argenta',
+    })
+
+    expect(missing).toBeNull()
+    expect(byId(actualId).dedupeGroup).toBeNull()
+    expect(byId(actualId).isSourceOfTruth).toBe(true)
+  })
+
+  it('is a no-op the second time, because the pair is now grouped', () => {
+    const { actualId, ghostfolioId } = seedPair()
+    const first = applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })
+    const second = applyDerivedMirror(ctx.db, { actualId, ghostfolioId, matchedOn: 'argenta' })
+
+    expect(second).toBeNull()
+    expect(byId(actualId).dedupeGroup).toBe(first)
+    // And the rule no longer proposes it, which is what keeps the job's log quiet.
+    expect(deriveMirrors(loadAccountMap(ctx.db))).toEqual([])
   })
 })

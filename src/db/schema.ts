@@ -555,6 +555,20 @@ export const portfolioMetrics = sqliteTable('portfolio_metrics', {
   twrBp: integer('twr_bp'),
   mwrBp: integer('mwr_bp'),
   totalValueCents: integer('total_value_cents').notNull().default(0),
+  /**
+   * The two halves of `total_value_cents`, split by whether the holding can move.
+   *
+   * A tool that syncs bank accounts into Ghostfolio leaves a `LIQUIDITY` holding
+   * there, and on the reporting instance it was about half the portfolio: it drew
+   * a current-account balance as an asset class in the treemap, and "market value"
+   * was not a market value. Kept as stored columns rather than re-derived from
+   * `allocation_json`, because allocation is now over the invested half only and a
+   * reader asking "how much is at the broker in cash" would otherwise have nothing
+   * to read. Nullable, and null means "written before the split existed" — where
+   * `total_value_cents` is still the only figure there is.
+   */
+  investedValueCents: integer('invested_value_cents'),
+  cashValueCents: integer('cash_value_cents'),
   /** Allocation and drift as JSON — shape belongs to domain/portfolio. */
   allocationJson: text('allocation_json'),
   driftJson: text('drift_json'),

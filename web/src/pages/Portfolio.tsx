@@ -67,7 +67,8 @@ export function Portfolio(): ReactNode {
 function Figures({ data }: { data: PortfolioPayload }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { allocation, date, history, holdings, totalValueCents, twrBp } = data
+  const { allocation, cashValueCents, date, history, holdings } = data
+  const { investedValueCents, totalValueCents, twrBp } = data
 
   return (
     <>
@@ -79,6 +80,23 @@ function Figures({ data }: { data: PortfolioPayload }): ReactNode {
           value={totalValueCents === null ? null : euro(totalValueCents)}
           unknown={unknown}
           {...(date === null ? {} : { note: t('time.lastUpdated', { when: formatDate(date) }) })}
+        />
+
+        <Metric
+          label={t('portfolio:metric.invested')}
+          value={investedValueCents === null ? null : euro(investedValueCents)}
+          unknown={unknown}
+          note={t('portfolio:metric.investedHint')}
+        />
+
+        <Metric
+          label={t('portfolio:metric.cash')}
+          value={cashValueCents === null ? null : euro(cashValueCents)}
+          unknown={unknown}
+          // No tone. Cash at a broker is neither good nor bad without knowing why it
+          // is there, and a colour would be this page taking a position it cannot
+          // support — most of it here is a bank balance a syncing tool wrote in.
+          note={t('portfolio:metric.cashHint')}
         />
 
         <Metric
@@ -112,6 +130,12 @@ function Figures({ data }: { data: PortfolioPayload }): ReactNode {
 
       <section className="card">
         <h2 className="card__title">{t('portfolio:chart.allocationTitle')}</h2>
+        {/*
+          These slices add up to the invested figure above, not to the total: cash
+          held at the broker is not an asset class and would otherwise appear as one.
+          The two cards make the difference readable, which is why they are drawn
+          even when the split is unknown.
+        */}
         {allocation.length === 0 ? (
           <p className="muted">{t('empty.noData')}</p>
         ) : (
