@@ -6,6 +6,64 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+- **The read-only API the views read from** — `GET /api/overview`, `/api/budget`,
+  `/api/portfolio` and `/api/insights` (`src/server/routes/api/`). One rule holds the
+  directory together: **a request never calls an upstream.** Everything served comes out
+  of Balancr's own SQLite, written by a job on a schedule, which buys three things —
+  a page load cannot be slow because Ghostfolio's price provider is slow, cannot fail
+  because Actual is mid-restart, and opening the insights page cannot spend money. That
+  last one is why the AI budget is a limit rather than a hope. The rule is enforced by a
+  test that scans the directory for adapter imports rather than by everyone remembering it.
+- **`freshness` on every response, as a field rather than a banner.** The cost of serving
+  from a cache is that what is served can be out of date, and a stale figure presented as
+  current is worse than no figure. So every payload carries the age of the data and the
+  state of the jobs behind it. `stale` is deliberately about *failure*, not age: a second
+  instance with `JOBS_ENABLED=false` has old data and nothing wrong with it, while a job
+  whose last attempt errored is a different matter. `asOf` is the **oldest** success among
+  the data jobs, because a fresh portfolio next to a two-day-old budget is two days old.
+  The AI job is excluded from both — a rate-limited Gemini call does not make the budget
+  numbers untrustworthy, and marking the whole dashboard stale for it would train the
+  reader to ignore the flag.
+- **Response schemas whose real job is the money** (`api/schemas.ts`). Validating one's own
+  output looks like belt and braces, and for a shape mismatch it would be. What `cents()`
+  actually guards is the integer invariant: one division, one average, one `* 0.5` in a
+  future aggregate turns `1234` into `1234.5`, which renders as `€ 12.345` and is wrong by
+  an order of magnitude in a way no test of that aggregate would notice. The parse sits at
+  the last point where the value is still Balancr's problem, and a test walks every field of
+  every response asserting `Number.isInteger`.
+- **Nulls where a figure has not been computed, never zeros.** A fresh deployment has run no
+  jobs, and the honest answer to "what is my net worth" before the first sync is "not known
+  yet". Zero is a number someone would act on. Same reasoning behind `mwrBp` being absent
+  from `/api/portfolio` rather than reported as `0` until the deferred work lands, and
+  behind months-of-cover answering `null` when there is no spend to divide by.
+- **Months of liquid cover in hundredths of a month** (`emergencyFundCentimonths`),
+  averaged over a twelve-month window rather than read off the latest month — a holiday or
+  an annual insurance premium would otherwise halve the figure and read as an emergency.
+  Hundredths for the same reason as everything else here: the client formats `450` as
+  `4,5`, and no arithmetic anywhere is trusted with a fraction.
+- **Findings returned as codes and integers, on both the budget and insights endpoints.**
+  The client renders them through the i18n catalogue, which is why these endpoints have no
+  opinion about language, why a finding cannot end up half-translated, and why adding a
+  language costs a catalogue rather than another model call. The two exceptions are
+  deliberate and documented in place: the monthly narrative is free prose by design and is
+  cached per locale, and the clarification and proposal cards are rendered from the local
+  catalogue — where the real category names live, which is precisely why the model never
+  saw them.
+- **A malformed `?month=` is a 400, not a fallback** (`resolveMonth`). Answering `2026-13`
+  with the latest month's numbers under the label that was asked for would hide a client
+  bug behind plausible data. A *valid* month that was never computed is a different case
+  and gets the empty state: that is a stale bookmark, not an error worth a red banner.
+
+### Changed
+- Every API route is registered without an `auth` opt-out, so the deny-by-default guard
+  from `0.4.2` covers them by construction, and they inherit the global rate limit for the
+  same reason. Both are asserted through the built app — 401 on each of the four without a
+  session — and by a source scan for an `auth: false` or `rateLimit: false` that should
+  never appear in that directory.
+
 ## [0.4.3] — 2026-09-02
 
 ### Added

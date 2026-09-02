@@ -207,15 +207,20 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.5.0`, slice 3 of 4: the break-glass local login
-([#25](https://github.com/nrosier/Balancr/issues/25)) — password plus mandatory
-TOTP, off by default, and gated on the TCP peer address so it works over LAN or
-VPN and never through the tunnel. On top of slice 2's sessions and OIDC code flow
-against Authentik ([#24](https://github.com/nrosier/Balancr/issues/24)) and slice
-1's Fastify app ([#23](https://github.com/nrosier/Balancr/issues/23),
-[#27](https://github.com/nrosier/Balancr/issues/27)). Next up: the read-only API
-the views read from ([#26](https://github.com/nrosier/Balancr/issues/26)), which
-closes the milestone.
+**Where it is now** — `0.5.0`, slice 4 of 4: the read-only API the views read
+from ([#26](https://github.com/nrosier/Balancr/issues/26)) — `/api/overview`,
+`/api/budget`, `/api/portfolio` and `/api/insights`, every one of them served out
+of Balancr's own SQLite. A request never calls Actual, Ghostfolio or Gemini, which
+is what makes a page load cheap and what stops a broken upstream from becoming a
+broken page; the price is that what is served can be out of date, so every
+response carries a `freshness` field rather than a banner a client might forget to
+draw. On top of slice 3's break-glass local login
+([#25](https://github.com/nrosier/Balancr/issues/25)), slice 2's sessions and OIDC
+code flow against Authentik ([#24](https://github.com/nrosier/Balancr/issues/24))
+and slice 1's Fastify app ([#23](https://github.com/nrosier/Balancr/issues/23),
+[#27](https://github.com/nrosier/Balancr/issues/27)). That closes the milestone, so
+the next release is the minor `0.5.0` and the next milestone is the web UI
+([#28](https://github.com/nrosier/Balancr/issues/28)–[#35](https://github.com/nrosier/Balancr/issues/35)).
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
