@@ -35,7 +35,9 @@
     "generatedAt": "Geschreven op {{when}} door {{model}}",
     "stale": "Gebaseerd op gegevens van {{when}}.",
     "title": "Deze maand in woorden",
-    "translate": "Dit in het {{language}} schrijven"
+    "translate": "Dit in het {{language}} schrijven",
+    "unnamedAccount": "een naamloze rekening",
+    "unnamedCategory": "een naamloze categorie"
   },
   "privacy": {
     "hint": "Enkel categorienamen en bedragen. Geen tegenpartijen, geen verrichtingen.",
