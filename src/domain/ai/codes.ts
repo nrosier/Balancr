@@ -94,3 +94,28 @@ export function capSeverity(code: FindingCode, severity: Severity): Severity {
 
 export type ClarificationCode = keyof typeof CLARIFICATION_SPECS
 export const CLARIFICATION_CODES = Object.keys(CLARIFICATION_SPECS) as ClarificationCode[]
+
+/**
+ * Variables a code's sentence needs but the caller did not supply.
+ *
+ * Here rather than beside the renderer because it is a fact about the specs above,
+ * and both renderers need it: the server's, which turns a signal into a sentence for
+ * the insights payload, and the browser's, which does the same for the signals
+ * `/api/budget` hands over as codes. This file imports nothing, so both can have it.
+ */
+export function missingVars(
+  code: FindingCode | ClarificationCode,
+  vars: Readonly<Record<string, string | number>>,
+): string[] {
+  const spec =
+    code in FINDING_SPECS
+      ? FINDING_SPECS[code as FindingCode]
+      : CLARIFICATION_SPECS[code as ClarificationCode]
+  const declared: readonly string[] = spec.vars
+  return declared.filter((name) => vars[name] === undefined)
+}
+
+/** Whether a string off the wire is a code this bundle has a sentence for. */
+export function isFindingCode(code: string): code is FindingCode {
+  return code in FINDING_SPECS
+}

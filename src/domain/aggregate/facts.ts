@@ -15,9 +15,10 @@
  *    or stops appearing in a month we recompute, its old row would otherwise
  *    survive forever and keep showing up in charts as a ghost envelope.
  */
-import { and, eq, notInArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../db/schema.ts'
+import { monthsBefore } from '../../util/month.ts'
 import type { ExpectedFrequency } from './baseline.ts'
 import type { MonthlyFact } from './spend.ts'
 
@@ -235,6 +236,59 @@ export function loadFacts(db: Db, month: string): MonthlyFact[] {
             winsorEffectBp: fact.baselineWinsorEffectBp,
           },
   }))
+}
+
+export interface CategoryTrends {
+  /** Oldest first. The index every series in `byCategory` is aligned to. */
+  months: string[]
+  /** One spend figure per month, in `months` order, for each category with a row. */
+  byCategory: Map<string, number[]>
+}
+
+/**
+ * Trailing spend per category, as a dense series.
+ *
+ * Dense because the client draws it as a line, and a line with holes in it is a
+ * different claim from a line that touches zero. A category with no transactions in a
+ * month genuinely spent nothing that month — the aggregation pass already treats
+ * absent as zero when it writes the facts — so filling the gap with `0` states what
+ * happened rather than papering over a gap in the data.
+ *
+ * Unlike `loadTrailingTotals`, this does not trim to the dense run ending at `month`.
+ * The window is the same for every category on the screen, which is what makes twelve
+ * small charts comparable at a glance; a per-category window would silently give the
+ * newest envelope the shortest x axis and make its line look steeper than its
+ * neighbour's.
+ */
+export function loadCategoryTrends(db: Db, month: string, count: number): CategoryTrends {
+  if (count <= 0) return { months: [], byCategory: new Map() }
+
+  const months = [...monthsBefore(month, count - 1), month]
+  const index = new Map(months.map((key, at) => [key, at]))
+
+  const rows = db
+    .select({
+      month: monthlyCategoryFacts.month,
+      categoryId: monthlyCategoryFacts.categoryId,
+      spentCents: monthlyCategoryFacts.spentCents,
+    })
+    .from(monthlyCategoryFacts)
+    .where(inArray(monthlyCategoryFacts.month, months))
+    .all()
+
+  const byCategory = new Map<string, number[]>()
+  for (const row of rows) {
+    const at = index.get(row.month)
+    if (at === undefined) continue
+    let series = byCategory.get(row.categoryId)
+    if (series === undefined) {
+      series = new Array<number>(months.length).fill(0)
+      byCategory.set(row.categoryId, series)
+    }
+    series[at] = row.spentCents
+  }
+
+  return { months, byCategory }
 }
 
 /** Every category with a stored meta row, keyed by id. */

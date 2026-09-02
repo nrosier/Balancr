@@ -63,7 +63,15 @@ export const signalSchema = z.object({
   code: z.string(),
   categoryId: z.string().nullable(),
   categoryName: z.string().nullable(),
-  severity: z.enum(['info', 'warn', 'critical']),
+  /**
+   * The same three words `codes.ts` and the `signals` table use.
+   *
+   * `alert` rather than a friendlier `critical`: the value is stored, ranked and capped
+   * under that name everywhere behind this schema, and a rename at the wire would have
+   * meant translating it in both directions — the direction that was missing turned
+   * every genuine alert into a 500 from this endpoint.
+   */
+  severity: z.enum(['info', 'warn', 'alert']),
   /**
    * Cents as integer cents, ratios as basis points, the unit named in the key.
    * Not `cents()`, because the map holds both — but still integers throughout.
@@ -130,6 +138,15 @@ export const categoryFactSchema = z.object({
   /** The EWMA norm, or null when there is not enough history to state one. */
   baselineCents: cents().nullable(),
   deltaBp: basisPoints().nullable(),
+  /**
+   * Spend per month over the trailing window, aligned to `trendMonths`.
+   *
+   * Dense and the same length for every category, which is what makes a wall of small
+   * charts comparable: a per-category window would give the newest envelope the
+   * shortest axis and make its line look steeper than its neighbour's. A month with no
+   * transactions is a real zero, not a gap.
+   */
+  trendCents: z.array(cents()),
 })
 
 export const budgetSchema = z.object({
@@ -157,6 +174,8 @@ export const budgetSchema = z.object({
       savingsRateBp: basisPoints().nullable(),
     }),
   ),
+  /** The months every `categories[].trendCents` is indexed by, oldest first. */
+  trendMonths: z.array(monthKey()),
   categories: z.array(categoryFactSchema),
   signals: z.array(signalSchema),
   uncategorised: z

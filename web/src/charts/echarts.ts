@@ -14,15 +14,26 @@
  *  - The canvas renderer's advantage is tens of thousands of points. A budget draws
  *    hundreds.
  *
- * Series types are registered here as the pages that need them arrive: line and bar
- * now, the Sankey with the budget page (#30) and the treemap with the portfolio page
- * (#31).
+ * Series types are registered here as the pages that need them arrive: line, bar,
+ * Sankey and scatter now, and the treemap with the portfolio page (#31).
+ *
+ * Scatter is here for an unobvious reason: it draws the comparative marker on the
+ * budget-versus-actual bullet chart. A bullet chart's marker is a short tick at one
+ * value on a category axis, which a bar cannot be — a bar starts at zero — and
+ * `markLine` places one line across the whole chart rather than one per category.
+ * A scatter point with a rectangular symbol is a tick at exactly one coordinate.
+ *
+ * `MarkLineComponent` is registered for the opposite case: on a per-category sparkline
+ * the norm *is* one line across the whole chart, and that pairing — a category's twelve
+ * months with the twelve-month average drawn through them — is why `TREND_MONTHS`
+ * matches the EWMA window.
  */
-import { BarChart, LineChart } from 'echarts/charts'
+import { BarChart, LineChart, SankeyChart, ScatterChart } from 'echarts/charts'
 import {
   DatasetComponent,
   GridComponent,
   LegendComponent,
+  MarkLineComponent,
   TooltipComponent,
 } from 'echarts/components'
 import * as echarts from 'echarts/core'
@@ -31,9 +42,12 @@ import { SVGRenderer } from 'echarts/renderers'
 echarts.use([
   LineChart,
   BarChart,
+  SankeyChart,
+  ScatterChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
+  MarkLineComponent,
   DatasetComponent,
   SVGRenderer,
 ])

@@ -13,12 +13,13 @@
  * language.
  */
 import type { Db } from '../../../db/index.ts'
-import { loadFacts } from '../../../domain/aggregate/facts.ts'
+import { loadCategoryTrends, loadFacts } from '../../../domain/aggregate/facts.ts'
 import {
   latestStoredMonth,
   loadMonthTotals,
   loadTrailingTotals,
   loadUncategorised,
+  storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { badRequest } from '../../errors.ts'
@@ -27,6 +28,16 @@ import { budgetSchema, type Budget } from './schemas.ts'
 
 /** How much history the trend charts get. Two years, matching `JOBS_HISTORY_MONTHS`. */
 export const HISTORY_MONTHS = 24
+
+/**
+ * How much history each category's own series gets.
+ *
+ * Twelve rather than `HISTORY_MONTHS`, and not because of payload size: twelve months
+ * is the window the EWMA norm is taken over, so a category's line and the norm drawn
+ * across it describe the same period. Two years of line against a one-year average
+ * would invite reading the gap as a trend.
+ */
+export const TREND_MONTHS = 12
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
 
@@ -52,14 +63,17 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
   const resolved = month ?? new Date().toISOString().slice(0, 7)
 
   const history = loadTrailingTotals(db, resolved, HISTORY_MONTHS)
+  const trends = loadCategoryTrends(db, resolved, TREND_MONTHS)
   const totals = loadMonthTotals(db, [resolved])[0] ?? null
   const uncategorised = loadUncategorised(db, [resolved])[0] ?? null
 
   return budgetSchema.parse({
     freshness: freshness(db),
     month: resolved,
-    // Descending, so the picker's first entry is the most recent month.
-    months: history.map((entry) => entry.month).reverse(),
+    // Every stored month, not the window `history` covers: the picker has to keep
+    // offering August while July is on screen, and a month that was never computed
+    // still needs somewhere to navigate to.
+    months: storedMonths(db),
     totals:
       totals === null
         ? null
@@ -80,6 +94,7 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
       budgetedCents: entry.budgetedCents,
       savingsRateBp: entry.savingsRateBp,
     })),
+    trendMonths: trends.months,
     categories: loadFacts(db, resolved).map((fact) => ({
       categoryId: fact.categoryId,
       categoryName: fact.categoryName,
@@ -94,6 +109,11 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
       // aggregation layer's business.
       baselineCents: fact.baseline?.baselineCents ?? null,
       deltaBp: fact.baseline?.deltaBp ?? null,
+      // Zeroes rather than an empty array for a category with no history at all: the
+      // client indexes into `trendMonths`, and a short series would misalign the axis.
+      trendCents:
+        trends.byCategory.get(fact.categoryId) ??
+        new Array<number>(trends.months.length).fill(0),
     })),
     signals: loadSignals(db, resolved),
     uncategorised:
