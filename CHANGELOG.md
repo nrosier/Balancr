@@ -6,6 +6,42 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **The portfolio job still failed every pass: Ghostfolio moved every identity field
+  into `assetProfile`** ([#113](https://github.com/nrosier/Balancr/issues/113)). The
+  diagnostic added in `0.5.7` did exactly what it was written for — it printed the
+  keys the holding did have, and `assetProfile` was one of them while `symbol`,
+  `isin`, `name`, `currency`, `dataSource` and `assetClass` were all absent. Current
+  releases put them one level down; the schema still read them off the holding. They
+  are now lifted out of `assetProfile` when the holding does not carry them itself —
+  a fallback per field, never an override, the same rule the record key already
+  followed.
+
+  `assetClass` is in that list for a sharper reason than the rest. It is what the
+  allocation treemap groups by, and reading it from the level Ghostfolio no longer
+  uses does not fail — it puts every position in `unknown` and draws one grey block.
+  A wrong answer is worse than a refused payload, so it is hoisted with the identity
+  rather than left to a default. Verified against a live 2026 instance: two holdings,
+  identified by symbol, classed `LIQUIDITY` and `EQUITY`, shares summing to exactly
+  10 000 bp.
+
+- **Time-weighted return was permanently null and the value series permanently empty,
+  because Ghostfolio moved the performance endpoint to `/api/v2`**
+  ([#115](https://github.com/nrosier/Balancr/issues/115)). `/api/v1/portfolio/performance`
+  now 404s. Nothing said so: #113 refused the details call first, so the pass never
+  reached this one, and the two defects hid behind a single error. v2 is tried first
+  and a 404 falls back to v1, so an instance old enough to lack v2 keeps working and
+  a current one stops being silently empty. Only a 404 falls back — a 401 is a bad
+  token and a 500 is Ghostfolio in trouble, and retrying either against an older path
+  would answer a different question than the one asked.
+
+  The v2 response is a superset, so one schema covers both. On the live instance it
+  returns **401 daily points back to 2025-07-29** — which is the history
+  [#114](https://github.com/nrosier/Balancr/issues/114) is about, and part of why the
+  net-worth chart draws a single dot.
+
 ## [0.5.7] — 2026-09-02
 
 ### Fixed
