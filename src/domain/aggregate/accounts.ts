@@ -37,6 +37,17 @@ export interface AccountSighting {
   /** Actual only: off-budget accounts are excluded from budget figures. */
   offBudget?: boolean
   closed?: boolean
+  /**
+   * Ghostfolio only: whether the account holds anything other than cash, per
+   * `classify.ts`. Absent when the instance did not answer.
+   *
+   * Passed in so the *insert* is already right. The same rule runs again over
+   * existing rows through `applyDerivedFields`, and the alternative — insert every
+   * Ghostfolio account as `investment` and correct it a moment later — would have
+   * a window in which a bank balance was labelled invested, plus two spellings of
+   * one rule to keep in step.
+   */
+  holdsInvestments?: boolean
 }
 
 export type AccountMapRow = typeof accountMap.$inferSelect
@@ -51,7 +62,13 @@ export interface AccountSyncResult {
 
 /** The default `kind` for a newly sighted account. See the header for why. */
 export function defaultKind(sighting: AccountSighting): AccountKind {
-  if (sighting.source === 'ghostfolio') return 'investment'
+  if (sighting.source === 'ghostfolio') {
+    // Undefined means the instance did not report the evidence, and `investment` is
+    // the safe answer there: a Ghostfolio account wrongly called invested is a
+    // mislabelled row, while one wrongly called cash is a candidate for being
+    // grouped away as a duplicate — and money missing from net worth has no symptom.
+    return sighting.holdsInvestments === false ? 'cash' : 'investment'
+  }
   return sighting.offBudget ? 'other' : 'checking'
 }
 
@@ -370,6 +387,127 @@ export function applyDerivedFields(
         .returning()
         .all()[0] ?? null
     )
+  })
+}
+
+/**
+ * A Ghostfolio cash account and the Actual account it appears to mirror.
+ *
+ * `actualId` is the source of truth in every pair, because Actual is where the
+ * account gets reconciled and reconciliation is what makes a balance trustworthy.
+ * Ghostfolio's copy of it is whatever the syncing tool last wrote.
+ */
+export interface DerivedMirror {
+  ghostfolioId: string
+  actualId: string
+  /** The normalised name both sides matched on, for the log line and the panel. */
+  matchedOn: string
+}
+
+/**
+ * Names reduced to what two tools can be expected to agree on.
+ *
+ * Diacritics are folded and punctuation collapsed because one tool's "Argenta —
+ * zichtrekening" is the other's "Argenta zichtrekening", and a match missed on a
+ * dash leaves the money counted twice. Nothing stronger than case and punctuation
+ * is stripped: dropping a word would start matching accounts that differ only by
+ * the word dropped, and a false match removes real money from net worth.
+ */
+export function normaliseAccountName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/**
+ * Pairs each Ghostfolio cash account with its Actual twin, where there is exactly one.
+ *
+ * Pure, so the matching rule is testable without a database. It is deliberately
+ * unwilling: a pair is emitted only when one Actual row and one Ghostfolio cash row
+ * share a normalised name and neither is already grouped. Two accounts called
+ * "Savings" produce no pair at all, because grouping the wrong two drops real money
+ * out of net worth — and a total that is too low looks exactly like a total that was
+ * always that size. A missed match leaves the double count in place, which at least
+ * announces itself as a number that is too big.
+ *
+ * Ghostfolio cash with no Actual twin is left alone and keeps counting. Excluding it
+ * would be correct on this deployment and silently wrong on one where a bank exists
+ * in Ghostfolio only.
+ */
+export function deriveMirrors(rows: readonly AccountMapRow[]): DerivedMirror[] {
+  const ungrouped = rows.filter((row) => row.dedupeGroup === null)
+  const byName = new Map<string, { actual: AccountMapRow[]; ghostfolio: AccountMapRow[] }>()
+  for (const row of ungrouped) {
+    // Only cash mirrors are matched. A Ghostfolio account that holds positions is a
+    // portfolio, and the Actual account with the same name is a different question
+    // — the one #131 is about, where the balances agree because both are synced.
+    if (row.source === 'ghostfolio' && row.kind !== 'cash') continue
+    const key = normaliseAccountName(row.name)
+    if (key === '') continue
+    const bucket = byName.get(key) ?? { actual: [], ghostfolio: [] }
+    bucket[row.source].push(row)
+    byName.set(key, bucket)
+  }
+
+  const mirrors: DerivedMirror[] = []
+  for (const [key, { actual, ghostfolio }] of byName) {
+    const [onlyActual] = actual
+    const [onlyGhostfolio] = ghostfolio
+    if (actual.length !== 1 || ghostfolio.length !== 1) continue
+    if (onlyActual === undefined || onlyGhostfolio === undefined) continue
+    mirrors.push({
+      ghostfolioId: onlyGhostfolio.id,
+      actualId: onlyActual.id,
+      matchedOn: key,
+    })
+  }
+  return mirrors.sort((a, b) => a.matchedOn.localeCompare(b.matchedOn))
+}
+
+/**
+ * Groups one derived pair, or refuses and says nothing happened.
+ *
+ * Atomic over the pair rather than per field, which is the whole reason this is not
+ * two `applyDerivedFields` calls: writing `dedupeGroup` to one row of a pair and
+ * skipping the other because a person had decided it would leave a group of one, and
+ * a group of one whose source of truth sits outside it counts for nothing. Net worth
+ * would then be missing an account with nothing on screen to say which.
+ *
+ * The group is *derived*, so neither row is marked decided and a better rule may
+ * revise it — but a person ungrouping either row decides `dedupeGroup` on it, and
+ * this then leaves the pair alone for ever. That is the stored dismissal: "these two
+ * are not the same account" is an answer worth exactly as much as its opposite.
+ */
+export function applyDerivedMirror(
+  db: Db,
+  mirror: DerivedMirror,
+  now = new Date(),
+): string | null {
+  return db.transaction((tx) => {
+    const pair = tx
+      .select()
+      .from(accountMap)
+      .where(inArray(accountMap.id, [mirror.ghostfolioId, mirror.actualId]))
+      .all()
+    if (pair.length !== 2) return null
+    // Already grouped by anyone, for any reason, is left alone: the existing group is
+    // either this same conclusion or a better-informed one.
+    if (pair.some((row) => row.dedupeGroup !== null)) return null
+    if (pair.some((row) => decidedFields(row).has('dedupeGroup'))) return null
+
+    const group = crypto.randomUUID()
+    tx.update(accountMap)
+      .set({ dedupeGroup: group, isSourceOfTruth: false, classifiedAt: now })
+      .where(eq(accountMap.id, mirror.ghostfolioId))
+      .run()
+    tx.update(accountMap)
+      .set({ dedupeGroup: group, isSourceOfTruth: true, classifiedAt: now })
+      .where(eq(accountMap.id, mirror.actualId))
+      .run()
+    return group
   })
 }
 

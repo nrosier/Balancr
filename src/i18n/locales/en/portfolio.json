@@ -33,11 +33,14 @@
     "weight": "Weight"
   },
   "metric": {
+    "cash": "Cash at broker",
+    "cashHint": "Uninvested money sitting at the broker. It is the same balance your bank shows, counted once.",
     "debt": "Debt",
     "emergencyFund": "Emergency buffer",
     "emergencyFundHint": "How long the liquid balance would cover an average month.",
     "gain": "Result",
     "invested": "Invested",
+    "investedHint": "Positions only, which is what the allocation below is a picture of.",
     "liquid": "Directly available",
     "mwr": "Money-weighted return",
     "netWorth": "Net worth",

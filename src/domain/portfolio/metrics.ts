@@ -36,13 +36,32 @@ export interface AllocationSlice {
 
 export interface PortfolioMetricsResult {
   date: string
+  /** Everything the broker holds, cash included — the figure that reconciles. */
   totalValueCents: number
+  /** The part that is actually invested, and the base `allocation` shares are of. */
+  investedValueCents: number
+  /** Cash sitting at the broker. Not an asset class, and not a market value. */
+  cashValueCents: number
   /** Ghostfolio's reported net performance over its `max` range. */
   twrBp: number | null
   mwrBp: null
   allocation: AllocationSlice[]
   driftJson: null
   terAnnualCents: null
+}
+
+/**
+ * Asset classes that are cash rather than an investment.
+ *
+ * Ghostfolio labels a cash position `LIQUIDITY`; `CASH` is accepted too because the
+ * label is an unversioned internal detail and the cost of it changing is a current
+ * account reappearing in the treemap as an asset class.
+ */
+const CASH_CLASSES: ReadonlySet<string> = new Set(['LIQUIDITY', 'CASH'])
+
+/** Whether a holding is cash held at the broker rather than something invested. */
+export function isCashHolding(holding: Pick<HoldingSnapshot, 'assetClass'>): boolean {
+  return holding.assetClass !== null && CASH_CLASSES.has(holding.assetClass.toUpperCase())
 }
 
 /**
@@ -108,17 +127,40 @@ export function reportedTwrBp(performance: PortfolioPerformance): number | null 
   return fraction === null || fraction === undefined ? null : toBp(fraction)
 }
 
+const sum = (holdings: readonly HoldingSnapshot[]): number =>
+  holdings.reduce((total, holding) => total + holding.valueCents, 0)
+
+/**
+ * The figures for one date, with cash held apart from what is invested.
+ *
+ * Allocation is over the invested holdings only. A `LIQUIDITY` position is a bank
+ * balance a syncing tool wrote into Ghostfolio, and drawing it as a slice of the
+ * treemap said a current account was an asset class — on the reporting instance the
+ * largest one, at about half the portfolio. The total still counts it, because that
+ * is the figure that reconciles against the Ghostfolio dashboard.
+ *
+ * `twrBp` is unchanged and still Ghostfolio's own: it is a return over whatever base
+ * Ghostfolio computed it on, and recomputing it here from an invested subtotal would
+ * be inventing a number. Asking Ghostfolio for the return of the investment accounts
+ * alone is possible — `accounts=<id>` is honoured — and belongs to the job that knows
+ * which accounts those are, not to this function.
+ */
 export function computePortfolioMetrics(
   date: string,
   holdings: readonly HoldingSnapshot[],
   performance: PortfolioPerformance | null,
 ): PortfolioMetricsResult {
+  const cash = holdings.filter((holding) => isCashHolding(holding))
+  const invested = holdings.filter((holding) => !isCashHolding(holding))
+
   return {
     date,
-    totalValueCents: holdings.reduce((sum, holding) => sum + holding.valueCents, 0),
+    totalValueCents: sum(holdings),
+    investedValueCents: sum(invested),
+    cashValueCents: sum(cash),
     twrBp: performance === null ? null : reportedTwrBp(performance),
     mwrBp: null,
-    allocation: allocationByAssetClass(holdings),
+    allocation: allocationByAssetClass(invested),
     driftJson: null,
     terAnnualCents: null,
   }

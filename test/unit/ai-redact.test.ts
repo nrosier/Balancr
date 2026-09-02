@@ -224,6 +224,8 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
       metrics: {
         date: '2026-08-31',
         totalValueCents: 4_200_000,
+        investedValueCents: 4_200_000,
+        cashValueCents: 0,
         twrBp: 742,
         mwrBp: null,
         allocation: [
@@ -518,6 +520,11 @@ describe('the portfolio crosses as a shape, not as holdings', () => {
     expect(sent?.totalValueCents).toBe(4_200_000)
     expect(sent?.twrBp).toBe(742)
     expect(sent?.holdingCount).toBe(2)
+    // Both halves of the total, because `twrBp` is a return over all of it while the
+    // allocation covers the invested part only — without the split the model cannot
+    // tell a portfolio that is up 7,4% from one that is half cash and up 15%.
+    expect(sent?.investedValueCents).toBe(4_200_000)
+    expect(sent?.cashValueCents).toBe(0)
     expect(sent?.allocation.map((a) => a.assetClass)).toEqual(['EQUITY', 'FIXED_INCOME'])
     expect(sent?.allocation.map((a) => a.shareBp)).toEqual([8_571, 1_429])
   })
@@ -530,8 +537,10 @@ describe('the portfolio crosses as a shape, not as holdings', () => {
     const sent = redact(bundle()).payload.portfolio
     expect(Object.keys(sent ?? {}).sort()).toEqual([
       'allocation',
+      'cashValueCents',
       'date',
       'holdingCount',
+      'investedValueCents',
       'totalValueCents',
       'twrBp',
     ])

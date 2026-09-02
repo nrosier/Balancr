@@ -64,6 +64,13 @@
       "when": 1788389842274,
       "tag": "0008_wild_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788391615860,
+      "tag": "0009_spooky_moonstone",
+      "breakpoints": true
     }
   ]
 }

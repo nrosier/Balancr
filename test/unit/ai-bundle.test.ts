@@ -249,6 +249,8 @@ describe('collectPortfolio', () => {
     persistPortfolioMetrics(ctx.db, {
       date: '2026-03-31',
       totalValueCents: 620_000,
+      investedValueCents: 620_000,
+      cashValueCents: 0,
       twrBp: 742,
       mwrBp: null,
       allocation: [
@@ -279,6 +281,8 @@ describe('collectPortfolio', () => {
       persistPortfolioMetrics(ctx.db, {
         date,
         totalValueCents: 1,
+        investedValueCents: 1,
+        cashValueCents: 0,
         twrBp: null,
         mwrBp: null,
         allocation: [],
@@ -336,6 +340,8 @@ describe('a collected bundle is safe to redact', () => {
     persistPortfolioMetrics(ctx.db, {
       date: '2026-03-31',
       totalValueCents: 417_010,
+      investedValueCents: 417_010,
+      cashValueCents: 0,
       twrBp: 742,
       mwrBp: null,
       allocation: [{ key: 'EQUITY', valueCents: 417_010, shareBp: 10_000 }],

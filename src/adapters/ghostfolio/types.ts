@@ -245,6 +245,24 @@ export const accountsSchema = z
           balance: money,
           /** Present when the account holds positions as well as cash. */
           valueInBaseCurrency: money.nullish(),
+          /**
+           * `balance` converted for us, and the honest comparand for
+           * `valueInBaseCurrency` — comparing a converted value against an
+           * unconverted balance would read a foreign-currency cash account as
+           * holding positions purely because of the exchange rate.
+           */
+          balanceInBaseCurrency: money.nullish(),
+          /**
+           * How many orders Ghostfolio has recorded against this account.
+           *
+           * The single best signal for whether an account is a portfolio or a
+           * mirror of a bank balance: a tool like ghostbudget writes balances
+           * rather than trades, so the accounts it maintains have a balance and no
+           * activities at all. Nullish because it is an undocumented field on an
+           * unversioned API — absent means "this instance does not say", which is
+           * a different answer from zero.
+           */
+          activitiesCount: z.number().nullish(),
           isExcluded: z.boolean().nullish(),
         })
         .loose(),

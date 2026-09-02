@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GhostfolioError,
+  fetchAccounts,
   fetchPortfolioDetails,
   fetchPortfolioPerformance,
   resetGhostfolioToken,
@@ -396,6 +397,60 @@ describe('holdings that do not name themselves (#107)', () => {
     // The keys that were there, which is the half of the diagnosis a schema error
     // never carries: it can only say what was missing.
     expect(message).toContain('valueInBaseCurrency')
+  })
+})
+
+/**
+ * The two fields the classifier reads (#124).
+ *
+ * Both are undocumented additions to an unversioned endpoint, so the schema takes
+ * them as nullish on purpose: an instance that does not report them has to keep
+ * working, and "this instance does not say" must not arrive as a zero — zero
+ * activities is a claim, and it is the claim that gets an account labelled cash.
+ */
+describe('the evidence a Ghostfolio account carries about itself', () => {
+  it('reads the activity count and the converted balance when the instance sends them', async () => {
+    routes['/api/v1/account'] = {
+      body: {
+        accounts: [
+          {
+            id: 'acc1',
+            name: 'Bolero',
+            currency: 'EUR',
+            balance: 210,
+            balanceInBaseCurrency: 210,
+            valueInBaseCurrency: 48_900,
+            activitiesCount: 143,
+          },
+        ],
+      },
+    }
+
+    const [account] = (await fetchAccounts()).accounts
+    expect(account?.activitiesCount).toBe(143)
+    expect(account?.balanceInBaseCurrency).toBe(210)
+  })
+
+  it('accepts an instance that reports neither, without inventing a zero', async () => {
+    // The stubbed happy path is exactly this shape: id, name, currency, balance.
+    const [account] = (await fetchAccounts()).accounts
+    expect(account?.activitiesCount ?? null).toBeNull()
+    expect(account?.balanceInBaseCurrency ?? null).toBeNull()
+  })
+
+  it('keeps a converted balance of zero distinct from an absent one', async () => {
+    // An emptied account really does report zero, and `?? balance` on a legitimate
+    // zero would resurrect a stale figure from the unconverted field.
+    routes['/api/v1/account'] = {
+      body: {
+        accounts: [
+          { id: 'acc1', name: 'Spaarrekening', currency: 'USD', balance: 12, balanceInBaseCurrency: 0 },
+        ],
+      },
+    }
+
+    const [account] = (await fetchAccounts()).accounts
+    expect(account?.balanceInBaseCurrency).toBe(0)
   })
 })
 

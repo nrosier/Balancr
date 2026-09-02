@@ -33,11 +33,14 @@
     "weight": "Gewicht"
   },
   "metric": {
+    "cash": "Cash bij de broker",
+    "cashHint": "Onbelegd geld dat bij de broker staat. Hetzelfde saldo als bij je bank, één keer geteld.",
     "debt": "Schulden",
     "emergencyFund": "Noodbuffer",
     "emergencyFundHint": "Hoe lang het direct beschikbare saldo een gemiddelde maand zou dekken.",
     "gain": "Resultaat",
     "invested": "Geïnvesteerd",
+    "investedHint": "Alleen posities, en dat is waar de verdeling hieronder een beeld van geeft.",
     "liquid": "Direct beschikbaar",
     "mwr": "Geldgewogen rendement",
     "netWorth": "Nettovermogen",

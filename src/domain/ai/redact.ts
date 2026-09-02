@@ -134,6 +134,14 @@ export interface RedactedAllocation {
 export interface RedactedPortfolio {
   date: string
   totalValueCents: number
+  /**
+   * The two halves of the total. Sent because `twrBp` is a return over the whole of
+   * it, cash included, and a model told only the total would read that return as the
+   * performance of an invested portfolio. `allocation` is over the invested half, so
+   * without these two the shares would not reconcile against the total either.
+   */
+  investedValueCents: number
+  cashValueCents: number
   /** Ghostfolio's own figure, copied. Null when it did not report one. */
   twrBp: number | null
   holdingCount: number
@@ -269,6 +277,8 @@ function toPortfolio(portfolio: BundlePortfolio): RedactedPortfolio {
   return {
     date: metrics.date,
     totalValueCents: metrics.totalValueCents,
+    investedValueCents: metrics.investedValueCents,
+    cashValueCents: metrics.cashValueCents,
     twrBp: metrics.twrBp,
     // A count, not a list — and one the bundle already reduced to a number, so
     // there is no instrument here to omit. Asset-class shares carry everything
@@ -419,6 +429,8 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'inNetWorth',
   // portfolio
   'totalValueCents',
+  'investedValueCents',
+  'cashValueCents',
   'twrBp',
   'holdingCount',
   'allocation',

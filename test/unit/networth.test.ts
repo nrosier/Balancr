@@ -1,4 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { createTestDb } from '../../src/db/index.ts'
+import {
+  applyDerivedMirror,
+  deriveMirrors,
+  loadAccountMap,
+  syncAccountMap,
+  ungroupAccount,
+  type AccountMapRow,
+} from '../../src/domain/aggregate/accounts.ts'
+import { holdsInvestments } from '../../src/domain/aggregate/classify.ts'
 import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
 
 /** A counted, included, ungrouped account unless the test says otherwise. */
@@ -160,5 +171,158 @@ describe('computeNetWorth classification', () => {
       excluded: [],
       unresolvedGroups: [],
     })
+  })
+})
+
+/**
+ * The bank balance that exists in both tools (#124).
+ *
+ * Everything above hand-writes the dedupe flags, which is right for testing the sum
+ * but says nothing about whether anything ever sets them. This block runs the real
+ * chain — sightings in, classifier, mirror rule, `computeNetWorth` — because the
+ * failure the issue describes needs every step: a Ghostfolio account has to be read
+ * as cash before it can be matched, matched before it can be grouped, and grouped
+ * before the money stops being counted twice.
+ *
+ * The figures are the reporting instance's shape: a current account of € 1.240,55
+ * that Actual reconciles and ghostbudget copies into Ghostfolio, alongside a real
+ * brokerage account that only Ghostfolio knows about.
+ */
+describe('a Ghostfolio mirror of a bank account', () => {
+  const CURRENT_CENTS = 124_055
+  const BROKER_CENTS = 4_890_000
+
+  /** Sync, classify and group, exactly as the sync job does. */
+  const settle = (): { db: ReturnType<typeof createTestDb>['db']; rows: AccountMapRow[] } => {
+    const ctx = createTestDb()
+    applyMigrations(ctx.db as never)
+    syncAccountMap(ctx.db, [
+      { source: 'actual', externalId: 'a-current', name: 'Argenta zichtrekening' },
+      {
+        source: 'ghostfolio',
+        externalId: 'g-current',
+        name: 'Argenta zichtrekening',
+        // Balance equals value and nothing has ever traded: a copied balance.
+        holdsInvestments: holdsInvestments({
+          externalId: 'g-current',
+          name: 'Argenta zichtrekening',
+          activitiesCount: 0,
+          balanceCents: CURRENT_CENTS,
+          valueCents: CURRENT_CENTS,
+        }),
+      },
+      {
+        source: 'ghostfolio',
+        externalId: 'g-broker',
+        name: 'Bolero',
+        holdsInvestments: holdsInvestments({
+          externalId: 'g-broker',
+          name: 'Bolero',
+          activitiesCount: 143,
+          balanceCents: 21_000,
+          valueCents: BROKER_CENTS,
+        }),
+      },
+    ])
+    for (const pair of deriveMirrors(loadAccountMap(ctx.db))) {
+      applyDerivedMirror(ctx.db, pair)
+    }
+    return { db: ctx.db, rows: loadAccountMap(ctx.db) }
+  }
+
+  /** The rows valued the way `collectAccountValues` values them. */
+  const valued = (rows: readonly AccountMapRow[]): AccountValue[] => {
+    const cents: Record<string, number> = {
+      'a-current': CURRENT_CENTS,
+      'g-current': CURRENT_CENTS,
+      'g-broker': BROKER_CENTS,
+    }
+    return rows.map((row) =>
+      account({
+        id: row.id,
+        source: row.source,
+        externalId: row.externalId,
+        name: row.name,
+        kind: row.kind,
+        valueCents: cents[row.externalId] ?? 0,
+        includeInNetWorth: row.includeInNetWorth,
+        dedupeGroup: row.dedupeGroup,
+        isSourceOfTruth: row.isSourceOfTruth,
+      }),
+    )
+  }
+
+  it('counts the shared balance once and attributes it to Actual', () => {
+    const { rows } = settle()
+    const result = computeNetWorth('2026-03-01', valued(rows))
+
+    expect(result.totalCents).toBe(CURRENT_CENTS + BROKER_CENTS)
+    // Once, and on the side that reconciles against statements.
+    expect(result.contributions.map((entry) => entry.externalId).sort()).toEqual([
+      'a-current',
+      'g-broker',
+    ])
+    // Reported rather than dropped: the panel has to be able to say which copy of
+    // the balance it stopped counting, and that it was not an error.
+    expect(result.excluded).toEqual([
+      expect.objectContaining({ source: 'ghostfolio', reason: 'deduped', valueCents: CURRENT_CENTS }),
+    ])
+  })
+
+  it('puts the copied balance in the liquid half, not the invested one', () => {
+    // The second half of the bug: before the classifier, the same money was both
+    // counted twice *and* called invested, which moved the emergency-buffer figure
+    // and the allocation at the same time.
+    const { rows } = settle()
+    const result = computeNetWorth('2026-03-01', valued(rows))
+
+    expect(result.liquidCents).toBe(CURRENT_CENTS)
+    expect(result.investedCents).toBe(BROKER_CENTS)
+  })
+
+  it('keeps counting a Ghostfolio cash account that has no twin', () => {
+    // A bank that exists in Ghostfolio only. Excluding Ghostfolio cash wholesale
+    // would be correct on the reporting instance and silently lose this money.
+    const ctx = createTestDb()
+    applyMigrations(ctx.db as never)
+    syncAccountMap(ctx.db, [
+      { source: 'actual', externalId: 'a-current', name: 'Argenta zichtrekening' },
+      { source: 'ghostfolio', externalId: 'g-revolut', name: 'Revolut', holdsInvestments: false },
+    ])
+    const mirrors = deriveMirrors(loadAccountMap(ctx.db))
+    const rows = loadAccountMap(ctx.db)
+    const result = computeNetWorth(
+      '2026-03-01',
+      rows.map((row) =>
+        account({
+          id: row.id,
+          source: row.source,
+          externalId: row.externalId,
+          name: row.name,
+          kind: row.kind,
+          valueCents: 50_000,
+          dedupeGroup: row.dedupeGroup,
+          isSourceOfTruth: row.isSourceOfTruth,
+        }),
+      ),
+    )
+
+    expect(mirrors).toEqual([])
+    expect(result.totalCents).toBe(100_000)
+    expect(result.liquidCents).toBe(100_000)
+    expect(result.excluded).toEqual([])
+  })
+
+  it('stops deduping once someone says the two are different accounts', () => {
+    // The overstatement comes back, on purpose: the person looking at the panel is
+    // better informed than the name match, and the job may not overrule them.
+    const { db, rows } = settle()
+    const ghostfolio = rows.find((row) => row.externalId === 'g-current')
+    if (ghostfolio === undefined) throw new Error('the fixture produced no mirror')
+    ungroupAccount(db, ghostfolio.id)
+
+    const result = computeNetWorth('2026-03-01', valued(loadAccountMap(db)))
+    expect(result.totalCents).toBe(CURRENT_CENTS * 2 + BROKER_CENTS)
+    expect(deriveMirrors(loadAccountMap(db))).toEqual([])
   })
 })

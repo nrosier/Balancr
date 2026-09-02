@@ -284,7 +284,11 @@ page ([#31](https://github.com/nrosier/Balancr/issues/31)), and the history both
 charts had been drawing without
 ([#114](https://github.com/nrosier/Balancr/issues/114)) — a nightly backfill over
 Actual's dated balances and Ghostfolio's value series, so a fresh install shows two
-years rather than one night. Insights is being built now.
+years rather than one night. And the figure both pages lead with is now honest on a
+deployment that syncs bank accounts into Ghostfolio as well as Actual: the shared
+balances are counted once, on the Actual side that reconciles them, and the cash sitting
+at the broker is named rather than drawn as an asset class
+([#124](https://github.com/nrosier/Balancr/issues/124)). Insights is being built now.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -423,15 +427,11 @@ middle of pino's JSON on every hourly pass, because its verbose mode defaults to
 it is now tied to `LOG_LEVEL`, quiet at `info` and back at `debug`
 ([#123](https://github.com/nrosier/Balancr/issues/123)).
 
-The same log also named two things that are about the numbers, both filed rather than
-fixed here. Net worth counts bank cash twice for anyone syncing accounts into
-Ghostfolio as well as Actual — roughly a third of the reported total, entered once from
-each source — and Ghostfolio can already tell the two kinds of account apart, so the
-fix is to derive the classification and let it be overridden rather than ask for it
-([#124](https://github.com/nrosier/Balancr/issues/124)). Gemini's context caching has
-never once engaged, because the system prompt is about half the 1024-token minimum: it
-degrades exactly as designed, which is why nothing noticed
-([#121](https://github.com/nrosier/Balancr/issues/121)).
+The same log also named two things that are about the numbers. Gemini's context
+caching has never once engaged, because the system prompt is about half the
+1024-token minimum: it degrades exactly as designed, which is why nothing noticed
+([#121](https://github.com/nrosier/Balancr/issues/121)) — still filed rather than
+fixed. The other is now fixed, below.
 
 The portfolio page is up ([#31](https://github.com/nrosier/Balancr/issues/31)), and
 building it turned up a figure that was wrong rather than missing: Ghostfolio converts
@@ -441,17 +441,26 @@ currency, and we were drawing both with a euro sign
 
 Account settings now record *who* decided each field
 ([#132](https://github.com/nrosier/Balancr/issues/132)). That sounds like
-bookkeeping and is really a precondition: `kind` said `savings` and nothing
-distinguished a rule from a person, so the classifier that fixes the double-counted
-cash ([#124](https://github.com/nrosier/Balancr/issues/124)) could not be written
-without also reinstating the accounts held out of net worth by hand.
+bookkeeping and was really a precondition: `kind` said `savings` and nothing
+distinguished a rule from a person, so the classifier could not be written without
+also reinstating the accounts held out of net worth by hand.
 
-Next are that classifier, insights
-([#32](https://github.com/nrosier/Balancr/issues/32)), language switching end to end
-([#34](https://github.com/nrosier/Balancr/issues/34)), the accessibility and responsive
-pass ([#35](https://github.com/nrosier/Balancr/issues/35)) and the duplicate-account
-matcher ([#131](https://github.com/nrosier/Balancr/issues/131)) —
-shipping as `0.5.14`, `0.5.15`, … until every issue in that milestone is closed and
+That classifier has now landed
+([#124](https://github.com/nrosier/Balancr/issues/124)). Net worth counted bank cash
+twice for anyone syncing accounts into Ghostfolio as well as Actual — roughly a third
+of the reported total, entered once from each source, and called invested. Ghostfolio
+could already tell the two kinds of account apart, so the label is derived from its own
+evidence, each mirrored balance is grouped with its Actual twin, and cash held at the
+broker is kept out of the allocation while staying in the total. Every derived answer
+yields to a human one, permanently — including "these two are not the same account".
+
+Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), language
+switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34)), the
+accessibility and responsive pass
+([#35](https://github.com/nrosier/Balancr/issues/35)), the duplicate-account matcher
+([#131](https://github.com/nrosier/Balancr/issues/131)) and per-locale prompts
+([#133](https://github.com/nrosier/Balancr/issues/133)) —
+shipping as `0.5.15`, `0.5.16`, … until every issue in that milestone is closed and
 `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),

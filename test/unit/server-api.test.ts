@@ -305,6 +305,28 @@ describe('GET /api/portfolio', () => {
     const body = (await get('/api/portfolio')).json()
     expect(body.mwrBp).toBeUndefined()
   })
+
+  it('publishes the invested and cash halves of the total', async () => {
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.investedValueCents).toBe(382_143)
+    // Nothing idle at the broker in this fixture, and zero is the answer — the
+    // client draws it, because "no cash sitting there" is worth knowing.
+    expect(body.cashValueCents).toBe(0)
+  })
+
+  it('answers null for both halves when they do not add up to the total', async () => {
+    // A row written before the split existed reads as two zeroes against a real
+    // total, and publishing that would tell the reader every euro is invested. The
+    // API would rather say it does not know: the total is still trustworthy, and the
+    // page has a state for a missing split.
+    ctx.db.run(sql`UPDATE portfolio_metrics SET invested_value_cents = NULL, cash_value_cents = NULL`)
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.totalValueCents).toBe(382_143)
+    expect(body.investedValueCents).toBeNull()
+    expect(body.cashValueCents).toBeNull()
+  })
 })
 
 describe('GET /api/insights', () => {
