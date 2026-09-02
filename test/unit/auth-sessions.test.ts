@@ -102,6 +102,11 @@ describe('minting', () => {
   it('gives the session the configured window', () => {
     const { db, sqlite } = freshDb()
     try {
+      // Bracketed rather than compared against one reading of the clock. The
+      // deadline is `Date.now() + ttl` taken inside the call, so a millisecond
+      // ticking over during it puts the answer one past `before + ttl` — which is
+      // correct behaviour and, asserted the naive way, a test that fails a few
+      // times in a thousand on a slower runner.
       const before = Date.now()
       const created = createSession(db, {
         userId: makeUser(db),
@@ -109,10 +114,11 @@ describe('minting', () => {
         ip: undefined,
         userAgent: undefined,
       })
+      const after = Date.now()
 
       expect(sessionTtlMs()).toBe(config.SESSION_TTL_HOURS * 60 * 60 * 1000)
-      expect(created.expiresAt.getTime() - before).toBeGreaterThan(0)
-      expect(created.expiresAt.getTime() - before).toBeLessThanOrEqual(sessionTtlMs())
+      expect(created.expiresAt.getTime()).toBeGreaterThanOrEqual(before + sessionTtlMs())
+      expect(created.expiresAt.getTime()).toBeLessThanOrEqual(after + sessionTtlMs())
     } finally {
       sqlite.close()
     }

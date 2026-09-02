@@ -71,13 +71,17 @@ describe('starting a flow', () => {
   it('gives the flow a deadline in the near future', () => {
     const { db, sqlite } = freshDb()
     try {
+      // Bracketed between two readings of the clock, because the deadline comes
+      // from a `Date.now()` taken inside the call: measured against `before`
+      // alone, a millisecond ticking over mid-call reads as one past the TTL.
       const before = Date.now()
       const flow = startLoginFlow(db, '/')
+      const after = Date.now()
       const row = db.select().from(loginFlows).where(eq(loginFlows.state, flow.state)).all()[0]
 
-      const life = (row?.expiresAt.getTime() ?? 0) - before
-      expect(life).toBeGreaterThan(0)
-      expect(life).toBeLessThanOrEqual(LOGIN_FLOW_TTL_MS)
+      const deadline = row?.expiresAt.getTime() ?? 0
+      expect(deadline).toBeGreaterThanOrEqual(before + LOGIN_FLOW_TTL_MS)
+      expect(deadline).toBeLessThanOrEqual(after + LOGIN_FLOW_TTL_MS)
     } finally {
       sqlite.close()
     }
