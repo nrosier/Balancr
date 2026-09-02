@@ -284,10 +284,30 @@ export async function callGemini(call: GeminiCall): Promise<GeminiResult> {
     }
   } catch (error) {
     if (error instanceof GeminiError) throw error
+    const detail = error instanceof Error ? error.message : String(error)
     throw new GeminiError(
-      `Gemini call failed after ${Date.now() - started}ms: ` +
-        `${error instanceof Error ? error.message : String(error)}`,
+      `Gemini call failed after ${Date.now() - started}ms: ${detail}` +
+        schemaHint(call, detail),
       error,
     )
   }
+}
+
+/**
+ * The sentence #96 was missing.
+ *
+ * `INVALID_ARGUMENT` on a call that carries a response schema is almost always
+ * the schema: the rest of the request is what a narrative call sends too, and
+ * that one succeeds in the same pass. Gemini names no keyword and returns no
+ * field path, so without this the log says only that a 400 happened — which is
+ * indistinguishable from a bad key, a missing model, or a malformed payload.
+ */
+function schemaHint(call: GeminiCall, detail: string): string {
+  if (call.responseJsonSchema === undefined) return ''
+  if (!detail.includes('INVALID_ARGUMENT')) return ''
+  return (
+    ' — this call carried a response schema, and Gemini rejects a schema using ' +
+    'keywords outside its supported subset without saying which; check ' +
+    'toGeminiSchema in adapters/gemini/json-schema.ts'
+  )
 }
