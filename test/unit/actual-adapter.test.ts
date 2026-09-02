@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as api from '@actual-app/api'
 import {
+  ENVELOPE_BUDGET_TYPES,
   EXPECTED_API_VERSION,
   actualHealth,
   type ActualHealth,
@@ -40,6 +41,32 @@ describe('@actual-app/api pinning', () => {
     ] as const) {
       expect(typeof api[method], method).toBe('function')
     }
+  })
+})
+
+describe('budget style (#108)', () => {
+  it('counts both of Actual\'s names for envelope budgeting as envelope budgeting', () => {
+    // Actual renamed its budget styles: `rollover` became `envelope`, and `report`
+    // became `tracking`. The health check tested only the old name, so it warned
+    // that an envelope budget was not an envelope budget — on exactly the setup it
+    // exists to endorse. Both spellings are current somewhere, so both stay.
+    expect(ENVELOPE_BUDGET_TYPES.has('envelope')).toBe(true)
+    expect(ENVELOPE_BUDGET_TYPES.has('rollover')).toBe(true)
+  })
+
+  it('counts neither name for the tracking style as envelope budgeting', () => {
+    // The case the warning is actually for: carryover and available figures assume
+    // envelope budgeting, and under this style they do not mean what Balancr says.
+    expect(ENVELOPE_BUDGET_TYPES.has('tracking')).toBe(false)
+    expect(ENVELOPE_BUDGET_TYPES.has('report')).toBe(false)
+  })
+
+  it('tests membership rather than one spelling, which is how the bug happened', () => {
+    // A test on the set alone would pass while the check beside it still compared
+    // against a single literal. This is the half that regressed.
+    const source = readFileSync('src/adapters/actual/client.ts', 'utf8')
+    expect(source).toContain('ENVELOPE_BUDGET_TYPES.has(health.budgetType)')
+    expect(source.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain("!== 'rollover'")
   })
 })
 
