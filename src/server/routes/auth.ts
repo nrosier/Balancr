@@ -16,6 +16,11 @@
  *    404 is the honest answer for a capability this deployment does not have, and
  *    it is better than an endpoint that always fails with an explanation.
  *
+ *  - **Local login is gated on the *peer* address, not on `request.ip`.** The
+ *    socket's remote address is the one an HTTP client cannot choose;
+ *    `X-Forwarded-For` is exactly what an attacker coming through the tunnel would
+ *    set. That distinction is the entire value of `AUTH_LOCAL_ALLOWED_CIDRS`.
+ *
  * Every route here is `auth: false`: they are how a session is obtained, so
  * requiring one would be a loop. `/auth/logout` is a POST and therefore still
  * carries the CSRF check, which is the point — a logout link on someone else's
@@ -31,6 +36,7 @@ import {
   safeReturnTo,
   startLoginFlow,
 } from '../auth/login-flow.ts'
+import { verifyLocalLogin } from '../auth/local.ts'
 import type { OidcClient } from '../auth/oidc.ts'
 import { createSession, destroySession, sessionTtlMs } from '../auth/sessions.ts'
 import { upsertOidcUser } from '../auth/users.ts'
@@ -42,7 +48,10 @@ import {
   SESSION_COOKIE,
 } from '../cookies.ts'
 import { newCsrfToken } from '../csrf.ts'
-import { HttpError } from '../errors.ts'
+import { badRequest, HttpError, notFound } from '../errors.ts'
+import { inCidrs, peerAddress } from '../net.ts'
+import { loginRateLimit } from '../rate-limit.ts'
+import { LOCAL_LOGIN_CIDRS } from '../trust.ts'
 
 const log = logger.child({ module: 'server.routes.auth' })
 
@@ -58,6 +67,23 @@ const publicRoute = { config: { auth: false } } as const
  */
 const loginFailed = (): HttpError =>
   new HttpError(400, 'bad_request', 'That login could not be completed. Please start again.')
+
+/**
+ * Whether a password login would be entertained from this connection.
+ *
+ * Two conditions, and the second is the one that matters: the peer address, from
+ * the socket, must be inside `AUTH_LOCAL_ALLOWED_CIDRS`. Not `request.ip` — that
+ * is derived from `X-Forwarded-For` for a trusted proxy, and the whole scenario
+ * being defended against is a request arriving through the public tunnel with a
+ * LAN address written into a header.
+ *
+ * Which means Traefik's own address must not be in the range: if it is, everything
+ * it forwards is inside the range, tunnel included. That is why `config.ts` refuses
+ * a `TRUSTED_PROXY_CIDRS` of loopback in production, and why this is worth reading
+ * twice before changing.
+ */
+const localLoginAvailable = (request: FastifyRequest): boolean =>
+  config.AUTH_LOCAL_ENABLED && inCidrs(peerAddress(request), LOCAL_LOGIN_CIDRS)
 
 export interface AuthRoutesOptions {
   db: Db
@@ -83,7 +109,10 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
             locale: request.user.locale,
             role: request.user.role,
           },
-    methods: { oidc: oidc !== null, local: config.AUTH_LOCAL_ENABLED },
+    // `local` answers "would a password work from where you are", not "is the
+    // feature switched on" — the login screen uses this to decide whether to draw
+    // the form, and a form that is guaranteed to 404 is worse than no form.
+    methods: { oidc: oidc !== null, local: localLoginAvailable(request) },
   }))
 
   app.post('/auth/logout', publicRoute, (request: FastifyRequest, reply: FastifyReply) => {
@@ -96,6 +125,76 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
     void reply.setCookie(CSRF_COOKIE, newCsrfToken(), cookieAttributes(false))
     return reply.status(204).send()
   })
+
+  if (config.AUTH_LOCAL_ENABLED) {
+    /**
+     * The break-glass password login.
+     *
+     * Registered only when the feature is on, and then answered with a 404 unless
+     * the peer is inside the allowed range. A 404 rather than a 403 in both cases:
+     * the interesting fact about this endpoint is that it exists, and an attacker
+     * who learns "there is a password login here, just not for you" has learned
+     * where to go looking for a foothold. The operator's diagnostic is the log line
+     * below, which says precisely which address was turned away — the response
+     * deliberately says nothing.
+     */
+    app.post(
+      '/auth/local/login',
+      { config: { auth: false, ...loginRateLimit().config } },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!localLoginAvailable(request)) {
+          log.warn(
+            { peer: peerAddress(request), allowed: config.AUTH_LOCAL_ALLOWED_CIDRS },
+            'local login refused: peer outside AUTH_LOCAL_ALLOWED_CIDRS',
+          )
+          throw notFound()
+        }
+
+        const body = request.body as Record<string, unknown> | undefined
+        const email = body?.['email']
+        const password = body?.['password']
+        const totp = body?.['totp']
+        if (
+          typeof email !== 'string' ||
+          typeof password !== 'string' ||
+          typeof totp !== 'string' ||
+          email.length === 0
+        ) {
+          // A shape complaint, not a credential verdict, so this one is allowed to
+          // be specific: it describes the request rather than the account.
+          throw badRequest('email, password and totp are required.')
+        }
+
+        const user = await verifyLocalLogin(db, { email, password, totp })
+
+        if (request.sessionToken !== undefined) destroySession(db, request.sessionToken)
+
+        const session = createSession(db, {
+          userId: user.id,
+          method: 'local',
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+        })
+
+        void reply.setCookie(
+          SESSION_COOKIE,
+          session.token,
+          cookieAttributes(true, Math.floor(sessionTtlMs() / 1000)),
+        )
+        void reply.setCookie(CSRF_COOKIE, newCsrfToken(), cookieAttributes(false))
+
+        return reply.status(200).send({
+          authenticated: true,
+          user: {
+            email: user.email,
+            displayName: user.displayName,
+            locale: user.locale,
+            role: user.role,
+          },
+        })
+      },
+    )
+  }
 
   if (oidc === null) {
     log.info('OIDC is not configured; /auth/login and /auth/callback are not registered')

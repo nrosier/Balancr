@@ -67,6 +67,16 @@ export const localCredentials = sqliteTable('local_credentials', {
   totpSecret: text('totp_secret').notNull(),
   failedAttempts: integer('failed_attempts').notNull().default(0),
   lockedUntil: integer('locked_until', { mode: 'timestamp_ms' }),
+  /**
+   * The highest TOTP time step already accepted, so a code cannot be used twice.
+   *
+   * A six-digit code is valid for its whole thirty-second step, and for the step
+   * either side of it once clock skew is allowed for — so a code seen once is
+   * replayable for up to a minute and a half. Remembering the last step accepted
+   * closes that window, and it is worth closing here specifically: the break-glass
+   * path is the one used under pressure, on whatever screen is to hand.
+   */
+  lastTotpStep: integer('last_totp_step'),
   passwordChangedAt: createdAt(),
 })
 
