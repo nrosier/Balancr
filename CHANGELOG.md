@@ -6,6 +6,24 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+- **Ghostfolio sends `holdings` two ways, and both are now read**
+  ([#95](https://github.com/nrosier/Balancr/issues/95)). `/api/v1/portfolio/details`
+  returns a symbol-keyed map on the releases the adapter was written against and a plain
+  list on current ones; only the map was accepted, so the portfolio job failed on every
+  run against a live server and no holdings, allocation or TWR were ever stored. Both
+  shapes are normalised to a list at the Zod boundary, which keeps the difference inside
+  the one file that exists to absorb a Ghostfolio change. Net worth was never affected —
+  it reads `/api/v1/account`.
+- **The adapter still names the field that moved.** The container is normalised before
+  the items are validated, rather than unioning two validated shapes, so a genuinely
+  changed holding reports as `holdings[0].quantity` instead of collapsing into "invalid
+  union" — the diagnosis is the whole reason the job fails loudly instead of storing a
+  guess. The test that used to assert an array *must* be rejected was the origin of the
+  bug and now asserts the opposite.
+
 ## [0.5.2] — 2026-09-02
 
 ### Added

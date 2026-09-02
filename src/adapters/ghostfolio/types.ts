@@ -61,10 +61,32 @@ export const holdingSchema = z
   })
   .loose()
 
+/**
+ * Ghostfolio has shipped `holdings` both ways: keyed by symbol
+ * (`{"IWDA.AS": {…}}`) on the releases this adapter was written against, and as a
+ * plain list on current ones. Both are accepted and normalised to a list.
+ *
+ * A union rather than a version probe, because Balancr has to survive an upgrade in
+ * either direction and a probe would be a second thing to keep true. Preprocessing
+ * the container rather than unioning two validated shapes, because then only one
+ * shape is ever item-checked and a bad field still reports as `holdings[0].currency`
+ * instead of collapsing into "invalid union".
+ *
+ * Flattening the record loses nothing: its key is the symbol, and every position
+ * carries `symbol` in the object as well.
+ */
+const holdingsSchema = z.preprocess(
+  (raw) =>
+    raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+      ? Object.values(raw as Record<string, unknown>)
+      : raw,
+  z.array(holdingSchema),
+)
+
 export const portfolioDetailsSchema = z
   .object({
-    /** Keyed by symbol, not an array. */
-    holdings: z.record(z.string(), holdingSchema),
+    /** A list, whichever of the two shapes Ghostfolio sent. */
+    holdings: holdingsSchema,
     summary: z
       .object({
         currentValueInBaseCurrency: money.nullish(),

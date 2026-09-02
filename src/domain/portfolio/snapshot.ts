@@ -50,13 +50,13 @@ export function toHoldingSnapshots(
 ): HoldingSnapshot[] {
   const rows: HoldingSnapshot[] = []
 
-  for (const [symbol, holding] of Object.entries(details.holdings)) {
+  for (const holding of details.holdings) {
     const price = holding.marketPrice ?? null
     const value = holding.valueInBaseCurrency ?? null
     rows.push({
       date,
-      instrument: holding.isin ?? holding.symbol ?? symbol,
-      symbol: holding.symbol ?? symbol,
+      instrument: holding.isin ?? holding.symbol,
+      symbol: holding.symbol,
       isin: holding.isin ?? null,
       name: holding.name ?? null,
       quantity: String(holding.quantity),

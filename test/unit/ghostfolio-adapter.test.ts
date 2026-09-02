@@ -137,7 +137,7 @@ describe('authentication', () => {
 
     const details = await fetchPortfolioDetails()
 
-    expect(details.holdings).toEqual({})
+    expect(details.holdings).toEqual([])
     expect(calls.filter((c) => c.path === AUTH)).toHaveLength(2)
     expect(
       calls.filter((c) => c.path === '/api/v1/portfolio/details').map((c) => c.authorization),
@@ -163,13 +163,19 @@ describe('errors carry the offending path', () => {
   })
 
   it('reports a shape change without a status, which is how the probe tells them apart', async () => {
-    // Ghostfolio 3.x style: holdings as an array instead of a symbol-keyed map.
-    routes['/api/v1/portfolio/details'] = { body: { holdings: [HOLDING] } }
+    // A holding with no quantity: there is no number to snapshot, and guessing one
+    // is worse than the job failing. Not the array-vs-record container, which this
+    // test used to stand on — Ghostfolio ships both and both are read (#95).
+    const { quantity: _dropped, ...noQuantity } = HOLDING
+    routes['/api/v1/portfolio/details'] = { body: { holdings: [noQuantity] } }
 
     const error = (await fetchPortfolioDetails().catch((e: unknown) => e)) as GhostfolioError
     expect(error.status).toBeUndefined()
     expect(error.message).toContain('/api/v1/portfolio/details')
     expect(error.message).toContain('unexpected shape')
+    // The whole point of failing here rather than downstream: the message says which
+    // field moved, so the fix is one line in the adapter rather than a bisect.
+    expect(error.message).toContain('holdings[0].quantity')
   })
 
   it('treats a non-JSON body as a failure of that path', async () => {
@@ -226,6 +232,21 @@ describe('probe', () => {
     // An outage clears itself; a changed contract needs a code change, so it is
     // the one that must be reported.
     expect((await probeGhostfolio()).status).toBe('shape-mismatch')
+  })
+
+  it('probes a list of holdings as readily as a record of them (#95)', async () => {
+    // The shape that took the portfolio job down on a live instance. The probe runs
+    // at startup, so it has to pass on both — otherwise the fix for the job would
+    // stop the container from coming up.
+    routes['/api/v1/portfolio/details'] = {
+      body: { holdings: [HOLDING], summary: { currentValueInBaseCurrency: 1264.8 } },
+    }
+
+    const report = await probeGhostfolio()
+
+    expect(report.status).toBe('ok')
+    expect(report.warnings).toEqual([])
+    expect(JSON.stringify(report)).toContain('1 holdings, 1 valued, 1 with ISIN')
   })
 
   it('warns when holdings exist but none can be valued', async () => {
