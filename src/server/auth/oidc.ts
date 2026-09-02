@@ -208,8 +208,27 @@ export function createOidcClient(settings: OidcSettings): OidcClient {
   }
 }
 
-/** The production client, or null when OIDC is off. Built once per process. */
+/**
+ * The production client, or null when OIDC is off. Built once per process.
+ *
+ * The redirect URI is logged because it is the one value in this flow that is
+ * derived rather than configured, and the provider compares it byte for byte. A
+ * mismatch is refused by the provider *before* the browser comes back, so there
+ * is no request for Balancr to log and no error for it to improve — the operator
+ * sees only the provider's complaint about a value neither side shows them. One
+ * line at startup is the whole remedy: it turns "invalid redirect_uri" into a
+ * string comparison against what is registered in Authentik.
+ */
 export function oidcClientFromConfig(): OidcClient | null {
   const settings = oidcSettings()
-  return settings === null ? null : createOidcClient(settings)
+  if (settings === null) return null
+  log.info(
+    {
+      issuer: settings.issuer,
+      clientId: settings.clientId,
+      redirectUri: settings.redirectUri,
+    },
+    'OIDC login enabled; the provider must have this exact redirect URI registered',
+  )
+  return createOidcClient(settings)
 }

@@ -42,10 +42,29 @@ const money = z.number().finite()
 
 export const holdingSchema = z
   .object({
-    symbol: z.string(),
+    /**
+     * Nullish, because Ghostfolio ships releases whose holdings carry no `symbol`
+     * inside the object at all: it is the key of the record they arrive in, and
+     * `holdingsSchema` folds it back in below.
+     *
+     * Requiring it here failed the entire portfolio pass on a live instance for a
+     * value that was sitting in the response one level up. What actually has to be
+     * true is weaker — *something* identifies the position — and that is checked
+     * once, after the ISIN has had its say, by the `refine` at the bottom.
+     */
+    symbol: z.string().nullish(),
     /** Absent for some data sources; the symbol is the fallback label. */
     name: z.string().nullish(),
-    currency: z.string(),
+    /**
+     * Nullish, and deliberately never read.
+     *
+     * `toHoldingSnapshots` labels every row with the base currency and says why:
+     * the value it stores is already converted, so the instrument's own currency
+     * would misdescribe the number beside it. A required field that nothing
+     * consumes can only ever do one thing, and on a live instance it did it —
+     * failing every pass over a label no code would have looked at.
+     */
+    currency: z.string().nullish(),
     quantity: money,
     marketPrice: money.nullish(),
     valueInBaseCurrency: money.nullish(),
@@ -60,6 +79,22 @@ export const holdingSchema = z
     grossPerformancePercent: money.nullish(),
   })
   .loose()
+  /**
+   * The one identity requirement, checked here rather than field by field.
+   *
+   * `toHoldingSnapshots` keys a row on `isin ?? symbol`, so either will do and
+   * neither alone is mandatory. A position with no ISIN, no symbol and no record
+   * key cannot be stored — and must not simply be skipped, because
+   * `totalValueCents` is the sum of the holdings that *were* stored: dropping one
+   * would quietly shrink the portfolio total and every allocation share computed
+   * from it. Refusing the payload is the honest outcome, and the message carries
+   * the keys the object did have so the next shape change diagnoses itself.
+   */
+  .refine((holding) => (holding.isin ?? holding.symbol ?? '') !== '', {
+    error: (issue) =>
+      'holding has neither an ISIN nor a symbol, so it cannot be identified; ' +
+      `keys present: ${Object.keys(issue.input as object).sort().join(', ')}`,
+  })
 
 /**
  * Ghostfolio has shipped `holdings` both ways: keyed by symbol
@@ -69,16 +104,33 @@ export const holdingSchema = z
  * A union rather than a version probe, because Balancr has to survive an upgrade in
  * either direction and a probe would be a second thing to keep true. Preprocessing
  * the container rather than unioning two validated shapes, because then only one
- * shape is ever item-checked and a bad field still reports as `holdings[0].currency`
+ * shape is ever item-checked and a bad field still reports as `holdings[0].symbol`
  * instead of collapsing into "invalid union".
  *
- * Flattening the record loses nothing: its key is the symbol, and every position
- * carries `symbol` in the object as well.
+ * **The key is folded in as the symbol**, which is the correction this function
+ * exists for. It used to flatten with `Object.values` on the reasoning that the key
+ * was the symbol and every position carried `symbol` in the object as well. The
+ * first half of that is still true; the second half is not, on at least one
+ * Ghostfolio release, and the result was a required field being reported as missing
+ * by the same code that had just discarded the only copy of it.
+ *
+ * An object that already names itself keeps its own value: the key is a fallback,
+ * never an override, because a record keyed by something other than the symbol
+ * would otherwise rename every position it contains.
  */
+function withKeyAsSymbol(key: string, value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const own = (value as { symbol?: unknown }).symbol
+  if (typeof own === 'string' && own !== '') return value
+  return { ...value, symbol: key }
+}
+
 const holdingsSchema = z.preprocess(
   (raw) =>
     raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-      ? Object.values(raw as Record<string, unknown>)
+      ? Object.entries(raw as Record<string, unknown>).map(([key, value]) =>
+          withKeyAsSymbol(key, value),
+        )
       : raw,
   z.array(holdingSchema),
 )

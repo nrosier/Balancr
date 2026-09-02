@@ -281,6 +281,66 @@ describe('probe', () => {
   })
 })
 
+describe('holdings that do not name themselves (#107)', () => {
+  it('takes the symbol from the record key when the object carries none', async () => {
+    // The live shape: `symbol` and `currency` absent from the object, and the symbol
+    // sitting one level up as the key the adapter used to throw away.
+    const { symbol: _symbol, currency: _currency, ...anonymous } = HOLDING
+    routes['/api/v1/portfolio/details'] = { body: { holdings: { 'IWDA.AS': anonymous } } }
+
+    const details = await fetchPortfolioDetails()
+
+    expect(details.holdings).toHaveLength(1)
+    expect(details.holdings[0]?.symbol).toBe('IWDA.AS')
+  })
+
+  it('lets a holding that names itself keep its own name', async () => {
+    // A record keyed by anything other than the symbol — and there is no guarantee
+    // it is the symbol — must not rename the positions inside it.
+    routes['/api/v1/portfolio/details'] = { body: { holdings: { 'some-uuid': HOLDING } } }
+
+    const details = await fetchPortfolioDetails()
+
+    expect(details.holdings[0]?.symbol).toBe('IWDA.AS')
+  })
+
+  it('accepts a holding with no currency, which nothing has ever read', async () => {
+    // A list, so there is no key to fall back on: this is the currency case alone.
+    const { currency: _currency, ...noCurrency } = HOLDING
+    routes['/api/v1/portfolio/details'] = { body: { holdings: [noCurrency] } }
+
+    const details = await fetchPortfolioDetails()
+
+    expect(details.holdings).toHaveLength(1)
+    expect(details.holdings[0]?.currency).toBeUndefined()
+  })
+
+  it('refuses the payload when a holding cannot be identified at all', async () => {
+    // No ISIN, no symbol, and a list so there is no key either. Refused rather than
+    // skipped: `totalValueCents` is the sum of the holdings that were stored, so
+    // dropping this row would quietly shrink the portfolio and every share of it.
+    const { symbol: _symbol, isin: _isin, ...anonymous } = HOLDING
+    routes['/api/v1/portfolio/details'] = { body: { holdings: [anonymous] } }
+
+    await expect(fetchPortfolioDetails()).rejects.toThrow(GhostfolioError)
+  })
+
+  it('names the path and the keys it did have, so the next change diagnoses itself', async () => {
+    const { symbol: _symbol, isin: _isin, ...anonymous } = HOLDING
+    routes['/api/v1/portfolio/details'] = { body: { holdings: [anonymous] } }
+
+    const error = await fetchPortfolioDetails().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(GhostfolioError)
+    const message = (error as GhostfolioError).message
+    expect(message).toContain('holdings[0]')
+    expect(message).toContain('neither an ISIN nor a symbol')
+    // The keys that were there, which is the half of the diagnosis a schema error
+    // never carries: it can only say what was missing.
+    expect(message).toContain('valueInBaseCurrency')
+  })
+})
+
 describe('every request is time-bounded', () => {
   it('passes an abort signal, so a hung upstream cannot hang the nightly job', async () => {
     await fetchPortfolioDetails()

@@ -246,6 +246,13 @@ export function configSummary(): Record<string, unknown> {
     SESSION_SECRET: secret(config.SESSION_SECRET),
     TRUSTED_PROXY_CIDRS: config.TRUSTED_PROXY_CIDRS,
     oidcEnabled: config.oidcEnabled,
+    // Both printed in full, and neither is a secret: the client id travels in the
+    // authorization URL in plain sight, and the issuer is a public metadata
+    // endpoint. Naming them beats `oidcEnabled: true`, which says a provider was
+    // configured without saying which one. The redirect URI is not here because
+    // it is derived — `oidcClientFromConfig` logs it, where the derivation lives.
+    AUTH_OIDC_ISSUER: config.AUTH_OIDC_ISSUER ?? 'unset',
+    AUTH_OIDC_CLIENT_ID: config.AUTH_OIDC_CLIENT_ID ?? 'unset',
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
     SESSION_TTL_HOURS: config.SESSION_TTL_HOURS,

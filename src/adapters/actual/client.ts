@@ -107,6 +107,25 @@ async function open(): Promise<void> {
 }
 
 /**
+ * What Actual calls envelope budgeting, in every spelling it has used.
+ *
+ * `rollover` is the original name and `envelope` is the current one — Actual renamed
+ * its two budget styles (the other went from `report` to `tracking`), and the check
+ * below tested only the old name. So it warned that an envelope budget was not an
+ * envelope budget, on precisely the configuration it exists to endorse, and would
+ * have stayed silent on `tracking`, the one case where the carryover figures really
+ * are not what this application assumes.
+ *
+ * Both spellings stay accepted rather than the set being migrated to the new one: a
+ * deployment running an older Actual still reports `rollover`, and there is no
+ * version at which a warning about it would be correct.
+ *
+ * Exported so a test can pin the spellings. They come out of someone else's release
+ * notes, which is the kind of value that is only ever wrong in production.
+ */
+export const ENVELOPE_BUDGET_TYPES: ReadonlySet<string> = new Set(['envelope', 'rollover'])
+
+/**
  * Records version and budget facts for the health panel.
  *
  * A version mismatch is reported, not fatal: failing to start on every Actual
@@ -136,10 +155,10 @@ async function recordServerFacts(): Promise<void> {
   health.budgetType = prefs.budgetType ?? null
   health.currencyCode = prefs.defaultCurrencyCode ?? null
 
-  if (health.budgetType && health.budgetType !== 'rollover') {
+  if (health.budgetType && !ENVELOPE_BUDGET_TYPES.has(health.budgetType)) {
     log.warn(
-      { budgetType: health.budgetType },
-      'budget is not envelope-style; carryover and available figures assume rollover budgeting',
+      { budgetType: health.budgetType, expected: [...ENVELOPE_BUDGET_TYPES].join(' or ') },
+      'budget is not envelope-style; carryover and available figures assume envelope budgeting',
     )
   }
   if (health.currencyCode && health.currencyCode !== config.BASE_CURRENCY) {

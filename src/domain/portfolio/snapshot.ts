@@ -53,10 +53,17 @@ export function toHoldingSnapshots(
   for (const holding of details.holdings) {
     const price = holding.marketPrice ?? null
     const value = holding.valueInBaseCurrency ?? null
+    // `holdingSchema` refuses a position with neither, and says why it refuses the
+    // whole payload rather than skipping the row. This narrows that guarantee for
+    // the type checker; reaching the throw would mean the schema stopped holding.
+    const instrument = holding.isin ?? holding.symbol ?? null
+    if (instrument === null || instrument === '') {
+      throw new Error('holding reached toHoldingSnapshots with no ISIN and no symbol')
+    }
     rows.push({
       date,
-      instrument: holding.isin ?? holding.symbol,
-      symbol: holding.symbol,
+      instrument,
+      symbol: holding.symbol ?? null,
       isin: holding.isin ?? null,
       name: holding.name ?? null,
       quantity: String(holding.quantity),
@@ -64,7 +71,8 @@ export function toHoldingSnapshots(
       valueCents: value === null ? 0 : toCents(value),
       // `holding.currency` is the instrument's own currency; the value we store is
       // already in base currency, so labelling the row with the instrument's
-      // currency would misdescribe the number next to it.
+      // currency would misdescribe the number next to it. Which is also why that
+      // field is optional in the schema — nothing here has ever read it.
       currency: baseCurrency,
       assetClass: holding.assetClass ?? null,
       assetSubClass: holding.assetSubClass ?? null,

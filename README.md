@@ -150,6 +150,61 @@ when the token arrives straight from the token endpoint over TLS, and the librar
 takes that permission — so over plain `http://` on the container network, anything
 that can answer the token request can name itself as any user.
 
+### Setting up the Authentik provider
+
+Create an **OAuth2/OpenID Provider**, bind it to an application, and take three
+values from it:
+
+| In Authentik | Into `.env` |
+|---|---|
+| Client ID | `AUTH_OIDC_CLIENT_ID` |
+| Client Secret | `AUTH_OIDC_CLIENT_SECRET` |
+| OpenID Configuration Issuer | `AUTH_OIDC_ISSUER` |
+
+Client type **Confidential** — Balancr is a server holding a secret, not a browser
+app. The issuer is the one on the provider's own page, trailing slash included:
+`https://authentik.example.com/application/o/<app-slug>/`.
+
+Then the redirect URI, which is the field that most often refuses a login. Balancr
+does not read it from configuration — it derives it from `PUBLIC_BASE_URL`, so
+register exactly that:
+
+```
+PUBLIC_BASE_URL=https://balancr.example.com
+→ https://balancr.example.com/auth/callback     (matching mode: Strict)
+```
+
+Derived rather than configured because the alternative is trusting the request's
+`Host` header, which would let a request decide where the authorization code is
+delivered. The cost is that a wrong `PUBLIC_BASE_URL` shows up as Authentik's
+
+> The request fails due to a missing, invalid, or mismatching redirection URI
+
+rather than as a complaint about the variable that actually caused it. The
+comparison is exact — scheme, host, any non-default port, and no trailing slash —
+so a `PUBLIC_BASE_URL` of `http://` or with a port that Cloudflare terminates will
+not match an `https://` registration. Balancr logs the string it will send at
+startup, so the check is a diff rather than a guess:
+
+```
+INFO  OIDC login enabled; the provider must have this exact redirect URI registered
+      redirectUri: "https://balancr.example.com/auth/callback"
+```
+
+Balancr must be served at the root of that origin. A sub-path in
+`PUBLIC_BASE_URL` is discarded when the callback path is appended, because every
+route and asset the SPA loads is rooted.
+
+Scopes are `openid profile email` — a display name and an address are what the UI
+shows. Not `offline_access`: Balancr never calls Authentik on your behalf after
+login, so a refresh token would be a long-lived credential stored for no purpose.
+PKCE (`S256`) is always sent, `state` and `nonce` are always checked, and a
+response without an ID token is refused rather than treated as a login.
+
+No `prompt` and no `max_age` are requested, so an existing Authentik session signs
+you straight in — that is the point of putting SSO in front — and how long that
+session lasts stays Authentik's decision rather than being hardcoded here.
+
 The break-glass login is set from the command line, not from a screen:
 
 ```sh
@@ -265,12 +320,39 @@ and the commit is stamped into the image as `revision`: every push to `main` pub
 `edge` from the same `package.json` as the last tag, so a version identifies a release
 while only the commit identifies a build.
 
+**Then `0.5.6`'s own startup log found four more**, which is the argument for that
+version in one line. Ghostfolio has a release whose holdings carry no `symbol`
+inside the object — it is the key of the map they arrive in — and the code that
+flattened the map discarded the key and then reported the field as missing, failing
+every portfolio pass ([#107](https://github.com/nrosier/Balancr/issues/107)). A
+position now needs an ISIN *or* a symbol, from the object or from its key, and one
+that has neither refuses the whole payload rather than being skipped: the portfolio
+total is the sum of the rows that were stored, so dropping one would quietly shrink
+every allocation share computed from it. `currency` became optional in the same
+pass, having been required and never read.
+
+Actual renamed its budget styles — `rollover` to `envelope`, `report` to
+`tracking` — and the health check still tested the old name, so it warned that an
+envelope budget was not an envelope budget on exactly the configuration it exists
+to endorse, while staying silent on the one it is for
+([#108](https://github.com/nrosier/Balancr/issues/108)). And an OIDC login was
+refused by Authentik for a mismatched `redirect_uri` that Balancr never printed
+([#110](https://github.com/nrosier/Balancr/issues/110)): the value is derived from
+`PUBLIC_BASE_URL`, the provider compares it byte for byte, and the refusal happens
+before the browser returns — so there was no request to log and no error to
+improve. Startup now names the exact string it will send, and the Authentik section
+above says what to register and why it is derived rather than configured
+([#109](https://github.com/nrosier/Balancr/issues/109)). Found while fixing that one:
+the function whose whole purpose is to print the effective configuration with every
+secret masked was never called, so `PUBLIC_BASE_URL` had never been logged either. It
+is logged now, one line after the version, and a test is what keeps it safe to log.
+
 Next are portfolio, insights and settings
 ([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
 language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
 and the accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.6`,
-`0.5.7`, … until every issue in that milestone is closed and `0.6.0` lands.
+([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.8`,
+`0.5.9`, … until every issue in that milestone is closed and `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
