@@ -94,8 +94,7 @@
   },
   "page": {
     "budget": {
-      "lede": "Where the money went this month, and whether it is on track.",
-      "soon": "Coming next: income-to-category flow, budget against actual, burn rate against month progress and per-category trends."
+      "lede": "Where the money went this month, and whether it is on track."
     },
     "insights": {
       "lede": "What the analysis found, and what it wants you to confirm.",

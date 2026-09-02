@@ -215,21 +215,30 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, slice 2 of 8: the overview screen
-([#29](https://github.com/nrosier/Balancr/issues/29)) — the first page with real
-figures on it. Net worth with its liquid, invested and debt parts, the savings rate
-for the month, how many months the buffer covers, the net-worth line over time, and
-the data-quality score with what is costing it points. Every number is read from
-Balancr's own SQLite, computed by the aggregation jobs, and formatted through
-`format.ts`, including the chart's axis and tooltip.
+**Where it is now** — `0.6.0`, slice 3 of 8: the budget page
+([#30](https://github.com/nrosier/Balancr/issues/30)) — a month in the order someone
+asks about it. Where the money went as an income-to-envelope Sankey, whether each
+envelope held as a budget-versus-actual bullet chart, whether this month is on pace
+against how far through it the server thought it was, and twelve months of shape per
+envelope as a wall of sparklines with each category's own norm drawn through it. The
+month is a query parameter, so the picker offers every month a job has written and a
+month that was never computed answers with a sentence and a way out rather than a 404.
 
-Two things it establishes for the four screens still to come. **A page has four
-states, not one**: waiting, unreachable, answered-with-nothing and answered — and a
-figure the jobs have not produced yet says "not known yet" rather than `€ 0`, because
-a zero is a wrong number and a blank is a missing one. And **a session can vanish
-while a dashboard sits open**, so a `401` from any endpoint is handed back up to the
-session gate, which re-asks and lands on the sign-in screen by exactly the path a
-first visit takes.
+**Nothing on that page is computed.** Totals, norms, deltas, the trend series, the
+burn-rate projection and the month's own progress all arrive from `GET /api/budget` as
+integers; the single piece of arithmetic in the browser is the width of a rectangle,
+which prints no number. Findings render from the same catalogue the emailed digest
+uses, so a finding reads identically in both and adding a language costs a catalogue
+rather than a model call — and a finding whose sentence is missing a figure is dropped
+rather than printed with a hole in it.
+
+Before it, the overview screen ([#29](https://github.com/nrosier/Balancr/issues/29))
+established two things every remaining screen inherits. **A page has four states, not
+one**: waiting, unreachable, answered-with-nothing and answered — and a figure the jobs
+have not produced yet says "not known yet" rather than `€ 0`, because a zero is a wrong
+number and a blank is a missing one. And **a session can vanish while a dashboard sits
+open**, so a `401` from any endpoint is handed back up to the session gate, which
+re-asks and lands on the sign-in screen by exactly the path a first visit takes.
 
 **Running it against the real Actual and Ghostfolio found two integration defects**,
 both filed. Ghostfolio has shipped `/api/v1/portfolio/details` with `holdings` as a
@@ -245,12 +254,12 @@ not accept, and `maxItems: 48`, which it does accept but refuses at that size. B
 in `0.5.4`, and verified against the live API rather than against the documentation —
 the second cause only showed up when the first fix was tried for real.
 
-Next are budget, portfolio, insights and settings
-([#30](https://github.com/nrosier/Balancr/issues/30)–[#33](https://github.com/nrosier/Balancr/issues/33)),
+Next are portfolio, insights and settings
+([#31](https://github.com/nrosier/Balancr/issues/31)–[#33](https://github.com/nrosier/Balancr/issues/33)),
 language switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34))
 and the accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.2`,
-`0.5.3`, … until every issue in that milestone is closed and `0.6.0` lands.
+([#35](https://github.com/nrosier/Balancr/issues/35)) — shipping as `0.5.6`,
+`0.5.7`, … until every issue in that milestone is closed and `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

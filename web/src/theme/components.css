@@ -316,3 +316,170 @@
   font-size: var(--type-sm);
   color: var(--positive);
 }
+
+/* ── Toolbars ────────────────────────────────────────────────────────────── */
+
+/*
+ * The controls that change what a page is showing, above the page's own content.
+ * `flex-end` so a single control sits on the right where a reader's eye leaves the
+ * heading, and `wrap` because two controls plus a Dutch label will not fit a phone.
+ */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Label beside the control rather than above it: a toolbar is one row deep. */
+.field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Prose under a notice's lead. `notice__meta` is mono, for timestamps and ids. */
+.notice__hint {
+  margin: var(--space-1) 0 0;
+  opacity: 0.85;
+}
+
+/* ── Spending pace ───────────────────────────────────────────────────────── */
+
+.pace {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pace__row + .pace__row {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.pace__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: var(--type-sm);
+}
+
+.pace__note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-sm);
+  color: var(--text-muted);
+}
+
+.pace__note--warn {
+  color: var(--warn);
+}
+
+/*
+ * The bar. `--surface-sunken` for the track rather than a border, so the unspent part
+ * of an envelope reads as room left rather than as a second thing to look at.
+ *
+ * `position: relative` is load-bearing: the month marker is absolutely positioned at a
+ * percentage of the track, and without a positioned ancestor it would place itself
+ * against the page.
+ */
+.pace__track {
+  position: relative;
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.pace__fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width var(--transition);
+}
+
+/* Past the envelope. The colour is the whole message, so it replaces the accent. */
+.pace__fill--over {
+  background: var(--negative);
+}
+
+/*
+ * How far through the month it is, as a tick across the track. Reading it against the
+ * fill is the entire point of the chart: fill left of the tick is under pace, right of
+ * it is ahead. `translateX(-50%)` centres the tick on its value instead of starting
+ * there, which at 100% would otherwise draw it just outside the track.
+ */
+.pace__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.55;
+  transform: translateX(-50%);
+}
+
+/* ── Category trends ─────────────────────────────────────────────────────── */
+
+/*
+ * The wall of sparklines. `16rem` minimum because each cell holds a name, a figure and
+ * a twelve-point line — narrower than that and the name truncates on every card.
+ */
+.trend-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+}
+
+.trend {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-page);
+}
+
+.trend__name {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--type-md);
+  font-weight: var(--weight-semibold);
+}
+
+/*
+ * Against the norm, not against zero. Down is the unremarkable direction for spending,
+ * so it is muted rather than green — a card that celebrates every quiet month teaches
+ * the reader to skip the colour entirely.
+ */
+.trend__delta {
+  font-size: var(--type-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+
+.trend__delta--up {
+  color: var(--warn);
+}
+
+.trend__note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-xs);
+  color: var(--text-muted);
+}
+
+.trend__note--warn {
+  color: var(--warn);
+}

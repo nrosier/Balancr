@@ -9,10 +9,24 @@
   "chart": {
     "axisMoney": "Euro",
     "axisMonth": "Maand",
+    "bulletItem": "{{category}} gaf {{spent}} uit van {{assigned}}",
+    "bulletSummary": "Toegewezen tegenover uitgegeven, grootste envelope eerst: {{list}}.",
     "bulletTitle": "Budget versus werkelijk",
     "burnTitle": "Uitgavetempo deze maand",
+    "sankeyOther": "Andere categorieën",
+    "sankeySaved": "Niet uitgegeven",
+    "sankeySummary": "Er kwam {{income}} binnen en er ging {{spent}} uit. De grootste envelope was {{largest}} met {{amount}}.",
     "sankeyTitle": "Waar het geld naartoe gaat",
-    "trendTitle": "Uitgaven per categorie"
+    "sankeyTotals": "Er kwam {{income}} binnen en er ging {{spent}} uit.",
+    "trendSummary": "{{category}}: {{amount}} in {{month}}, tegenover een gemiddelde van {{baseline}}.",
+    "trendSummaryPlain": "{{category}}: {{amount}} in {{month}}.",
+    "trendTitle": "Uitgaven per categorie",
+    "trendWindow": "De laatste {{window}}, oudste eerst."
+  },
+  "empty": {
+    "categories": "Geen enkele categorie heeft uitgaven in deze maand.",
+    "month": "Voor {{month}} is nog niets berekend.",
+    "monthHint": "Kies een andere maand of start een sync om deze maand te berekenen."
   },
   "group": {
     "hidden": "Verborgen categorieën",
@@ -37,10 +51,24 @@
     "baseline": "12-maandsgemiddelde",
     "burnRate": "Verbruikstempo",
     "carryover": "Overgedragen",
+    "fromLastMonth": "Van vorige maand",
     "income": "Inkomsten",
     "projected": "Prognose einde maand",
     "savingsRate": "Spaarquote",
-    "spent": "Uitgegeven"
+    "spent": "Uitgegeven",
+    "toBudget": "Nog toe te wijzen"
   },
-  "title": "Budget"
+  "pace": {
+    "monthProgress": "{{progress}} van de maand is voorbij",
+    "overrun": "Verwachte overschrijding {{amount}}",
+    "summary": "{{category}}: {{spent}} uitgegeven van {{assigned}} toegewezen, met {{progress}} van de maand voorbij."
+  },
+  "picker": {
+    "month": "Maand"
+  },
+  "title": "Budget",
+  "uncategorised": {
+    "notice_one": "{{value}} transactie van {{amount}} heeft geen categorie, dus de cijfers hieronder zijn onvolledig.",
+    "notice_other": "{{value}} transacties van {{amount}} hebben geen categorie, dus de cijfers hieronder zijn onvolledig."
+  }
 }

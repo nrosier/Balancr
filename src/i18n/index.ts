@@ -25,12 +25,7 @@ import i18next, {
 import { config } from '../config.ts'
 import { configureFormatting } from './format-config.ts'
 import { withFormattedCount, type Vars } from './format.ts'
-import {
-  CLARIFICATION_SPECS,
-  FINDING_SPECS,
-  type ClarificationCode,
-  type FindingCode,
-} from '../domain/ai/codes.ts'
+import { missingVars, type ClarificationCode, type FindingCode } from '../domain/ai/codes.ts'
 
 export const localesDir = fileURLToPath(new URL('./locales', import.meta.url))
 
@@ -125,17 +120,11 @@ export function t(lang: string, key: string, vars: Vars = {}): string {
   return fixed(key, withFormattedCount(vars)) as string
 }
 
-/** Variables a code's sentence needs but the caller did not supply. */
-export function missingVars(
-  code: FindingCode | ClarificationCode,
-  vars: Vars,
-): string[] {
-  const spec =
-    code in FINDING_SPECS
-      ? FINDING_SPECS[code as FindingCode]
-      : CLARIFICATION_SPECS[code as ClarificationCode]
-  return spec.vars.filter((v) => vars[v] === undefined)
-}
+// `missingVars` lives in `domain/ai/codes.ts`, which imports nothing and can
+// therefore be read by the browser bundle too — the budget and insights screens need
+// the same check on the signals they are handed as codes. Re-exported here because
+// callers know it as part of the rendering surface.
+export { missingVars }
 
 /**
  * Renders a finding sentence, or null when a variable is missing.

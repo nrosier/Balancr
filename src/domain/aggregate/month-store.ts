@@ -191,6 +191,24 @@ export function loadMismatches(db: Db, months: readonly string[]): RecomputeMism
     .all()
 }
 
+/**
+ * Every stored month, newest first.
+ *
+ * What a month picker offers, and deliberately not derived from a trailing window:
+ * a window ending at the month being viewed shrinks as the reader looks further back,
+ * so picking July would take August out of the list they picked it from and leave no
+ * way forward again. It is also the answer for a month that was never computed — a
+ * stale bookmark should still be able to navigate somewhere real.
+ */
+export function storedMonths(db: Db): string[] {
+  return db
+    .select({ month: monthlyTotals.month })
+    .from(monthlyTotals)
+    .orderBy(desc(monthlyTotals.month))
+    .all()
+    .map((row) => row.month)
+}
+
 /** The most recent stored month, or null before the first sync. */
 export function latestStoredMonth(db: Db): string | null {
   const row = db

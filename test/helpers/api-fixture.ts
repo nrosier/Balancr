@@ -124,6 +124,17 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
         severity: 'warn',
         metrics: { deltaBp: 1_803, spentCents: 72_000, baselineCents: 61_000 },
       },
+      // An `alert`, because the three severities are not interchangeable at the wire:
+      // the response schema validates the value the `signals` table stored, and a
+      // fixture carrying only `warn` left the top severity untested — which is exactly
+      // how a schema that had never seen an `alert` came to reject one.
+      {
+        code: 'over_available',
+        categoryId: 'cat-energy',
+        categoryName: 'Energy',
+        severity: 'alert',
+        metrics: { overspendCents: 9_500 },
+      },
     ],
     { scoreBp: 9_150, deductions: [{ reason: 'uncategorised', bp: 150 }] },
   )

@@ -9,6 +9,7 @@ import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
 import {
   loadCategoryMeta,
+  loadCategoryTrends,
   loadFacts,
   loadFrequencies,
   persistFacts,
@@ -328,5 +329,81 @@ describe('loadCategoryMeta', () => {
 
   it('is empty before the first sync', () => {
     expect(loadCategoryMeta(ctx.db).size).toBe(0)
+  })
+})
+
+describe('loadCategoryTrends', () => {
+  /** Three months of one category, and a second category present in the middle one. */
+  const seed = (): void => {
+    persistFacts(
+      ctx.db,
+      [
+        fact('2026-01', 'food', { spentCents: 40_000 }),
+        fact('2026-02', 'food', { spentCents: 45_000 }),
+        fact('2026-02', 'gifts', { spentCents: 9_000 }),
+        fact('2026-03', 'food', { spentCents: 38_000 }),
+      ],
+      ['2026-01', '2026-02', '2026-03'],
+    )
+  }
+
+  it('returns the window oldest first, ending at the month asked for', () => {
+    seed()
+    expect(loadCategoryTrends(ctx.db, '2026-03', 3).months).toEqual([
+      '2026-01',
+      '2026-02',
+      '2026-03',
+    ])
+  })
+
+  it('aligns every series to that window', () => {
+    seed()
+    const trends = loadCategoryTrends(ctx.db, '2026-03', 3)
+    expect(trends.byCategory.get('food')).toEqual([40_000, 45_000, 38_000])
+  })
+
+  it('fills a month a category has no row for with zero rather than a hole', () => {
+    // A line with a gap in it is a different claim from a line that touches zero: the
+    // category genuinely spent nothing that month, and the aggregation pass already
+    // treats absent as zero when it writes the facts.
+    seed()
+    const trends = loadCategoryTrends(ctx.db, '2026-03', 3)
+    expect(trends.byCategory.get('gifts')).toEqual([0, 9_000, 0])
+  })
+
+  it('gives every category the same window, including one that starts late', () => {
+    // A per-category window would hand the newest envelope the shortest x axis and
+    // make its line look steeper than the one beside it.
+    seed()
+    const trends = loadCategoryTrends(ctx.db, '2026-03', 3)
+    for (const series of trends.byCategory.values()) {
+      expect(series).toHaveLength(trends.months.length)
+    }
+  })
+
+  it('reaches back past the stored history without inventing months', () => {
+    seed()
+    const trends = loadCategoryTrends(ctx.db, '2026-03', 5)
+    expect(trends.months).toEqual(['2025-11', '2025-12', '2026-01', '2026-02', '2026-03'])
+    expect(trends.byCategory.get('food')).toEqual([0, 0, 40_000, 45_000, 38_000])
+  })
+
+  it('ignores months after the one asked for', () => {
+    // The budget page can be pointed at an older month, and its charts should then
+    // describe that month rather than leaking the figures that came after it.
+    seed()
+    const trends = loadCategoryTrends(ctx.db, '2026-02', 2)
+    expect(trends.months).toEqual(['2026-01', '2026-02'])
+    expect(trends.byCategory.get('food')).toEqual([40_000, 45_000])
+  })
+
+  it('has no series at all before the first aggregation pass', () => {
+    const trends = loadCategoryTrends(ctx.db, '2026-03', 3)
+    expect(trends.byCategory.size).toBe(0)
+    expect(trends.months).toHaveLength(3)
+  })
+
+  it('asks for nothing when the window is empty', () => {
+    expect(loadCategoryTrends(ctx.db, '2026-03', 0)).toEqual({ months: [], byCategory: new Map() })
   })
 })

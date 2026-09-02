@@ -95,6 +95,20 @@ const EMPTY_READS: Record<string, unknown> = {
     emergencyFundCentimonths: null,
     hygiene: null,
   },
+  '/api/budget': {
+    freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    // A month label the server invents when nothing has been computed, so the page
+    // has something to head its empty state with. `months` being empty is what tells
+    // the page apart from a month that simply was not aggregated.
+    month: '2026-09',
+    months: [],
+    totals: null,
+    history: [],
+    trendMonths: [],
+    categories: [],
+    signals: [],
+    uncategorised: null,
+  },
 }
 
 /** That answer as a `Response`, or null for a path no page reads. */
