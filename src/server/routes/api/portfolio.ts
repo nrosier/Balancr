@@ -46,6 +46,10 @@ export function buildPortfolio(db: Db): Portfolio {
         name: row.name,
         quantity: row.quantity,
         priceCents: row.priceCents,
+        // Null for rows snapshotted before the column existed. Their native
+        // currency was never recorded, so the value currency is the only honest
+        // answer left — the same one those rows were rendered with all along.
+        priceCurrency: row.priceCurrency ?? row.currency,
         valueCents: row.valueCents,
         currency: row.currency,
       }))

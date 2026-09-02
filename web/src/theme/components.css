@@ -483,3 +483,86 @@
 .trend__note--warn {
   color: var(--warn);
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Tables                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * A holdings table is genuinely tabular and stays a real `<table>`, which means it
+ * cannot reflow: seven columns of figures have a minimum width and a phone does not
+ * have it. So the table scrolls inside its own box rather than the page scrolling
+ * sideways — the alternative, collapsing each row into a stack of labelled lines,
+ * loses the one thing a table is for, which is comparing a column down its length.
+ */
+.table-scroll {
+  overflow-x: auto;
+  /* The element takes `tabIndex={0}`, so it is reachable and scrollable by keyboard. */
+  scrollbar-gutter: stable;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-sm);
+}
+
+/*
+ * The caption is the table's accessible name and is read before the rows, so it says
+ * how many there are and how they are ordered — the two things a screen-reader user
+ * cannot see at a glance and would otherwise have to count.
+ */
+.table__caption {
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  text-align: left;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table thead th {
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: var(--weight-medium);
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+/*
+ * Right-aligned and tabular, so the digits line up in a column and a figure twice the
+ * size of the one above it looks twice the size. This is the whole reason the numbers
+ * are in a table and not in a list.
+ */
+.table__cell--number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The one column that may wrap: an instrument name has no useful maximum length. */
+.table__cell--name {
+  max-width: 22rem;
+  font-weight: var(--weight-medium);
+  white-space: normal;
+}
+
+/* An ISIN or a ticker is a code to be read character by character, not a word. */
+.table__cell--code {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}

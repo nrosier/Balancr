@@ -1,20 +1,35 @@
 {
+  "assetClass": {
+    "COMMODITY": "Commodities",
+    "EQUITY": "Equities",
+    "FIXED_INCOME": "Bonds",
+    "LIQUIDITY": "Cash",
+    "REAL_ESTATE": "Property",
+    "unknown": "Unclassified"
+  },
   "chart": {
+    "allocationSummary_one": "One asset class: {{top}}, {{share}} of the portfolio.",
+    "allocationSummary_other": "Allocation across {{value}} asset classes; the largest is {{top}} at {{share}}.",
     "allocationTitle": "Allocation",
     "netWorthSummary": "Net worth between {{from}} and {{to}}: {{start}} at the start, {{end}} at the end.",
     "netWorthTitle": "Net worth over time",
-    "twrTitle": "Return over time"
+    "twrTitle": "Return over time",
+    "valueSummary": "Market value between {{from}} and {{to}}: {{start}} at the start, {{end}} at the end.",
+    "valueTitle": "Market value over time"
   },
   "dedupe": {
     "hint": "This account exists in both tools; only the source of truth counts toward net worth.",
     "title": "Counted once"
   },
   "holding": {
+    "caption_one": "One holding.",
+    "caption_other": "{{value}} holdings, largest first.",
     "isin": "ISIN",
     "name": "Holding",
     "price": "Price",
     "priceDate": "Price date",
     "quantity": "Quantity",
+    "title": "Holdings",
     "weight": "Weight"
   },
   "metric": {
@@ -28,6 +43,7 @@
     "netWorth": "Net worth",
     "ter": "Annual costs",
     "twr": "Time-weighted return",
+    "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",
     "value": "Market value"
   },
   "title": "Portfolio"
