@@ -14,6 +14,7 @@
  * layer must never do.
  */
 import type { Db } from '../../../db/index.ts'
+import type { PortfolioMetricsResult } from '../../../domain/portfolio/metrics.ts'
 import {
   latestSnapshotDate,
   loadPortfolioMetrics,
@@ -22,6 +23,25 @@ import {
 } from '../../../domain/portfolio/store.ts'
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
+
+/**
+ * The invested/cash split, or two nulls when this date does not have one.
+ *
+ * Split out so the condition is stated once: the two halves are known together or
+ * not at all, and one of them present with the other missing would be a third state
+ * for a client to get wrong.
+ */
+function splitOrNull(
+  metrics: PortfolioMetricsResult | null,
+): { investedValueCents: number | null; cashValueCents: number | null } {
+  if (metrics === null) return { investedValueCents: null, cashValueCents: null }
+  const known = metrics.investedValueCents + metrics.cashValueCents === metrics.totalValueCents
+  if (!known) return { investedValueCents: null, cashValueCents: null }
+  return {
+    investedValueCents: metrics.investedValueCents,
+    cashValueCents: metrics.cashValueCents,
+  }
+}
 
 export function buildPortfolio(db: Db): Portfolio {
   const date = latestSnapshotDate(db)
@@ -32,6 +52,12 @@ export function buildPortfolio(db: Db): Portfolio {
     freshness: freshness(db),
     date,
     totalValueCents: metrics?.totalValueCents ?? null,
+    // `loadPortfolioMetrics` reads an absent split back as zero, which is the honest
+    // reading of "no invested value recorded" — but on the wire that would draw a
+    // card saying nothing is invested. A date whose split adds up to nothing while
+    // its total does not is a date that never had one, so it is sent as null and the
+    // page shows no split rather than a wrong one.
+    ...splitOrNull(metrics),
     twrBp: metrics?.twrBp ?? null,
     allocation: (metrics?.allocation ?? []).map((slice) => ({
       assetClass: slice.key,

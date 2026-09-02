@@ -6,6 +6,58 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+
+- **Net worth no longer counts bank cash twice** on an instance where a tool syncs bank
+  accounts into Ghostfolio as well as Actual
+  ([#124](https://github.com/nrosier/Balancr/issues/124)). On the reporting instance
+  that was roughly a third of the total, entered once from each source, and labelled
+  invested — so the emergency-buffer figure and the allocation were both wrong in the
+  same direction at the same time.
+
+  Ghostfolio can already tell the two kinds of account apart, so the classification is
+  derived rather than asked for. Two independent signals, and either one firing is
+  enough: orders recorded against the account, and a value exceeding the balance — both
+  taken in the base currency, because comparing a converted value against an
+  unconverted balance reads a foreign-currency cash account as a portfolio purely
+  because of the exchange rate. On the reporting instance the signals agree unanimously
+  across seven accounts, six cash and one portfolio.
+
+  The asymmetry is deliberate. A false "investment" costs a label on a settings page; a
+  false "cash" is what gets an account grouped away as a duplicate, and money missing
+  from net worth has no symptom. So an account the instance says nothing about stays
+  `investment`, and an empty account reads as cash only because nothing is at stake
+  until the first trade.
+
+  Each Ghostfolio cash account is then grouped with the Actual account of the same
+  name, Actual being the side that counts because that is where the account is
+  reconciled against statements. The matcher is unwilling on purpose: one Actual row and
+  one Ghostfolio cash row sharing a normalised name, or no pair at all. Two accounts
+  called "Spaarrekening" produce nothing, because a total that is too small looks
+  exactly like a total that was always that size, while the double count announces
+  itself as a number that is too big. Ghostfolio cash with no twin keeps counting —
+  excluding it wholesale would be right here and would silently lose the money on a
+  deployment where a bank exists in Ghostfolio only.
+
+  Both writes go through the derived path added in 0.5.14, so a person's answer wins
+  permanently: ungrouping a pair is a decision, and the next sync leaves it alone rather
+  than regrouping what was just taken apart.
+
+- **The allocation chart is a picture of what the money is invested in**, not of the
+  account total. Ghostfolio reports the broker's cash balance as a `LIQUIDITY` holding,
+  which put "Cash" beside "Equities" as though it were a position someone chose — and on
+  an instance holding six mirrored bank balances, that slice was most of the pie.
+  `portfolio_metrics` now carries the total split into `invested_value_cents` and
+  `cash_value_cents`, the portfolio page names both halves so the slices reconcile
+  against the headline figure, and the split crosses to Gemini as well, because the
+  reported return is over the whole total while the allocation covers only part of it.
+  Rows written before the columns existed read as "not known": the split is not
+  recoverable from one number, and filling it in would claim a cash balance was
+  invested on exactly the rows that made the fix necessary.
+
+
 ## [0.5.14] — 2026-09-03
 
 ### Added

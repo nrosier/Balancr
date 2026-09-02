@@ -512,6 +512,93 @@ describe('computePortfolioMetrics', () => {
   })
 })
 
+/**
+ * Cash held at the broker is money, not an asset class.
+ *
+ * Ghostfolio reports the broker's cash balance as a `LIQUIDITY` holding, so a naive
+ * allocation puts "Cash" beside "Equities" as though it were a position someone
+ * chose — and on the reporting instance, where a syncing tool writes six bank
+ * balances into Ghostfolio, that slice is most of the pie. The total keeps every
+ * euro; only the picture of what the money is invested *in* excludes it.
+ */
+describe('computePortfolioMetrics with cash at the broker', () => {
+  const mixed = (): readonly HoldingSnapshot[] =>
+    toHoldingSnapshots(
+      '2026-03-01',
+      details(
+        holding({ symbol: 'IWDA.AS', valueInBaseCurrency: 3_000 }),
+        holding({ symbol: 'AGGH.AS', valueInBaseCurrency: 1_000, assetClass: 'FIXED_INCOME' }),
+        holding({ symbol: 'EUR', valueInBaseCurrency: 1_000, assetClass: 'LIQUIDITY' }),
+      ),
+      'EUR',
+    )
+
+  const invested = (): readonly HoldingSnapshot[] =>
+    mixed().filter((snapshot) => snapshot.assetClass !== 'LIQUIDITY')
+
+  const compute = (holdings: readonly HoldingSnapshot[]) =>
+    computePortfolioMetrics('2026-03-01', holdings, {
+      chart: [],
+      performance: { netPerformancePercentage: 0.12 },
+    } as PortfolioPerformance)
+
+  it('splits the total without losing a cent of it', () => {
+    const metrics = compute(mixed())
+
+    expect(metrics.totalValueCents).toBe(500_000)
+    expect(metrics.investedValueCents).toBe(400_000)
+    expect(metrics.cashValueCents).toBe(100_000)
+    // The invariant the API relies on to decide whether it may publish the split:
+    // two halves that do not add up to the total mean something was dropped.
+    expect(metrics.investedValueCents + metrics.cashValueCents).toBe(metrics.totalValueCents)
+  })
+
+  it('allocates exactly as if the cash holding had never been reported', () => {
+    // The issue's own acceptance test: whatever the cash row does to the shares, it
+    // must do nothing at all.
+    expect(compute(mixed()).allocation).toEqual(compute(invested()).allocation)
+    expect(compute(mixed()).allocation.map((slice) => [slice.key, slice.shareBp])).toEqual([
+      ['EQUITY', 7_500],
+      ['FIXED_INCOME', 2_500],
+    ])
+  })
+
+  it('leaves the return alone, because it is the return on everything', () => {
+    // `twrBp` is Ghostfolio's own figure over the whole account set, cash included.
+    // Recomputing it over the invested half is not something this function can do
+    // from a snapshot, and quietly relabelling it would be worse than leaving it.
+    expect(compute(mixed()).twrBp).toBe(compute(invested()).twrBp)
+  })
+
+  it('recognises the other spelling, and only the spellings it knows', () => {
+    const classes = (assetClass: string | null): number =>
+      compute(
+        toHoldingSnapshots(
+          '2026-03-01',
+          details(holding({ symbol: 'X', valueInBaseCurrency: 1_000, ...{ assetClass } })),
+          'EUR',
+        ),
+      ).cashValueCents
+
+    // Ghostfolio says LIQUIDITY; an import or an older instance may say CASH.
+    expect(classes('LIQUIDITY')).toBe(100_000)
+    expect(classes('CASH')).toBe(100_000)
+    expect(classes('liquidity')).toBe(100_000)
+    // Anything else is a position, including no class at all: guessing from a name
+    // would put a money-market fund — which is invested — on the cash side.
+    expect(classes('EQUITY')).toBe(0)
+    expect(classes('CASH_EQUIVALENT')).toBe(0)
+    expect(classes(null)).toBe(0)
+  })
+
+  it('reports both halves as zero for an empty portfolio, not as unknown', () => {
+    const metrics = compute([])
+    expect(metrics.totalValueCents).toBe(0)
+    expect(metrics.investedValueCents).toBe(0)
+    expect(metrics.cashValueCents).toBe(0)
+  })
+})
+
 describe('persistence', () => {
   let ctx: ReturnType<typeof createTestDb>
 

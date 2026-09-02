@@ -47,6 +47,10 @@ const FULL: PortfolioPayload = {
   // The three holdings, summed by the server. Round on purpose: a reader checking
   // this fixture by hand should not have to trust a rounding.
   totalValueCents: 5_000_000,
+  // All of it in positions: the ordinary case, and the one where the split has
+  // nothing to say beyond repeating the total.
+  investedValueCents: 5_000_000,
+  cashValueCents: 0,
   twrBp: 742,
   allocation: [
     { assetClass: 'EQUITY', valueCents: 3_800_000, shareBp: 7_600 },
@@ -105,10 +109,46 @@ const EMPTY: PortfolioPayload = {
   freshness: FRESH,
   date: null,
   totalValueCents: null,
+  investedValueCents: null,
+  cashValueCents: null,
   twrBp: null,
   allocation: [],
   holdings: [],
   history: [],
+}
+
+/**
+ * The same positions with € 5.000 sitting in the broker's cash account.
+ *
+ * The figures are the server's, and the point of the fixture is that they do *not*
+ * all agree: the total is € 55.000, the allocation still adds up to € 50.000, and
+ * the difference is a bank balance a syncing tool wrote into Ghostfolio. A page that
+ * treated the allocation as a picture of the total would put equities at 69% here
+ * instead of the 76% the server computed over the invested half.
+ */
+const MIXED: PortfolioPayload = {
+  ...FULL,
+  totalValueCents: 5_500_000,
+  investedValueCents: 5_000_000,
+  cashValueCents: 500_000,
+  holdings: [
+    ...FULL.holdings,
+    {
+      // Ghostfolio reports the broker's cash as a holding of the currency itself,
+      // one unit priced at the balance. It is in the table because it is money the
+      // account holds; it is out of the allocation because cash is not an asset
+      // class you chose.
+      instrument: 'EUR',
+      symbol: 'EUR',
+      isin: null,
+      name: 'Cash EUR',
+      quantity: '1',
+      priceCents: 500_000,
+      priceCurrency: 'EUR',
+      valueCents: 500_000,
+      currency: 'EUR',
+    },
+  ],
 }
 
 const json = (body: unknown, status = 200): Response =>
@@ -129,17 +169,17 @@ const summaries = (): string[] =>
     .map((chart) => (chart.getAttribute('aria-label') ?? '').replace(SPACES, ' '))
 
 /**
- * An exact text match with separators normalised.
+ * The big figure on one metric card, found by that card's own heading.
  *
- * A plain string matcher compares against the DOM's non-breaking spaces and never
- * matches a formatted amount. Exact rather than substring, because `€ 50.000` also
- * appears inside the chart's spoken summary and a substring match would not say
- * which one was found.
+ * Two cards can honestly carry the same amount — a portfolio with nothing idle has a
+ * total and an invested figure that agree — so a query by text alone stops being able
+ * to say which card it read, and starts failing on the agreement rather than on a bug.
  */
-const amount =
-  (want: string) =>
-  (content: string): boolean =>
-    content.replace(SPACES, ' ') === want
+function metric(name: string): string {
+  const heading = screen.getByRole('heading', { level: 2, name })
+  const value = heading.parentElement?.querySelector('.metric__value')
+  return (value?.textContent ?? '').replace(SPACES, ' ')
+}
 
 /** One row's cells as text, found by the name in its row header. */
 function row(name: string): string[] {
@@ -228,9 +268,9 @@ describe('a portfolio with positions in it', () => {
     await screen.findByRole('heading', { level: 2, name: 'Market value' })
 
     // Whole euro on the total; the decimals and the sign are the server's.
-    expect(screen.getByText(amount('€ 50.000'))).toBeTruthy()
+    expect(metric('Market value')).toBe('€ 50.000')
     // One decimal, which is `formatBp`'s ceiling for every percentage in the app.
-    expect(screen.getByText(amount('7,4%'))).toBeTruthy()
+    expect(metric('Time-weighted return')).toBe('7,4%')
   })
 
   it('dates the total from the snapshot rather than from today', async () => {
@@ -317,6 +357,56 @@ describe('a portfolio with positions in it', () => {
     show()
     const table = await screen.findByRole('table')
     expect(table.parentElement?.getAttribute('tabindex')).toBe('0')
+  })
+})
+
+describe('money at the broker that is not invested', () => {
+  it('names the two halves, so the total and the allocation can differ in public', async () => {
+    serve(json(MIXED))
+    renderApp(<Portfolio />)
+
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+    expect(metric('Market value')).toBe('€ 55.000')
+    expect(metric('Invested')).toBe('€ 50.000')
+    expect(metric('Cash at broker')).toBe('€ 5.000')
+  })
+
+  it('keeps the treemap a picture of the invested half, not of the total', async () => {
+    serve(json(MIXED))
+    renderApp(<Portfolio />)
+    await screen.findByRole('table')
+
+    // 76%, which is 3.800.000 of the invested 5.000.000. Over the € 55.000 total the
+    // same slice would be 69% — the number a page that fed it the total would show.
+    const spoken = summaries()
+    expect(spoken.some((text) => text.includes('Equities') && text.includes('76%'))).toBe(true)
+    expect(spoken.some((text) => text.includes('69%'))).toBe(false)
+  })
+
+  it('shows a zero rather than hiding the card when nothing is idle', async () => {
+    // Cash of nothing is an answer: every euro is working. Hiding the card would
+    // leave the reader unable to tell that from a version that cannot say.
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+
+    await screen.findByRole('heading', { level: 2, name: 'Cash at broker' })
+    expect(metric('Cash at broker')).toBe('€ 0')
+    // And the total is not quietly the same card twice: both figures are drawn.
+    expect(metric('Invested')).toBe('€ 50.000')
+  })
+
+  it('says the split is not known when it was never recorded', async () => {
+    // A snapshot from before the columns existed, or one the history backfill wrote:
+    // the total is real and the split is genuinely absent, which is not zero.
+    serve(json({ ...FULL, investedValueCents: null, cashValueCents: null }))
+    renderApp(<Portfolio />)
+
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+    // Both halves, and neither the total nor the return: those are still known.
+    expect(metric('Invested')).toBe('Not known yet')
+    expect(metric('Cash at broker')).toBe('Not known yet')
+    expect(metric('Market value')).toBe('€ 50.000')
+    expect(metric('Time-weighted return')).toBe('7,4%')
   })
 })
 
