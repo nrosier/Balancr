@@ -108,8 +108,7 @@
       "soon": "Binnenkort: spreiding als treemap, tijdgewogen rendement en een tabel met ISIN, munt en jaarlijkse kosten."
     },
     "settings": {
-      "lede": "Taal, prompts, drempels en welke bron elke rekening beheert.",
-      "soon": "Binnenkort: taal, de prompt-editor met verschilweergave en proefrun, drempelwaarden, rekeningtoewijzing en AI-kosten tot nu."
+      "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
     }
   },
   "severity": {
@@ -136,7 +135,8 @@
     "open": "Open",
     "pending": "Wacht op nazicht",
     "rejected": "Afgewezen",
-    "running": "Bezig"
+    "running": "Bezig",
+    "skipped": "Overgeslagen"
   },
   "theme": {
     "dark": "Donker",

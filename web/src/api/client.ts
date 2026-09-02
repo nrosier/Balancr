@@ -2,10 +2,12 @@
  * The fetch wrapper, and the two things it exists to get right.
  *
  * **Errors arrive in one envelope.** The server answers every failure as
- * `{error: {code, message, requestId}}` (see `src/server/errors.ts`), and the
- * `requestId` is the only way to find the real cause in the log — the message is
+ * `{error: {code, message, requestId, issues?}}` (see `src/server/errors.ts`), and
+ * the `requestId` is the only way to find the real cause in the log — the message is
  * deliberately generic for anything the server did not choose to disclose. So it is
  * carried on the thrown error and shown in the UI, rather than dropped here.
+ * `issues` appears only on a rejected request body and names the fields the form
+ * itself sent, which is what lets a settings form point at the number it got wrong.
  *
  * **A session that expired is not an error to report.** A 401 means the cookie is
  * gone or the session was revoked, and the right answer is the sign-in screen, not a
@@ -28,22 +30,53 @@ export type ApiErrorCode =
   /** Not from the server: the request never arrived, or the answer was not JSON. */
   | 'network_error'
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+/** One rejected field, by the name this client sent. Mirrors `FieldIssue`. */
+export interface ApiFieldIssue {
+  path: string
+  message: string
+}
+
 export class ApiError extends Error {
   readonly code: ApiErrorCode
   readonly status: number
   readonly requestId: string | null
+  /** Empty unless the server rejected a body field by field. */
+  readonly issues: ApiFieldIssue[]
 
-  constructor(code: ApiErrorCode, message: string, status: number, requestId: string | null) {
+  constructor(
+    code: ApiErrorCode,
+    message: string,
+    status: number,
+    requestId: string | null,
+    issues: ApiFieldIssue[] = [],
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.requestId = requestId
+    this.issues = issues
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+/**
+ * The `issues` array, keeping only entries that are actually shaped like one.
+ *
+ * The envelope is ours, but this runs on whatever came back — a proxy's error page,
+ * a truncated body — and a form that trusted the shape would render `undefined`
+ * next to a field.
+ */
+function toFieldIssues(value: unknown): ApiFieldIssue[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry: unknown) =>
+    isRecord(entry) && typeof entry['path'] === 'string' && typeof entry['message'] === 'string'
+      ? [{ path: entry['path'], message: entry['message'] }]
+      : [],
+  )
+}
 
 /**
  * Reads the error envelope, tolerating its absence.
@@ -56,6 +89,7 @@ async function toApiError(response: Response): Promise<ApiError> {
   let code: ApiErrorCode = 'internal_error'
   let message = `The request failed (${String(response.status)}).`
   let requestId: string | null = null
+  let issues: ApiFieldIssue[] = []
 
   try {
     const parsed: unknown = await response.json()
@@ -64,12 +98,13 @@ async function toApiError(response: Response): Promise<ApiError> {
       if (typeof envelope['code'] === 'string') code = envelope['code'] as ApiErrorCode
       if (typeof envelope['message'] === 'string') message = envelope['message']
       if (typeof envelope['requestId'] === 'string') requestId = envelope['requestId']
+      issues = toFieldIssues(envelope['issues'])
     }
   } catch {
     // Not our envelope. The status is still the truth.
   }
 
-  return new ApiError(code, message, response.status, requestId)
+  return new ApiError(code, message, response.status, requestId, issues)
 }
 
 /**

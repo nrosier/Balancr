@@ -44,6 +44,23 @@ export const AUDIT_ACTIONS = [
   'clarification.dismiss',
   'proposal.apply',
   'proposal.reject',
+  /**
+   * The settings screen's writes.
+   *
+   * They belong here for the same reason the other four do: `settings`,
+   * `prompts` and `account_map` hold judgement rather than data, so none of it
+   * can be regenerated from Actual or Ghostfolio. A threshold that quietly
+   * changed three months ago is the kind of thing that makes a chart look like a
+   * bug, and `before`/`after` is the only way to answer "was it always 3 000?".
+   *
+   * `prompt.create` is recorded even though `prompts` is itself versioned: the
+   * row says what the text became, and the entry says who made it and when.
+   */
+  'settings.params',
+  'settings.locale',
+  'account.map',
+  'prompt.create',
+  'prompt.activate',
 ] as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

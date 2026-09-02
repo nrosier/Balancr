@@ -43,7 +43,7 @@ import type { ClarificationCode } from './codes.ts'
 import { collectBundle } from './bundle.ts'
 import { enqueueClarifications } from './clarify.ts'
 import { DEFAULT_CAPS, rankSignals, type RankCaps } from './findings.ts'
-import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
+import { composeSystemPrompt, loadPrompt, resolvePrompt, type ResolvedPrompt } from './prompts.ts'
 import { redact, type AnalysisBundle, type RedactedPayload } from './redact.ts'
 import { renderSignals, type RenderedFinding } from './render.ts'
 import { recordRun } from './runs.ts'
@@ -126,6 +126,26 @@ export interface AnalysisOptions {
   signal?: AbortSignal
   /** Who asked, for the ledger. Null for the nightly job. */
   userId?: string | null
+  /**
+   * A specific prompt version instead of whichever one is active.
+   *
+   * The prompt editor's dry run: the whole question being asked is what an
+   * unactivated version would do, and answering it with the active prompt would
+   * make the button a lie. An unknown id throws rather than falling back — a dry
+   * run that silently tested something else is worse than an error message.
+   */
+  promptId?: string
+  /**
+   * `false` runs everything and stores nothing but the ledger row.
+   *
+   * The dry run has to be the real code path or it does not answer the question,
+   * so this is a flag inside the one implementation rather than a second one that
+   * drifts from it. What it skips is exactly what would outlive the request:
+   * findings on the insights page, and clarifications in the queue. The `ai_runs`
+   * row is still written, and still billed — a dry run spends real money, and the
+   * cost guard has to see it or the editor becomes a way around the budget.
+   */
+  persist?: boolean
 }
 
 /**
@@ -304,11 +324,99 @@ function resolveClarifications(
  * leaves no trace of having tried, and the run row is the trace. It does throw for
  * a database failure, which is a different kind of problem and should be loud.
  */
+export interface AnalysisEstimate {
+  month: string
+  model: string
+  /** Null when the month has no facts, which is also when a dry run is pointless. */
+  payloadChars: number | null
+  estimateMicroEur: number
+  /** What the budget guard would answer right now, without spending anything. */
+  allowed: boolean
+  reason: string | null
+}
+
+/**
+ * What a run on this month would cost, without making one.
+ *
+ * The prompt editor has to show this *before* the button is pressed — a dry run
+ * against real data on a pre-paid key is the one action in this application that
+ * spends money on a click, and an editor that hides the price is how a €15 budget
+ * disappears in an afternoon of tuning.
+ *
+ * It is an estimate and says so: tokens come from character count, and the system
+ * prompt's own length is deliberately not part of it — that text is cached at the
+ * provider, so counting it in full would overstate every run after the first. The
+ * payload is the part that changes.
+ */
+export function estimateAnalysis(
+  db: Db,
+  options: { month: string; locale?: string; model?: string; now?: Date },
+): AnalysisEstimate {
+  const locale = options.locale ?? config.DEFAULT_LOCALE
+  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const prepared = prepareMonth(db, options.month, locale)
+
+  if (prepared === null) {
+    return {
+      month: options.month,
+      model,
+      payloadChars: null,
+      estimateMicroEur: 0,
+      allowed: false,
+      reason: 'no_facts',
+    }
+  }
+
+  const payloadChars = JSON.stringify(prepared.payload).length
+  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const decision = checkBudget(db, estimateMicroEur, options.now ?? new Date())
+
+  return {
+    month: options.month,
+    model,
+    payloadChars,
+    estimateMicroEur,
+    allowed: decision.allowed,
+    reason: decision.allowed ? null : decision.reason,
+  }
+}
+
+/**
+ * The prompt this run should use: a named version, or whichever is active.
+ *
+ * The `key` is fixed at `analysis.system` because that is the only prompt this
+ * pass has; asking for a `narrative.system` version here would test a prompt
+ * against a schema it was not written for, which is why the check exists rather
+ * than trusting the caller's id.
+ */
+function resolvePromptFor(db: Db, locale: string, promptId: string | undefined): ResolvedPrompt {
+  if (promptId === undefined) return resolvePrompt(db, 'analysis.system', locale)
+
+  const row = loadPrompt(db, promptId)
+  if (row === null) throw new Error(`no such prompt version: ${promptId}`)
+  if (row.key !== 'analysis.system') {
+    throw new Error(`prompt ${promptId} is a ${row.key}, not an analysis prompt`)
+  }
+
+  return {
+    id: row.id,
+    key: 'analysis.system',
+    locale: row.locale,
+    version: row.version,
+    body: row.body,
+  }
+}
+
 export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<AnalysisOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
   const model = options.model ?? config.GEMINI_MODEL_FAST
   const now = options.now ?? new Date()
   const month = options.month
+  const persist = options.persist !== false
+  // `dryrun` is a stored kind of its own so the spend page can say what the
+  // editor cost, and so a query for what the insights page is showing does not
+  // have to filter out runs whose findings were never kept.
+  const kind = persist ? 'findings' : 'dryrun'
 
   const base = { month, locale, dropped: [] as DroppedItem[], clarifications: [], queued: 0 }
 
@@ -334,7 +442,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     // Recorded at zero cost: nothing was sent. The payload is stored anyway, so
     // the audit view shows what *would* have gone out.
     const runId = recordRun(db, {
-      kind: 'findings',
+      kind,
       model,
       locale,
       payload,
@@ -354,7 +462,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     }
   }
 
-  const prompt = resolvePrompt(db, 'analysis.system', locale)
+  const prompt = resolvePromptFor(db, locale, options.promptId)
 
   let result
   try {
@@ -369,7 +477,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
     const runId = recordRun(db, {
-      kind: 'findings',
+      kind,
       model,
       locale,
       payload,
@@ -398,7 +506,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const runId = recordRun(db, {
-      kind: 'findings',
+      kind,
       model: result.model,
       locale,
       payload,
@@ -425,7 +533,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
 
   const findings = renderGrounded(grounded.findings, sources, locale)
   const runId = recordRun(db, {
-    kind: 'findings',
+    kind,
     model: result.model,
     locale,
     payload,
@@ -435,7 +543,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
-  persistFindings(db, runId, month, grounded.findings, sources)
+  if (persist) persistFindings(db, runId, month, grounded.findings, sources)
 
   if (grounded.dropped.length > 0) {
     // Worth a log line at warn: a model returning findings nothing computed is
@@ -447,12 +555,14 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   // Enqueued here rather than by the caller: the guesses exist only inside this
   // function, and the one output of a run that accumulates value across months is
   // exactly the one a caller could forget to persist.
-  const queued = enqueueClarifications(db, {
-    month,
-    candidates: clarifications,
-    runId,
-    now,
-  }).enqueued.length
+  const queued = persist
+    ? enqueueClarifications(db, {
+        month,
+        candidates: clarifications,
+        runId,
+        now,
+      }).enqueued.length
+    : 0
 
   return {
     month,
