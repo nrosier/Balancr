@@ -143,6 +143,33 @@ export function formatDecimal(value: number, maxFractionDigits = 1): string {
   return fmt.format(value)
 }
 
+/** Interpolation variables for a catalogue key. */
+export type Vars = Record<string, string | number>
+
+/**
+ * Supplies `{{value}}` for a pluralised key, formatted the Belgian way.
+ *
+ * `count` has to stay a number — it is what selects `_one` from `_other` — and
+ * i18next writes an interpolated number with `String(value)`, so a catalogue
+ * printing `{{count}}` renders `2.4 months` in a UI that spells every other number
+ * `2,4`. Hence the split: `count` selects the form, `{{value}}` is what the sentence
+ * prints. `scripts/check-i18n.ts` fails a plural key that reaches for `{{count}}`
+ * instead.
+ *
+ * It lives here, next to the formatter it calls, because the server and the browser
+ * both have to apply it — `web/src/i18n.ts` wires this same function into
+ * react-i18next. A second copy on the browser side is how one screen ends up
+ * spelling a number the other way.
+ *
+ * Not done through `interpolation.format`, which looks like the obvious place and is
+ * not: i18next installs its own formatter during `init` and overwrites that option,
+ * so a hook there is silently discarded.
+ */
+export function withFormattedCount(vars: Vars): Vars {
+  if (typeof vars['count'] !== 'number' || vars['value'] !== undefined) return vars
+  return { ...vars, value: formatDecimal(vars['count']) }
+}
+
 // ---------------------------------------------------------------------------
 //  Percentages — stored as basis points, so no float drift in the database
 // ---------------------------------------------------------------------------

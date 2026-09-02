@@ -21,7 +21,8 @@
  *     default; a route opts out with `config: { auth: false }`.
  *  6. **error handling** — replaces Fastify's default, which echoes the thrown
  *     message and would leak SQLite and upstream detail.
- *  7. **routes** — last, so every hook above already applies to them.
+ *  7. **routes** — last, so every hook above already applies to them, and the SPA
+ *     last of all: it is the only thing here that claims a wildcard.
  */
 import cookie from '@fastify/cookie'
 import Fastify, { LogController } from 'fastify'
@@ -32,12 +33,14 @@ import { logger } from '../logger.ts'
 import { registerAuth } from './auth/guard.ts'
 import { oidcClientFromConfig, type OidcClient } from './auth/oidc.ts'
 import { registerCsrf } from './csrf.ts'
-import { registerErrorHandling } from './errors.ts'
+import { notFoundHandler, registerErrorHandling } from './errors.ts'
 import { registerRateLimits } from './rate-limit.ts'
 import { registerApiRoutes } from './routes/api/index.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
+import { registerBootstrapRoute } from './routes/bootstrap.ts'
 import { registerHealthRoutes } from './routes/health.ts'
 import { registerSecurityHeaders } from './security.ts'
+import { registerSpa, spaNotFoundHandler, webRoot } from './spa.ts'
 import { TRUSTED_PROXIES } from './trust.ts'
 
 const log = logger.child({ module: 'server.app' })
@@ -64,9 +67,20 @@ export interface BuildAppOptions {
    * to mutate the environment after `config.ts` has already read it.
    */
   oidc?: OidcClient | null
+  /**
+   * Where the built SPA is.
+   *
+   * Undefined means "look for it on disk", which is what production does. Explicit
+   * `null` means "this instance serves the API only" — which every server test says,
+   * because otherwise the behaviour of `GET /` and of an unknown path would depend on
+   * whether the developer happened to have run `npm run build`, and a suite that
+   * passes or fails according to what is in `dist/` is worse than no suite. A string
+   * points at a bundle directly, which is how the SPA's own test uses a fixture.
+   */
+  web?: string | null
 }
 
-export async function buildApp({ db, oidc }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ db, oidc, web }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     // Cast so the instance keeps Fastify's default generic parameters. Passing the
     // pino logger through unwidened specialises `FastifyInstance` on pino's own
@@ -107,11 +121,21 @@ export async function buildApp({ db, oidc }: BuildAppOptions): Promise<FastifyIn
   await registerRateLimits(app, db)
   registerCsrf(app)
   registerAuth(app, db)
-  registerErrorHandling(app)
+
+  // Resolved once, before error handling, because it decides what a 404 is: with a
+  // bundle an unknown path that a browser is navigating to gets the shell so the
+  // client-side router can resolve it, and without one it gets the JSON envelope.
+  const bundle = web === undefined ? webRoot() : web
+  registerErrorHandling(
+    app,
+    bundle === null ? notFoundHandler : spaNotFoundHandler(bundle, notFoundHandler),
+  )
 
   registerHealthRoutes(app)
+  registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
   registerApiRoutes(app, db)
+  await registerSpa(app, bundle)
 
   log.debug(
     {
@@ -120,6 +144,7 @@ export async function buildApp({ db, oidc }: BuildAppOptions): Promise<FastifyIn
       rateLimitAiPerHour: config.RATE_LIMIT_AI_PER_HOUR,
       oidc: config.AUTH_OIDC_ISSUER !== undefined,
       localLogin: config.AUTH_LOCAL_ENABLED,
+      web: bundle !== null,
     },
     'server built',
   )

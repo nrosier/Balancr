@@ -1,0 +1,76 @@
+/*
+ * The sign-in screen. Its own stylesheet because it is the one view that renders
+ * outside the shell — no header, no navigation, nothing that needs a session.
+ */
+
+.signin {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) var(--space-4);
+}
+
+.signin__card {
+  width: 100%;
+  max-width: 24rem;
+  padding: var(--space-6) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.signin__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.signin__mark {
+  display: block;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.signin__lede {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-muted);
+}
+
+.signin__oidc {
+  width: 100%;
+}
+
+/* A labelled rule, so "or" reads as a separator rather than as a stray word. */
+.signin__or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+  font-size: var(--type-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.signin__or::before,
+.signin__or::after {
+  content: '';
+  flex: 1 1 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.signin__error {
+  margin-top: var(--space-4);
+}

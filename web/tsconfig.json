@@ -1,0 +1,31 @@
+{
+  "//": [
+    "A second configuration rather than a shared one, because the two halves of",
+    "this repository compile under genuinely different assumptions: the server",
+    "targets NodeNext with no DOM, and the browser targets a bundler with no Node.",
+    "Merging them would hand server code a `document` it must never touch, and",
+    "browser code a `process.env` it cannot read. `npm run typecheck` runs both.",
+    "",
+    "The strictness flags are copied from the root config on purpose — a relaxed",
+    "frontend is how `undefined` reaches a chart axis."
+  ],
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src", "test", "vite.config.ts", "env.d.ts"]
+}

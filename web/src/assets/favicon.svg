@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Balancr">
+  <rect width="32" height="32" rx="7" fill="#3450c8"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round">
+    <path d="M8 12h16"/>
+    <path d="M16 12v13"/>
+    <path d="M11.5 25h9"/>
+    <path d="M3.5 14a4.5 4.5 0 0 0 9 0"/>
+    <path d="M19.5 14a4.5 4.5 0 0 0 9 0"/>
+  </g>
+</svg>

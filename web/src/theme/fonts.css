@@ -1,0 +1,43 @@
+/*
+ * Inter, self-hosted.
+ *
+ * `@fontsource-variable/inter` ships nine subsets and its own `index.css` declares
+ * all of them. Only the two Latin ones are declared here — 132 kB rather than
+ * ~500 kB in the image — which is enough for English, Dutch and every currency and
+ * accent either language uses. The `unicode-range` values are copied verbatim from
+ * the package so the browser still downloads only the subset a page needs.
+ *
+ * The variable font is one file for every weight from 100 to 900, so the type scale
+ * costs no extra request. `font-display: swap` keeps first paint readable in the
+ * fallback stack rather than blank.
+ *
+ * `url()` points at the package, and Vite rewrites it to a hashed same-origin file
+ * under `assets/`. That matters: `font-src 'self'` in the Content-Security-Policy
+ * permits no external origin at all, and `assetsInlineLimit: 0` in the Vite config
+ * keeps it a real file rather than a `data:` URI, which the same policy would also
+ * refuse.
+ */
+
+/* inter-latin-wght-normal */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* inter-latin-ext-wght-normal */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
