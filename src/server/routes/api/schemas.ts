@@ -130,6 +130,15 @@ export const categoryFactSchema = z.object({
   /** The EWMA norm, or null when there is not enough history to state one. */
   baselineCents: cents().nullable(),
   deltaBp: basisPoints().nullable(),
+  /**
+   * Spend per month over the trailing window, aligned to `trendMonths`.
+   *
+   * Dense and the same length for every category, which is what makes a wall of small
+   * charts comparable: a per-category window would give the newest envelope the
+   * shortest axis and make its line look steeper than its neighbour's. A month with no
+   * transactions is a real zero, not a gap.
+   */
+  trendCents: z.array(cents()),
 })
 
 export const budgetSchema = z.object({
@@ -157,6 +166,8 @@ export const budgetSchema = z.object({
       savingsRateBp: basisPoints().nullable(),
     }),
   ),
+  /** The months every `categories[].trendCents` is indexed by, oldest first. */
+  trendMonths: z.array(monthKey()),
   categories: z.array(categoryFactSchema),
   signals: z.array(signalSchema),
   uncategorised: z
