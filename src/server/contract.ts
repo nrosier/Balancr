@@ -56,6 +56,16 @@ export interface BootstrapResponse {
     supported: string[]
     /** `DEFAULT_LOCALE`, used when nothing better is known about the visitor. */
     default: string
+    /**
+     * The language this request resolved to — the account's setting, the cookie,
+     * `Accept-Language`, or the default, in that order. Always one of `supported`.
+     *
+     * The bundle starts in this language rather than reading `navigator.languages`
+     * itself: the server has already answered the same question to decide `<html
+     * lang>`, and two implementations of one resolution order is how the attribute and
+     * the strings end up disagreeing. See `src/server/locale.ts`.
+     */
+    active: string
   }
   /**
    * Number and date formatting, which is a separate setting from the UI language on

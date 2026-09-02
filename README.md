@@ -274,7 +274,7 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, slice 4 of 8: the web UI. The settings page is in
+**Where it is now** — `0.6.0`, six of its eight web-UI slices. The settings page is in
 ([#33](https://github.com/nrosier/Balancr/issues/33)) — the one screen in the
 application that writes, and the eleven routes behind it: language, the seventeen
 thresholds the aggregation engine judges by, the prompt editor with its diff and its
@@ -288,7 +288,12 @@ years rather than one night. And the figure both pages lead with is now honest o
 deployment that syncs bank accounts into Ghostfolio as well as Actual: the shared
 balances are counted once, on the Actual side that reconciles them, and the cash sitting
 at the broker is named rather than drawn as an asset class
-([#124](https://github.com/nrosier/Balancr/issues/124)). Insights is being built now.
+([#124](https://github.com/nrosier/Balancr/issues/124)). The language is settled by the
+server now ([#34](https://github.com/nrosier/Balancr/issues/34)): one resolution
+order behind both `<html lang>` and the strings underneath it, where the attribute used
+to say `en` to everyone. Insights
+([#32](https://github.com/nrosier/Balancr/issues/32)) is being built now, and the
+accessibility pass ([#35](https://github.com/nrosier/Balancr/issues/35)) is last.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -454,8 +459,16 @@ evidence, each mirrored balance is grouped with its Actual twin, and cash held a
 broker is kept out of the allocation while staying in the total. Every derived answer
 yields to a human one, permanently — including "these two are not the same account".
 
-Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), language
-switching end to end ([#34](https://github.com/nrosier/Balancr/issues/34)), the
+The interface's language is decided on the server now
+([#34](https://github.com/nrosier/Balancr/issues/34)). The order this README has
+promised since `0.1.0` — account setting, cookie, `Accept-Language`,
+`DEFAULT_LOCALE` — existed only as a browser-side walk over `navigator.languages`,
+so `<html lang>` said `en` to every visitor and an account's own setting was never
+read at all. One order behind both answers is also what lets the chrome be sized for
+Dutch and kept that way: thirteen length bounds in `npm run i18n:check` refuse a
+translation longer than the box it has to fit.
+
+Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), the
 accessibility and responsive pass
 ([#35](https://github.com/nrosier/Balancr/issues/35)), the duplicate-account matcher
 ([#131](https://github.com/nrosier/Balancr/issues/131)) and per-locale prompts

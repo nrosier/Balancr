@@ -12,17 +12,21 @@
  * is a sibling instead, public by necessity: it is what the sign-in screen needs in
  * order to be drawn in the right language.
  *
+ * The resolved language is here rather than left to the browser because the server has
+ * already decided it once, for `<html lang>`. One answer, asked for once.
+ *
  * Nothing here is a secret. The version is already in `/healthz`, the CSRF cookie
  * is readable by script by design (that is the whole double-submit mechanism), and
  * the locale settings are visible in the rendered output anyway. What is *not* here
  * matters more: no upstream URLs, no issuer, no account names, and no hint about
  * whether local login is enabled — `/auth/session` answers that, per connection.
  */
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { config } from '../../config.ts'
 import type { BootstrapResponse } from '../contract.ts'
 import { CSRF_COOKIE } from '../cookies.ts'
 import { CSRF_HEADER } from '../csrf.ts'
+import { resolveLocale } from '../locale.ts'
 import { APP_VERSION } from '../version.ts'
 
 export function registerBootstrapRoute(app: FastifyInstance): void {
@@ -32,11 +36,15 @@ export function registerBootstrapRoute(app: FastifyInstance): void {
     // it is called once per page load, so the ordinary bucket is generous, and an
     // exemption would hand out a free unauthenticated endpoint.
     { config: { auth: false } },
-    (): BootstrapResponse => ({
+    (request: FastifyRequest): BootstrapResponse => ({
       version: APP_VERSION,
       locales: {
         supported: [...config.SUPPORTED_LOCALES],
         default: config.DEFAULT_LOCALE,
+        // The same answer the shell's `<html lang>` was built from, so the attribute
+        // and the strings cannot disagree. Public routes still get `request.user`, so
+        // a signed-in visitor's own setting is honoured here too.
+        active: resolveLocale(request),
       },
       format: {
         locale: config.FORMAT_LOCALE,

@@ -204,11 +204,32 @@
   font-weight: var(--weight-medium);
 }
 
+/*
+ * Two lines, always reserved, and sized for the Dutch string rather than the English
+ * one.
+ *
+ * `Portefeuille` and `Instellingen` are twelve characters where English has nine and
+ * eight, and the tab bar divides the viewport into five: a 360px phone leaves about
+ * 60px per label, which one line of `--type-xs` does not cover. So the label gets two
+ * lines — and the box is reserved whether the string needs them or not, because a
+ * label that grew only when it wrapped would leave three icons on one baseline and
+ * two on another.
+ *
+ * `hyphens: auto` is what makes the break readable instead of arbitrary, and it works
+ * because `<html lang>` is the document's real language now that the server sets it
+ * per request (`src/server/shell.ts`) — with `lang="en"` on a Dutch page the browser
+ * would hyphenate Dutch by English rules. `overflow-wrap` is the fallback where no
+ * dictionary is loaded. Nothing should ever reach the clip: `npm run i18n:check`
+ * refuses a nav label longer than this box holds.
+ */
 .nav__label {
   overflow: hidden;
   max-width: 100%;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: calc(2 * 1.15em);
+  line-height: 1.15;
+  text-align: center;
+  hyphens: auto;
+  overflow-wrap: break-word;
 }
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
@@ -289,6 +310,19 @@
 
   .nav__link[aria-current='page'] {
     background: var(--accent-soft);
+  }
+
+  /*
+   * The sidebar is 15rem wide, which is several times what the longest label needs,
+   * so the two-line box the tab bar depends on would only add a blank line under
+   * every entry. One line, and the ellipsis is back as the last resort.
+   */
+  .nav__label {
+    min-height: 0;
+    line-height: inherit;
+    text-align: start;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .main {

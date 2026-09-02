@@ -26,7 +26,12 @@ import { users } from '../../src/db/schema.ts'
 import { requireUser } from '../../src/server/auth/guard.ts'
 import { createOidcClient, OIDC_SCOPE } from '../../src/server/auth/oidc.ts'
 import { hashSessionToken, readSession } from '../../src/server/auth/sessions.ts'
-import { CSRF_COOKIE, LOGIN_FLOW_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
+import {
+  CSRF_COOKIE,
+  LOCALE_COOKIE,
+  LOGIN_FLOW_COOKIE,
+  SESSION_COOKIE,
+} from '../../src/server/cookies.ts'
 import { CSRF_HEADER } from '../../src/server/csrf.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createFakeIssuer, type AuthorizeOptions, type FakeIssuer } from '../helpers/oidc-issuer.ts'
@@ -252,6 +257,18 @@ describe('the callback', () => {
     expect(cookieValue(res, CSRF_COOKIE)).toBeTruthy()
     // Cleared, so a second code cannot be tried against the same flow cookie.
     expect(cookieValue(res, LOGIN_FLOW_COOKIE)).toBe('')
+  })
+
+  it('remembers the account language on the way through', async () => {
+    // The callback answers with a redirect, and the request that follows it is the one
+    // that renders `<html lang>`. Setting the cookie here is what makes the first
+    // document after an OIDC login Dutch rather than English-then-Dutch. A returning
+    // account, because a brand-new one has no preference yet to remember.
+    await login()
+    ctx.db.update(users).set({ locale: 'nl' }).run()
+
+    const res = await login()
+    expect(cookieValue(res, LOCALE_COOKIE)).toBe('nl')
   })
 
   it('is useless without the cookie from the browser that started it', async () => {
