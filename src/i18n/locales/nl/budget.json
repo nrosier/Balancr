@@ -19,7 +19,15 @@
     "uncategorised": "Niet-gecategoriseerd"
   },
   "hygiene": {
+    "clean": "Niets kost punten.",
+    "deductions": "Wat punten kost",
     "hint": "Een analyse is maar zo goed als de boekhouding erachter.",
+    "reason": {
+      "recompute_mismatch": "Herberekende totalen wijken af van Actual",
+      "stale_prices": "Koersen ouder dan toegelaten",
+      "uncategorised": "Transacties zonder categorie",
+      "unreconciled": "Rekeningen recent niet afgestemd"
+    },
     "score": "Kwaliteitsscore",
     "title": "Gegevenskwaliteit"
   },

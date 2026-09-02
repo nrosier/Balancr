@@ -11,9 +11,17 @@
  * The document title is set here because it depends on the route *and* the language,
  * and both live in this tree. It is the one piece of chrome outside the shell that a
  * language switch has to reach.
+ *
+ * `SessionExpiryProvider` is the other half of that rule. A page reading `/api/*` can
+ * be told mid-session that the cookie is gone — revoked from another device, or simply
+ * expired while a dashboard sat open — and the page has no business deciding what to
+ * do about it. `useResource` hands the 401 up to `load`, which re-asks and lands on
+ * the sign-in screen through exactly the same path as a first visit. Wired once here
+ * rather than per page, so #30 onwards inherit it.
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, type CsrfConfig } from './api/client.ts'
+import { SessionExpiryProvider } from './api/resource.tsx'
 import { fetchSession, type SessionResponse } from './auth/session.ts'
 import { SignIn } from './auth/SignIn.tsx'
 import './auth/signin.css'
@@ -95,13 +103,10 @@ export function App({ bootstrap }: AppProps): ReactNode {
   }
 
   return (
-    <AppShell
-      user={session.user}
-      csrf={csrf}
-      version={bootstrap.version}
-      onSignedOut={load}
-    >
-      {route === undefined ? <NotFound /> : <route.Page />}
-    </AppShell>
+    <SessionExpiryProvider onExpired={load}>
+      <AppShell user={session.user} csrf={csrf} version={bootstrap.version} onSignedOut={load}>
+        {route === undefined ? <NotFound /> : <route.Page />}
+      </AppShell>
+    </SessionExpiryProvider>
   )
 }

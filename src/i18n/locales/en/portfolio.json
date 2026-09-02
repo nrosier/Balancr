@@ -1,6 +1,7 @@
 {
   "chart": {
     "allocationTitle": "Allocation",
+    "netWorthSummary": "Net worth between {{from}} and {{to}}: {{start}} at the start, {{end}} at the end.",
     "netWorthTitle": "Net worth over time",
     "twrTitle": "Return over time"
   },
@@ -17,9 +18,12 @@
     "weight": "Weight"
   },
   "metric": {
+    "debt": "Debt",
     "emergencyFund": "Emergency buffer",
+    "emergencyFundHint": "How long the liquid balance would cover an average month.",
     "gain": "Result",
     "invested": "Invested",
+    "liquid": "Directly available",
     "mwr": "Money-weighted return",
     "netWorth": "Net worth",
     "ter": "Annual costs",

@@ -206,6 +206,32 @@ export function formatDate(iso: string): string {
   return fmt.format(parseIsoDate(iso))
 }
 
+/**
+ * `dd/MM/yyyy, HH:mm` for a full timestamp — the separator `Intl` chooses for nl-BE.
+ *
+ * Separate from `formatDate`, which takes a `YYYY-MM-DD` day and would throw on a
+ * timestamp — `parseIsoDate` appends its own `T00:00:00Z`. The caller that needs the
+ * hour is the freshness note: "updated 02/09/2026" for something that last ran eight
+ * hours ago reads as this morning's figure, and the difference between a sync that
+ * ran at breakfast and one that stopped at midnight is the whole point of showing it.
+ */
+export function formatDateTime(iso: string): string {
+  const fmt = cached('datetime', () =>
+    new Intl.DateTimeFormat(formatSettings().formatLocale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: formatSettings().timeZone,
+    }),
+  ) as Intl.DateTimeFormat
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) throw new Error(`invalid timestamp: ${iso}`)
+  return fmt.format(at)
+}
+
 /** `March 2026` / `maart 2026` — the name translates, the order does not. */
 export function formatMonth(month: string, lang: UiLanguage): string {
   const fmt = cached(`month:long:${lang}`, () =>
