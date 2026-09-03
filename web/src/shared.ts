@@ -35,6 +35,7 @@ export {
   formatDate,
   formatDateTime,
   formatDecimal,
+  formatList,
   formatMicroEur,
   formatMonth,
   formatMonthShort,

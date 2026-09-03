@@ -21,6 +21,7 @@ import {
   decidedFields,
   dedupeCandidates,
   defaultKind,
+  dismissMirror,
   groupAccounts,
   loadAccountMap,
   normaliseAccountName,
@@ -29,6 +30,7 @@ import {
   syncAccountMap,
   ungroupAccount,
   updateAccountMap,
+  type AccountBalance,
   type AccountSighting,
 } from '../../src/domain/aggregate/accounts.ts'
 
@@ -163,33 +165,258 @@ describe('accountMapBySource', () => {
 })
 
 describe('dedupeCandidates', () => {
-  it('pairs an ungrouped Ghostfolio account with the plausible Actual mirrors', () => {
+  /** Sets the derived `kind` the way #124's classifier would have. */
+  const asKind = (externalId: string, kind: 'cash' | 'investment' | 'savings'): string => {
+    const row = rows().find((candidate) => candidate.externalId === externalId)
+    expect(row).toBeDefined()
+    updateAccountMap(ctx.db, row!.id, { kind })
+    return row!.id
+  }
+
+  const idOf = (externalId: string): string => {
+    const row = rows().find((candidate) => candidate.externalId === externalId)
+    expect(row).toBeDefined()
+    return row!.id
+  }
+
+  const balance = (externalId: string, valueCents: number, currency = 'EUR'): AccountBalance => ({
+    accountMapId: idOf(externalId),
+    valueCents,
+    currency,
+  })
+
+  it('offers nothing for a brokerage account and four unrelated cash accounts', () => {
+    // The reported case, verbatim: Equate+ is a share portfolio, and Monizze, Monizze
+    // Ecocheques, Cash and Argenta Sparen are meal vouchers, eco vouchers, cash and a
+    // savings account. The old cross join produced four suggestions and eight buttons
+    // here, having compared nothing at all.
     syncAccountMap(ctx.db, [
-      actual('a1', 'Zichtrekening'),
-      actual('a2', 'Beleggingen', true),
-      ghostfolio('g1', 'Bolero'),
+      actual('a1', 'Monizze', true),
+      actual('a2', 'Monizze Ecocheques', true),
+      actual('a3', 'Cash', true),
+      actual('a4', 'Argenta Sparen', true),
+      ghostfolio('g1', 'Equate+'),
     ])
+
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+
+  it('pairs a Ghostfolio cash mirror with its Actual twin, on name and balance', () => {
+    syncAccountMap(ctx.db, [
+      actual('a1', 'Argenta Zichtrekening'),
+      actual('a2', 'Beleggingen', true),
+      mirror('g1', 'Argenta Zichtrekening'),
+    ])
+    asKind('g1', 'cash')
+
+    const candidates = dedupeCandidates(loadAccountMap(ctx.db), [
+      balance('g1', 148_233),
+      balance('a1', 148_233),
+    ])
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]!.ghostfolio.externalId).toBe('g1')
+    expect(candidates[0]!.actual.externalId).toBe('a1')
+    // Strongest first, so the panel's sentence reads best evidence first.
+    expect(candidates[0]!.signals).toEqual(['name', 'balance', 'currency'])
+  })
+
+  it('offers the on-budget current account, which the old filter excluded', () => {
+    // `kind !== 'checking'` was written for an Actual "Investments" account mirroring
+    // Ghostfolio positions. Under a tool that syncs banks *into* Ghostfolio the mirror
+    // runs the other way, so the one family of correct suggestions was the one family
+    // the function structurally could not make.
+    syncAccountMap(ctx.db, [actual('a1', 'KBC Zichtrekening'), mirror('g1', 'KBC Zichtrekening')])
+    asKind('g1', 'cash')
 
     const candidates = dedupeCandidates(loadAccountMap(ctx.db))
 
     expect(candidates).toHaveLength(1)
-    expect(candidates[0]!.ghostfolio.externalId).toBe('g1')
-    // The on-budget current account is not offered: it is where the bills are
-    // paid from, not a mirror of a broker.
-    expect(candidates[0]!.possibleMirrors.map((row) => row.externalId)).toEqual(['a2'])
+    expect(candidates[0]!.actual.kind).toBe('checking')
   })
 
-  it('says nothing once the decision is made', () => {
-    syncAccountMap(ctx.db, [actual('a2', 'Beleggingen', true), ghostfolio('g1', 'Bolero')])
-    const [mirror, truth] = rows()
-    setDedupeGroup(ctx.db, 'broker', [mirror!.id, truth!.id], truth!.id)
+  it('keeps the better-scoring match when two Actual accounts are within tolerance', () => {
+    syncAccountMap(ctx.db, [
+      actual('a1', 'Spaarrekening'),
+      actual('a2', 'Argenta Sparen'),
+      mirror('g1', 'Argenta Sparen'),
+    ])
+    asKind('g1', 'cash')
+
+    // Both agree on the balance; only one agrees on the name.
+    const candidates = dedupeCandidates(loadAccountMap(ctx.db), [
+      balance('g1', 50_000),
+      balance('a1', 50_000),
+      balance('a2', 50_000),
+    ])
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]!.actual.externalId).toBe('a2')
+    expect(candidates[0]!.signals).toEqual(['name', 'balance', 'currency'])
+  })
+
+  it('offers nothing when the names differ and the balances differ', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'KBC Zichtrekening')])
+    asKind('g1', 'cash')
+
+    const candidates = dedupeCandidates(loadAccountMap(ctx.db), [
+      balance('g1', 50_000),
+      balance('a1', 91_400),
+    ])
+
+    expect(candidates).toEqual([])
+  })
+
+  it('does not treat two empty accounts as agreeing', () => {
+    // Zero is the most common balance in any dataset. Counting it as evidence would
+    // pair every dormant account with every other one.
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'KBC Zichtrekening')])
+    asKind('g1', 'cash')
+
+    expect(
+      dedupeCandidates(loadAccountMap(ctx.db), [balance('g1', 0), balance('a1', 0)]),
+    ).toEqual([])
+  })
+
+  it('does not pair a credit card in the red with savings of the same magnitude', () => {
+    // Signed, not absolute: −800 and +800 are not the same money, and comparing
+    // magnitudes would say they were.
+    syncAccountMap(ctx.db, [actual('a1', 'Buffer'), mirror('g1', 'Kaart')])
+    asKind('g1', 'cash')
+
+    expect(
+      dedupeCandidates(loadAccountMap(ctx.db), [balance('g1', -80_000), balance('a1', 80_000)]),
+    ).toEqual([])
+  })
+
+  it('does not call a currency match on its own evidence', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'KBC Zichtrekening')])
+    asKind('g1', 'cash')
+
+    expect(
+      dedupeCandidates(loadAccountMap(ctx.db), [balance('g1', 12_300), balance('a1', 45_600)]),
+    ).toEqual([])
+  })
+
+  it('will not pair a portfolio with a cash account, or the reverse', () => {
+    // Same name on both sides, and still no suggestion: a Ghostfolio account holding
+    // positions cannot be a copy of a bank balance whatever it is called.
+    syncAccountMap(ctx.db, [actual('a1', 'Bolero'), ghostfolio('g1', 'Bolero')])
+    asKind('a1', 'cash')
 
     expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
   })
 
-  it('says nothing when there is no plausible mirror at all', () => {
-    syncAccountMap(ctx.db, [actual('a1', 'Zichtrekening'), ghostfolio('g1', 'Bolero')])
+  it('matches on containment, whole words only', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta'), mirror('g1', 'Argenta Zichtrekening')])
+    asKind('g1', 'cash')
+
+    const candidates = dedupeCandidates(loadAccountMap(ctx.db))
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]!.signals).toEqual(['nameContains'])
+  })
+
+  it('does not match a word that merely starts another', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Cashflow'), mirror('g1', 'Cash')])
+    asKind('g1', 'cash')
+
     expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+
+  it('says nothing once the accounts are grouped', () => {
+    syncAccountMap(ctx.db, [actual('a2', 'Bolero', true), ghostfolio('g1', 'Bolero')])
+    const [mirrorRow, truth] = rows()
+    setDedupeGroup(ctx.db, 'broker', [mirrorRow!.id, truth!.id], truth!.id)
+
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+
+  it('says nothing about an account excluded from net worth', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'Argenta Sparen')])
+    asKind('g1', 'cash')
+    updateAccountMap(ctx.db, idOf('g1'), { includeInNetWorth: false })
+
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+
+  it('says nothing about an Actual account excluded from net worth', () => {
+    // Nothing is counted twice if only one side counts, so there is no group to propose.
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'Argenta Sparen')])
+    asKind('g1', 'cash')
+    updateAccountMap(ctx.db, idOf('a1'), { includeInNetWorth: false })
+
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+
+  it('stops offering a dismissed account, even after a sync renames it', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'Argenta Sparen')])
+    asKind('g1', 'cash')
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toHaveLength(1)
+
+    dismissMirror(ctx.db, idOf('g1'))
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+
+    // The rename is the point. A dismissal keyed on the pair would be identified by two
+    // names, so renaming either side produces a pair that has never been dismissed and
+    // the suggestion comes back — which is the defect being fixed.
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'Argenta Spaarboekje')])
+    expect(dedupeCandidates(loadAccountMap(ctx.db))).toEqual([])
+  })
+})
+
+describe('dismissMirror', () => {
+  it('decides dedupeGroup without grouping anything', () => {
+    syncAccountMap(ctx.db, [mirror('g1', 'Argenta Sparen')])
+    const [row] = rows()
+
+    const after = dismissMirror(ctx.db, row!.id)
+
+    expect(after).not.toBeNull()
+    // The account keeps counting for itself. A dismissal that quietly dropped it from
+    // net worth would be the very error the panel exists to prevent.
+    expect(after!.dedupeGroup).toBeNull()
+    expect(after!.isSourceOfTruth).toBe(true)
+    expect([...decidedFields(after!)]).toEqual(['dedupeGroup'])
+  })
+
+  it('refuses on an account that is in a group, rather than freezing it', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Bolero', true), ghostfolio('g1', 'Bolero')])
+    const [a1, g1] = rows()
+    setDedupeGroup(ctx.db, 'broker', [a1!.id, g1!.id], a1!.id)
+
+    // `ungroupAccount` is the operation there, and it records the same decision while
+    // also breaking the group.
+    expect(dismissMirror(ctx.db, g1!.id)).toBeNull()
+  })
+
+  it('is a no-op the second time', () => {
+    syncAccountMap(ctx.db, [mirror('g1', 'Argenta Sparen')])
+    const [row] = rows()
+
+    dismissMirror(ctx.db, row!.id)
+    const after = dismissMirror(ctx.db, row!.id)
+
+    expect(after).not.toBeNull()
+    expect([...decidedFields(after!)]).toEqual(['dedupeGroup'])
+  })
+
+  it('says nothing happened for an id it does not know', () => {
+    expect(dismissMirror(ctx.db, 'nope')).toBeNull()
+  })
+
+  it('leaves a derived mirror alone once it has been dismissed', () => {
+    // The two halves of the fix meeting: a dismissal must also stop the automatic
+    // grouper, or the next sync regroups what a person just said was not a duplicate.
+    syncAccountMap(ctx.db, [actual('a1', 'Argenta Sparen'), mirror('g1', 'Argenta Sparen')])
+    const g1 = rows().find((row) => row.externalId === 'g1')
+    updateAccountMap(ctx.db, g1!.id, { kind: 'cash' })
+    dismissMirror(ctx.db, g1!.id)
+
+    const [pair] = deriveMirrors(loadAccountMap(ctx.db))
+    expect(pair).toBeDefined()
+    expect(applyDerivedMirror(ctx.db, pair!)).toBeNull()
+    expect(loadAccountMap(ctx.db).every((row) => row.dedupeGroup === null)).toBe(true)
   })
 })
 

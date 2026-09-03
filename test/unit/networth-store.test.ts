@@ -13,6 +13,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { netWorthSnapshots } from '../../src/db/schema.ts'
 import {
+  loadLatestAccountBalances,
   loadNetWorthHistory,
   persistNetWorth,
 } from '../../src/domain/aggregate/networth-store.ts'
@@ -150,5 +151,38 @@ describe('loadNetWorthHistory', () => {
 
   it('is empty before the first pass', () => {
     expect(loadNetWorthHistory(ctx.db)).toEqual([])
+  })
+})
+
+describe('loadLatestAccountBalances', () => {
+  it('reads the most recent date only, and never blends two of them', () => {
+    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 100_000)]))
+    persistNetWorth(
+      ctx.db,
+      computeNetWorth('2026-04-01', [account('a1', 148_233), account('g1', 148_233)]),
+    )
+
+    const balances = loadLatestAccountBalances(ctx.db).sort((a, b) =>
+      a.accountMapId.localeCompare(b.accountMapId),
+    )
+
+    expect(balances).toHaveLength(2)
+    expect(balances.map((row) => row.valueCents)).toEqual([148_233, 148_233])
+    expect(balances.every((row) => row.currency === 'EUR')).toBe(true)
+  })
+
+  it('leaves an account with no snapshot absent rather than zero', () => {
+    // The matcher reads these to compare balances, and absent must mean "no evidence".
+    // A zero would mean "agrees with every other empty account", which would pair every
+    // dormant account with every other one.
+    persistNetWorth(ctx.db, computeNetWorth('2026-04-01', [account('a1', 148_233)]))
+
+    const balances = loadLatestAccountBalances(ctx.db)
+
+    expect(balances.map((row) => row.accountMapId)).toEqual([ids['a1']])
+  })
+
+  it('returns nothing before the first pass has run', () => {
+    expect(loadLatestAccountBalances(ctx.db)).toEqual([])
   })
 })

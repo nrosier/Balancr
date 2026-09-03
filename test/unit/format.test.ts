@@ -4,6 +4,7 @@ import {
   firstDayOfWeek,
   formatBp,
   formatDate,
+  formatList,
   formatMonth,
   formatMonthShort,
   formatMoney,
@@ -130,6 +131,26 @@ describe('names follow the UI language, patterns do not', () => {
 
   it('rejects invalid dates rather than rendering Invalid Date', () => {
     expect(() => formatDate('not-a-date')).toThrow(/invalid date/)
+  })
+})
+
+describe('formatList joins in the interface language', () => {
+  it('uses the conjunction of the language, not of the format locale', () => {
+    // The one place the language beats FORMAT_LOCALE. Numbers and dates stay Belgian
+    // because they are checked against Belgian documents; "and" is a word in a
+    // sentence, and an English sentence joined with "en" is simply broken.
+    expect(formatList(['a', 'b', 'c'], 'en')).toBe('a, b and c')
+    expect(formatList(['a', 'b', 'c'], 'nl')).toBe('a, b en c')
+  })
+
+  it('reads naturally at one and two items', () => {
+    expect(formatList(['a'], 'en')).toBe('a')
+    expect(formatList(['a', 'b'], 'en')).toBe('a and b')
+    expect(formatList(['a', 'b'], 'nl')).toBe('a en b')
+  })
+
+  it('makes nothing out of nothing', () => {
+    expect(formatList([], 'en')).toBe('')
   })
 })
 

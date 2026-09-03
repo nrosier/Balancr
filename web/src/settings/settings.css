@@ -228,6 +228,18 @@
   color: var(--text);
 }
 
+/*
+ * The evidence line. Secondary by size, not by colour: `--text` on `--warn-soft` is
+ * the same pair `.dedupe__text` already uses and already clears, whereas a quieter
+ * grey here would introduce a contrast pair nobody has measured, on the one line
+ * whose whole job is to be read before a decision.
+ */
+.dedupe__why {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-xs);
+  color: var(--text);
+}
+
 .dedupe__actions,
 .account__controls,
 .account__group {
