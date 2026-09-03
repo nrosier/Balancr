@@ -42,8 +42,19 @@ export interface BudgetBulletProps {
 
 /** Row height. Two rem is a comfortable target on a phone and keeps the labels apart. */
 const ROW_REM = 2.1
-/** The axis, the legend and the top and bottom padding around the rows. */
-const CHROME_REM = 4
+/**
+ * The axis, the legend and the top and bottom padding around the rows.
+ *
+ * Sized for two rows of legend, because in Dutch that is what it takes. The three
+ * labels run `Toegewezen`, `Uitgegeven` and `12-maandsgemiddelde` — 39 characters
+ * against English's 26 — and at the width this card has on a phone ECharts wraps them
+ * onto a second row. The space is reserved whether the wrap happens or not: ECharts
+ * lays the legend out over the grid, not beside it, so a row that appears without
+ * room for it lands on top of the axis labels.
+ */
+const CHROME_REM = 5.5
+/** Matches `CHROME_REM`'s legend allowance, in the pixels `grid` is given in. */
+const LEGEND_PX = 56
 
 export function BudgetBullet({ categories, height }: BudgetBulletProps): ReactNode {
   const { t } = useT()
@@ -62,7 +73,7 @@ export function BudgetBullet({ categories, height }: BudgetBulletProps): ReactNo
           typeof value === 'number' ? formatMoney(value, { whole: true }) : '',
       },
       legend: { data: [assigned, spent, baseline], bottom: 0 },
-      grid: { left: 8, right: 16, top: 8, bottom: 32, containLabel: true },
+      grid: { left: 8, right: 16, top: 8, bottom: LEGEND_PX, containLabel: true },
       // No axis title: the card is already headed "budget versus actual" and every
       // label on this axis begins with a euro sign, so "Euro" underneath it would cost
       // a line of height to repeat what two other things on screen already say.

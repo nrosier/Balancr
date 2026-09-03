@@ -33,7 +33,7 @@ import { createPromptVersion, loadActivePrompt } from '../../src/domain/ai/promp
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
-import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
+import { CSRF_COOKIE, LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
@@ -275,6 +275,16 @@ describe('PATCH /api/settings/profile', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json<Settings>().profile.locale).toBe('nl')
     expect(auditActions(ctx.db)).toContain('settings.locale')
+  })
+
+  it('moves the locale cookie with the column', async () => {
+    // The cookie is what the shell reads on the next full load. Left behind, it would
+    // put `<html lang="en">` on a document whose every string is Dutch — and the page
+    // would look right, so nothing would ever point at it.
+    const res = await patch('/api/settings/profile', { locale: 'nl' })
+    const set = res.cookies.find((cookie) => cookie.name === LOCALE_COOKIE)
+    expect(set?.value).toBe('nl')
+    expect(set?.httpOnly).toBe(true)
   })
 
   it('refuses a locale the deployment does not serve', async () => {

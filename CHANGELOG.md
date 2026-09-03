@@ -6,6 +6,71 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **The interface's language is decided in one place now, and the document says
+  which one it is** ([#34](https://github.com/nrosier/Balancr/issues/34)). The
+  resolution order — the signed-in account's own setting, then a `balancr_locale`
+  cookie, then a q-weighted `Accept-Language`, then `DEFAULT_LOCALE`, every rung
+  filtered against `SUPPORTED_LOCALES` — lives in `src/server/locale.ts` and is
+  called by exactly two things: the SPA shell and `/bootstrap`. So `<html lang>`
+  and the language the bundle starts in are one answer, not two implementations
+  that agree until they don't. The browser's own `navigator.languages` walk is
+  gone, which is what makes that true rather than merely intended.
+
+  The account's setting can be the first rung even on a public route because the
+  auth `preHandler` populates `request.user` for every request carrying a valid
+  session, including the routes declared `auth: false`. A signed-in visitor's
+  first paint is therefore in their language, before any JavaScript has run.
+
+- **`<html lang>` is now the language on the page.** One shell document per
+  supported locale is built at startup and held in memory, so a request picks a
+  string rather than rewriting HTML. The attribute is rewritten, not templated
+  from a `{{lang}}` placeholder, so `web/index.html` stays a document the dev
+  server can serve — and a bundle with no `<html lang>`, or two of them, is a
+  startup error naming the file instead of a page that renders the placeholder.
+  The shell carries `Vary: accept-language, cookie` beside its `no-store`, so
+  the first visitor's language cannot become everyone's in a cache that ignores
+  the one and honours the other.
+
+  This is what a screen reader reads to pick a pronunciation, and it is why
+  `hyphens: auto` breaks `Instellingen` where Dutch breaks it.
+
+- **A `balancr_locale` cookie, with the server as its only writer.** It is set on
+  local login, on the way through the OIDC callback, and when the profile patch
+  changes the column — a cache of the account's `locale`, never an independent
+  opinion, which is why it is `httpOnly`. Without it the reload after a language
+  change would render `lang="en"` around a page of Dutch strings, and a first
+  visit after login would arrive in the browser's language rather than the
+  account's.
+
+- **`bootstrap.locales.active`** — the language the server resolved, so the
+  client initialises i18next with the answer it was given.
+
+- **`npm run i18n:check` now refuses a translation longer than its box.**
+  Thirteen bounds over the nav labels, the buttons that share a row, the
+  bullet-chart legend and every group rendered as a badge or a pill, each naming
+  the box it has to fit. The check exists because the layout below was sized for
+  Dutch by hand, and hand-sizing rots the moment someone adds a key.
+
+### Changed
+
+- **The chrome is sized for the longer language.** Nav labels reserve two lines
+  unconditionally so the icons stay on one baseline whichever language is
+  showing, and the bullet chart reserves two rows for its legend: Dutch's
+  `Toegewezen` / `Uitgegeven` / `12-maandsgemiddelde` is 39 characters against
+  English's 26, and ECharts lays the legend over the grid, so an unplanned second
+  row lands on the axis labels rather than pushing them down.
+
+- **The application follows the account's language once the session says what it
+  is**, tracked by the locale it has already acted on rather than by the language
+  currently showing. Comparing against the current language would have meant the
+  settings control appeared to do nothing: the session payload is stale the
+  instant the control switches the language, so an effect reading it would put
+  the interface straight back.
+
 ## [0.5.15] — 2026-09-03
 
 ### Fixed
@@ -57,7 +122,6 @@ rather than when the feature list ends.
   recoverable from one number, and filling it in would claim a cash balance was
   invested on exactly the rows that made the fix necessary.
 
-
 ## [0.5.14] — 2026-09-03
 
 ### Added
@@ -90,6 +154,7 @@ rather than when the feature list ends.
   over-reporting would freeze a row against every future improvement. An Actual account
   still reading `checking` or `other` stays undecided on purpose: those are the vague
   ones a better classifier exists to sharpen.
+
 
 ## [0.5.13] — 2026-09-03
 

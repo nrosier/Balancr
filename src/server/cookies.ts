@@ -44,6 +44,17 @@ export const CSRF_COOKIE = named('balancr_csrf')
  */
 export const LOGIN_FLOW_COOKIE = named('balancr_login')
 
+/**
+ * The UI language, so the shell and the bundle start in the right one.
+ *
+ * Not a credential and not secret — the language is visible in the rendered page —
+ * but `httpOnly` all the same, because the server is the only thing that should write
+ * it. It caches the account's `locale` column, and a copy the page could set is a
+ * copy that can disagree with what the nightly analysis will be written in. See
+ * `locale.ts` for the resolution order it sits in.
+ */
+export const LOCALE_COOKIE = named('balancr_locale')
+
 export interface CookieAttributes {
   path: string
   httpOnly: boolean
