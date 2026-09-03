@@ -39,7 +39,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { FreshnessNote } from '../ui/Freshness.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
-import { PageHeader } from './Placeholder.tsx'
+import { PageHeader } from './PageHeader.tsx'
 
 type CategoryFact = BudgetPayload['categories'][number]
 

@@ -16,6 +16,12 @@
  * written them.
  *
  * Everything else is codes and integers.
+ *
+ * The ledger is here too, and it is the part that makes the rest of the page
+ * checkable: `runs` lists every attempt with its cost and status, and one of them
+ * can be opened to read the payload it was prepared with, byte for byte. The
+ * payloads are not inlined — see `aiRunSchema` — because a page that costs ten
+ * times as much to load is a page somebody eventually stops loading.
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
@@ -23,9 +29,16 @@ import { latestStoredMonth } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
-import { latestNarrative } from '../../../domain/ai/narrative.ts'
+import { latestNarrative, renderNarrative } from '../../../domain/ai/narrative.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
-import { insightsSchema, type Insights } from './schemas.ts'
+import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
+import {
+  aiRunPayloadSchema,
+  insightsSchema,
+  type AiRun,
+  type AiRunPayload,
+  type Insights,
+} from './schemas.ts'
 import { freshness } from './freshness.ts'
 
 export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): Insights {
@@ -43,8 +56,10 @@ export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): I
         : {
             period: narrative.period,
             locale: narrative.locale,
-            body: narrative.bodyMd,
+            // Rendered, not stored: `bodyMd` still has the model's labels in it.
+            html: renderNarrative(db, narrative),
             generatedAt: narrative.createdAt.toISOString(),
+            model: loadRun(db, narrative.runId)?.model ?? null,
           },
     questions: openQuestions(db, locale).map((card) => ({
       id: card.id,
@@ -79,5 +94,48 @@ export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): I
       usedBp: spend.usedBp,
       exceeded: spend.exceeded,
     },
+    // Twenty rather than the ledger's default fifty: this is the tail of the page,
+    // read to answer "what happened last night", and the monthly totals that answer
+    // "what has this cost" are on the settings screen.
+    runs: recentRuns(db, 20).map(wireRun),
+  })
+}
+
+/** One ledger row, minus `payloadJson` and `promptId`. */
+function wireRun(row: AiRunRow): AiRun {
+  return {
+    id: row.id,
+    kind: row.kind,
+    model: row.model,
+    locale: row.locale,
+    status: row.status,
+    inputTokens: row.inputTokens,
+    outputTokens: row.outputTokens,
+    cachedTokens: row.cachedTokens,
+    costMicroEur: row.costMicroEur,
+    durationMs: row.durationMs,
+    error: row.error,
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+/**
+ * One run with its payload, or null for an id that is not in the ledger.
+ *
+ * The row comes back alongside the payload rather than being looked up separately
+ * by the client. Which model, which language and how much it cost are what a payload
+ * has to be read against — the same bundle sent to Flash and to Pro is two different
+ * facts — and a client stitching the two together from the list it already has would
+ * be guessing that the list has not changed since it loaded.
+ */
+export function buildRunPayload(db: Db, id: string): AiRunPayload | null {
+  const row = loadRun(db, id)
+  if (row === null) return null
+
+  return aiRunPayloadSchema.parse({
+    ...wireRun(row),
+    // `null` for a row whose JSON will not parse. That is the audit view's own
+    // finding to report, not a 500: the row exists and the rest of it is readable.
+    payload: loadRunPayload(db, id),
   })
 }

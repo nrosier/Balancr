@@ -250,15 +250,15 @@ same reason.
 not the version where the first piece of it landed.
 
 Work merged on the way there releases as a **patch of the current minor**. The
-`0.6.0` milestone is in progress now, so its slices release as `0.5.1`, `0.5.2`, …
+`0.7.0` milestone is in progress now, so its slices release as `0.6.1`, `0.6.2`, …
 — each one a real version for a real merge, none of them claiming a milestone that
 is not finished yet. The minor is the promise kept; the patches are the progress
 toward it.
 
-Two milestones can be in flight at once, and then they share that one patch series:
-`0.6.0` is claimed the day its last issue closes, and the later work that landed
-before it simply continues as `0.6.1`, `0.6.2`, … A patch number never means a
-milestone; only a minor does.
+Two milestones can be in flight at once, and then they share that one patch series,
+which is what just happened: `0.6.0` was claimed the day its last issue closed, and
+the operational work that had landed before it simply continues as `0.6.1`,
+`0.6.2`, … A patch number never means a milestone; only a minor does.
 
 When every requested feature is in, releases become `1.0.0-rc.N` for real-world
 testing; **1.0.0 ships when the testing says it is ready**, not when the checklist
@@ -271,8 +271,8 @@ ends.
 | `0.3.0` | Aggregation, portfolio snapshots, job scheduler | ✅ |
 | `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ✅ |
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
-| `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | 🔄 `0.5.x` |
-| `0.7.0` | Backups, monthly digest, operational hardening | 🔄 `0.5.x` |
+| `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
+| `0.7.0` | Backups, monthly digest, operational hardening | 🔄 `0.6.x` |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
@@ -280,8 +280,25 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, seven of its eight web-UI slices, with the first of the
-operational milestone alongside it.
+**Where it is now** — `0.7.0`, one slice in. `0.6.0` is done: all five views are on
+screen, in both languages, drawing real figures.
+
+The last of them is insights ([#32](https://github.com/nrosier/Balancr/issues/32)),
+and it is the one that had to show its own workings. It renders what a model
+concluded about a month, so it renders every call that was made and exactly what went
+out in each one — `capped` and `blocked` attempts included, because those are the
+answers that are *missing* from the page above, and a failed run quotes the upstream
+verbatim. That table is the privacy claim made checkable from a browser instead of
+from a SQLite prompt on the host; each payload is fetched when its row is opened, one
+at a time. Above it, findings are grouped worst-first from the same ranking the
+server kept them by, and a finding whose sentence this bundle does not have, or whose
+sentence is missing a number, is dropped rather than printed as a bare code or with a
+hole in it. One paragraph on the page is prose a model wrote, and it says which model
+and when. Both queues — the questions the analysis wants answered, the changes it
+proposes — are read-only in this version and say so on screen: answering and applying
+are [#43](https://github.com/nrosier/Balancr/issues/43)–[#45](https://github.com/nrosier/Balancr/issues/45),
+and the queue is worth reading before the buttons exist, because it is what tells you
+the analysis is asking about the right categories.
 
 Balancr can now be asked whether it is working, and by whom
 ([#37](https://github.com/nrosier/Balancr/issues/37)). Three questions had one
@@ -325,8 +342,9 @@ to say `en` to everyone. And the palette has been measured rather than assumed
 pair under the contrast floor, in either theme, and one token that could not clear it is
 gone. And the assistant's instructions are one text rather than one per language
 ([#133](https://github.com/nrosier/Balancr/issues/133)): editing them used to change
-what English runs and leave Dutch on the old wording, silently. Insights
-([#32](https://github.com/nrosier/Balancr/issues/32)) is last.
+what English runs and leave Dutch on the old wording, silently. And insights
+([#32](https://github.com/nrosier/Balancr/issues/32)) closed the milestone: what a
+model concluded about a month, printed next to every call that produced it.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -536,8 +554,14 @@ it is what puts that language in the editor's picker — so divergence is visibl
 of being the default. Going back switches the override off rather than deleting it, so
 its versions stay readable and activating one is the way back.
 
-Next is insights ([#32](https://github.com/nrosier/Balancr/issues/32)) — the last issue
-in the milestone, so it ships as `0.6.0` rather than as another patch.
+Next is the operational milestone: refreshing the data on demand rather than waiting
+for the next scheduled run ([#122](https://github.com/nrosier/Balancr/issues/122)), a
+context cache that never applies because the system prompt sits under Gemini's
+1024-token minimum ([#121](https://github.com/nrosier/Balancr/issues/121)), backups
+and a restore that is proven by being run
+([#38](https://github.com/nrosier/Balancr/issues/38)), and deployment hardening
+([#39](https://github.com/nrosier/Balancr/issues/39)). Those ship as `0.6.1`,
+`0.6.2`, … until the last of them closes `0.7.0`.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

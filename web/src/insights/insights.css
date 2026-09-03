@@ -1,0 +1,234 @@
+/*
+ * The insights page.
+ *
+ * Its own stylesheet for the reason `settings.css` has one: this page has a vocabulary
+ * no other view shares. Four shapes, and each exists because the shared one is wrong
+ * for it:
+ *
+ *  - **`.finding`** is a bordered row rather than a list item, because a severity has
+ *    to be visible down the left edge of a group without a badge on every line. The
+ *    stripe is the only colour, and it never carries the meaning alone — the group's
+ *    heading says the same word.
+ *  - **`.prose`** is the one block on the site whose markup Balancr did not write. It
+ *    comes from `util/markdown.ts`, which emits a fixed set of tags and no attributes,
+ *    so the rules here are the whole of its styling: anything not listed cannot appear.
+ *  - **`.queue` and `.change`** are lists of blocks, not tables. A clarification card
+ *    is a question with an answer under it and a proposal is a stack of before/after
+ *    pairs; both wrap, and neither has columns worth aligning across rows.
+ *  - **`.payload`** is preformatted JSON of a few thousand tokens inside a table cell.
+ *    It scrolls in both directions itself, because a table cell that grows to fit it
+ *    takes the whole page sideways with it.
+ */
+
+/* ---------------------------------------------------------------------------
+   Findings
+   --------------------------------------------------------------------------- */
+
+.finding-group + .finding-group {
+  margin-top: var(--space-5);
+}
+
+.finding-group__title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.findings {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.finding {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-sunken);
+  font-size: var(--type-base);
+  line-height: var(--lead-normal);
+}
+
+.finding--alert {
+  border-left-color: var(--negative);
+}
+
+.finding--warn {
+  border-left-color: var(--warn);
+}
+
+.finding--info {
+  border-left-color: var(--info);
+}
+
+/*
+ * Good news — `below_baseline`, `no_spend_streak`, `savings_rate_up`. It gets its own
+ * stripe instead of inheriting `info`'s, because a finding whose whole point is that
+ * nothing is wrong should not look like one that needs reading.
+ */
+.finding--positive {
+  border-left-color: var(--positive);
+}
+
+/* ---------------------------------------------------------------------------
+   The narrative
+   --------------------------------------------------------------------------- */
+
+.prose {
+  display: grid;
+  gap: var(--space-3);
+  font-size: var(--type-base);
+  line-height: var(--lead-normal);
+}
+
+.prose h3,
+.prose h4 {
+  margin: 0;
+  font-size: var(--type-md);
+  font-weight: var(--weight-semibold);
+}
+
+.prose p,
+.prose ul,
+.prose ol {
+  margin: 0;
+}
+
+.prose ul,
+.prose ol {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-5);
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   The two queues
+   --------------------------------------------------------------------------- */
+
+.queue {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.queue__item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.queue__lead {
+  margin: 0;
+  font-size: var(--type-base);
+  font-weight: var(--weight-medium);
+  line-height: var(--lead-normal);
+}
+
+.queue__guess {
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+.queue__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+}
+
+.change {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+
+.change__row {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.change__field {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+}
+
+.change__values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+/*
+ * The old value is struck through as well as greyed. Colour alone would leave the two
+ * halves of a diff distinguishable only by shade, and the arrow between them is
+ * `aria-hidden` — so the strike is what says "was" to someone reading the page rather
+ * than hearing it.
+ */
+.change__before {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.change__arrow {
+  color: var(--text-muted);
+}
+
+.change__after {
+  font-weight: var(--weight-medium);
+}
+
+.change__warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--type-xs);
+}
+
+/* ---------------------------------------------------------------------------
+   The ledger
+   --------------------------------------------------------------------------- */
+
+/*
+ * The upstream error message, verbatim, under the status word. `.table td` sets
+ * `nowrap` because six columns of figures must not reflow — but a provider's error
+ * string is a sentence, and one that cannot wrap makes the table as wide as the
+ * sentence is long.
+ */
+.ledger__error {
+  max-width: 24rem;
+  margin: var(--space-1) 0 0;
+  color: var(--negative);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+  white-space: normal;
+}
+
+.ledger__drawer {
+  background: var(--surface-sunken);
+  white-space: normal;
+}
+
+.payload {
+  max-height: 24rem;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+  tab-size: 2;
+}

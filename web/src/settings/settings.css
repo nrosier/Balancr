@@ -67,47 +67,6 @@
   cursor: not-allowed;
 }
 
-/*
- * A short label the eye reads as a state rather than as a word: the active prompt
- * version, a finding's severity, a run's outcome. Neutral by default — the tone
- * modifiers below are the only places colour carries meaning, and each is paired with
- * text so colour is never the only signal.
- */
-.badge {
-  display: inline-block;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  font-size: var(--type-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1.6;
-  white-space: nowrap;
-}
-
-.badge--truth,
-.badge--ok {
-  background: var(--positive-soft);
-  color: var(--positive);
-}
-
-.badge--info {
-  background: var(--info-soft);
-  color: var(--info);
-}
-
-.badge--warn,
-.badge--capped {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-
-.badge--alert,
-.badge--error {
-  background: var(--negative-soft);
-  color: var(--negative);
-}
-
 .build {
   display: grid;
   grid-template-columns: max-content 1fr;

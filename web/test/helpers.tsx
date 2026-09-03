@@ -102,7 +102,7 @@ export function renderApp(ui: ReactNode, options: RenderAppOptions = {}): Render
  * field null, every list empty, so the page renders its "no data yet" state.
  *
  * Keyed by path rather than answering everything, so a test's own queue still gets the
- * `/auth/*` calls it was written for. Grows a row per page as #30–#33 land.
+ * `/auth/*` calls it was written for. One row per page, all five as of #32.
  */
 const EMPTY_READS: Record<string, unknown> = {
   '/api/overview': {
@@ -180,6 +180,26 @@ const EMPTY_READS: Record<string, unknown> = {
     allocation: [],
     holdings: [],
     history: [],
+  },
+  '/api/insights': {
+    freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    month: null,
+    signals: [],
+    narrative: null,
+    questions: [],
+    proposals: [],
+    // The one object on this payload that is never null: the cap comes from the
+    // environment, so a deployment that has spent nothing still has a budget. The page
+    // knows that and leaves it out of its own empty test — see `isEmpty` in
+    // `pages/Insights.tsx`.
+    spend: {
+      month: '2026-09',
+      spentMicroEur: 0,
+      budgetMicroEur: 15_000_000,
+      usedBp: 0,
+      exceeded: false,
+    },
+    runs: [],
   },
 }
 

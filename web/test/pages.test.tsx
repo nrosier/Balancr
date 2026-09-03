@@ -7,18 +7,18 @@
  * an unknown path is not a page at all — because those are the cases a `switch` in a
  * component would get subtly wrong and nothing would notice.
  *
- * Two of the five pages are still placeholders that #31 and #32 replace wholesale, so
- * the test is not about their content. It is about the two things that stay true
- * afterwards, and stay true for the pages that have already been filled in: every page
- * has exactly one level-one heading, and every string on it comes from the catalogue
- * rather than being written into the component. A hardcoded English word survives a
- * Dutch UI without failing anything, which is precisely why it is checked here rather
- * than left to a reading.
+ * All five pages render their own content as of #32, so what is left to assert across
+ * the table is what has to stay true of every one of them however its content changes:
+ * exactly one level-one heading, and every string on it out of the catalogue rather
+ * than written into the component. A hardcoded English word survives a Dutch UI without
+ * failing anything, which is precisely why it is checked here rather than left to a
+ * reading. What each page then does with its payload is its own file's subject —
+ * `overview`, `budget`, `portfolio`, `insights` and `settings` each have one.
  *
- * The filled-in pages read their own endpoint, so `fetch` is stubbed for the whole
- * file. Not because this test is about the payload — `overview.test.tsx` and
- * `budget.test.tsx` are — but because a page component left to reach the network in
- * jsdom fails on the machine with no server and passes on the machine with one.
+ * Every page reads its own endpoint on mount, so `fetch` is stubbed for the whole file.
+ * Not because this test is about the payload, but because a page component left to
+ * reach the network in jsdom fails on the machine with no server and passes on the
+ * machine with one.
  */
 import { screen } from '@testing-library/react'
 import i18next from 'i18next'
@@ -26,10 +26,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { NotFound } from '../src/pages/NotFound.tsx'
 import { ROUTES, routeFor } from '../src/routes.ts'
 import { apiStub, clickLink, i18nReady, renderApp } from './helpers.tsx'
-
-/** The one that #32 still has to fill in. */
-const REAL_PAGES = new Set(['/', '/budget', '/portfolio', '/settings'])
-const PLACEHOLDERS = ROUTES.filter((route) => !REAL_PAGES.has(route.path))
 
 beforeAll(async () => {
   await i18nReady()
@@ -70,8 +66,8 @@ describe('routeFor', () => {
 })
 
 describe('the pages', () => {
-  it.each(PLACEHOLDERS.map((route) => [route.labelKey, route] as const))(
-    'gives %s one heading, a lede and a note, all translated',
+  it.each(ROUTES.map((route) => [route.labelKey, route] as const))(
+    'gives %s one heading and a lede, both translated',
     (_key, route) => {
       renderApp(<route.Page />, { path: route.path })
 
@@ -84,7 +80,6 @@ describe('the pages', () => {
       // that failure looks.
       expect(document.body.textContent ?? '').not.toMatch(/\bpage\.[a-z]+\.[a-z]+\b/)
       expect(document.body.textContent ?? '').not.toMatch(/\bnav\.[a-z]+\b/)
-      expect(screen.getByText(/^Coming next:/)).toBeTruthy()
     },
   )
 

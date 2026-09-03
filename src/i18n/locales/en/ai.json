@@ -16,8 +16,11 @@
     "frequency_unknown": "How often does {{category}} come up?",
     "hint": "Answered once, remembered for good.",
     "nature_unknown": "Is {{category}} a fixed cost, a variable one, or free spending?",
+    "none": "Nothing needs clarifying.",
     "purpose_unknown": "What do you use {{category}} for?",
+    "readOnly": "Answering these comes with the assistant’s chat, in a later version. For now this is the queue it has built.",
     "sensitive_unknown": "Should the name {{category}} be kept from the AI?",
+    "share": "{{share}} of this month’s spending",
     "suggestion": "Best guess: {{guess}}",
     "title": "Help the assistant understand"
   },
@@ -29,6 +32,7 @@
     "emergency_fund_short": "Your buffer covers {{months}}, short of the {{target}} you aim for.",
     "income_change": "Income is {{delta}} off your usual {{baseline}}.",
     "irregular_expense": "An unusual expense of {{amount}} in {{category}}.",
+    "month": "For {{month}}",
     "net_worth_high": "Net worth reached a new high of {{amount}}.",
     "no_spend_streak": "Nothing spent on {{category}} for {{months}}.",
     "none": "Nothing needs your attention.",
@@ -45,6 +49,7 @@
   "narrative": {
     "capped": "Monthly AI budget reached — showing the last analysis.",
     "generatedAt": "Written {{when}} by {{model}}",
+    "none": "No narrative has been written for this month yet.",
     "stale": "Based on data from {{when}}.",
     "title": "This month in words",
     "translate": "Write this in {{language}}",
@@ -52,8 +57,29 @@
     "unnamedCategory": "an unnamed category"
   },
   "privacy": {
+    "caption_one": "The most recent call to the model.",
+    "caption_other": "The {{value}} most recent calls to the model, newest first.",
+    "column": {
+      "cost": "Cost",
+      "kind": "Kind",
+      "model": "Model",
+      "status": "Result",
+      "tokens": "Tokens",
+      "when": "When"
+    },
+    "hidePayload": "Hide the payload",
     "hint": "Category names and amounts only. No payees, no transactions.",
+    "kind": {
+      "chat": "Chat",
+      "clarify": "Question",
+      "dryrun": "Test run",
+      "findings": "Analysis",
+      "narrative": "Narrative"
+    },
+    "none": "No calls have been made yet.",
     "title": "What was sent",
+    "tokens": "{{input}} in / {{output}} out",
+    "unreadable": "The stored payload could not be read.",
     "viewPayload": "Show the exact payload"
   },
   "proposal": {
@@ -68,6 +94,8 @@
       "userDescription": "What it is for"
     },
     "hint": "Nothing is changed until you apply it.",
+    "none": "Nothing is waiting to be applied.",
+    "readOnly": "Applying a change comes in a later version. For now you can read exactly what would change.",
     "title": "Proposed changes",
     "value": {
       "unset": "not set"

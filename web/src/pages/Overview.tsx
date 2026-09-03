@@ -40,7 +40,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { FreshnessNote } from '../ui/Freshness.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
-import { PageHeader } from './Placeholder.tsx'
+import { PageHeader } from './PageHeader.tsx'
 
 /**
  * True when the jobs have produced nothing at all.

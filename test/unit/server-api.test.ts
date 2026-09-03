@@ -25,7 +25,7 @@
  * path rather than about rows a test invented.
  */
 import { readFileSync, readdirSync } from 'node:fs'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { users } from '../../src/db/schema.ts'
@@ -35,6 +35,9 @@ import { createSession } from '../../src/server/auth/sessions.ts'
 import { SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { TREND_MONTHS } from '../../src/server/routes/api/budget.ts'
 import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.ts'
+import { initI18n } from '../../src/i18n/index.ts'
+import { storeNarrative } from '../../src/domain/ai/narrative.ts'
+import { recordRun } from '../../src/domain/ai/runs.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
 const ENDPOINTS = ['/api/overview', '/api/budget', '/api/portfolio', '/api/insights'] as const
@@ -70,6 +73,14 @@ async function open(options: Parameters<typeof apiFixture>[0] = {}): Promise<voi
   app = await buildApp({ db: ctx.db, web: null })
   session = signIn(ctx.db)
 }
+
+beforeAll(async () => {
+  // The insights route renders three things from the catalogue — the narrative's
+  // "unnamed category", the clarification questions and the proposal diffs — so it
+  // needs the same i18n singleton `main.ts` starts before it listens. Everything
+  // else here is codes and integers and would pass without it.
+  await initI18n()
+})
 
 beforeEach(async () => {
   await open()
@@ -352,6 +363,169 @@ describe('GET /api/insights', () => {
     await get('/api/insights')
     const after = ctx.db.$client.prepare('select count(*) as n from ai_runs').get() as { n: number }
     expect(after.n).toBe(before.n)
+  })
+
+  it('renders the narrative, rather than shipping the labels the model wrote', async () => {
+    // The bug this pins: `bodyMd` addresses the month as `c1`, `c2`, because that is
+    // what the model was given, and only the server can resolve those. Sending it raw
+    // produced a paragraph no client could render into anything readable.
+    storeNarrative(ctx.db, {
+      runId: recordRun(ctx.db, {
+        kind: 'narrative',
+        model: 'gemini-3.1-pro-preview',
+        locale: 'en',
+        payload: { categories: [] },
+        status: 'ok',
+      }),
+      period: MONTH,
+      locale: 'en',
+      bodyMd: '## The month\n\nSpending in c1 rose, and c999 is gone.',
+    })
+
+    const body = (await get('/api/insights')).json()
+
+    expect(body.narrative.period).toBe(MONTH)
+    // Markdown, through the server's own sanitiser. Every heading level renders as
+    // `<h3>`, because the narrative sits under the page's own `<h1>`.
+    expect(body.narrative.html).toContain('<h3>The month</h3>')
+    // `c1` is one of the fixture's categories — which one depends on how the bundle
+    // happened to order them, and that is not what this asserts.
+    const names = ['Groceries', 'Energy', 'Salary']
+    expect(names.some((name) => (body.narrative.html as string).includes(name))).toBe(true)
+    expect(body.narrative.html).not.toMatch(/\bc1\b/)
+    // A label with no name left: a category that has since disappeared from the
+    // month's facts reads as a phrase, never as an identifier.
+    expect(body.narrative.html).toContain('an unnamed category')
+    expect(body.narrative.html).not.toMatch(/\bc999\b/)
+  })
+})
+
+describe('the AI ledger', () => {
+  /** One run of each shape worth showing: a call that worked, and one refused. */
+  function ledger(): { ok: string; capped: string } {
+    const ok = recordRun(ctx.db, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: MONTH, categories: [{ label: 'c1', spentCents: 72_000 }] },
+      status: 'ok',
+      usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0 },
+      durationMs: 1_400,
+    })
+    const capped = recordRun(ctx.db, {
+      kind: 'narrative',
+      model: 'gemini-3.1-pro-preview',
+      locale: 'nl',
+      payload: { month: MONTH, categories: [] },
+      status: 'capped',
+      error: 'the month budget is exhausted',
+    })
+    return { ok, capped }
+  }
+
+  it('rides on the insights payload, newest first', async () => {
+    const { ok, capped } = ledger()
+
+    const body = (await get('/api/insights')).json()
+
+    expect(body.runs.map((run: { id: string }) => run.id)).toEqual([capped, ok])
+    const [refused, succeeded] = body.runs
+    expect(succeeded.kind).toBe('findings')
+    expect(succeeded.inputTokens).toBe(2_800)
+    expect(succeeded.costMicroEur).toBeGreaterThan(0)
+    expect(succeeded.durationMs).toBe(1_400)
+    // The refusal is the row worth reading: it explains an answer the page does not
+    // have, and it cost nothing.
+    expect(refused.status).toBe('capped')
+    expect(refused.costMicroEur).toBe(0)
+    expect(refused.error).toBe('the month budget is exhausted')
+  })
+
+  it('never carries a payload inline, whatever the ledger holds', async () => {
+    ledger()
+    const res = await get('/api/insights')
+
+    for (const run of res.json().runs) {
+      expect(run.payload).toBeUndefined()
+      expect(run.payloadJson).toBeUndefined()
+    }
+    // And the bundle's own shape is absent from the whole response, not just from
+    // the rows: twenty of these would be most of it, fetched to render a list of
+    // dates. `label` is the redacted bundle's word for a category — the signals
+    // above carry `categoryId` and a real name, so it appears nowhere else.
+    expect(res.body).not.toContain('"label"')
+  })
+
+  it('serves one payload verbatim, with the run it belongs to', async () => {
+    const { ok } = ledger()
+
+    const res = await get(`/api/insights/runs/${ok}/payload`)
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.payload).toEqual({
+      month: MONTH,
+      categories: [{ label: 'c1', spentCents: 72_000 }],
+    })
+    // Alongside the payload rather than left to the client to stitch on: the same
+    // bundle sent to Flash and to Pro is two different facts.
+    expect(body.id).toBe(ok)
+    expect(body.model).toBe('gemini-3.7-flash')
+    expect(body.locale).toBe('en')
+  })
+
+  it('serves the payload of a call that never went out', async () => {
+    // The point of storing one for a refused run: the page can show what it would
+    // have sent, so a capped month is inspectable rather than merely empty.
+    const { capped } = ledger()
+
+    const body = (await get(`/api/insights/runs/${capped}/payload`)).json()
+    expect(body.status).toBe('capped')
+    expect(body.payload).toEqual({ month: MONTH, categories: [] })
+  })
+
+  it('answers null for a payload that will not parse, rather than failing', async () => {
+    // A row whose JSON is broken is itself the finding, and the rest of the row is
+    // still readable — so the audit view gets to say so.
+    const { ok } = ledger()
+    ctx.db.$client.prepare('update ai_runs set payload_json = ? where id = ?').run('{ not json', ok)
+
+    const res = await get(`/api/insights/runs/${ok}/payload`)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().payload).toBeNull()
+  })
+
+  it('404s on a run that is not in the ledger', async () => {
+    // Which is what a page holding a list from before a prune will ask for.
+    const res = await get('/api/insights/runs/00000000-0000-0000-0000-000000000000/payload')
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('needs a session, like every other read here', async () => {
+    const { ok } = ledger()
+    const res = await app.inject({ method: 'GET', url: `/api/insights/runs/${ok}/payload` })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('is readable by a viewer, who can already see what it explains', async () => {
+    // Gating the audit view harder than the conclusions would mean the person who can
+    // read the findings cannot check them. Spending is the owner's alone.
+    const { ok } = ledger()
+    const viewer = ctx.db
+      .insert(users)
+      .values({ oidcSub: `sub-${crypto.randomUUID()}`, locale: 'en', role: 'viewer' })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    const res = await get(`/api/insights/runs/${ok}/payload`, token)
+    expect(res.statusCode).toBe(200)
   })
 })
 

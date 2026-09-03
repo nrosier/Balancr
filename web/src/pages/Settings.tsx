@@ -43,7 +43,7 @@ import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
 import { useSettings } from '../settings/state.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { PageHeader } from './Placeholder.tsx'
+import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
 export function Settings(): ReactNode {
