@@ -10,6 +10,11 @@
 ARG NODE_VERSION=26.8.1-alpine
 
 FROM node:${NODE_VERSION} AS deps
+# BuildKit sets this from `--platform`; the prune keeps the binaries for it and
+# deletes the rest. Passing it in rather than hardcoding amd64 means an arm64
+# build of the same Dockerfile prunes correctly instead of deleting the only
+# binary it can load — the mistake this argument exists to make impossible.
+ARG TARGETARCH
 WORKDIR /app
 # better-sqlite3 and argon2 publish musl prebuilds, but a release without one
 # would otherwise fail the build outright; the toolchain is the cheap insurance.
@@ -19,7 +24,7 @@ COPY scripts/prune-runtime-deps.mjs scripts/
 # `--omit=dev` is not enough on its own — see scripts/prune-runtime-deps.mjs for
 # what it leaves behind and why none of it can run here.
 RUN npm ci --omit=dev \
- && node scripts/prune-runtime-deps.mjs \
+ && node scripts/prune-runtime-deps.mjs node_modules --arch=${TARGETARCH} \
  && npm cache clean --force
 
 FROM node:${NODE_VERSION} AS build
