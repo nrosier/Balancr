@@ -26,11 +26,11 @@
  * session, and `src/server/routes/api/status.ts` explains why the detailed half needs
  * one: a probe error can carry an internal container address.
  *
- * It is also the only screen from which `probe` and `backfill` can be started. Neither
- * has a page of its own — one writes no figures at all and the other fills in months
- * that are already past — so the panel that reports on the jobs is where "run that one
- * again" belongs. The four data jobs are startable here too, and from the bar at the top
- * of the page whose figures they produce.
+ * It is also the only screen from which `probe`, `backfill` and `backup` can be started.
+ * None has a page of its own — one writes no figures at all, one fills in months that are
+ * already past, and one writes a file nothing on screen reads — so the panel that reports
+ * on the jobs is where "run that one again" belongs. The four data jobs are startable here
+ * too, and from the bar at the top of the page whose figures they produce.
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -51,7 +51,15 @@ import { Panel } from './Panel.tsx'
  * `test/unit/jobs-refresh.test.ts` reads this file and fails if the copy drifts, which is
  * the same arrangement `DATA_JOBS` in `ui/Freshness.tsx` has.
  */
-const REFRESHABLE = ['probe', 'sync', 'portfolio', 'networth', 'backfill', 'signals']
+const REFRESHABLE = [
+  'probe',
+  'sync',
+  'portfolio',
+  'networth',
+  'backfill',
+  'signals',
+  'backup',
+]
 
 /**
  * Verdict to badge tone, for all three status vocabularies at once — the four check

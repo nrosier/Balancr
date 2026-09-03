@@ -69,6 +69,7 @@
   "job": {
     "ai": "AI analysis",
     "backfill": "History backfill",
+    "backup": "Backup",
     "networth": "Net worth",
     "portfolio": "Portfolio",
     "probe": "Upstream probe",
