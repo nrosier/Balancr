@@ -6,7 +6,7 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
-## [Unreleased]
+## [0.6.2] — 2026-09-03
 
 ### Fixed
 
