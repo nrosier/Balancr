@@ -1,4 +1,42 @@
 {
+  "advice": {
+    "badge": {
+      "above": "Te hoog",
+      "below": "Te laag",
+      "inside": "In band"
+    },
+    "bandRange": "{{min}} tot {{max}}",
+    "caption": "Elke activaklasse als aandeel van de belegde waarde, tegen de band die je profiel toelaat. Het verschil is wat er moet bewegen om op het doel te landen — negatief betekent verkopen. Grootste afwijking eerst.",
+    "column": {
+      "band": "Band",
+      "class": "Activaklasse",
+      "gap": "Verschil",
+      "share": "Aandeel",
+      "state": "Stand",
+      "target": "Doel"
+    },
+    "edited": "banden aangepast",
+    "inBalance": "Elke activaklasse zit binnen zijn band. Er is niets te doen.",
+    "profile": {
+      "balanced": "Evenwichtig",
+      "custom": "Eigen",
+      "defensive": "Defensief",
+      "growth": "Groei"
+    },
+    "profileLine": "Afgemeten tegen het profiel {{profile}}, over {{invested}} belegd.",
+    "state": {
+      "aboveBy": "{{value}} boven het plafond van {{max}}",
+      "belowBy": "{{value}} onder de bodem van {{min}}",
+      "insideBand": "Binnen de band van {{min}} tot {{max}}"
+    },
+    "title": "Streefverdeling",
+    "unavailable": "Er is nog niets belegd om een profiel tegen af te meten. Synchroniseer Ghostfolio en dit deel vult zich.",
+    "unmapped": {
+      "hint": "Deze blijven buiten elk cijfer hierboven in plaats van te worden afgemeten tegen een band die er nooit voor gezet is. Geef ze een band, of kijk na hoe Ghostfolio ze indeelt.",
+      "line": "{{name}}: {{value}}, {{share}} van wat belegd is",
+      "title": "Posities in klassen waarvoor je profiel geen band heeft"
+    }
+  },
   "assetClass": {
     "COMMODITY": "Grondstoffen",
     "EQUITY": "Aandelen",
@@ -48,6 +86,44 @@
     "twr": "Tijdgewogen rendement",
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
     "value": "Marktwaarde"
+  },
+  "suggest": {
+    "action": {
+      "buy": "Kopen",
+      "sell": "Verkopen"
+    },
+    "fund": {
+      "meta_one": "TER {{ter}} · het enige fonds in je lijst voor deze klasse",
+      "meta_other": "TER {{ter}} · één van {{value}} fondsen in je lijst voor deze klasse"
+    },
+    "funding": {
+      "cash": "Uit cash, en dat verschuift ook het totaal waarvan deze aandelen een aandeel zijn — het kost dus meer dan het verschil om het verschil te dichten.",
+      "paired": "Gekoppeld aan de verrichting aan de andere kant, dus het belegde totaal verschuift niet en het bedrag is het verschil zelf."
+    },
+    "lede": "Eén verrichting per klasse die zijn band verliet, telkens met de afwijking die ze motiveert en wat de beurstaks zou kosten.",
+    "none": "Niets dat een verrichting waard is: elke klasse zit binnen zijn band, of de correctie blijft onder je eigen drempels.",
+    "omits": {
+      "capitalGains": "Meerwaardebelasting zit niet in dit cijfer: wat je verschuldigd bent hangt af van je aankoopprijs, en die ziet Balancr nooit."
+    },
+    "position": {
+      "meta_one": "{{held}} aangehouden · de enige positie in deze klasse",
+      "meta_other": "{{held}} aangehouden · één van {{value}} posities in deze klasse",
+      "unnamed": "Een positie zonder naam in de momentopname"
+    },
+    "skipped": {
+      "belowMinTrade": "{{name}} staat {{outside}} buiten de rand, maar het dichten kost maar {{amount}} — onder de {{floor}} die je als kleinste zinvolle verrichting instelde.",
+      "insideTolerance": "{{name}} staat {{outside}} buiten de rand, binnen de {{tolerance}} die je toelaat voor je ingrijpt. {{amount}} zou het dichten.",
+      "title": "Buiten de band, en toch niets gedaan"
+    },
+    "tax": {
+      "none": "Geen belastingregel zet een prijs op deze verrichting."
+    },
+    "title": "Wat het weer in lijn brengt",
+    "unavailable": {
+      "noFundInUniverse": "Niets in je fondsenlijst dekt deze klasse, dus er valt geen instrument te noemen. Voeg er een toe aan het fondsuniversum en dit wordt een voorstel.",
+      "notHeld": "Deze klasse zit boven zijn plafond, maar geen enkele positie is ermee gelabeld — er is dus niets te verkopen.",
+      "unknown": "Er kon geen instrument voor deze klasse genoemd worden."
+    }
   },
   "tax": {
     "amount": {

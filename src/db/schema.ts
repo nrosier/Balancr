@@ -541,6 +541,23 @@ export const portfolioSnapshots = sqliteTable(
      * migration backfills them from `currency` rather than inventing one.
      */
     priceCurrency: text('price_currency'),
+    /**
+     * Ghostfolio's own class labels for this position.
+     *
+     * Stored per row, not only aggregated into `portfolio_metrics.allocation_json`,
+     * because advice has to name the position a sale would come out of (#41): a class
+     * over its ceiling is by definition held, and a report that could not say what it
+     * is held in would be telling somebody to sell something unnamed.
+     *
+     * `asset_sub_class` earns its column at the tax layer. Beurstaks is 0,35% on a
+     * share and somewhere between 0,12% and 1,32% on a fund, so treating every
+     * position as a fund — the only thing possible without this — overstates the cost
+     * of selling a share by nearly four times. Nullable, and null means the row
+     * predates the columns or Ghostfolio did not label it; both come out as an
+     * estimate that says which fact is missing rather than as a guess.
+     */
+    assetClass: text('asset_class'),
+    assetSubClass: text('asset_sub_class'),
     computedAt: createdAt(),
   },
   (t) => [

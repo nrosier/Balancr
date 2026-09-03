@@ -340,6 +340,111 @@ describe('GET /api/portfolio', () => {
   })
 })
 
+describe('the advice on GET /api/portfolio', () => {
+  /**
+   * The one place in the read API that computes rather than reads, so it gets tested
+   * through the route rather than only at `buildAdvice` — the interesting failures are
+   * about what the route feeds it, not about the arithmetic (`advice-suggest.test.ts`
+   * covers that). The fixture is 100% equities against the `balanced` bands, which is
+   * exactly the shape that should produce one sale and one purchase.
+   */
+  it('measures the stored allocation against the default profile', async () => {
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.advice.profile).toBe('balanced')
+    expect(body.advice.isPreset).toBe(true)
+    expect(body.advice.drift.investedValueCents).toBe(382_143)
+    expect(
+      body.advice.drift.lines.map((line: { assetClass: string; state: string }) => [
+        line.assetClass,
+        line.state,
+      ]),
+    ).toEqual([
+      ['EQUITY', 'above'],
+      ['FIXED_INCOME', 'below'],
+      ['REAL_ESTATE', 'inside'],
+      ['COMMODITY', 'inside'],
+    ])
+    // Worst first, and the figure the page leads with.
+    expect(body.advice.drift.worstOutsideBp).toBe(2_500)
+  })
+
+  it('carries the band on every line, so the client needs no second copy of the profile', async () => {
+    const body = (await get('/api/portfolio')).json()
+    const equity = body.advice.drift.lines[0]
+
+    expect(equity).toMatchObject({ minBp: 5_500, targetBp: 6_500, maxBp: 7_500 })
+    expect(equity.shareBp).toBe(10_000)
+    expect(equity.outsideBp).toBe(2_500)
+  })
+
+  it('attaches the drift line that motivates each suggestion', async () => {
+    // The rule #41 exists for: no suggestion without the figure behind it. Asserted as
+    // the whole line rather than as "reason is truthy", because a summary of the drift
+    // would satisfy the latter while leaving the page unable to show the band.
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.advice.suggestions.length).toBeGreaterThan(0)
+    for (const suggestion of body.advice.suggestions) {
+      const line = body.advice.drift.lines.find(
+        (candidate: { assetClass: string }) => candidate.assetClass === suggestion.assetClass,
+      )
+      expect(suggestion.reason).toEqual(line)
+      expect(suggestion.reason.state).not.toBe('inside')
+      expect(suggestion.amountCents).toBeGreaterThan(0)
+    }
+  })
+
+  it('names the position a sale would come out of, and prices its beurstaks', async () => {
+    const body = (await get('/api/portfolio')).json()
+    const sell = body.advice.suggestions.find((row: { action: string }) => row.action === 'sell')
+
+    expect(sell.assetClass).toBe('EQUITY')
+    // Paired with the purchase on the other side, so the gap is the size of the trade.
+    expect(sell.funding).toBe('paired')
+    expect(sell.amountCents).toBe(133_750)
+    // The largest equity position in the snapshot, by name — a sale of "something" is
+    // not something anybody can act on.
+    expect(sell.position).toMatchObject({ isin: 'IE00B4L5Y983', name: 'iShares Core MSCI World' })
+    expect(sell.unavailable).toBeUndefined()
+
+    // A range rather than a figure, and that is the correct answer here: the beurstaks
+    // rate on a fund is 0,12% or 1,32% depending on whether it accumulates and is
+    // FSMA-registered, and a snapshot row for a fund nobody put in the universe says
+    // neither. So the line names what it does not know and brackets the cost.
+    expect(sell.tax.lines[0]).toMatchObject({ rule: 'tob', amount_cents: null })
+    expect(sell.tax.complete).toBe(false)
+    expect(sell.tax.total_min_cents).toBeGreaterThan(0)
+    expect(sell.tax.total_max_cents).toBeGreaterThan(sell.tax.total_min_cents)
+    // Said out loud rather than silently left out: the cost base never reaches Balancr.
+    expect(sell.taxOmits).toEqual(['capital_gains'])
+  })
+
+  it('says why a purchase names no fund instead of inventing one', async () => {
+    // No `config/fund-universe.yaml` in a test run, which is the same state as a fresh
+    // install. The suggestion still travels — the drift is real — but it carries the
+    // reason it cannot name an instrument, and no tax figure for a trade it cannot price.
+    const body = (await get('/api/portfolio')).json()
+    const buy = body.advice.suggestions.find((row: { action: string }) => row.action === 'buy')
+
+    expect(buy.assetClass).toBe('FIXED_INCOME')
+    expect(buy.fund).toBeNull()
+    expect(buy.unavailable).toBe('no_fund_in_universe')
+    expect(buy.tax).toBeNull()
+  })
+
+  it('answers null when there is no invested value to measure against', async () => {
+    // Bands are shares of the invested value. Measuring them against the total would put
+    // every class below its floor on an instance whose Ghostfolio holds a bank balance,
+    // and then confidently suggest four purchases.
+    ctx.db.run(sql`UPDATE portfolio_metrics SET invested_value_cents = NULL, cash_value_cents = NULL`)
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.allocation.length).toBeGreaterThan(0)
+    expect(body.advice).toBeNull()
+  })
+})
+
 describe('GET /api/insights', () => {
   it('reports the month, its findings and the AI spend', async () => {
     const body = (await get('/api/insights')).json()
@@ -592,6 +697,9 @@ describe('a deployment that has never run a job', () => {
     expect(portfolio.date).toBeNull()
     expect(portfolio.totalValueCents).toBeNull()
     expect(portfolio.twrBp).toBeNull()
+    // No allocation is not a portfolio at every floor: it is a portfolio nobody has
+    // synced yet, and four suggestions to buy would be the app's first act.
+    expect(portfolio.advice).toBeNull()
   })
 
   it('does not describe an empty deployment as stale', async () => {

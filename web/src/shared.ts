@@ -18,6 +18,14 @@
  *    anything — because the API returns findings as codes and this side renders them.
  *    A browser-side copy of that table is how `{{delta}}` ends up printed literally on
  *    one screen and as `18%` on another.
+ *  - **The tax describer.** `domain/tax/describe.ts` is pure for this import — the
+ *    formatters and the tax types, nothing else — because a beurstaks estimate has to
+ *    read identically in a browser, in a digest email and in a test. Its catalogue keys
+ *    live in `portfolio` and `glossary`, which this file already ships.
+ *  - **The risk vocabulary.** `domain/advice/vocabulary.ts` exists for this import and
+ *    says so: the settings screen draws four bands and offers three presets, and the
+ *    order of both is a decision made once. The rest of `domain/advice/` reaches the
+ *    database and stays on the server.
  *  - **The shared-prompt sentinel.** `domain/ai/prompt-locale.ts` is its own module for
  *    this import: the prompt editor has to know which value means "not a language's own
  *    text", and a literal `'*'` on this side is how the picker's first entry comes to
@@ -55,12 +63,15 @@ export type { FormatSettings } from '../../src/i18n/format-config.ts'
 
 export type {
   AccountSetting,
+  Advice,
   AiAvailabilityWire,
   AiDryRun,
   AiEstimate,
   AiRun,
   AiRunPayload,
+  BandsSetting,
   Budget,
+  DriftLine,
   Freshness,
   Hygiene,
   Insights,
@@ -73,9 +84,11 @@ export type {
   PromptVersionSetting,
   ProbeStatus,
   RefreshAccepted,
+  RiskProfileSetting,
   Settings,
   SpendMonthSetting,
   Status,
+  Suggestion,
 } from '../../src/server/routes/api/schemas.ts'
 
 export {
@@ -89,6 +102,12 @@ export type { FindingCode, Severity } from '../../src/domain/ai/codes.ts'
 export { findingVars, isNeverReconciled } from '../../src/domain/ai/vars.ts'
 export { isSharedLocale, SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 export type { SignalFacts, Translate } from '../../src/domain/ai/vars.ts'
+
+export { describeTaxEstimate } from '../../src/domain/tax/describe.ts'
+export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe.ts'
+
+export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
+export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'
 
 export type {
   BootstrapResponse,
