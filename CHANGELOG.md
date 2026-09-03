@@ -6,6 +6,43 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Nightly encrypted backups, and a restore that has been performed rather than
+  assumed** ([#38](https://github.com/nrosier/Balancr/issues/38)). Almost everything in
+  the database is recomputed from Actual and Ghostfolio by morning; what is not is the
+  part you typed — every category description, COICOP code and sensitivity flag built up
+  by answering questions about your own budget, plus the prompt versions and the cost
+  ledger. `BACKUP_PASSPHRASE` switches it on and is the only flag there is: empty means
+  off, which is the right setting when the volume is already covered elsewhere. Each
+  night, last in the job order so it captures that night's work, the database is copied
+  with `VACUUM INTO` — through SQLite, rather than a file grabbed from underneath a live
+  WAL — and encrypted with AES-256-GCM under a scrypt-derived key, header authenticated
+  as associated data so the cost parameters cannot be edited into a denial of service.
+  `/data/actual` is excluded: it is a cache of a budget the Actual server still holds.
+  `BACKUP_DIR` defaults inside the one volume, with the limit that implies stated in the
+  README rather than left to be discovered.
+- **`npm run backup:verify`**, which answers the question a nightly job cannot answer
+  about itself: that the passphrase in `.env` today is the one those files were written
+  with, that they decrypt, and that what comes out is this deployment's data and not an
+  empty schema. It decrypts into a private temp directory, runs `PRAGMA integrity_check`,
+  counts eight tables and deletes the copy — safe against production.
+- **`npm run backup:restore`**, which exists because the format is Balancr's own and no
+  `openssl` incantation opens one of these files. It verifies the snapshot in full
+  *before* anything moves, so a wrong passphrase or a damaged file fails while the live
+  database is still in place, and it never deletes: the database being replaced is
+  renamed to `balancr.db.pre-restore-<stamp>`, `-wal` and `-shm` sidecars moved with it.
+  The README documents the procedure; `test/unit/backup-restore.test.ts` runs it on every
+  test run, including the refusals, asserting each time that the target was left
+  byte-for-byte unchanged.
+- **`backup` on the refresh control**, for taking a copy by hand before doing something
+  risky. Retention is deliberately not fooled by that: a file is deleted only when it is
+  both older than `BACKUP_KEEP` days *and* surplus to `BACKUP_KEEP` files, so a manual
+  backup never evicts a scheduled one, and an instance switched off for a month does not
+  come back and delete its own history for being old.
+
 ## [0.6.3] — 2026-09-03
 
 ### Added

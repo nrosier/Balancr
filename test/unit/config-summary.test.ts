@@ -17,6 +17,7 @@ const secrets: Record<string, string> = {
   GEMINI_API_KEY: 'secret-gemini-key-zzz',
   SESSION_SECRET: 'secret-session-secret-that-is-long-enough-zzz',
   AUTH_OIDC_CLIENT_SECRET: 'secret-oidc-client-secret-zzz',
+  BACKUP_PASSPHRASE: 'secret-backup-passphrase-zzz',
 }
 
 const deployment: Record<string, string> = {
@@ -85,6 +86,17 @@ describe('configSummary', () => {
     // Not a secret — a project id travels in every Vertex request — and `unset` is the
     // interesting value: it is the default provider's credential.
     expect(dump.GOOGLE_CLOUD_PROJECT).toBe('unset')
+  })
+
+  it('masks the backup passphrase, which is the key to the backups (#38)', async () => {
+    // Worth its own case rather than leaving it to the denylist above: this one value
+    // decrypts every snapshot on disk, so if it ever appears in a log it is not a leak
+    // of a credential that can be rotated, it is a leak of the data itself.
+    expect(await summary()).toMatchObject({
+      BACKUP_PASSPHRASE: `set (${secrets.BACKUP_PASSPHRASE?.length} chars)`,
+      BACKUP_DIR: './data/backups',
+      BACKUP_KEEP: 14,
+    })
   })
 
   it('does not carry the client secret at all, masked or otherwise', async () => {

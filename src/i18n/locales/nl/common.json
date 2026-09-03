@@ -69,6 +69,7 @@
   "job": {
     "ai": "AI-analyse",
     "backfill": "Historiek aanvullen",
+    "backup": "Back-up",
     "networth": "Nettovermogen",
     "portfolio": "Portefeuille",
     "probe": "Verbindingstest",

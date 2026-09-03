@@ -195,9 +195,9 @@ describe('a deployment with no Gemini credential (#165)', () => {
 })
 
 describe('a variable left blank in a copied .env.example (#118)', () => {
-  // The six optional variables, and what each has to survive being blank. Table
+  // The seven optional variables, and what each has to survive being blank. Table
   // rather than one test apiece because the interesting part is that the list is
-  // complete: a seventh optional variable added with a bare `.min(1)` is exactly
+  // complete: an eighth optional variable added with a bare `.min(1)` is exactly
   // the regression this guards, and adding its row here is the reminder.
   const optional = [
     'ACTUAL_E2E_PASSWORD',
@@ -206,6 +206,7 @@ describe('a variable left blank in a copied .env.example (#118)', () => {
     'AUTH_OIDC_ISSUER',
     'AUTH_OIDC_CLIENT_ID',
     'AUTH_OIDC_CLIENT_SECRET',
+    'BACKUP_PASSPHRASE',
   ] as const
 
   for (const key of optional) {
@@ -274,6 +275,49 @@ describe('a variable left blank in a copied .env.example (#118)', () => {
       AUTH_OIDC_CLIENT_SECRET: 'secret',
     })
     expect(error?.message).toContain('AUTH_OIDC_ISSUER')
+  })
+})
+
+describe('the backup settings (#38)', () => {
+  it('reads a blank passphrase as backups switched off', async () => {
+    // The passphrase is the switch, so this is the default state of every instance
+    // that has never thought about backups, and it has to boot.
+    const config = await configWith({ BACKUP_PASSPHRASE: '' })
+    expect(config.BACKUP_PASSPHRASE).toBeUndefined()
+  })
+
+  it('refuses a short passphrase rather than encrypting with it', async () => {
+    // A backup file is attacked offline, at whatever rate the attacker's hardware
+    // allows, so a passphrase that would be fine behind a login is not fine here.
+    // Refusing to boot is the only moment anyone will read the message.
+    const error = await loadWith({ BACKUP_PASSPHRASE: 'too-short' })
+    expect(error?.message).toContain('BACKUP_PASSPHRASE')
+  })
+
+  it('accepts a passphrase of exactly the minimum length', async () => {
+    const sixteen = 'abcdefghijklmnop'
+    expect(sixteen).toHaveLength(16)
+    expect((await configWith({ BACKUP_PASSPHRASE: sixteen })).BACKUP_PASSPHRASE)
+      .toBe(sixteen)
+  })
+
+  it('defaults the directory and the retention, so the passphrase is enough', async () => {
+    const config = await configWith({ BACKUP_PASSPHRASE: 'a-passphrase-of-sixteen-plus' })
+    expect(config.BACKUP_DIR).toBe('./data/backups')
+    expect(config.BACKUP_KEEP).toBe(14)
+  })
+
+  it('refuses a retention of zero, which would delete every copy it just made', async () => {
+    const error = await loadWith({ BACKUP_KEEP: '0' })
+    expect(error?.message).toContain('BACKUP_KEEP')
+  })
+
+  it('refuses a retention beyond a year, and a fractional one', async () => {
+    // The ceiling is not a safety rule, it is a typo detector: `BACKUP_KEEP=3650`
+    // is a decade of nightly copies on the same volume, which is a full disk rather
+    // than a backup strategy.
+    expect((await loadWith({ BACKUP_KEEP: '366' }))?.message).toContain('BACKUP_KEEP')
+    expect((await loadWith({ BACKUP_KEEP: '7.5' }))?.message).toContain('BACKUP_KEEP')
   })
 })
 

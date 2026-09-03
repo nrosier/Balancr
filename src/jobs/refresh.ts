@@ -75,6 +75,7 @@ export const REFRESHABLE = [
   'backfill',
   'signals',
   'ai',
+  'backup',
 ] as const
 
 export type Refreshable = (typeof REFRESHABLE)[number]
@@ -105,7 +106,17 @@ export const DEFAULT_REFRESH = ['sync', 'portfolio', 'networth', 'signals'] as c
  *
  * `backfill` has no dependents: every row it writes is for a month-end in the past,
  * and no job reads those — the charts do, directly. `probe` has none either; it is a
- * diagnosis, not an input.
+ * diagnosis, not an input. Nor does `backup`, in the strongest sense of the three: a
+ * snapshot is read by nothing in this process at all.
+ *
+ * And nothing lists `backup` as *its* dependent either, which is the more interesting
+ * direction. It would be defensible — a refresh that rewrote a month's facts has changed
+ * what is worth keeping — but a dependent runs whether or not anyone wanted it, and
+ * every press of the ordinary refresh button would then write another copy of the whole
+ * database. The facts a refresh rewrites are the derived ones, which the next nightly
+ * pass recomputes anyway; what a backup is for is the category knowledge, and that does
+ * not change because someone pressed refresh. So the button is available by name, for an
+ * operator who wants a copy before doing something risky, and never automatic.
  *
  * **`ai` is nobody's dependent, and that edge is missing on purpose.** It genuinely
  * does read what `signals` writes, so by the logic of this map it belongs under it —
@@ -122,6 +133,7 @@ const DEPENDENTS: Readonly<Record<Refreshable, readonly Refreshable[]>> = {
   backfill: [],
   signals: [],
   ai: [],
+  backup: [],
 }
 
 /**
