@@ -6,6 +6,63 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Refresh on demand, all of it or one source**
+  ([#122](https://github.com/nrosier/Balancr/issues/122)). Until now the only way to
+  make a figure current was to wait for the schedule or restart the container. Every
+  page already says how old its numbers are; this puts the control next to the
+  sentence, and each page starts only the jobs whose figures it shows — the budget
+  page does not wait through a Ghostfolio download to re-read a category total.
+
+  `POST /api/refresh` takes no body for "everything the figures come from" — `sync`,
+  `portfolio`, `networth`, `signals` — or `{"jobs":[…]}` for a subset. **Selective
+  refresh runs the dependents rather than leaving them behind**: `sync` also runs
+  `networth` and `signals`, because a budget re-read that left net worth computed
+  from the previous one would make the two halves of the overview disagree. The
+  response separates `requested` from `accepted`, and the screen names the
+  difference — *"Net worth, Signals ran as well"* — so nothing moves unexplained. An
+  empty array and an unknown job name are both rejected; neither is quietly read as
+  "all of them".
+
+  **`ai` is refused by name**, with a `403` that says where its control is. It is
+  the one job that spends money, and a page-level "refresh everything" that quietly
+  called Gemini would be a button with a price the reader cannot see. It has an
+  endpoint of its own — `POST /api/ai/refresh`, owner-only, in the strict AI bucket —
+  and a control of its own on the settings panel that already prints what the month
+  has cost: priced first from `GET /api/ai/estimate`, then confirmed with the amount
+  in the button's own label. Over budget it stays pressable on purpose, because the
+  cost guard's documented answer is a cached result with a banner and the endpoint is
+  the single place that decides.
+
+  **One refresh at a time, and "running" is not read from a row.** A second request
+  answers `409`; what makes that answer safe is that in-flight work is tracked in the
+  process, so a `running` row left behind by a crash blocks nothing after a restart.
+  Every start is audited as `jobs.refresh` with the actor and the job names, which the
+  `jobs` table cannot record — it holds one row per job, overwritten by every run.
+
+  On screen, progress is **read from the job rows rather than timed**. "Refreshed" is
+  said only once every accepted job has a row newer than the request, where a row
+  still marked `running` and a job with no row at all both count as unfinished — the
+  first because `runJob` writes `lastRunAt` when a job *starts*, the second because a
+  queued job has not written one yet. After a minute of waiting the bar stops polling
+  and says the job is still going, which is the honest thing to say about a first sync
+  over two years of history, and hands the button back. Where the scheduler is
+  switched off there is no button at all, since the endpoint would answer `403`.
+
+### Changed
+
+- A fourth rate-limit bucket, thirty an hour, in front of the refresh routes. The
+  concurrency question is already answered by the `409`; this is about the client that
+  starts one the instant the last finished, since every accepted refresh reaches into
+  someone else's Actual and Ghostfolio and can starve the nightly pass without ever
+  overlapping itself.
+- `buildApp` takes the job registry as an option, defaulting to the real one. An HTTP
+  test of the refresh endpoint would otherwise dial Actual and Ghostfolio to assert
+  something about a `202`.
+
 ## [0.6.0] — 2026-09-03
 
 ### Added

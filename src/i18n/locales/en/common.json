@@ -111,6 +111,16 @@
       "lede": "Language, prompts, thresholds and which source owns each account."
     }
   },
+  "refresh": {
+    "alsoRan": "{{jobs}} ran as well, because these figures are computed from them.",
+    "busy": "Something is already running. Try again once it has finished.",
+    "failed": "The refresh could not be started.",
+    "finished": "Refreshed.",
+    "job": "Run now",
+    "running": "Refreshing…",
+    "slow": "Still running. This page has stopped waiting — reload it to see the result.",
+    "started": "The jobs are running. This page updates itself when they finish."
+  },
   "severity": {
     "alert": "Action needed",
     "info": "Info",

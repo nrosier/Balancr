@@ -241,6 +241,40 @@
   font-size: var(--type-sm);
 }
 
+/*
+ * The age of the figures and the button that changes it, on one row.
+ *
+ * The note grows and the button does not, with a basis wide enough that a one-line
+ * "Updated 12/09/2026 03:00" keeps the button beside it and a three-line failure notice
+ * pushes it underneath. Both are correct: the button belongs next to a short line and
+ * below a paragraph, and no measurement in JavaScript is needed to choose.
+ */
+.freshbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.freshbar__note {
+  flex: 1 1 24rem;
+}
+
+/*
+ * Plain flow rather than a grid with a gap, and the spacing on the lines themselves.
+ *
+ * The status region is always rendered, empty and all, because a live region that is
+ * removed — or hidden with `display: none`, which is the same thing to a screen reader —
+ * announces nothing when its content arrives. An empty div in flow costs no height and
+ * no gap; the same div as a grid row would leave a space under every freshness line on
+ * every page for the sake of a message that is usually absent.
+ */
+.freshbar__line {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-sm);
+}
+
 /* ── Metrics ─────────────────────────────────────────────────────────────── */
 
 .metric__value {

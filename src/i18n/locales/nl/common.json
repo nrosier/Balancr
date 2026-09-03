@@ -111,6 +111,16 @@
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
     }
   },
+  "refresh": {
+    "alsoRan": "{{jobs}} liep ook, omdat deze cijfers daaruit worden berekend.",
+    "busy": "Er loopt al iets. Probeer het opnieuw zodra dat klaar is.",
+    "failed": "Het vernieuwen kon niet worden gestart.",
+    "finished": "Bijgewerkt.",
+    "job": "Nu uitvoeren",
+    "running": "Bijwerken…",
+    "slow": "Loopt nog. Deze pagina wacht niet langer — herlaad ze om het resultaat te zien.",
+    "started": "De taken lopen. Deze pagina werkt zichzelf bij zodra ze klaar zijn."
+  },
   "severity": {
     "alert": "Actie nodig",
     "info": "Info",

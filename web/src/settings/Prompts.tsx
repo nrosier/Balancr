@@ -37,7 +37,6 @@
  * worth a red box — and the Test button says so instead of failing when pressed.
  */
 import { useMemo, useState, type ReactNode } from 'react'
-import { useResource } from '../api/resource.tsx'
 import { useT, type TFunction } from '../i18n.ts'
 import {
   formatDateTime,
@@ -79,7 +78,7 @@ const languageName = (t: TFunction, locale: string): string =>
     ? t('settings:prompt.language.shared')
     : t(`settings:language.${locale}`, { defaultValue: locale })
 
-export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const { prompts } = settings
 
@@ -284,6 +283,7 @@ export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): Re
           entry={entry}
           state={state}
           owner={owner}
+          estimate={estimate}
           run={run?.for === selection ? run.result : null}
           onRun={(result) => setRun({ for: selection, result })}
         />
@@ -471,6 +471,7 @@ interface DryRunProps {
   entry: PromptSetting
   state: SettingsPanelProps['state']
   owner: boolean
+  estimate: SettingsPanelProps['estimate']
   run: AiDryRun | null
   onRun: (result: AiDryRun) => void
 }
@@ -493,9 +494,8 @@ interface DryRunProps {
  * shared text asks for nothing and lets the server answer in the reader's own, which
  * is what the nightly job would do for them.
  */
-function DryRun({ entry, state, owner, run, onRun }: DryRunProps): ReactNode {
+function DryRun({ entry, state, owner, estimate, run, onRun }: DryRunProps): ReactNode {
   const { t, language } = useT()
-  const estimate = useResource<AiEstimate>('/api/ai/estimate')
   const promptId = entry.active.id
   const priced: AiEstimate | null = estimate.data
   // A 409 is the fresh-deployment answer — nothing has been aggregated, so there is no

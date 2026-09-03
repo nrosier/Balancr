@@ -44,6 +44,17 @@
       "ok": "Completed."
     },
     "remaining": "Left this month",
+    "rerun": {
+      "cancel": "Not now",
+      "confirm": "Spend {{cost}} and run it",
+      "lede": "The analysis runs by itself every night. This starts one now — it calls the model, so it costs what the estimate says.",
+      "noMonth": "No month has been aggregated yet, so there is nothing to analyse.",
+      "price": "A run on {{month}} would cost about {{cost}}.",
+      "start": "Run the analysis now",
+      "started": "The analysis has started. The insights page shows what it found once it finishes.",
+      "starting": "Starting…",
+      "title": "Run by hand"
+    },
     "runs": "Analyses",
     "spend": "{{spent}} of {{budget}} this month",
     "spent": "Spent",

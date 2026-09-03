@@ -299,8 +299,13 @@ describe('the page', () => {
     // live region, so a `findByRole('status')` resolves against it before the payload
     // has arrived.
     await screen.findByText('What stands out')
-    const notice = screen.getByRole('status')
-    expect(notice.textContent).toContain('Monthly AI budget reached')
+    // Filtered rather than picked, because this page has more than one live region: the
+    // refresh bar keeps an empty one of its own so that what it says while a job runs is
+    // announced. "Once" is the claim being tested, so it is counted rather than assumed.
+    const capped = screen
+      .getAllByRole('status')
+      .filter((region) => region.textContent?.includes('Monthly AI budget reached') ?? false)
+    expect(capped).toHaveLength(1)
     // The figure as well as the fact, in the same words the settings screen uses.
     // Through `getByText`, whose normaliser folds away the non-breaking space `Intl`
     // puts after the symbol — a raw `textContent` read would not.

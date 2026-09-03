@@ -27,9 +27,20 @@ import { Narrative } from '../insights/Narrative.tsx'
 import { Proposals, Questions } from '../insights/Pending.tsx'
 import { formatMicroEur, type Insights as InsightsPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { FreshnessNote } from '../ui/Freshness.tsx'
+import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../insights/insights.css'
+
+/**
+ * The job behind the findings, which is not the job behind the narrative.
+ *
+ * `signals` is deterministic TypeScript over the aggregated facts — it costs nothing and
+ * is safe to press. The AI pass is the one job that spends money, `/api/refresh` refuses
+ * it by name, and its control lives on the settings page beside the month's spend and
+ * the price of a run. Two buttons on this page, one free and one not, is how the wrong
+ * one gets pressed.
+ */
+const JOBS = ['signals'] as const
 
 /**
  * True on a deployment where the AI layer has never run.
@@ -57,18 +68,24 @@ export function Insights(): ReactNode {
     <>
       <PageHeader title={t('nav.insights')} lede={t('page.insights.lede')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Sections data={data} />}
+        {(data) => <Sections data={data} onRefreshed={resource.reload} />}
       </DataState>
     </>
   )
 }
 
-function Sections({ data }: { data: InsightsPayload }): ReactNode {
+function Sections({
+  data,
+  onRefreshed,
+}: {
+  data: InsightsPayload
+  onRefreshed: () => void
+}): ReactNode {
   const { t } = useT()
 
   return (
     <>
-      <FreshnessNote freshness={data.freshness} />
+      <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
       {data.spend.exceeded ? (
         <div className="notice notice--warn" role="status">
