@@ -25,8 +25,8 @@ function namesLocale(lang: UiLanguage): string {
 }
 
 // Intl formatters are expensive to construct; cache per distinct signature.
-const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>()
-function cached<T extends Intl.NumberFormat | Intl.DateTimeFormat>(
+const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat | Intl.ListFormat>()
+function cached<T extends Intl.NumberFormat | Intl.DateTimeFormat | Intl.ListFormat>(
   key: string,
   make: () => T,
 ): T {
@@ -291,6 +291,22 @@ export function formatMonthShort(month: string, lang: UiLanguage): string {
     new Intl.DateTimeFormat(namesLocale(lang), { month: 'short', timeZone: 'UTC' }),
   ) as Intl.DateTimeFormat
   return fmt.format(parseIsoDate(`${month}-01`))
+}
+
+/**
+ * `a, b and c` / `a, b en c` — joined in the UI language, not the format locale.
+ *
+ * The one place in this module where the language wins over `FORMAT_LOCALE`. Numbers
+ * and dates stay Belgian whatever the interface is set to, because they are checked
+ * against Belgian documents — but "and" is a word in a sentence, and an English
+ * sentence joined with "en" is simply broken. Same reasoning as `formatMonth` taking
+ * a language: the month *name* translates, its position does not.
+ */
+export function formatList(items: readonly string[], lang: UiLanguage): string {
+  const fmt = cached(`list:${lang}`, () =>
+    new Intl.ListFormat(namesLocale(lang), { style: 'long', type: 'conjunction' }),
+  ) as Intl.ListFormat
+  return fmt.format(items)
 }
 
 /** Belgium starts the week on Monday; charts and calendars must agree. */

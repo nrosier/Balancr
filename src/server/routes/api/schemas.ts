@@ -452,7 +452,24 @@ export const settingsSchema = z.object({
    * would decide whether it drew the warning.
    */
   dedupe: z.array(
-    z.object({ ghostfolioId: z.string(), possibleMirrorIds: z.array(z.string()) }),
+    z.object({
+      ghostfolioId: z.string(),
+      /**
+       * One Actual account, not a list. The previous shape sent every ungrouped
+       * Actual row for every Ghostfolio row, having compared nothing.
+       */
+      actualId: z.string(),
+      /**
+       * Why this pair is suspected, strongest first and never empty.
+       *
+       * On the wire so the panel can say "same name, same balance" rather than
+       * asking a person to take the suggestion on faith. A suggestion nobody can
+       * audit gets accepted blindly or silenced destructively, and silencing it
+       * used to mean grouping two unrelated accounts — which drops real money out
+       * of net worth.
+       */
+      signals: z.array(z.enum(['name', 'nameContains', 'balance', 'currency'])).min(1),
+    }),
   ),
   ai: z.object({
     /** From `.env`, not editable here: a model is a deployment decision. */

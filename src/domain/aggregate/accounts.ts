@@ -18,8 +18,7 @@
  *  - **Off-budget Actual** accounts are `other`: neither liquid nor invested.
  *    This is the honest default, since an off-budget account is as likely to be a
  *    mortgage as a broker, and `other` counts toward the total without pretending
- *    to be an emergency fund. It is also exactly the set of accounts
- *    `dedupeCandidates` asks the user about.
+ *    to be an emergency fund.
  */
 import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
@@ -139,34 +138,185 @@ export function accountMapBySource(
   )
 }
 
-export interface DedupeCandidate {
-  ghostfolio: AccountMapRow
-  /** Actual rows that could be the same money. Never more than a suggestion. */
-  possibleMirrors: AccountMapRow[]
+/** What a suggestion rests on, so a reader can audit it instead of trusting it. */
+export type MirrorSignal =
+  /** Normalised names are equal. */
+  | 'name'
+  /** One normalised name contains the other, whole words only. */
+  | 'nameContains'
+  /** Same currency and the values agree to within `BALANCE_TOLERANCE`. */
+  | 'balance'
+  /** Same currency. Never evidence on its own — everything here is EUR. */
+  | 'currency'
+
+/** Ranking weights. Only the order matters; the numbers are spaced to make it readable. */
+const SIGNAL_WEIGHT: Record<MirrorSignal, number> = {
+  name: 100,
+  balance: 50,
+  nameContains: 25,
+  currency: 1,
 }
 
 /**
- * Ghostfolio accounts that are probably also in Actual, and are not yet grouped.
+ * How far two balances may drift and still be called the same money.
+ *
+ * A euro, or a tenth of a percent of the larger side, whichever is more generous.
+ * The absolute floor is there because a synced pair agrees exactly and the only
+ * expected disagreement is a rounding step; the relative term is there because a
+ * six-figure account converted through a rate can differ by more than a euro
+ * without either figure being wrong.
+ */
+function balanceTolerance(a: number, b: number): number {
+  return Math.max(100, Math.round(Math.max(Math.abs(a), Math.abs(b)) / 1000))
+}
+
+/** The account kinds an Actual row may have to be a plausible mirror of a Ghostfolio one. */
+const MIRRORABLE: Partial<Record<AccountKind, ReadonlySet<AccountKind>>> = {
+  // A Ghostfolio account holding no positions is a copy of a bank balance, so its twin
+  // is a bank account — including `checking`, which the old filter excluded and which is
+  // the direction that actually happens when a syncing tool writes banks into Ghostfolio.
+  cash: new Set<AccountKind>(['checking', 'savings', 'cash', 'other']),
+  // A portfolio can only mirror something holding positions. `other` is in because it is
+  // the off-budget default, so a real investment mirror may not have been labelled yet.
+  investment: new Set<AccountKind>(['investment', 'other']),
+}
+
+export interface AccountBalance {
+  accountMapId: string
+  valueCents: number
+  currency: string
+}
+
+export interface DedupeCandidate {
+  ghostfolio: AccountMapRow
+  /** The single best-scoring Actual row. There is never a second suggestion. */
+  actual: AccountMapRow
+  /** Strongest first, and never empty: a candidate with no signal is not emitted. */
+  signals: MirrorSignal[]
+}
+
+/** Whole-word containment, so "cash" does not match "cashflow". */
+function containsWords(haystack: string, needle: string): boolean {
+  if (needle === '' || haystack === needle) return false
+  return ` ${haystack} `.includes(` ${needle} `)
+}
+
+function signalsFor(
+  ghostfolio: AccountMapRow,
+  actual: AccountMapRow,
+  balances: ReadonlyMap<string, AccountBalance>,
+): MirrorSignal[] {
+  const signals: MirrorSignal[] = []
+
+  const gName = normaliseAccountName(ghostfolio.name)
+  const aName = normaliseAccountName(actual.name)
+  if (gName !== '' && gName === aName) signals.push('name')
+  else if (containsWords(gName, aName) || containsWords(aName, gName)) {
+    signals.push('nameContains')
+  }
+
+  const gBal = balances.get(ghostfolio.id)
+  const aBal = balances.get(actual.id)
+  if (gBal !== undefined && aBal !== undefined && gBal.currency === aBal.currency) {
+    signals.push('currency')
+    // Zero is the most common balance in any dataset — a dormant account, an account
+    // opened and never used, an account whose snapshot has not run. Two of them
+    // agreeing at zero is a coincidence, not evidence, and treating it as evidence
+    // would pair every empty account with every other one.
+    const sameMoney =
+      gBal.valueCents !== 0 &&
+      aBal.valueCents !== 0 &&
+      Math.abs(gBal.valueCents - aBal.valueCents) <=
+        balanceTolerance(gBal.valueCents, aBal.valueCents)
+    // Signed, deliberately: a credit card at −800 and a savings account at +800 are not
+    // the same money, and comparing magnitudes would say they were.
+    if (sameMoney) signals.push('balance')
+  }
+
+  return signals.sort((a, b) => SIGNAL_WEIGHT[b] - SIGNAL_WEIGHT[a])
+}
+
+function score(signals: readonly MirrorSignal[]): number {
+  return signals.reduce((total, signal) => total + SIGNAL_WEIGHT[signal], 0)
+}
+
+/**
+ * The one Actual account each Ghostfolio account is most likely a copy of.
  *
  * This exists because the default mapping double counts, and double counting is
  * wrong in the flattering direction: net worth comes out too high and looks
- * plausible. Nothing here changes a figure — it is the prompt that gets a human
- * to make the call, surfaced in the setup panel and logged when it first appears.
+ * plausible. Nothing here changes a figure — it is the prompt that gets a human to
+ * make the call, surfaced in the setup panel.
  *
- * The heuristic is deliberately loose (any ungrouped Actual account that is
- * off-budget or already marked `investment`), because a false suggestion costs
- * one dismissal and a missed one costs a wrong net worth for months.
+ * What it is not, any more, is a cross join. The previous version handed every
+ * Ghostfolio account the *same* list of Actual accounts and compared nothing, so a
+ * brokerage account was offered against meal vouchers and a savings account, and the
+ * output grew as the product of the two sides. That defended itself as a loose
+ * heuristic, but a comparison that consults none of the data cannot be loose or
+ * strict — it asserts nothing. Worse, an Actual account became a suspect by being
+ * classified accurately, so describing accounts correctly made the panel noisier.
+ *
+ * So: like with like by derived `kind`, at most one suggestion per Ghostfolio
+ * account, every suggestion carrying the evidence it rests on, and nothing at all
+ * when nothing matches. A name or a balance must agree — currency alone is not
+ * evidence when every account is in euros.
+ *
+ * Recall still beats precision here, which is why containment counts and why the
+ * tolerance is generous: a missed suggestion leaves net worth wrong for months,
+ * while a wrong one now costs one click that is remembered (`dismissMirror`). That
+ * trade only became payable once dismissal was storable — before it, the sole way to
+ * silence a false suggestion was to group two unrelated accounts, which drops real
+ * money out of net worth.
  */
-export function dedupeCandidates(rows: readonly AccountMapRow[]): DedupeCandidate[] {
+export function dedupeCandidates(
+  rows: readonly AccountMapRow[],
+  balances: readonly AccountBalance[] = [],
+): DedupeCandidate[] {
+  const byId = new Map(balances.map((balance) => [balance.accountMapId, balance]))
   const ungrouped = rows.filter((row) => row.dedupeGroup === null)
-  const mirrors = ungrouped.filter(
-    (row) => row.source === 'actual' && row.kind !== 'checking' && row.kind !== 'credit',
-  )
+  // An Actual account that does not count toward net worth cannot be half of a double
+  // count, so proposing a group for it would be noise under a heading that says
+  // "possibly counted twice".
+  const mirrors = ungrouped.filter((row) => row.source === 'actual' && row.includeInNetWorth)
   if (mirrors.length === 0) return []
 
-  return ungrouped
-    .filter((row) => row.source === 'ghostfolio' && row.includeInNetWorth)
-    .map((row) => ({ ghostfolio: row, possibleMirrors: mirrors }))
+  const candidates: DedupeCandidate[] = []
+  for (const ghostfolio of ungrouped) {
+    if (ghostfolio.source !== 'ghostfolio' || !ghostfolio.includeInNetWorth) continue
+    // A dismissal is a decided `dedupeGroup` on the Ghostfolio row: someone has said
+    // this account mirrors nothing. Offering it again after the next sync renamed it is
+    // the defect that made the old panel impossible to clear.
+    if (decidedFields(ghostfolio).has('dedupeGroup')) continue
+
+    const allowed = MIRRORABLE[ghostfolio.kind]
+    if (allowed === undefined) continue
+
+    let best: DedupeCandidate | null = null
+    let bestScore = 0
+    for (const actual of mirrors) {
+      if (!allowed.has(actual.kind)) continue
+      const signals = signalsFor(ghostfolio, actual, byId)
+      if (!signals.some((signal) => signal !== 'currency')) continue
+
+      const total = score(signals)
+      // Ties break on name then id rather than emitting nothing. The human is in the
+      // loop and the evidence is on screen, so showing the weaker of two equal matches
+      // is recoverable; showing neither hides a double count that has no other symptom.
+      if (
+        best === null ||
+        total > bestScore ||
+        (total === bestScore &&
+          (actual.name < best.actual.name ||
+            (actual.name === best.actual.name && actual.id < best.actual.id)))
+      ) {
+        best = { ghostfolio, actual, signals }
+        bestScore = total
+      }
+    }
+    if (best !== null) candidates.push(best)
+  }
+
+  return candidates.sort((a, b) => a.ghostfolio.name.localeCompare(b.ghostfolio.name))
 }
 
 /** Marks rows as belonging to one group, with `sourceOfTruthId` the one that counts. */
@@ -577,6 +727,32 @@ export function groupAccounts(
  * for nothing is invisible money, and the failure would be a net worth quietly
  * missing an account with nothing on screen to say so.
  */
+/**
+ * Records that a Ghostfolio account is a copy of nothing, so the matcher stops asking.
+ *
+ * The stored dismissal #131 needs, and it needs no table of its own: "these two are
+ * not the same money" is a decision about `dedupeGroup`, and `decided_fields` already
+ * holds decisions about `dedupeGroup`. Marking it decided leaves the group `null` — the
+ * account keeps counting for itself, which is the whole point — while both the derived
+ * matcher and the suggestion list skip the row from then on.
+ *
+ * Keyed on the account rather than the pair, and that is deliberate rather than lazy.
+ * A pair-keyed dismissal is identified by two names, so the next sync that renames
+ * either side produces a pair that has never been dismissed and the suggestion returns
+ * — which is precisely the failure being fixed. The cost is that dismissing one
+ * suggestion dismisses any future one for the same Ghostfolio account; acceptable,
+ * because at most one is ever offered, and because the derived matcher in
+ * `deriveMirrors` has already grouped the pairs that are unambiguous.
+ */
+export function dismissMirror(db: Db, id: string): AccountMapRow | null {
+  return db.transaction((tx) => {
+    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+    if (row === null || row.dedupeGroup !== null) return null
+    markDecided(tx, [id], ['dedupeGroup'])
+    return tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+  })
+}
+
 export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
   return db.transaction((tx) => {
     const row =

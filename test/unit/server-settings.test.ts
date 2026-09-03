@@ -377,6 +377,44 @@ describe('the account mapping', () => {
     expect(account?.isSourceOfTruth).toBe(true)
   })
 
+  it('records a dismissal as a decision, without dropping the account', async () => {
+    const [first] = accountIds()
+
+    const res = await post(`/api/settings/accounts/${first}/not-mirrored`)
+    expect(res.statusCode).toBe(200)
+
+    const account = res.json<Settings>().accounts.find((row) => row.id === first)
+    // The whole point: nothing is grouped and nothing stops counting. Only the null
+    // becomes an answer, so the matcher stops proposing this account.
+    expect(account?.dedupeGroup).toBeNull()
+    expect(account?.isSourceOfTruth).toBe(true)
+    expect(account?.decidedFields).toEqual(['dedupeGroup'])
+  })
+
+  it('refuses a dismissal from a viewer', async () => {
+    const [first] = accountIds()
+    const res = await post(`/api/settings/accounts/${first}/not-mirrored`, {}, {
+      token: viewer,
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('refuses to dismiss an account that is in a group', async () => {
+    const [first, second] = accountIds()
+    await post('/api/settings/accounts/group', {
+      accountMapIds: [first, second],
+      sourceOfTruthId: second,
+    })
+
+    // 409 rather than 404: the account exists, and `ungroup` is the operation wanted.
+    const res = await post(`/api/settings/accounts/${first}/not-mirrored`)
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('answers 404 dismissing an account that does not exist', async () => {
+    expect((await post('/api/settings/accounts/nope/not-mirrored')).statusCode).toBe(404)
+  })
+
   it('refuses a group whose truth is not in it', async () => {
     const [first, second, third] = accountIds()
     const res = await post('/api/settings/accounts/group', {

@@ -288,7 +288,9 @@ years rather than one night. And the figure both pages lead with is now honest o
 deployment that syncs bank accounts into Ghostfolio as well as Actual: the shared
 balances are counted once, on the Actual side that reconciles them, and the cash sitting
 at the broker is named rather than drawn as an asset class
-([#124](https://github.com/nrosier/Balancr/issues/124)). The language is settled by the
+([#124](https://github.com/nrosier/Balancr/issues/124)). The pairs it cannot decide by
+itself are put to you with the evidence attached, and a refusal is remembered
+([#131](https://github.com/nrosier/Balancr/issues/131)). The language is settled by the
 server now ([#34](https://github.com/nrosier/Balancr/issues/34)): one resolution
 order behind both `<html lang>` and the strings underneath it, where the attribute used
 to say `en` to everyone. Insights
@@ -468,10 +470,21 @@ read at all. One order behind both answers is also what lets the chrome be sized
 Dutch and kept that way: thirteen length bounds in `npm run i18n:check` refuse a
 translation longer than the box it has to fit.
 
+The pairs the classifier will not group by itself are now put to you properly
+([#131](https://github.com/nrosier/Balancr/issues/131)). The panel used to offer every
+Ghostfolio account against every non-checking Actual account, which on an instance
+holding a meal-voucher card, two eco-cheque balances, some cash and a savings account
+is a wall of suggestions about accounts that have nothing to do with each other. Each
+pair is now scored on the name, whole-word containment, a signed balance within €1 or
+0.1%, and the currency — never on currency alone, never zero against zero, and never a
+cash account against a portfolio — and the reason is shown in words, because a
+suggestion you have to reverse-engineer is one you cannot check. **Not the same money**
+is recorded against the account rather than the pair: a pair is identified by two names,
+and the next sync that renames either side would bring the suggestion back.
+
 Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), the
 accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)), the duplicate-account matcher
-([#131](https://github.com/nrosier/Balancr/issues/131)) and per-locale prompts
+([#35](https://github.com/nrosier/Balancr/issues/35)) and per-locale prompts
 ([#133](https://github.com/nrosier/Balancr/issues/133)) —
 shipping as `0.5.17`, `0.5.18`, … until every issue in that milestone is closed and
 `0.6.0` lands.

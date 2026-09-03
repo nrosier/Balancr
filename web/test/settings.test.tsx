@@ -158,7 +158,9 @@ const PAYLOAD: Payload = {
       decidedFields: [],
     },
   ],
-  dedupe: [{ ghostfolioId: 'g-broker', possibleMirrorIds: ['a-mirror'] }],
+  dedupe: [
+    { ghostfolioId: 'g-broker', actualId: 'a-mirror', signals: ['name', 'balance'] },
+  ],
   ai: {
     models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
     month: '2026-09',
@@ -480,6 +482,52 @@ describe('accounts', () => {
         },
       ])
     })
+  })
+
+  it('says why the pair is suspected, so the suggestion can be audited', async () => {
+    await open(READS)
+
+    // Not decoration. A suggestion nobody can check gets accepted blindly or silenced
+    // destructively, and silencing it used to mean grouping two unrelated accounts —
+    // which drops real money out of net worth.
+    expect(
+      screen.getByText(
+        'Suggested because: both are called the same thing and the balances agree.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('offers a dismissal that keeps both accounts counting', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/accounts/g-broker/not-mirrored': json(PAYLOAD),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not the same money' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/accounts/g-broker/not-mirrored',
+          method: 'POST',
+          body: {},
+        },
+      ])
+    })
+  })
+
+  it('shows a viewer the evidence but none of the three controls', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(
+      screen.getByText('Bolero may be the same money as Investments (mirror).'),
+    ).toBeTruthy()
+    for (const name of ['Group, Bolero counts', 'Group, Investments (mirror) counts', 'Not the same money']) {
+      expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
+    }
   })
 
   it('writes a kind change straight away, since there is nothing to submit', async () => {

@@ -12,6 +12,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots } from '../../db/schema.ts'
+import type { AccountBalance } from './accounts.ts'
 import { config } from '../../config.ts'
 import { LIQUID, type NetWorthResult, type NetWorthSummary } from './networth.ts'
 
@@ -120,6 +121,36 @@ export function loadNetWorthHistory(db: Db): { date: string; totalCents: number 
  * opinion on it. The kinds come from today's `account_map`, which is also what
  * makes a mapping correction show up in the summary of an older date.
  */
+/**
+ * The most recent stored value and currency for every account that has one.
+ *
+ * For the duplicate matcher, which compares balances rather than reading a total:
+ * a tool that syncs two systems every quarter of an hour leaves the same figure on
+ * both sides, so agreement on the number is the strongest evidence available that
+ * two rows are the same money — usually stronger than the name, which people edit.
+ *
+ * Accounts with no snapshot yet are simply absent rather than zero. Absent means
+ * "no evidence"; zero would mean "agrees with every other empty account".
+ */
+export function loadLatestAccountBalances(db: Db): AccountBalance[] {
+  const latest = db
+    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
+    .from(netWorthSnapshots)
+    .get()
+  const date = latest?.date ?? null
+  if (date === null) return []
+
+  return db
+    .select({
+      accountMapId: netWorthSnapshots.accountMapId,
+      valueCents: netWorthSnapshots.valueCents,
+      currency: netWorthSnapshots.currency,
+    })
+    .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.date, date))
+    .all()
+}
+
 export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
   const latest = db
     .select({ date: sql<string>`max(${netWorthSnapshots.date})` })

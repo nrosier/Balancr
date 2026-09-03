@@ -6,6 +6,39 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+
+- **The duplicate-account panel now says what it found, and a "no" now sticks**
+  ([#131](https://github.com/nrosier/Balancr/issues/131)). It used to offer every
+  Ghostfolio account against every non-checking Actual account, so an instance with
+  five unrelated accounts — a meal-voucher card, two eco-cheque balances, some cash and
+  a savings account — read as a wall of suggestions pairing things that have nothing to
+  do with each other, with no way to say so.
+
+  Each pair is now scored on four signals: the same name once punctuation and case are
+  normalised, one name containing the other as whole words, balances that agree to
+  within €1 or 0.1%, and a matching currency. At least one signal must be something
+  other than currency, only the best match per Ghostfolio account is offered, and a
+  cash account is never crossed with a portfolio — the account kind derived in
+  [#124](https://github.com/nrosier/Balancr/issues/124) is what makes that possible,
+  including the direction the old filter structurally excluded: a broker balance mirrored
+  into an *on-budget* Actual account.
+
+  Balances are compared signed and only when both sides are non-zero. Zero is the most
+  common balance in any dataset, so treating it as evidence would pair every empty
+  account with every other one, and a credit card at −800 is not the same money as a
+  savings account at +800.
+
+  The reason travels with the suggestion, so the panel reads "Suggested because: both
+  are called the same thing and the balances agree" instead of asking you to work out
+  what it saw. And **Not the same money** records the answer permanently — against the
+  account rather than against the pair, because a pair is identified by two names and
+  the next sync that renames either side would resurrect the suggestion. It reuses the
+  decided-fields ledger from #132, so a dismissal is an ordinary human decision that
+  no derived rule may overturn, and it is audit-logged like any other.
+
 ## [0.5.16] — 2026-09-03
 
 ### Added

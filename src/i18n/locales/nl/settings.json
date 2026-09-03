@@ -1,8 +1,17 @@
 {
   "accounts": {
     "dedupe": {
-      "hint": "Een Ghostfolio-rekening en een Actual-rekening kunnen dezelfde posities bevatten. Groepeer ze en duid aan welke meetelt, anders telt je nettovermogen hetzelfde geld twee keer.",
+      "because": "Voorgesteld omdat: {{signals}}.",
+      "hint": "Een Ghostfolio-rekening en een Actual-rekening kunnen hetzelfde geld bevatten — dezelfde posities, of hetzelfde banksaldo dat een synchronisatietool erin heeft gezet. Groepeer ze en duid aan welke meetelt, anders telt je nettovermogen het twee keer.",
+      "notMirrored": "Niet hetzelfde geld",
+      "notMirroredHint": "Beide blijven meetellen, en deze suggestie komt niet terug.",
       "pair": "{{ghostfolio}} is mogelijk hetzelfde geld als {{actual}}.",
+      "signal": {
+        "balance": "de saldo's overeenkomen",
+        "currency": "dezelfde munt",
+        "name": "ze allebei hetzelfde heten",
+        "nameContains": "de ene naam de andere bevat"
+      },
       "title": "Mogelijk dubbel geteld",
       "useThis": "Groeperen, {{name}} telt"
     },

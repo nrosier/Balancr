@@ -31,6 +31,7 @@ import type { Db } from '../../db/index.ts'
 import {
   decidedFields,
   dedupeCandidates,
+  dismissMirror,
   groupAccounts,
   loadAccountMap,
   setSourceOfTruth,
@@ -38,6 +39,7 @@ import {
   updateAccountMap,
   type AccountMapRow,
 } from '../../domain/aggregate/accounts.ts'
+import { loadLatestAccountBalances } from '../../domain/aggregate/networth-store.ts'
 import {
   DEFAULT_PARAMS,
   loadParams,
@@ -61,7 +63,7 @@ import { recordAudit } from '../../domain/audit.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
-import { badRequest, invalidBody, notFound } from '../errors.ts'
+import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 import { APP_REVISION, APP_VERSION } from '../version.ts'
@@ -232,9 +234,10 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       config.SUPPORTED_LOCALES.map((locale) => promptSetting(db, key, locale)),
     ),
     accounts: accounts.map(toAccountSetting),
-    dedupe: dedupeCandidates(accounts).map((candidate) => ({
+    dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db)).map((candidate) => ({
       ghostfolioId: candidate.ghostfolio.id,
-      possibleMirrorIds: candidate.possibleMirrors.map((row) => row.id),
+      actualId: candidate.actual.id,
+      signals: candidate.signals,
     })),
     ai: {
       models: { fast: config.GEMINI_MODEL_FAST, deep: config.GEMINI_MODEL_DEEP },
@@ -284,6 +287,12 @@ const accountJudgement = (row: AccountMapRow): Record<string, unknown> => ({
   includeInNetWorth: row.includeInNetWorth,
   dedupeGroup: row.dedupeGroup,
   isSourceOfTruth: row.isSourceOfTruth,
+  // Provenance belongs in the entry because it is sometimes the only thing that moved.
+  // Dismissing a duplicate suggestion changes no value at all — the group stays null
+  // and the account keeps counting — it only records that the null is now an answer.
+  // Without this field that audit entry would read as before === after, which is to
+  // say it would record a decision as a no-op.
+  decidedFields: [...decidedFields(row)].sort(),
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
@@ -471,6 +480,44 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (before === undefined) throw notFound('No such account.')
 
     const after = ungroupAccount(db, id)
+    if (after === null) throw notFound('No such account.')
+
+    recordAudit(db, {
+      action: 'account.map',
+      entity: 'account_map',
+      entityRef: id,
+      actorId: user.id,
+      before: accountJudgement(before),
+      after: accountJudgement(after),
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Records that a Ghostfolio account is not a copy of anything, so the suggestion goes.
+   *
+   * The missing half of the old panel: it offered two buttons and both created a
+   * group, so an incorrect suggestion could only be silenced by grouping two
+   * unrelated accounts — which drops one of them out of net worth entirely. That is
+   * an understatement with no symptom, and the panel exists to prevent exactly that
+   * class of error. "Not the same money" has to be as storable as its opposite.
+   *
+   * Refused on an account that *is* grouped: there the operation wanted is `ungroup`,
+   * which both breaks the group and records the same decision. Answering 404 for that
+   * would be a lie about which account exists.
+   */
+  app.post('/api/settings/accounts/:id/not-mirrored', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadAccountMap(db).find((row) => row.id === id)
+    if (before === undefined) throw notFound('No such account.')
+    if (before.dedupeGroup !== null) {
+      throw conflict('That account is in a group. Ungroup it instead.')
+    }
+
+    const after = dismissMirror(db, id)
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {

@@ -1,8 +1,17 @@
 {
   "accounts": {
     "dedupe": {
-      "hint": "A Ghostfolio account and an Actual account can hold the same positions. Group them and say which one counts, or net worth adds the same money twice.",
+      "because": "Suggested because: {{signals}}.",
+      "hint": "A Ghostfolio account and an Actual account can hold the same money — the same positions, or the same bank balance copied in by a syncing tool. Group them and say which one counts, or net worth adds it twice.",
+      "notMirrored": "Not the same money",
+      "notMirroredHint": "Keeps both counting, and stops this suggestion coming back.",
       "pair": "{{ghostfolio}} may be the same money as {{actual}}.",
+      "signal": {
+        "balance": "the balances agree",
+        "currency": "the same currency",
+        "name": "both are called the same thing",
+        "nameContains": "one name contains the other"
+      },
       "title": "Possibly counted twice",
       "useThis": "Group, {{name}} counts"
     },
