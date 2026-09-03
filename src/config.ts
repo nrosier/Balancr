@@ -84,6 +84,11 @@ const EnvSchema = z.object({
   GEMINI_MODEL_FAST: z.string().min(1).default('gemini-3.7-flash'),
   GEMINI_MODEL_DEEP: z.string().min(1).default('gemini-3.1-pro-preview'),
   GEMINI_MONTHLY_BUDGET_EUR: z.coerce.number().nonnegative().default(15),
+  // Google's floor for a cacheable context, as a local rule rather than a
+  // discovered error — see `estimateTokens` in the Gemini adapter. `0` disables
+  // the check and lets the provider decide, which is the escape hatch if the
+  // estimate is ever wrong in the direction that costs money.
+  GEMINI_CACHE_MIN_TOKENS: z.coerce.number().int().nonnegative().default(1024),
   GOOGLE_CLOUD_PROJECT: optionalText(),
   GOOGLE_CLOUD_LOCATION: z.string().min(1).default('europe-west1'),
 
@@ -272,6 +277,7 @@ export function configSummary(): Record<string, unknown> {
     GEMINI_MODEL_FAST: config.GEMINI_MODEL_FAST,
     GEMINI_MODEL_DEEP: config.GEMINI_MODEL_DEEP,
     GEMINI_MONTHLY_BUDGET_EUR: config.GEMINI_MONTHLY_BUDGET_EUR,
+    GEMINI_CACHE_MIN_TOKENS: config.GEMINI_CACHE_MIN_TOKENS,
     SESSION_SECRET: secret(config.SESSION_SECRET),
     TRUSTED_PROXY_CIDRS: config.TRUSTED_PROXY_CIDRS,
     oidcEnabled: config.oidcEnabled,

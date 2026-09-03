@@ -20,6 +20,7 @@ import {
   FENCE_CONTRACT,
   fenceData,
   GeminiError,
+  estimateTokens,
   readUsage,
   setGeminiClient,
   systemInstruction,
@@ -76,6 +77,18 @@ const call = {
   payload: { month: '2026-03', categories: [{ label: 'c1', spentCents: 42_000 }] },
 }
 
+/**
+ * A system prompt long enough to be worth caching.
+ *
+ * The real ones are not — 450 to 600 tokens against Google's floor of 1024 — which is
+ * the whole of #121, and it is why the cache-path tests below cannot use `call`: with a
+ * short prompt `cacheFor` returns before it reaches the SDK, so a test asserting on
+ * `recorded.caches` would be asserting the skip. This is the shape of a prompt once the
+ * fund universe lands and there is something substantial in it.
+ */
+const LONG_PROMPT = 'Weigh every finding against the twelve-month norm. '.repeat(80)
+const cacheable = { ...call, systemPrompt: LONG_PROMPT }
+
 /** The prompt text of the single recorded generateContent call. */
 const promptOf = (recorded: Recorded): string =>
   (recorded.generate[0] as { contents: string }).contents
@@ -112,6 +125,35 @@ describe('clientOptions', () => {
       vi.unstubAllEnvs()
       vi.resetModules()
     }
+  })
+})
+
+describe('estimateTokens', () => {
+  it('rounds up, so an empty-ish string is not free', () => {
+    expect(estimateTokens('')).toBe(0)
+    expect(estimateTokens('a')).toBe(1)
+    expect(estimateTokens('abc')).toBe(1)
+    expect(estimateTokens('abcd')).toBe(2)
+  })
+
+  it('over-states English prose rather than under-stating it', () => {
+    // The direction is the guarantee. An over-estimate can only make Balancr attempt a
+    // create the provider then refuses — one round trip, which is what happened before
+    // the check existed. An under-estimate would skip a cache that would have worked,
+    // and nothing in the logs would say so. English tokenises at roughly four
+    // characters per token, so the estimate must come out above chars/4.
+    const prose =
+      'Groceries is eighteen percent above the twelve-month norm for this household, ' +
+      'and the increase is concentrated in the second half of the month.'
+    expect(estimateTokens(prose)).toBeGreaterThan(prose.length / 4)
+  })
+
+  it('puts the real system prompts below the floor they are actually below', () => {
+    // The production log for v0.6.0: 589 tokens for the fast model, 453 for the deep
+    // one, against min_total_token_count=1024. The estimate has to agree with the
+    // provider about which side of the line these are on, or the check is theatre.
+    expect(estimateTokens(systemInstruction('You prioritise findings.'))).toBeLessThan(1024)
+    expect(estimateTokens(systemInstruction(LONG_PROMPT))).toBeGreaterThanOrEqual(1024)
   })
 })
 
@@ -214,11 +256,15 @@ describe('callGemini', () => {
     expect(prompt.indexOf('Rank the findings')).toBeLessThan(prompt.indexOf(DATA_OPEN))
   })
 
-  it('falls back to an inline system instruction when caching fails', async () => {
+  it('falls back to an inline system instruction when the provider refuses', async () => {
+    // The estimate clears the floor, so the create is attempted — and the provider is
+    // still the authority on whether it may happen.
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: null })
     setGeminiClient(client)
 
-    const result = await callGemini(call)
+    const result = await callGemini(cacheable)
+
+    expect(recorded.caches).toHaveLength(1)
 
     expect(result.cached).toBe(false)
     const conf = configOf(recorded)
@@ -230,7 +276,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    const result = await callGemini(call)
+    const result = await callGemini(cacheable)
 
     expect(result.cached).toBe(true)
     const conf = configOf(recorded)
@@ -242,20 +288,20 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    await callGemini(call)
-    await callGemini(call)
+    await callGemini(cacheable)
+    await callGemini(cacheable)
 
     expect(recorded.caches).toHaveLength(1)
     expect(recorded.generate).toHaveLength(2)
   })
 
-  it('stops retrying a prompt that cannot be cached', async () => {
+  it('stops retrying a prompt the provider will not cache', async () => {
     // A doomed caches.create on every run of the nightly pass is pure latency.
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: null })
     setGeminiClient(client)
 
-    await callGemini(call)
-    await callGemini(call)
+    await callGemini(cacheable)
+    await callGemini(cacheable)
 
     expect(recorded.caches).toHaveLength(1)
     expect(recorded.generate).toHaveLength(2)
@@ -265,10 +311,59 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    await callGemini(call)
-    await callGemini({ ...call, systemPrompt: 'You prioritise findings. Be terse.' })
+    await callGemini(cacheable)
+    await callGemini({ ...cacheable, systemPrompt: `${LONG_PROMPT} Be terse.` })
 
     expect(recorded.caches).toHaveLength(2)
+  })
+
+  it('does not ask for a cache it knows is too small to be accepted', async () => {
+    // #121: Balancr's own prompts are ~450-600 tokens against a floor of 1024, so every
+    // process start spent a failed create per model rediscovering that. Asserted on the
+    // stub rather than on the log, because the log is not the behaviour.
+    const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
+    setGeminiClient(client)
+
+    const result = await callGemini(call)
+
+    expect(recorded.caches).toHaveLength(0)
+    expect(result.cached).toBe(false)
+    // And the run still happens, with the instruction inline: skipping the cache is a
+    // cost decision and must not change what the model is told.
+    expect(configOf(recorded)['systemInstruction']).toContain(FENCE_CONTRACT)
+  })
+
+  it('asks once, then remembers not to ask again', async () => {
+    const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
+    setGeminiClient(client)
+
+    await callGemini(call)
+    await callGemini(call)
+
+    expect(recorded.caches).toHaveLength(0)
+    expect(recorded.generate).toHaveLength(2)
+  })
+
+  it('lets the provider decide when the floor is set to zero', async () => {
+    // The escape hatch. If Google drops the minimum, or the estimate turns out to be
+    // wrong in the direction that costs money, `GEMINI_CACHE_MIN_TOKENS=0` restores the
+    // old behaviour without a release: ask, and take the answer.
+    vi.resetModules()
+    vi.stubEnv('GEMINI_CACHE_MIN_TOKENS', '0')
+    try {
+      const fresh = await import('../../src/adapters/gemini/client.ts')
+      const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
+      fresh.setGeminiClient(client)
+
+      const result = await fresh.callGemini(call)
+
+      expect(recorded.caches).toHaveLength(1)
+      expect(result.cached).toBe(true)
+      fresh.setGeminiClient(null)
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
   })
 
   it('asks for JSON only when a schema is given', async () => {

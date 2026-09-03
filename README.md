@@ -136,7 +136,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 |---|---|
 | **Actual** | `ACTUAL_SERVER_URL`, `ACTUAL_PASSWORD`, `ACTUAL_SYNC_ID`, `ACTUAL_E2E_PASSWORD` (encrypted budgets only) |
 | **Ghostfolio** | `GHOSTFOLIO_URL`, `GHOSTFOLIO_SECURITY_TOKEN` |
-| **Gemini** | `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR` |
+| **Gemini** | `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
@@ -281,10 +281,19 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, three of its six issues done. `0.6.0` is done too:
+**Where it is now** — `0.7.0`, four of its six issues done. `0.6.0` is done too:
 all five views are on screen, in both languages, drawing real figures.
 
-The figures can be made current by hand now
+The one thing the last release got wrong about itself is fixed
+([#121](https://github.com/nrosier/Balancr/issues/121)): every process start was asking
+Google to cache a system prompt Google will not cache — the floor is 1024 tokens and
+Balancr's prompts are 453 and 589 — so two models each spent a doomed round trip
+rediscovering that and logged it as though something were wrong. The size is now
+checked locally before the call, the estimate deliberately errs on the side of asking
+anyway, and the mechanism stays for when the fund universe makes the prompt big enough
+to be worth caching.
+
+The figures can be made current by hand
 ([#122](https://github.com/nrosier/Balancr/issues/122)) — before this, the only ways
 were to wait for the schedule or to restart the container. Every page already said how
 old its numbers were; the control now sits next to that sentence, and starts only the

@@ -45,6 +45,31 @@ const REQUEST_TIMEOUT_MS = 120_000
 const CACHE_TTL_SECONDS = 3_600
 
 /**
+ * Characters per token, for deciding whether a cache is worth asking for.
+ *
+ * Deliberately low. English prose tokenises at roughly four characters per
+ * token, so dividing by three **over**-states the count — and that is the safe
+ * direction: an over-estimate can only ever make Balancr *attempt* a create that
+ * the provider then refuses, which costs one round trip and is exactly the
+ * behaviour that existed before this check. An under-estimate would silently
+ * skip a cache that would have worked, and nothing in the logs would say so.
+ */
+const CHARS_PER_TOKEN = 3
+
+/**
+ * Roughly how many tokens a string will cost, rounded up.
+ *
+ * Not a tokeniser and not trying to be. It answers one question — "is this
+ * plainly too short to cache?" — where being within a factor of two is enough,
+ * and it answers it without a network call. `countTokens` would be exact and
+ * would cost a request per model per startup to learn something a division
+ * already settles.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN)
+}
+
+/**
  * The fence around untrusted data.
  *
  * Long and unlikely rather than pretty: `---` would appear in a category name
@@ -201,11 +226,35 @@ const cacheKey = (model: string, instruction: string): string =>
  * out — with `cachedContent` when there is one, with `systemInstruction` inline
  * when there is not. The empty string is remembered for a prompt that could not
  * be cached, so a nightly pass does not retry a doomed create every run.
+ *
+ * The minimum is checked here rather than discovered from a rejection (#121).
+ * Balancr's own prompts are ~450–600 tokens against Google's floor of 1024, so
+ * every process start was spending a failed `caches.create` per model to learn
+ * something arithmetic already knows, and writing an "unavailable" warning into
+ * the log of a system that is working correctly. The estimate is local and
+ * approximate and the provider remains the authority: when the estimate clears
+ * the floor the create is attempted, and a rejection still falls back inline.
+ *
+ * The branch is not dead code waiting to be deleted. The fund universe (#40) is
+ * the reason caching was built, and it is what will push the system prompt past
+ * the floor — at which point this check stops firing and nothing else changes.
  */
 async function cacheFor(model: string, instruction: string): Promise<string | null> {
   const key = cacheKey(model, instruction)
   const held = cacheNames.get(key)
   if (held !== undefined) return held === '' ? null : held
+
+  const estimated = estimateTokens(instruction)
+  if (config.GEMINI_CACHE_MIN_TOKENS > 0 && estimated < config.GEMINI_CACHE_MIN_TOKENS) {
+    // A statement of fact at debug, once per prompt, not a warning: there is
+    // nothing here for an operator to fix.
+    log.debug(
+      { model, estimated, minimum: config.GEMINI_CACHE_MIN_TOKENS },
+      'context caching does not apply at this prompt size; sending it inline',
+    )
+    cacheNames.set(key, '')
+    return null
+  }
 
   try {
     const cache = await genai().caches.create({
