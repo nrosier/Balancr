@@ -275,6 +275,7 @@ ends.
 | `0.7.0` | Backups, monthly digest, operational hardening | 🔄 `0.6.x` |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
+| `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
