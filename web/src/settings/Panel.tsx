@@ -1,7 +1,7 @@
 /**
- * The frame the five panels share, and the two lines every form field needs.
+ * The frame every panel shares, and the two lines every form field needs.
  *
- * Five cards with a heading, a sentence of explanation and a body is not worth five
+ * Six cards with a heading, a sentence of explanation and a body are not worth six
  * copies — but the reason it is a component rather than a snippet is the explanation.
  * Every panel here changes something whose effect is not visible on this screen:
  * thresholds apply on the next aggregation pass, a prompt applies on the next run,

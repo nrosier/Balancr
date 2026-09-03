@@ -6,6 +6,61 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Readiness, a probe that actually runs, and job state on screen**
+  ([#37](https://github.com/nrosier/Balancr/issues/37)). Three questions that were
+  being asked of one endpoint now have one endpoint each. `/healthz` stays liveness
+  and touches nothing — the container health check reads it, and restarting Balancr
+  because Ghostfolio is restarting turns one outage into two. `GET /readyz` is the
+  new one: should traffic be routed here. `GET /api/status` is the same computation
+  with the detail attached, and it needs a session.
+
+  The split is on the disclosure boundary, not on convenience. `/readyz` is
+  unauthenticated because a health check cannot hold a cookie, so it carries names
+  and verdicts and nothing else: `{name, status}` per check, and no `reason`. The
+  detail — `connect ECONNREFUSED 172.19.0.4:5006`, the Ghostfolio path whose shape
+  changed, the upstream's own error text — is an internal hostname, an internal
+  port and a version fingerprint, and it is behind the session on `/api/status`.
+  There is a test that projects both payloads and asserts the exact key set of
+  each, so a field added to the status type cannot reach `/readyz` by being
+  forgotten.
+
+  **The capability probe now runs on a schedule instead of only at startup.** It
+  was a function nothing called after boot, which meant a Ghostfolio upgrade at
+  10:00 was discovered by the next aggregation producing wrong numbers. It is a
+  job now, with its verdict and per-path report in a new `upstream_probes` table,
+  so readiness can report a shape mismatch without calling Ghostfolio on every
+  request. The failing report is written *before* the job throws — a probe that
+  fails and leaves no trace is the one case the table exists to prevent.
+
+  An unprobed upstream reads "not known", never "ok". Claiming an upstream is
+  healthy because no probe has ever contradicted it is the answer worth refusing:
+  a fresh deployment that has never run a job looks exactly like a healthy one
+  from the inside.
+
+  On screen, a sixth settings panel: the four checks with their reasons, every
+  job with last run, last success, next run, duration and schedule, and the
+  probe's per-path report. It fetches `/api/status` itself rather than reading the
+  settings payload, because readiness decays while the page is open and because it
+  has to be able to be the thing that failed while the rest of the page loaded —
+  the build block below it stays on the settings payload for the same reason in
+  reverse, so the version and revision are still on screen when `/api/status` is
+  what is broken.
+
+  Two Ghostfolio failures are drawn differently on purpose. Unreachable is amber:
+  transient, and the figures on the page are still the last correct ones.
+  A shape mismatch is red, because nothing but a new Balancr fixes it. Verdicts
+  with nothing wrong yet — `unknown`, `idle` — get no colour at all; a first boot
+  that looked like a fault would send someone hunting for one.
+
+  Upstream text is quoted rather than translated, in a monospace `<q>`, because
+  `connect ECONNREFUSED 172.19.0.4:5006` is a string to search for and a
+  translated paraphrase of it is not. Everything Balancr says itself is in both
+  languages.
+
 ## [0.5.19] — 2026-09-03
 
 ### Changed

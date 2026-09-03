@@ -143,6 +143,45 @@
     "versionsNone": "Nog niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
     "which": "Welke instructies"
   },
+  "status": {
+    "check": {
+      "actual": "Actual Budget",
+      "database": "De databank van Balancr",
+      "ghostfolio": "Ghostfolio",
+      "jobs": "Geplande taken"
+    },
+    "degraded": "De pagina’s komen nog uit de laatste geslaagde uitvoering.",
+    "jobs": {
+      "lastRun": "Laatste poging",
+      "lastSuccess": "Laatst gelukt",
+      "never": "Nooit",
+      "nextRun": "Volgende poging",
+      "schedule": "Draait",
+      "seconds": "{{value}} s",
+      "title": "Achtergrondtaken",
+      "took": "Duurde"
+    },
+    "lede": "Wat werkt, wat niet, en wanneer elke achtergrondtaak voor het laatst gelukt is.",
+    "notServing": "Deze instantie kan geen pagina’s leveren.",
+    "probe": {
+      "checkedAt": "Gecontroleerd op {{when}}",
+      "lede": "Drie van de vier endpoints die Balancr leest horen bij de interne API van Ghostfolio, die bij elke upgrade mag veranderen. Dit is wat elk endpoint antwoordde.",
+      "noDetail": "Het opgeslagen rapport kon niet gelezen worden, dus alleen het oordeel hierboven is beschikbaar.",
+      "notRunYet": "Ghostfolio is nog niet gecontroleerd.",
+      "title": "Controle van de Ghostfolio-endpoints",
+      "warnings": "Goed om te weten"
+    },
+    "reason": {
+      "jobFailed": "De taak die dit ophaalt is bij de laatste poging mislukt.",
+      "jobsOff": "Geplande taken staan hier uit, dus er is recent niets gecontroleerd.",
+      "neverRun": "Er is nog niets uitgevoerd, dus er is niets te melden.",
+      "shapeMismatch": "Er kwam een antwoord, maar niet in een vorm die deze versie van Balancr kan lezen. Daarvoor is een update van Balancr nodig, geen nieuwe poging.",
+      "unreachable": "Niet bereikbaar. Dit lost zich normaal gezien van zelf op.",
+      "unreadable": "De databank van Balancr kon niet gelezen worden, dus de rest kon niet gecontroleerd worden."
+    },
+    "serving": "Deze instantie levert pagina’s.",
+    "title": "Status van deze instantie"
+  },
   "thresholds": {
     "default": "Standaard {{value}}",
     "field": {

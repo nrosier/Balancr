@@ -139,6 +139,25 @@ const EMPTY_READS: Record<string, unknown> = {
       history: [],
     },
   },
+  // Readiness on a deployment where nothing has run: ready, because the database is
+  // readable, and every upstream `unknown` rather than `ok` — which is the answer the
+  // status panel exists to give and the one a routing test must not depend on.
+  '/api/status': {
+    ready: true,
+    degraded: true,
+    at: '2026-09-03T02:00:00.000Z',
+    version: null,
+    revision: null,
+    jobsEnabled: true,
+    checks: [
+      { name: 'database', status: 'ok', reason: null },
+      { name: 'actual', status: 'unknown', reason: 'neverRun' },
+      { name: 'ghostfolio', status: 'unknown', reason: 'neverRun' },
+      { name: 'jobs', status: 'unknown', reason: 'neverRun' },
+    ],
+    jobs: [],
+    probes: [],
+  },
   '/api/budget': {
     freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
     // A month label the server invents when nothing has been computed, so the page
