@@ -30,6 +30,12 @@ import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
+import {
+  oldestVerification,
+  rulesInForceOn,
+  taxRulesOrNull,
+  transcribedRules,
+} from './domain/tax/rules.ts'
 import { staleFunds, universeOrEmpty } from './domain/universe/universe.ts'
 import { installEgressGuard } from './egress.ts'
 import { looseEnvFile, looseEnvFileMessage } from './env-file.ts'
@@ -88,6 +94,35 @@ async function main(): Promise<void> {
         ? 'fund universe loaded'
         : `fund universe loaded; ${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} ` +
           `past FUND_UNIVERSE_MAX_AGE_DAYS and cannot be proposed until re-verified`,
+    )
+  }
+
+  // The tax rules, for the same reason and with a different emphasis. A missing or broken
+  // file here is a mistake rather than a choice — one ships with the image — and the ages
+  // and statuses are worth a line at boot because they are what every tax figure will be
+  // qualified by (#42).
+  const taxRules = taxRulesOrNull()
+  const ruleset = taxRules === null ? null : rulesInForceOn(taxRules)
+  if (taxRules !== null && ruleset === null) {
+    log.warn(
+      { path: taxRules.path },
+      'the tax rules file has no ruleset in force today; tax estimates will be refused',
+    )
+  } else if (taxRules !== null && ruleset !== null) {
+    const oldest = oldestVerification(ruleset)
+    const unchecked = transcribedRules(ruleset)
+    log.info(
+      {
+        path: taxRules.path,
+        effectiveFrom: ruleset.effective_from,
+        oldestVerified: oldest.date,
+        oldestVerifiedRule: oldest.rule,
+        transcribed: unchecked,
+      },
+      unchecked.length === 0
+        ? 'tax rules loaded'
+        : `tax rules loaded; ${unchecked.length} of 4 rules are transcribed rather than ` +
+          'confirmed, and every estimate using one will say so',
     )
   }
 

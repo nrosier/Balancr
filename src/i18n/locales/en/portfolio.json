@@ -49,5 +49,34 @@
     "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",
     "value": "Market value"
   },
+  "tax": {
+    "amount": {
+      "range": "between {{low}} and {{high}}"
+    },
+    "assumption": {
+      "debtClaims": "Assumes the fund's debt-claim share from its asset class, not from a published figure.",
+      "fullExemption": "Assumes none of this year's exempt tranche has been used yet."
+    },
+    "basis": {
+      "capped": "{{rate}} of {{base}}, capped at {{cap}}",
+      "rate": "{{rate}} of {{base}}",
+      "rateOnly": "{{rate}} of an amount that is not known yet"
+    },
+    "caveat": {
+      "transcribed": "These rates were transcribed from published guidance and nobody has checked them against the law: {{rules}}. Confirm them before acting on the amount."
+    },
+    "source": "{{citation}} · checked {{date}}",
+    "title": "Tax on this transaction",
+    "todo": {
+      "distribution": "Depends on whether the share class pays out its income or reinvests it.",
+      "fsmaRegistered": "Depends on whether this share class is registered for public distribution in Belgium — record `fsma_registered` for it in the fund universe.",
+      "interestComponent": "Depends on the interest component the fund publishes in its Belgian TIS."
+    },
+    "total": {
+      "atLeast": "At least {{amount}} in tax",
+      "known": "{{amount}} in tax",
+      "range": "Between {{low}} and {{high}} in tax"
+    }
+  },
   "title": "Portfolio"
 }

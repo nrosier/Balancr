@@ -221,6 +221,16 @@ else
   fail 'the shipped fund universe template did not load'
 fi
 
+# The tax rules are read from the default path with no env var set, which is the case
+# that matters: the file ships inside the image and every tax figure depends on it
+# parsing there. A rules file that only validates in the repository would leave the
+# container silently unable to price a trade (#42).
+if grep -q 'tax rules loaded' <<<"$logs"; then
+  pass 'the shipped tax rules load'
+else
+  fail 'the shipped tax rules did not load'
+fi
+
 # --- budgets ------------------------------------------------------------------
 if [ "$size_mb" -gt "$IMAGE_MAX_MB" ]; then
   fail "image is ${size_mb} MB, over the ${IMAGE_MAX_MB} MB tripwire"
