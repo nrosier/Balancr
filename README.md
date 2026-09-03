@@ -118,6 +118,7 @@ so the browser talks to the real API.
 | `npm test` | Unit tests — server under Node, UI under jsdom |
 | `npm run typecheck` | TypeScript, no emit — two programs, server and browser |
 | `npm run i18n:check` | Key, interpolation and plural parity between `en` and `nl` |
+| `npm run contrast:check` | Every colour pair the stylesheets render, measured against the WCAG floor in both themes |
 | `npm run tokens:write` | Regenerate `tokens.css` after changing a design token |
 | `npm run db:generate` | Generate a migration from a schema change |
 | `npm run build` | Compile the server and bundle the UI into `dist/` |
@@ -274,7 +275,7 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, six of its eight web-UI slices. The settings page is in
+**Where it is now** — `0.6.0`, seven of its eight web-UI slices. The settings page is in
 ([#33](https://github.com/nrosier/Balancr/issues/33)) — the one screen in the
 application that writes, and the eleven routes behind it: language, the seventeen
 thresholds the aggregation engine judges by, the prompt editor with its diff and its
@@ -293,9 +294,10 @@ itself are put to you with the evidence attached, and a refusal is remembered
 ([#131](https://github.com/nrosier/Balancr/issues/131)). The language is settled by the
 server now ([#34](https://github.com/nrosier/Balancr/issues/34)): one resolution
 order behind both `<html lang>` and the strings underneath it, where the attribute used
-to say `en` to everyone. Insights
-([#32](https://github.com/nrosier/Balancr/issues/32)) is being built now, and the
-accessibility pass ([#35](https://github.com/nrosier/Balancr/issues/35)) is last.
+to say `en` to everyone. And the palette has been measured rather than assumed
+([#35](https://github.com/nrosier/Balancr/issues/35)): the gate now fails on a colour
+pair under the contrast floor, in either theme, and one token that could not clear it is
+gone. Insights ([#32](https://github.com/nrosier/Balancr/issues/32)) is last.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -482,9 +484,20 @@ suggestion you have to reverse-engineer is one you cannot check. **Not the same 
 is recorded against the account rather than the pair: a pair is identified by two names,
 and the next sync that renames either side would bring the suggestion back.
 
-Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), the
-accessibility and responsive pass
-([#35](https://github.com/nrosier/Balancr/issues/35)) and per-locale prompts
+The palette is measured rather than asserted
+([#35](https://github.com/nrosier/Balancr/issues/35)). `npm run contrast:check` reads
+the stylesheets, works out which colour pairs the cascade actually renders, and fails
+the build under 4.5:1 for text or 3:1 for a border, a plotted shape or the focus ring —
+in both themes, with every ratio and its remaining margin printed either way. Deriving
+the pairs from the CSS rather than from a list is the whole point: a list describes
+pairs nobody renders and misses the one that matters, which here was a grey that clears
+the white card and fails the slightly darker page behind it. Five real failures came out
+of it, one of them a text-box border at 1.54:1, and one token — a third, fainter grey —
+turned out to have no value that both reads as faint and clears the floor, so it is gone
+and small print is quieter by size instead.
+
+Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)) and
+per-locale prompts
 ([#133](https://github.com/nrosier/Balancr/issues/133)) —
 shipping as `0.5.18`, `0.5.19`, … until every issue in that milestone is closed and
 `0.6.0` lands.

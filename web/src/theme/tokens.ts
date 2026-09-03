@@ -79,12 +79,16 @@ export const LIGHT = {
   'surface-hover': '#eef1f6',
 
   border: '#dfe2e8',
-  'border-strong': '#c4c9d2',
+  'border-strong': '#7f899d',
 
   text: '#111726',
+  /**
+   * The quiet tier. There is no fainter one: a third grey light enough to read as
+   * faint sits under 4.5:1 on the page behind it, and small print is exactly where
+   * that matters — a validation message, a version string, a diff's line numbers.
+   * Quieter than this is done with size, not with less contrast.
+   */
   'text-muted': '#5a6373',
-  /** Decoration and disabled states. Not for body text at any size. */
-  'text-faint': '#727b89',
   'text-inverse': '#ffffff',
 
   accent: '#3450c8',
@@ -118,7 +122,7 @@ export const LIGHT = {
   'chart-8': '#6b7280',
 
   'chart-grid': '#e6e9ef',
-  'chart-axis': '#727b89',
+  'chart-axis': '#6b7380',
   'chart-tooltip-bg': '#ffffff',
   'chart-tooltip-text': '#111726',
 } as const
@@ -131,11 +135,10 @@ export const DARK = {
   'surface-hover': '#1f242e',
 
   border: '#2a303b',
-  'border-strong': '#3d4552',
+  'border-strong': '#606c81',
 
   text: '#e8ebf0',
   'text-muted': '#a2abba',
-  'text-faint': '#8a94a3',
   'text-inverse': '#0f1218',
 
   accent: '#8098f0',

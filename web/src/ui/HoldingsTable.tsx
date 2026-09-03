@@ -33,9 +33,11 @@
  *
  * The scroll box takes `tabIndex={0}` because six columns of figures cannot reflow onto
  * a phone, so on a narrow screen this is the only way to reach the right-hand columns
- * without a pointer.
+ * without a pointer. That makes it a focus stop, and a focus stop with no role and no
+ * name announces itself as nothing at all — so it is a `region` labelled by the same
+ * caption that names the table. One accessible name, stated once, reached two ways.
  */
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { formatBp, formatDecimal, formatMoney, type Portfolio } from '../shared.ts'
 
@@ -73,11 +75,12 @@ function weightBp(valueCents: number, totalValueCents: number | null): number | 
 
 export function HoldingsTable({ holdings, totalValueCents }: HoldingsTableProps): ReactNode {
   const { t } = useT()
+  const captionId = useId()
 
   return (
-    <div className="table-scroll" tabIndex={0}>
+    <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
       <table className="table">
-        <caption className="table__caption">
+        <caption className="table__caption" id={captionId}>
           {t('portfolio:holding.caption', { count: holdings.length })}
         </caption>
         <thead>
