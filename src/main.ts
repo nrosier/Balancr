@@ -30,6 +30,7 @@ import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
+import { staleFunds, universeOrEmpty } from './domain/universe/universe.ts'
 import { installEgressGuard } from './egress.ts'
 import { looseEnvFile, looseEnvFileMessage } from './env-file.ts'
 import { initI18n } from './i18n/index.ts'
@@ -69,6 +70,26 @@ async function main(): Promise<void> {
   // looks exactly like a `0600` one from inside the app (#39).
   const loose = looseEnvFile()
   if (loose !== undefined) log.warn(loose, looseEnvFileMessage(loose))
+
+  // The fund universe, said out loud at boot. It is read per use rather than cached
+  // here (#40) — an edit should not need a restart — so this line is not a load, it is
+  // the answer to "why did advice suggest nothing", available before anyone asks.
+  const universe = universeOrEmpty()
+  if (universe.path === null) {
+    log.info(
+      { path: config.FUND_UNIVERSE_PATH },
+      'no fund universe file; portfolio advice will propose nothing until there is one',
+    )
+  } else {
+    const stale = staleFunds(universe)
+    log.info(
+      { path: universe.path, funds: universe.funds.length, stale: stale.length },
+      stale.length === 0
+        ? 'fund universe loaded'
+        : `fund universe loaded; ${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} ` +
+          `past FUND_UNIVERSE_MAX_AGE_DAYS and cannot be proposed until re-verified`,
+    )
+  }
 
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')
