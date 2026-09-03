@@ -26,7 +26,7 @@
   },
   "findings": {
     "above_baseline": "{{category}} is {{delta}} above your 12-month norm of {{baseline}}.",
-    "above_benchmark": "{{category}} is {{delta}} above the Belgian reference of {{benchmark}}.",
+    "above_benchmark": "{{group}} is {{delta}} above the Belgian reference of {{benchmark}} for that group.",
     "below_baseline": "{{category}} is {{delta}} below your usual level.",
     "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned.",
     "emergency_fund_short": "Your buffer covers {{months}}, short of the {{target}} you aim for.",

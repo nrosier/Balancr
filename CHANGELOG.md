@@ -6,6 +6,74 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A month's spending, compared with Belgian households**
+  ([#43](https://github.com/nrosier/Balancr/issues/43)). Your own twelve-month norm cannot
+  answer "is €650 a month on food a lot", so the budget page gained the card that can.
+  Statbel's Household Budget Survey publishes the share of its total an average household
+  spends on each of ten lines; `config/statbel-benchmark.yaml` carries those shares with
+  the survey, the year, a citation, the day somebody last checked them and a `status` per
+  block, and `BENCHMARK_PATH` selects it. A path that does not exist removes the comparison
+  and leaves every other figure untouched — not everybody wants an average held up against
+  their spending. Nothing in the app can edit a share: a screen that let anybody type over
+  the reference would be a screen that manufactures one, which is the single failure that
+  would make the feature worse than its absence.
+- **A COICOP division per category, and a thirteenth answer for what is not consumption**
+  (`src/domain/benchmark/mapping.ts`, Settings → Benchmark mapping). The picker offers the
+  twelve divisions the survey is classified against rather than the survey's ten lines,
+  because three divisions share its "other expenditure" line and "other" would store a code
+  nothing could later resolve; the line each division feeds is shown beside the choice
+  instead. `00` is Balancr's own code for savings, investments, taxes, transfers and debt
+  repayment: those are set aside from the comparison rather than counted at zero, since a
+  budget holds plenty of them and counting them would make every real share look small. A
+  stored code deeper than a division (`04.5.1`) is read at the division and shown as
+  selected, so a category the comparison counts under housing can never read as unmapped.
+- **An equivalence scale, with the one part of it that is Balancr's own labelled as such**
+  (`src/domain/benchmark/household.ts`, Settings → Household). A single parent spends less
+  than the average household and is not being frugal, so the reference is scaled by who
+  lives here: the modified OECD scale out of the same file, 1,0 for the first person, 0,5
+  per additional adult and 0,3 for a child under fourteen. Members are years of birth
+  rather than "child" checkboxes — a checkbox is right on the day it is ticked and quietly
+  wrong from the next birthday — and ages are taken as of the year being compared, so
+  somebody who turned fourteen in March is a child in last January's figures. Custody is a
+  share of the time per member, and prorating a weight by it is *not* something the
+  published scale supports: `prorated` travels with the result and every screen that prints
+  a prorated figure says the assumption out loud.
+- **Two bases out of one file** (`src/domain/benchmark/compare.ts`). With only the shares
+  transcribed the comparison is `mix` — how your month divides against how theirs does,
+  stating that nothing in it claims you spend more than they do. Fill in the optional
+  `reference_household` block and the same card becomes `level`, euro for euro, scaled to
+  your household's size on the scale. Both carry the citation, the year, the verification
+  date and the list of blocks nobody has confirmed at the source.
+- **Two refusals, so a comparison is never a chart about the mapping**
+  (`src/domain/benchmark/vocabulary.ts`). Under 70% of the month mapped nothing is drawn
+  and the card says what to go and map: 100% would mean the feature never switches on
+  because nobody maps every envelope, and 50% would mean a figure about the bookkeeping.
+  A group with no reference share, a month with no spending and a month mapped entirely to
+  `00` each come back as an explicit unavailability reason rather than as a zero.
+- **`above_benchmark` emits at last, and can only ever be `info`**
+  (`src/domain/aggregate/overspend.ts`). The fourth overspend signal was a stub returning
+  nothing since `0.3.1`; it now fires per group above the reference by more than 20% *and*
+  more than the shared materiality floor in euros. There is deliberately no opposite code:
+  spending less than average on transport is what not owning a car looks like. The severity
+  is capped in the payload rather than by convention, and `web/src/budget/benchmark.css`
+  has no red cell to render a difference in — a household above the transport line has done
+  nothing wrong, and neither has one below the restaurants line.
+
+### Changed
+
+- **`computeSignals` takes the comparison as an input** (`src/domain/aggregate/signals.ts`).
+  The module is pure and the comparison reads a YAML file, a settings row and the category
+  mapping, so `jobs/signals.ts` reads all three once per pass — none of them is a fact about
+  a particular month — and hands the result in, the same arrangement `netWorth` already had.
+- **The household roster is replaced whole, not merged**
+  (`PATCH /api/settings/household`). Unlike the risk bands and the aggregation parameters:
+  `members` is a list, and the only two gestures a form makes on a list are "here is the new
+  one" and "remove a row". A merge cannot express the second.
+
 ## [0.8.0] — 2026-09-03
 
 ### Added

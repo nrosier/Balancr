@@ -22,6 +22,7 @@ import {
   storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import { benchmarkContext, compareMonth } from '../../../domain/benchmark/context.ts'
 import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
 import { budgetSchema, type Budget } from './schemas.ts'
@@ -62,6 +63,10 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
   // than inventing one, so the client has a label for its own "no data yet" screen.
   const resolved = month ?? new Date().toISOString().slice(0, 7)
 
+  // Hoisted, because the benchmark comparison is a function of the same rows the
+  // category list is built from. Loading them twice would let one of the two see a
+  // mapping the other did not, which is how a card and a table come to disagree.
+  const facts = loadFacts(db, resolved)
   const history = loadTrailingTotals(db, resolved, HISTORY_MONTHS)
   const trends = loadCategoryTrends(db, resolved, TREND_MONTHS)
   const totals = loadMonthTotals(db, [resolved])[0] ?? null
@@ -95,7 +100,7 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
       savingsRateBp: entry.savingsRateBp,
     })),
     trendMonths: trends.months,
-    categories: loadFacts(db, resolved).map((fact) => ({
+    categories: facts.map((fact) => ({
       categoryId: fact.categoryId,
       categoryName: fact.categoryName,
       isIncome: fact.isIncome,
@@ -116,6 +121,7 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
         new Array<number>(trends.months.length).fill(0),
     })),
     signals: loadSignals(db, resolved),
+    benchmark: compareMonth(benchmarkContext(db), resolved, facts),
     uncategorised:
       uncategorised === null
         ? null

@@ -1,4 +1,66 @@
 {
+  "benchmark": {
+    "block": {
+      "equivalence": "de equivalentieschaal",
+      "reference_household": "het maandtotaal van het gemiddelde huishouden",
+      "source": "de gepubliceerde aandelen"
+    },
+    "caption": "Jouw uitgaven per groep, naast de aandelen van {{survey}} {{year}}",
+    "column": {
+      "difference": "Verschil",
+      "group": "Groep",
+      "reference": "Referentie",
+      "referenceShare": "Hun aandeel",
+      "state": "Leest als",
+      "yourShare": "Jouw aandeel",
+      "yours": "Jij"
+    },
+    "group": {
+      "alcohol_tobacco": "Alcohol en tabak",
+      "clothing": "Kleding en schoeisel",
+      "food": "Voeding en niet-alcoholische dranken",
+      "furnishings": "Stoffering en huishoudelijke goederen",
+      "health": "Gezondheid",
+      "hotels_restaurants": "Restaurants en hotels",
+      "housing": "Huisvesting, water en energie",
+      "other": "Overige uitgaven",
+      "recreation": "Recreatie en cultuur",
+      "transport": "Vervoer"
+    },
+    "household": {
+      "children_one": "{{value}} daarvan telt mee tegen het kindgewicht.",
+      "children_other": "{{value}} daarvan tellen mee tegen het kindgewicht.",
+      "line_one": "Jij en {{value}} andere persoon: {{scale}} op de equivalentieschaal.",
+      "line_other": "Jij en {{value}} anderen: {{scale}} op de equivalentieschaal.",
+      "prorated": "Iemand woont hier een deel van de tijd, dus zijn of haar gewicht is teruggebracht tot dat aandeel. Die verhouding is een aanname van Balancr zelf — de gepubliceerde schaal kent geen deeltijds huishouden.",
+      "solo": "Één persoon: {{scale}} op de equivalentieschaal."
+    },
+    "lede": {
+      "level": "Waar {{month}} op uitkwam, naast wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{year}}: jouw {{total}} vergeleken uitgaven tegen die van hen, euro voor euro.",
+      "mix": "Hoe jouw {{total}} uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{year}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
+    },
+    "mapped": "{{share}} van jouw {{consumption}} huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
+    "outside": "{{amount}} aan sparen, belastingen en overdrachten valt buiten de vergelijking: het is geen huishoudelijke consumptie en de aandelen van het onderzoek dekken het niet.",
+    "source": "{{citation}}. Laatst nagekeken {{verified}}.",
+    "state": {
+      "above": "Boven referentie",
+      "below": "Onder referentie",
+      "inLine": "In lijn",
+      "unmapped": "Niets toegewezen"
+    },
+    "title": "Vergeleken met Belgische huishoudens",
+    "transcribed": "Nog niet bij de bron bevestigd: {{blocks}}.",
+    "unavailable": {
+      "hint": "Wijs je categorieën een COICOP-afdeling toe bij Instellingen en de vergelijking verschijnt hier.",
+      "no_mapping": "Geen enkele uitgave van deze maand is aan een referentiegroep toegewezen, dus er is nog niets om mee te vergelijken.",
+      "too_unmapped": "Slechts {{share}} van de uitgaven van deze maand is aan een referentiegroep toegewezen, onder de {{floor}} die een vergelijking nodig heeft. Wat ze over huisvesting zou zeggen, zou eigenlijk een uitspraak over de toewijzing zijn."
+    },
+    "unmapped": {
+      "hint": "Geef elk van deze een COICOP-afdeling bij Instellingen en ze doen mee in de vergelijking.",
+      "line": "{{name}} — {{value}}, {{share}} van de maand",
+      "title": "Buiten de vergelijking gelaten"
+    }
+  },
   "category": {
     "description": "Waarvoor dient dit?",
     "descriptionHint": "Je eigen notitie. De assistent gebruikt die om deze categorie te begrijpen.",

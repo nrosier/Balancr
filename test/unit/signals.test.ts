@@ -94,10 +94,14 @@ describe('the four overspend signals stay separate', () => {
       .toEqual([])
   })
 
-  it('leaves benchmark comparison unimplemented rather than guessing', () => {
-    // The Statbel single-parent model is a later milestone; an empty array keeps
-    // every caller written for it correct in the meantime.
-    expect(benchmarkSignals()).toEqual([])
+  it('says nothing about a benchmark that is unavailable', () => {
+    // The comparison refuses itself for four separate reasons (see `compare.ts`), and
+    // every one of them has to produce silence rather than a finding: a signal built on
+    // a comparison the domain declined to draw would be the exact number #43 exists to
+    // avoid printing. The comparison's own tests live in `benchmark.test.ts`.
+    expect(
+      benchmarkSignals({ kind: 'unavailable', reason: 'too_unmapped', mappedShareBp: 4_000 }, DEFAULT_PARAMS),
+    ).toEqual([])
     expect(FINDING_SPECS.above_benchmark.maxSeverity).toBe('info')
   })
 

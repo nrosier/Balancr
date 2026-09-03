@@ -49,6 +49,7 @@ import {
   updateAccountMap,
   type AccountMapRow,
 } from '../../domain/aggregate/accounts.ts'
+import { latestStoredMonth } from '../../domain/aggregate/month-store.ts'
 import { loadLatestAccountBalances } from '../../domain/aggregate/networth-store.ts'
 import {
   DEFAULT_PARAMS,
@@ -57,6 +58,18 @@ import {
   saveParams,
   unknownParamFields,
 } from '../../domain/aggregate/params.ts'
+import {
+  HOUSEHOLD_KEY,
+  loadHousehold,
+  saveHousehold,
+} from '../../domain/benchmark/household.ts'
+import {
+  COICOP_CHOICES,
+  loadMapping,
+  MappingError,
+  saveCoicop,
+} from '../../domain/benchmark/mapping.ts'
+import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
 import { aiAvailability } from '../../domain/ai/availability.ts'
 import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
@@ -180,6 +193,37 @@ const advicePatchRequest = z.strictObject({
  */
 const profilePatchRequest = z.strictObject({ locale: localeRequest })
 
+/**
+ * The household the benchmark is scaled to.
+ *
+ * The whole roster, always: `members` is a list, and the two gestures a form makes on a
+ * list are "here is the new one" and "drop a row". A merge cannot express the second. The
+ * bounds — the member cap, the custody range, the year range — live in `householdSchema`
+ * and are enforced by `saveHousehold`, the same division `advicePatchRequest` explains.
+ *
+ * You are not a member and cannot be: there is exactly one first person on the scale, and
+ * an editable self would allow a household of nobody.
+ */
+const householdPatchRequest = z.strictObject({
+  members: z.array(
+    z.strictObject({
+      birthYear: z.number().int(),
+      custodyBp: z.number().int().optional(),
+      label: z.string().optional(),
+    }),
+  ),
+})
+
+/**
+ * One category's COICOP division, or `null` to unmap it.
+ *
+ * Nullable rather than optional, which is the difference between this and every other
+ * patch on this page: absent would mean "leave it alone", and taking a wrong mapping back
+ * is the correction people most need to make. A division and not a full code — see
+ * `mapping.ts` for why the picker stops at two digits.
+ */
+const coicopPatchRequest = z.strictObject({ coicop: z.enum(COICOP_CHOICES).nullable() })
+
 const accountPatchRequest = z.strictObject({
   kind: z.enum(['checking', 'savings', 'credit', 'investment', 'cash', 'other']).optional(),
   includeInNetWorth: z.boolean().optional(),
@@ -288,6 +332,61 @@ function riskProfileSetting(db: Db): Settings['advice'] {
   }
 }
 
+/**
+ * The benchmark file, the household, and the mapping between them.
+ *
+ * The file is read per request rather than cached: it is a small YAML on local disk, this
+ * page is opened by one person, and a cached copy would keep the panel showing a
+ * transcription warning somebody had already answered by editing the file.
+ */
+function benchmarkSetting(db: Db): Settings['benchmark'] {
+  const benchmark = benchmarkOrNull()
+  const household = loadHousehold(db)
+
+  return {
+    file:
+      benchmark === null
+        ? null
+        : {
+            source: {
+              survey: benchmark.source.survey,
+              year: benchmark.source.year,
+              citation: benchmark.source.citation,
+              sourceUrl: benchmark.source.source_url ?? null,
+              lastVerified: benchmark.source.last_verified,
+              status: benchmark.source.status,
+            },
+            equivalence: {
+              scale: benchmark.equivalence.scale,
+              firstPersonBp: benchmark.equivalence.first_person_bp,
+              additionalPersonBp: benchmark.equivalence.additional_person_bp,
+              childBp: benchmark.equivalence.child_bp,
+              childAgeBelow: benchmark.equivalence.child_age_below,
+              citation: benchmark.equivalence.citation,
+              sourceUrl: benchmark.equivalence.source_url ?? null,
+              lastVerified: benchmark.equivalence.last_verified,
+              status: benchmark.equivalence.status,
+            },
+            groups: benchmark.groups.map((group) => ({
+              id: group.id,
+              shareBp: group.share_bp,
+              coicop: group.coicop,
+            })),
+            hasReferenceHousehold: benchmark.referenceHousehold !== null,
+            transcribed: [...transcribedBlocks(benchmark)],
+          },
+    household: {
+      members: household.members.map((member) => ({
+        birthYear: member.birthYear,
+        custodyBp: member.custodyBp,
+        ...(member.label === undefined ? {} : { label: member.label }),
+      })),
+    },
+    outsideCode: '00',
+    categories: loadMapping(db, latestStoredMonth(db)),
+  }
+}
+
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
@@ -306,6 +405,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     params: loadParams(db),
     paramDefaults: DEFAULT_PARAMS,
     advice: riskProfileSetting(db),
+    benchmark: benchmarkSetting(db),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -472,6 +572,87 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       // was given", which needs all of them.
       before,
       after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Who lives here, which is what makes a national average comparable at all (#43).
+   *
+   * Takes effect immediately, like the risk profile and unlike the aggregation
+   * parameters: the comparison is computed per request, so the budget page shows the new
+   * scale on its next load. The findings it produced are not rewritten — a signal is a
+   * judgement made at a time — and the next nightly pass restates them.
+   */
+  app.patch('/api/settings/household', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(householdPatchRequest, request.body)
+
+    const before = loadHousehold(db)
+    let after
+    try {
+      after = saveHousehold(db, patch)
+    } catch (error) {
+      // The member cap and the custody range can only be checked against the parsed
+      // roster, so they fail here rather than in `parseBody` — same division as the
+      // parameters and the bands.
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.household',
+      entity: 'settings',
+      entityRef: HOUSEHOLD_KEY,
+      actorId: user.id,
+      // The whole roster both ways. It is a handful of small rows, and the question the
+      // trail answers is "who was the household when that comparison was drawn".
+      before,
+      after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Which reference line a category feeds (#43).
+   *
+   * The second writer of `category_meta.coicop_code`, and the only one a person can reach
+   * without a Gemini key — the first is an approved `category_meta.set` proposal. It is
+   * also the only path that may write `null`: a proposal exists to add knowledge, and
+   * taking a wrong mapping back is a correction rather than a proposal.
+   *
+   * Audited against `category_meta` rather than `settings`, because that is the table the
+   * row lands in and the AI path already writes its own entries there — one entity, so a
+   * category's history reads as one list whoever made the change.
+   */
+  app.patch('/api/settings/categories/:id/coicop', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const categoryId = (request.params as { id: string }).id
+    const { coicop } = parseBody(coicopPatchRequest, request.body)
+
+    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      saveCoicop(db, categoryId, coicop)
+    } catch (error) {
+      // Only reachable if the row disappeared between the two statements, which means a
+      // sync dropped the category — a 404 rather than a 500, because nothing is broken.
+      if (error instanceof MappingError) throw notFound('No such category.')
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.coicop',
+      entity: 'category_meta',
+      entityRef: categoryId,
+      actorId: user.id,
+      before: { coicopCode: before.coicop },
+      after: { coicopCode: coicop },
     })
 
     return buildSettings(db, request)

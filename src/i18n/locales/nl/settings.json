@@ -66,6 +66,70 @@
     },
     "used": "{{used}} van het maandbudget"
   },
+  "benchmark": {
+    "coicop": {
+      "00": "00 — Geen huishoudelijke consumptie",
+      "01": "01 — Voedingsmiddelen en niet-alcoholische dranken",
+      "02": "02 — Alcoholische dranken, tabak en narcotica",
+      "03": "03 — Kleding en schoeisel",
+      "04": "04 — Huisvesting, water, elektriciteit, gas en andere brandstoffen",
+      "05": "05 — Stoffering, huishoudtoestellen en dagelijks onderhoud",
+      "06": "06 — Gezondheid",
+      "07": "07 — Vervoer",
+      "08": "08 — Communicatie",
+      "09": "09 — Recreatie en cultuur",
+      "10": "10 — Onderwijs",
+      "11": "11 — Restaurants en hotels",
+      "12": "12 — Diverse goederen en diensten"
+    },
+    "household": {
+      "add": "Iemand toevoegen",
+      "asAdult": "tegen het gewicht van een volwassene",
+      "asChild": "tegen het kindgewicht",
+      "birthYear": "Geboortejaar",
+      "custody": "Tijd hier",
+      "hint": "Wie hier woont, want dat is wat jouw uitgaven vergelijkbaar maakt met een nationaal gemiddelde. Een wijziging geldt voor de volgende vergelijking; niets op deze pagina wordt hier herrekend.",
+      "label": "Naam",
+      "none": "Alleen jij, tegen het volle gewicht. Voeg iedereen toe die hier verder woont.",
+      "notANumber": "Een geboortejaar van vier cijfers, en een geheel aantal basispunten tot 10000.",
+      "reads": "Telt {{weight}}, {{share}} van de tijd.",
+      "readsShare": "Hier {{share}} van de tijd.",
+      "remove": "Verwijderen",
+      "title": "Huishouden",
+      "you": "Jij bent altijd de eerste persoon op de schaal en staat daarom niet als rij tussen de anderen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene."
+    },
+    "mapping": {
+      "caption": "De afdeling van elke categorie, en de referentielijn die ze voedt",
+      "column": {
+        "category": "Categorie",
+        "division": "COICOP-afdeling",
+        "line": "Referentielijn",
+        "spent": "Laatste maand"
+      },
+      "consumption": "Huishoudelijke consumptie",
+      "hidden": "Verborgen",
+      "hint": "Als welke COICOP-afdeling elke categorie telt, want dat is wat de vergelijking optelt. Wordt bewaard zodra je kiest, en toegepast de volgende keer dat de budgetpagina gelezen wordt.",
+      "income": "Inkomen",
+      "inputLabel": "COICOP-afdeling voor {{name}}",
+      "none": "Er zijn nog geen categorieën geaggregeerd. Doe eerst een synchronisatie.",
+      "notCompared": "Niet vergeleken",
+      "outside": "Buiten huishoudelijke consumptie",
+      "progress_one": "{{value}} van {{total}} categorieën heeft nog geen afdeling.",
+      "progress_other": "{{value}} van {{total}} categorieën hebben nog geen afdeling.",
+      "title": "Referentietoewijzing",
+      "unmapped": "Niet toegewezen"
+    },
+    "noFile": "Er kon geen referentiebestand gelezen worden, dus nergens wordt een vergelijking gemaakt.",
+    "noFileHint": "Balancr levert er een mee in config/statbel-benchmark.yaml. Controleer BENCHMARK_PATH en het serverlog — een bestand dat niet gelezen kan worden, wordt daar met de reden vermeld.",
+    "provenance": {
+      "mixOnly": "Het maandtotaal van het gemiddelde huishouden is niet ingevuld, dus enkel de verdeling wordt vergeleken: aandelen tegen aandelen, nooit euro's tegen euro's. Het bestand legt uit hoe je het invult.",
+      "scale": "{{citation}}. Laatst nagekeken {{verified}}.",
+      "survey": "{{citation}}. Laatst nagekeken {{verified}}.",
+      "title": "Waar deze cijfers vandaan komen",
+      "transcribed": "Overgenomen van de gepubliceerde samenvatting en nog niet bij de bron bevestigd: {{blocks}}.",
+      "weights": "De eerste persoon telt {{first}}, elke verdere persoon van {{age}} jaar of ouder telt {{adult}}, en elk kind onder {{age}} telt {{child}}."
+    }
+  },
   "build": {
     "revision": "Build",
     "title": "Deze installatie",

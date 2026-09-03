@@ -6,8 +6,8 @@
  * analysis runs under, and which of two accounts holding the same positions counts
  * toward net worth. That difference sets the whole shape of the screen:
  *
- *  - **The payload is the state.** `GET /api/settings` returns all five panels' data
- *    and every write returns it again, so a panel never patches its own copy of a
+ *  - **The payload is the state.** `GET /api/settings` returns every panel's data and
+ *    every write returns it again, so a panel never patches its own copy of a
  *    field. `useSettings` in `../settings/state.ts` holds that single payload and the
  *    one request in flight; the panels are given it and a way to write.
  *  - **A viewer sees everything and changes one thing.** The role is on the payload,
@@ -29,19 +29,27 @@
  *
  * Panel order is the order someone arrives with a reason to be here: the language
  * control first because it is the one thing everyone changes and the only thing a
- * viewer can; then the prompt editor, which is the point of the page; then thresholds
- * and account mapping, which are set once and revisited rarely; then AI spend, which
- * is read, not set. The build block is last because it exists for a bug report.
+ * viewer can; then the prompt editor, which is the point of the page; then thresholds,
+ * account mapping and the two benchmark panels, which are set once and revisited
+ * rarely; then AI spend, which is read, not set. The build block is last because it
+ * exists for a bug report.
  *
  * The risk profile sits above the thresholds for a reason: it is the only panel here
  * whose numbers produce a suggestion to move money, and somebody arriving because the
  * portfolio page proposed a trade is looking for these twelve boxes rather than for the
  * EWMA half-life.
+ *
+ * The household and the COICOP mapping sit together below the account mapping because
+ * all three are the same kind of work — saying which of Balancr's own vocabularies an
+ * external thing belongs to — and because the household is meaningless without the
+ * mapping: an equivalence scale divides a reference that nothing is compared against
+ * until at least most of the month has a division (#43).
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { AccountsPanel } from '../settings/Accounts.tsx'
+import { HouseholdPanel, MappingPanel } from '../settings/Benchmark.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
@@ -101,6 +109,8 @@ export function Settings(): ReactNode {
               <RiskPanel {...props} />
               <ThresholdsPanel {...props} />
               <AccountsPanel {...props} />
+              <HouseholdPanel {...props} />
+              <MappingPanel {...props} />
               <SpendPanel {...props} />
               <StatusPanel />
 

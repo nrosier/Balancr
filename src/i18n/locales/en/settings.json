@@ -66,6 +66,70 @@
     },
     "used": "{{used}} of the monthly budget"
   },
+  "benchmark": {
+    "coicop": {
+      "00": "00 — Not household consumption",
+      "01": "01 — Food and non-alcoholic beverages",
+      "02": "02 — Alcoholic beverages, tobacco and narcotics",
+      "03": "03 — Clothing and footwear",
+      "04": "04 — Housing, water, electricity, gas and other fuels",
+      "05": "05 — Furnishings, household equipment and routine maintenance",
+      "06": "06 — Health",
+      "07": "07 — Transport",
+      "08": "08 — Communication",
+      "09": "09 — Recreation and culture",
+      "10": "10 — Education",
+      "11": "11 — Restaurants and hotels",
+      "12": "12 — Miscellaneous goods and services"
+    },
+    "household": {
+      "add": "Add someone",
+      "asAdult": "at the adult weight",
+      "asChild": "at the child weight",
+      "birthYear": "Year of birth",
+      "custody": "Time here",
+      "hint": "Who lives here, which is what makes your spending comparable to a national average. A change applies to the next comparison drawn; nothing on this page recomputes.",
+      "label": "Name",
+      "none": "Just you, at full weight. Add anybody else who lives here.",
+      "notANumber": "A four-digit year, and a whole number of basis points up to 10000.",
+      "reads": "Counts {{weight}}, {{share}} of the time.",
+      "readsShare": "Here {{share}} of the time.",
+      "remove": "Remove",
+      "title": "Household",
+      "you": "You are always the first person on the scale, so you are not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
+    },
+    "mapping": {
+      "caption": "Each category's division, and the reference line it feeds",
+      "column": {
+        "category": "Category",
+        "division": "COICOP division",
+        "line": "Reference line",
+        "spent": "Latest month"
+      },
+      "consumption": "Household consumption",
+      "hidden": "Hidden",
+      "hint": "Which COICOP division each category counts as, which is what the comparison sums. Saved as you pick it, and applied the next time the budget page is read.",
+      "income": "Income",
+      "inputLabel": "COICOP division for {{name}}",
+      "none": "No categories have been aggregated yet. Run a sync first.",
+      "notCompared": "Not compared",
+      "outside": "Outside household consumption",
+      "progress_one": "{{value}} of {{total}} categories has no division yet.",
+      "progress_other": "{{value}} of {{total}} categories have no division yet.",
+      "title": "Benchmark mapping",
+      "unmapped": "Not mapped"
+    },
+    "noFile": "No benchmark file could be read, so no comparison is drawn anywhere.",
+    "noFileHint": "Balancr ships one at config/statbel-benchmark.yaml. Check BENCHMARK_PATH and the server log — a file that fails to parse is reported there with the reason.",
+    "provenance": {
+      "mixOnly": "The average household's euro total is not filled in, so only the mix is compared: shares against shares, never euros against euros. The file says how to fill it in.",
+      "scale": "{{citation}}. Last checked {{verified}}.",
+      "survey": "{{citation}}. Last checked {{verified}}.",
+      "title": "Where these figures come from",
+      "transcribed": "Read off the published summary and not yet confirmed at the source: {{blocks}}.",
+      "weights": "The first person counts {{first}}, every further person aged {{age}} or over counts {{adult}}, and every child under {{age}} counts {{child}}."
+    }
+  },
   "build": {
     "revision": "Build",
     "title": "This instance",

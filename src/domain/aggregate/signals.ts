@@ -11,6 +11,7 @@
  * Pure: the clock arrives as `today` and `monthProgress`, the data as arrays. The
  * job in `jobs/signals.ts` does the reading and the writing.
  */
+import type { BenchmarkComparison } from '../benchmark/compare.ts'
 import { assertDenseMonths } from '../../util/month.ts'
 import type { MonthValue } from './baseline.ts'
 import { householdSignals } from './household.ts'
@@ -46,6 +47,13 @@ export interface SignalInput {
   mismatches: readonly RecomputeMismatch[]
   accounts: readonly AccountReconciliation[]
   latestPortfolioSnapshot: string | null
+  /**
+   * This month against the household-budget benchmark (#43), or an unavailable
+   * reason. Computed by the caller because it reads a YAML file and a settings
+   * row, and this module is pure — the same reason `netWorth` arrives already
+   * summarised.
+   */
+  benchmark: BenchmarkComparison
   params: AggregateParams
 }
 
@@ -101,9 +109,7 @@ export function computeSignals(input: SignalInput): SignalResult {
       netWorthHistory: input.netWorthHistory,
       params: input.params,
     }),
-    // Empty until the Statbel model lands (v0.9.0). Wired now so that the day it
-    // produces something, nothing else has to change to show it.
-    ...benchmarkSignals(),
+    ...benchmarkSignals(input.benchmark, input.params),
     ...hygiene.signals,
   ]
 

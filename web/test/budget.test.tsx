@@ -37,6 +37,55 @@ const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: []
 const TREND_MONTHS = ['2026-06', '2026-07', '2026-08']
 
 /**
+ * The Statbel comparison for `FULL`, on `FULL`'s own money.
+ *
+ * Every figure here is what `compareToBenchmark` produces from the two spending
+ * categories above and the shipped `config/statbel-benchmark.yaml`, written out rather
+ * than computed: Groceries' € 650 under food and Rent's € 1.200 under housing come to
+ * € 1.850 of compared spending, and each reference line is that total times the survey's
+ * published share. A fixture that computed them would agree with a card that computed
+ * them, and the point of the card is that it computes nothing.
+ *
+ * `basis: 'mix'` because the shipped file leaves the reference household commented out,
+ * and the household is one adult plus a half-time thirteen-year-old — 1,00 + 0,3 × 0,5 —
+ * which is the case #43 was written for and the only one that exercises all three
+ * household sentences at once.
+ */
+const BENCHMARK: Extract<BudgetPayload['benchmark'], { kind: 'ok' }> = {
+  kind: 'ok',
+  month: '2026-08',
+  basis: 'mix',
+  groups: [
+    { group: 'food', yourCents: 65_000, yourShareBp: 3_514, referenceShareBp: 1_400, benchmarkCents: 25_900, deltaBp: 15_097, deltaCents: 39_100, categories: 1 },
+    { group: 'alcohol_tobacco', yourCents: 0, yourShareBp: 0, referenceShareBp: 170, benchmarkCents: 3_145, deltaBp: -10_000, deltaCents: -3_145, categories: 0 },
+    { group: 'clothing', yourCents: 0, yourShareBp: 0, referenceShareBp: 370, benchmarkCents: 6_845, deltaBp: -10_000, deltaCents: -6_845, categories: 0 },
+    { group: 'housing', yourCents: 120_000, yourShareBp: 6_486, referenceShareBp: 3_060, benchmarkCents: 56_610, deltaBp: 11_198, deltaCents: 63_390, categories: 1 },
+    { group: 'furnishings', yourCents: 0, yourShareBp: 0, referenceShareBp: 500, benchmarkCents: 9_250, deltaBp: -10_000, deltaCents: -9_250, categories: 0 },
+    { group: 'health', yourCents: 0, yourShareBp: 0, referenceShareBp: 480, benchmarkCents: 8_880, deltaBp: -10_000, deltaCents: -8_880, categories: 0 },
+    { group: 'transport', yourCents: 0, yourShareBp: 0, referenceShareBp: 1_170, benchmarkCents: 21_645, deltaBp: -10_000, deltaCents: -21_645, categories: 0 },
+    { group: 'recreation', yourCents: 0, yourShareBp: 0, referenceShareBp: 790, benchmarkCents: 14_615, deltaBp: -10_000, deltaCents: -14_615, categories: 0 },
+    { group: 'hotels_restaurants', yourCents: 0, yourShareBp: 0, referenceShareBp: 730, benchmarkCents: 13_505, deltaBp: -10_000, deltaCents: -13_505, categories: 0 },
+    { group: 'other', yourCents: 0, yourShareBp: 0, referenceShareBp: 1_330, benchmarkCents: 24_605, deltaBp: -10_000, deltaCents: -24_605, categories: 0 },
+  ],
+  comparedCents: 185_000,
+  consumptionCents: 185_000,
+  outsideCents: 0,
+  mappedShareBp: 10_000,
+  unmapped: [],
+  household: { bp: 11_500, prorated: true, children: 1, members: 1 },
+  referenceHouseholdBp: null,
+  source: {
+    survey: 'Household Budget Survey (HBS)',
+    year: 2024,
+    citation: 'Statbel, Household Budget Survey 2024 — structure of household expenditure',
+    sourceUrl: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs',
+    lastVerified: '2026-09-03',
+    status: 'transcribed',
+  },
+  transcribed: ['source', 'equivalence'],
+}
+
+/**
  * A month with something in every field.
  *
  * Deliberately mixed: an income category (excluded from both the bullet chart and the
@@ -155,6 +204,7 @@ const FULL: BudgetPayload = {
       metrics: {},
     },
   ],
+  benchmark: BENCHMARK,
   uncategorised: { txnCount: 3, amountCents: 12_500 },
 }
 
@@ -168,6 +218,10 @@ const EMPTY: BudgetPayload = {
   trendMonths: [],
   categories: [],
   signals: [],
+  // Nothing was spent, so there is nothing to compare — and the card renders nothing at
+  // all for this reason rather than a box saying so, because the empty month already has
+  // its own sentence above.
+  benchmark: { kind: 'unavailable', reason: 'no_month', mappedShareBp: null },
   uncategorised: null,
 }
 
@@ -378,7 +432,120 @@ describe('a month with figures in it', () => {
 
     // A missing key renders as itself, across the two namespaces this page reads.
     const text = document.body.textContent ?? ''
-    expect(text).not.toMatch(/\b(metric|chart|pace|picker|empty|findings|time)\.[a-zA-Z]/)
+    expect(text).not.toMatch(/\b(metric|chart|pace|picker|empty|findings|time|benchmark)\.[a-zA-Z]/)
+  })
+})
+
+/**
+ * The Statbel card (#43), which is mostly disclosure and is asserted as such.
+ *
+ * What matters is not that a table appeared but that everything qualifying it appeared
+ * with it: which basis the comparison used, how much of the month it covers, how big the
+ * household it divided by is, which of that is Balancr's own assumption rather than the
+ * survey's, and which figures nobody has checked at the source. Each of those is a
+ * sentence somebody could remove without any test failing, and the card would still look
+ * right while claiming more than it can support.
+ */
+describe('the Belgian comparison', () => {
+  it('says what it compared, what it divided by, and what nobody has checked', async () => {
+    serve(json(FULL))
+    renderApp(<Budget />)
+
+    expect(await screen.findByText('Compared with Belgian households')).toBeTruthy()
+
+    // The mix basis, in words rather than as a badge: shares against shares, and an
+    // explicit sentence that nothing here says whether you spend more than they do.
+    expect(screen.getByText(/How your € 1.850 of August 2026 spending divides/)).toBeTruthy()
+    expect(screen.getByText(/Shares only/)).toBeTruthy()
+
+    // Both mapped lines are far enough above the reference to be named, and the eight
+    // lines nothing feeds read as unmapped rather than as spending nothing — those are
+    // opposite conclusions and the whole point of that column.
+    expect(screen.getAllByText('Above reference')).toHaveLength(2)
+    expect(screen.getAllByText('Nothing mapped')).toHaveLength(8)
+    expect(screen.queryByText('Below reference')).toBeNull()
+
+    // Literal, because no arithmetic on this page produced them: food's share of the
+    // compared total, the reference in euros, and the signed gap.
+    expect(screen.getByText('35,1%')).toBeTruthy()
+    expect(screen.getByText('€ 259')).toBeTruthy()
+    expect(screen.getByText('+151%')).toBeTruthy()
+
+    // How much of the month the comparison covers, said in the same card as the figures.
+    expect(screen.getByText(/100% of your € 1.850 of household spending is mapped/)).toBeTruthy()
+
+    // The household, all three sentences: the scale figure to two decimals because
+    // proration produces one the published scale never does, how many count as children,
+    // and that the proration is Balancr's assumption rather than the survey's.
+    expect(screen.getByText('You and 1 other person: 1,15 on the equivalence scale.')).toBeTruthy()
+    expect(screen.getByText('1 of them counts at the child weight.')).toBeTruthy()
+    expect(screen.getByText(/That proration is Balancr's own assumption/)).toBeTruthy()
+
+    // The provenance, and the weaker claim beside it.
+    expect(
+      screen.getByText(/Statbel, Household Budget Survey 2024 — structure of household/),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Not yet confirmed at the source: the published shares and the equivalence scale.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('never raises a difference above information', async () => {
+    serve(json(FULL))
+    renderApp(<Budget />)
+    await screen.findByText('Compared with Belgian households')
+
+    // #43 asks for this as context and never as a verdict. Scoped to the card, because
+    // the page carries a real warning of its own about uncategorised transactions: what
+    // must not appear is a severity *here*, while two lines sit 150% above the reference.
+    const card = screen.getByText('Compared with Belgian households').closest('section')
+    expect(card).not.toBeNull()
+    expect(card?.querySelectorAll('.notice--warn, .notice--error, [role="alert"]')).toHaveLength(0)
+    // Nor a tone smuggled in through the state column, which is the one cell that
+    // judges. jsdom loads no stylesheet, so what is checkable here is the modifier the
+    // cell asks for: four states, none of them a severity. A `--alert` appearing in this
+    // list is how the card would start looking like a verdict.
+    const states = [...(card?.querySelectorAll('.benchmark__state') ?? [])].map((cell) =>
+      cell.className.replace('benchmark__state benchmark__state--', ''),
+    )
+    expect(new Set(states)).toEqual(new Set(['above', 'unmapped']))
+  })
+
+  it('says what is missing and where to fix it when too little is mapped', async () => {
+    // The same month with Groceries unmapped: € 1.200 of € 1.850 is 64,86%, under the
+    // 70% floor `compare.ts` refuses below. What the card must not do is draw the table
+    // anyway — a housing line computed on two thirds of the money is a chart about the
+    // mapping.
+    serve(
+      json({
+        ...FULL,
+        benchmark: { kind: 'unavailable', reason: 'too_unmapped', mappedShareBp: 6_486 },
+      } satisfies BudgetPayload),
+    )
+    renderApp(<Budget />)
+
+    expect(
+      await screen.findByText(/Only 64,9% of this month's spending is mapped .* under the 70%/),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Map your categories to a COICOP division under Settings and the comparison appears here.'),
+    ).toBeTruthy()
+    expect(screen.queryByText('Compared with Belgian households')).toBeNull()
+  })
+
+  it('draws nothing at all for a month with no spending in it', async () => {
+    serve(json(UNCOMPUTED))
+    renderApp(<Budget />)
+    await screen.findByText('Nothing has been computed for May 2026 yet.')
+
+    // `no_month` and `no_file` are both supported states rather than problems, and a box
+    // on every budget page saying so would be noise on a page that already says the month
+    // is empty. Asserted through the card's own sentences rather than through the notice
+    // classes, because the empty month has a notice of its own two lines up.
+    expect(screen.queryByText('Compared with Belgian households')).toBeNull()
+    expect(screen.queryByText(/Map your categories to a COICOP division/)).toBeNull()
   })
 })
 
