@@ -24,12 +24,15 @@ import { useResource } from '../api/resource.tsx'
 import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
+import { DriftTable } from '../portfolio/Drift.tsx'
+import { Suggestions } from '../portfolio/Suggestions.tsx'
 import { formatBp, formatDate, formatMoney, type Portfolio as PortfolioPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
+import '../portfolio/advice.css'
 
 /** Whole euro. Cents on a portfolio total are noise, and the row prices carry them. */
 const euro = (cents: number): string => formatMoney(cents, { whole: true })
@@ -84,7 +87,7 @@ function Figures({
 }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { allocation, cashValueCents, date, history, holdings } = data
+  const { advice, allocation, cashValueCents, date, history, holdings } = data
   const { investedValueCents, totalValueCents, twrBp } = data
 
   return (
@@ -159,6 +162,31 @@ function Figures({
           <AllocationChart allocation={allocation} />
         )}
       </section>
+
+      {/*
+        Advice comes after the shape and before the rows, because it is an argument about
+        the shape: the treemap says 100% equities and this section says what the profile
+        wanted instead. It is null exactly when there is no invested value to measure —
+        an instance nobody has synced yet, where four suggestions to buy would be the
+        app's first act — and then the section says so rather than disappearing, since a
+        missing section is indistinguishable from a feature nobody built.
+      */}
+      <section className="card">
+        <h2 className="card__title">{t('portfolio:advice.title')}</h2>
+        {advice === null ? (
+          <p className="muted">{t('portfolio:advice.unavailable')}</p>
+        ) : (
+          <DriftTable advice={advice} />
+        )}
+      </section>
+
+      {advice === null ? null : (
+        <section className="card">
+          <h2 className="card__title">{t('portfolio:suggest.title')}</h2>
+          <p className="panel__hint muted">{t('portfolio:suggest.lede')}</p>
+          <Suggestions advice={advice} />
+        </section>
+      )}
 
       <section className="card">
         <h2 className="card__title">{t('portfolio:holding.title')}</h2>

@@ -1,4 +1,42 @@
 {
+  "advice": {
+    "badge": {
+      "above": "Above",
+      "below": "Below",
+      "inside": "In band"
+    },
+    "bandRange": "{{min}} to {{max}}",
+    "caption": "Each asset class as a share of the invested value, against the band your profile allows. The gap is what would have to move to land on the target — negative means selling. Worst drift first.",
+    "column": {
+      "band": "Band",
+      "class": "Asset class",
+      "gap": "Gap",
+      "share": "Share",
+      "state": "State",
+      "target": "Target"
+    },
+    "edited": "bands edited",
+    "inBalance": "Every asset class is inside its band. Nothing to do.",
+    "profile": {
+      "balanced": "Balanced",
+      "custom": "Custom",
+      "defensive": "Defensive",
+      "growth": "Growth"
+    },
+    "profileLine": "Measured against the {{profile}} profile, over {{invested}} invested.",
+    "state": {
+      "aboveBy": "{{value}} above its ceiling of {{max}}",
+      "belowBy": "{{value}} below its floor of {{min}}",
+      "insideBand": "Inside its band of {{min}} to {{max}}"
+    },
+    "title": "Target allocation",
+    "unavailable": "There is nothing invested to measure a profile against yet. Sync Ghostfolio and this section fills in.",
+    "unmapped": {
+      "hint": "These are left out of every figure above rather than counted against a band that was never set for them. Give them a band, or check how Ghostfolio classifies them.",
+      "line": "{{name}}: {{value}}, {{share}} of what is invested",
+      "title": "Held in classes your profile has no band for"
+    }
+  },
   "assetClass": {
     "COMMODITY": "Commodities",
     "EQUITY": "Equities",
@@ -48,6 +86,44 @@
     "twr": "Time-weighted return",
     "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",
     "value": "Market value"
+  },
+  "suggest": {
+    "action": {
+      "buy": "Buy",
+      "sell": "Sell"
+    },
+    "fund": {
+      "meta_one": "TER {{ter}} · the only fund in your list for this class",
+      "meta_other": "TER {{ter}} · one of {{value}} funds in your list for this class"
+    },
+    "funding": {
+      "cash": "Out of cash, which also moves the total these shares are shares of — so it takes more than the gap to close the gap.",
+      "paired": "Paired with the trade on the other side, so the invested total does not move and the amount is the gap itself."
+    },
+    "lede": "One trade per class that left its band, each with the drift that motivates it and what the beurstaks would come to.",
+    "none": "Nothing worth trading: every class is inside its band, or the correction falls under your own thresholds.",
+    "omits": {
+      "capitalGains": "Capital gains are not in this figure: what you owe depends on what you paid, and Balancr never sees a cost base."
+    },
+    "position": {
+      "meta_one": "{{held}} held · the only position in this class",
+      "meta_other": "{{held}} held · one of {{value}} positions in this class",
+      "unnamed": "A position the snapshot does not name"
+    },
+    "skipped": {
+      "belowMinTrade": "{{name}} is {{outside}} past its edge, but closing it takes only {{amount}} — under the {{floor}} you set as the smallest trade worth making.",
+      "insideTolerance": "{{name}} is {{outside}} past its edge, inside the {{tolerance}} you allow before acting. {{amount}} would close it.",
+      "title": "Outside its band, and left alone"
+    },
+    "tax": {
+      "none": "No tax rule prices this trade."
+    },
+    "title": "What would bring it back",
+    "unavailable": {
+      "noFundInUniverse": "Nothing in your fund list covers this class, so there is no instrument to name. Add one to the fund universe and this becomes a suggestion.",
+      "notHeld": "This class is over its ceiling, but no holding is labelled with it — so there is no position to sell.",
+      "unknown": "No instrument could be named for this class."
+    }
   },
   "tax": {
     "amount": {

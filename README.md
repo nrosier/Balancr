@@ -40,6 +40,9 @@ and prioritise what it already knows.
   arrives mid-month instead of as a post-mortem.
 - **Portfolio** — allocation, returns and holdings from Ghostfolio, deduplicated
   against Actual so an investment account is never counted twice.
+- **What to do about it** — a risk profile written in numbers, every asset class
+  measured against its band, and one trade per class that left it: the reason, the
+  instrument from a list you vetted, and what the Belgian tax on it would be.
 - **It asks about unclear budgets** — and remembers the answers. That accumulated
   knowledge is the part of this app worth backing up.
 - **English and Dutch** — with Belgian number and date formatting in both.
@@ -353,6 +356,65 @@ to load with the tier named and the fix stated.
 None of this is tax advice, and it is not a filing. It is the arithmetic done in the open,
 with the source of every number one click away.
 
+## The risk profile
+
+"Some risk, but not super high risk" is an adjective, and an adjective cannot motivate a
+trade. **Settings → Risk profile** is where it becomes twelve numbers: a floor, a target and
+a ceiling for each of equities, bonds, property and commodities. Three presets arrive with
+their own figures visible before anything is committed to — Defensive, Balanced (the
+default: 65% equities, 30% bonds, 5% property) and Growth — and editing any band makes the
+profile `custom`, which the panel says the moment a box changes rather than after a round
+trip. The profile in force is the numbers; the name is a label on them.
+
+Targets must add up to 100%, every floor must sit under its target and every ceiling above
+it. The panel adds up the targets as you type, and the refusal still lives on the server,
+because a rule enforced in a form is a rule enforced nowhere.
+
+Two thresholds decide when a drift is worth acting on at all:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Ignore drift under | `100` bp (1%) | How far past a band edge a share may sit before a trade is proposed. Zero would propose one every morning. |
+| Smallest trade worth making | `€ 500` | A correction under this is reported and never suggested — a €300 rebalance pays beurstaks twice to move an allocation by three basis points. |
+
+The portfolio page then draws one row per band class, worst drift first — **including the
+classes worth nothing**, because zero bonds against a 30% target is the most actionable row
+on the page and a table built from what is held would leave it out. Shares are of the
+*invested* value, which the caption says out loud: cash at a broker is not an asset class,
+and on an instance whose Ghostfolio holds a synced bank balance, measuring against the total
+would drag every class below its floor at once. A class Ghostfolio has and your profile has
+no band for is reported separately with its share, never folded into a neighbour — that is a
+band to go and add, not a rounding error to absorb.
+
+Underneath it, one trade per class that left its band, each carrying the drift figure that
+motivates it. That is the requirement the code is shaped around: a suggestion holds the
+drift line it came from and cannot be built without it, so the sentence on the card and the
+row in the table are one function over one number rather than two texts that can disagree.
+Each card also states:
+
+- **What the amount means.** Buying from cash grows the base the share is a share of, so
+  closing an apparent 15% gap at a 65% target takes nearly three times the gap. When the
+  same report also wants a sale, the two fund each other and the gap *is* the trade. The
+  card says which of the two it is; one figure quoted for both would be wrong by a factor of
+  three in whichever case it was not written for.
+- **Which instrument, or why none.** A purchase can only name a fund from
+  [the fund universe](#the-fund-universe). When nothing in it covers the class, or when the
+  class is over its ceiling and no position is labelled with it, the card says which — "no
+  suggestion" and "no fund in your list" need different actions from you.
+- **What acting costs**, from the [Belgian tax](#belgian-tax) module, and **what the cost
+  leaves out**: the realised gain on a sale depends on a cost base Balancr never sees, so
+  every sale says so rather than presenting a total that reads as complete.
+
+A class outside its band that was left alone is reported too, with the threshold that
+suppressed it and the size of the trade it suppressed — a red row with nothing under it is
+a bug report waiting to be filed, and those are the numbers needed to judge the threshold.
+
+Every figure here is computed in TypeScript. The model is not asked what to sell, how much,
+or what it costs — see [the rule that makes it trustworthy](#the-rule-that-makes-it-trustworthy).
+And nothing is executed: Balancr never places a trade, and both upstream tools stay
+read-only.
+
+
 ## Backups
 
 One passphrase switches them on. There is no separate flag:
@@ -527,11 +589,11 @@ same reason.
 `0.4.0` was the version where every issue in the AI-layer milestone was closed,
 not the version where the first piece of it landed.
 
-Work merged on the way there releases as a **patch of the current minor**. The
-`0.8.0` milestone is in progress now, so its slices release as `0.7.1`, `0.7.2`, …
-— each one a real version for a real merge, none of them claiming a milestone that
-is not finished yet. The minor is the promise kept; the patches are the progress
-toward it.
+Work merged on the way there releases as a **patch of the current minor**. `0.8.0`
+was claimed the day the last issue of the advice milestone closed, so the slices of
+`0.9.0` now release as `0.8.1`, `0.8.2`, … — each one a real version for a real
+merge, none of them claiming a milestone that is not finished yet. The minor is the
+promise kept; the patches are the progress toward it.
 
 Two milestones can be in flight at once, and then they share that one patch series,
 which is what happened on the way here: `0.6.0` was claimed the day its last issue
@@ -552,7 +614,7 @@ ends.
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
-| `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | 🔄 |
+| `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ✅ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
@@ -560,13 +622,35 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0` is released and `0.8.0` has started: the data refreshes on
-a schedule and on demand, the database is backed up and the restore is proven, the digest
-arrives monthly, the container's hardening is checked rather than declared, advice has a
-universe of instruments it is allowed to name, and a trade's Belgian taxes are computed in
-euros before it is made. Risk-bounded advice, which is what puts those two together on
-screen, is the last issue in that milestone; it ships as `0.7.3`, `0.7.4`, … until the
-milestone closes as `0.8.0`.
+**Where it is now** — `0.8.0` is done: the app gives advice about the portfolio rather
+than only a picture of it. What is held is measured against a risk profile you set in
+numbers, every class outside its band arrives with the trade that would close it and the
+drift figure that motivates it, that trade may only name a fund from a list you vetted
+yourself, and what acting would cost in Belgian tax is computed in euros before anything is
+done. Underneath that, `0.7.0`'s operational half is in place: the data refreshes on a
+schedule and on demand, the database is backed up and the restore is proven, the digest
+arrives monthly, and the container's hardening is checked rather than declared. `0.9.0` is
+next — the Statbel benchmark, a custody-aware split of what a child costs, and the first
+proposal handlers that write back to Actual — and its slices ship as `0.8.1`, `0.8.2`, …
+until that milestone closes as `0.9.0`.
+
+The slice that closed the milestone is the one that puts the other two on screen
+([#41](https://github.com/nrosier/Balancr/issues/41)). "Some risk, but not super high risk"
+cannot motivate a trade, so it became twelve numbers — a floor, a target and a ceiling per
+asset class — and the profile in force is those numbers rather than the name on them: edit
+a band and it is `custom`, which the panel says as the box changes rather than after a round
+trip. Every class gets a row, including the ones worth nothing, because zero bonds against a
+30% target is the most actionable line on the page and a table built from what is held would
+omit it. Shares are of the invested value and the caption says so, since cash at a broker is
+not an asset class and on an instance whose Ghostfolio holds a synced bank balance the total
+would put every class under its floor at once. Each suggestion carries the drift line it was
+built from — that is a type, not a convention, so the sentence on the card and the row above
+it are one function over one number — and it says where the money comes from, because buying
+from cash grows the base the share is a share of and closing an apparent gap then takes
+nearly three times the gap. A class outside its band that was deliberately left alone is
+reported too, with the threshold that suppressed the trade and the size of the trade,
+because a red row with nothing under it is a bug report waiting to be filed. See
+[The risk profile](#the-risk-profile).
 
 The second slice of investment advice is what the trade actually costs
 ([#42](https://github.com/nrosier/Balancr/issues/42)). A 0.12% beurstaks and a 1.32% one
@@ -940,9 +1024,10 @@ moves and renames the database it replaces instead of deleting it. Most of what 
 there would be recomputed by morning anyway; what would not is the part you typed, which
 is the reason any of this exists. See [Backups](#backups).
 
-That closes the operational milestone. What comes next is `0.8.0`: advice about the
-portfolio rather than only a picture of it — a curated fund universe, tax-aware
-proposals, and the Belgian rules that decide what a move actually costs.
+That closed the operational milestone, and `0.8.0` closed the advice one above it. What
+comes next is `0.9.0`: the outside numbers — a Statbel benchmark to compare a category
+against something other than your own past, a custody-aware split of what a child costs,
+and the first proposal handlers allowed to write back to Actual.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

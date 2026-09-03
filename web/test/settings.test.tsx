@@ -32,7 +32,7 @@
  * printed the server's cents through `formatMoney`, which a page doing its own division
  * would fail.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Settings } from '../src/pages/Settings.tsx'
 import { ACCOUNT_KINDS } from '../src/settings/kinds.ts'
@@ -73,12 +73,49 @@ const PARAMS = {
   household: { savingsRateTargetBp: 1_500, emergencyFundTargetMonths: 3 },
 }
 
+/**
+ * The balanced preset, as the server sends it: bands in force plus every preset's numbers.
+ *
+ * `isPreset` is true and `bands` equals `presets.balanced`, which is the first-run state —
+ * the one where the panel has to show a chosen preset rather than a set of edits.
+ */
+const BANDS = {
+  defensive: {
+    EQUITY: { minBp: 3_000, targetBp: 4_000, maxBp: 5_000 },
+    FIXED_INCOME: { minBp: 4_000, targetBp: 5_500, maxBp: 6_500 },
+    REAL_ESTATE: { minBp: 0, targetBp: 500, maxBp: 1_500 },
+    COMMODITY: { minBp: 0, targetBp: 0, maxBp: 1_000 },
+  },
+  balanced: {
+    EQUITY: { minBp: 5_500, targetBp: 6_500, maxBp: 7_500 },
+    FIXED_INCOME: { minBp: 2_000, targetBp: 3_000, maxBp: 4_000 },
+    REAL_ESTATE: { minBp: 0, targetBp: 500, maxBp: 1_500 },
+    COMMODITY: { minBp: 0, targetBp: 0, maxBp: 1_000 },
+  },
+  growth: {
+    EQUITY: { minBp: 7_500, targetBp: 8_500, maxBp: 9_500 },
+    FIXED_INCOME: { minBp: 500, targetBp: 1_000, maxBp: 2_000 },
+    REAL_ESTATE: { minBp: 0, targetBp: 500, maxBp: 1_500 },
+    COMMODITY: { minBp: 0, targetBp: 0, maxBp: 1_000 },
+  },
+}
+
+const ADVICE: Payload['advice'] = {
+  profile: 'balanced',
+  isPreset: true,
+  bands: BANDS.balanced,
+  toleranceBp: 100,
+  minTradeCents: 50_000,
+  presets: BANDS,
+}
+
 const PAYLOAD: Payload = {
   build: { version: '0.5.6', revision: 'abc1234' },
   profile: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
   locales: { supported: ['en', 'nl'], default: 'en' },
   params: PARAMS,
   paramDefaults: PARAMS,
+  advice: ADVICE,
   // One entry per key, under the sentinel that means every language — which is what
   // the server sends until someone deliberately writes a version for one language.
   prompts: [
@@ -323,7 +360,28 @@ const writes = (calls: Call[]): Call[] => calls.filter((call) => call.method !==
 const field = (label: string): HTMLInputElement =>
   screen.getByLabelText(label, { exact: false }) as HTMLInputElement
 
-const save = (): HTMLButtonElement => screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement
+/**
+ * One panel's form, by the class it carries.
+ *
+ * Two panels write independently now and both buttons say "Save", which is the right
+ * word on each — so the query says which form it means rather than the page growing a
+ * longer label for the benefit of a test.
+ */
+const form = (name: string): HTMLElement => {
+  const found = document.querySelector<HTMLElement>(`form.${name}`)
+  if (found === null) throw new Error(`no ${name} form on the page`)
+  return found
+}
+
+const save = (): HTMLButtonElement =>
+  within(form('thresholds')).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+const saveRisk = (): HTMLButtonElement =>
+  within(form('risk')).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+/** One band edge's box, by the name a screen reader would read it out under. */
+const band = (name: string, edge: string): HTMLInputElement =>
+  screen.getByLabelText(`${name}, ${edge}`) as HTMLInputElement
 
 beforeAll(async () => {
   await i18nReady()
@@ -492,6 +550,189 @@ describe('thresholds', () => {
     const alert = await screen.findByText('Too many requests. Try again shortly.')
     expect(alert.closest('.notice--error')).not.toBeNull()
     expect(screen.getByText('req-7')).toBeTruthy()
+  })
+})
+
+describe('the risk profile', () => {
+  it('prints what each preset means, so the word is not a black box', async () => {
+    await open(READS)
+
+    // The server's own numbers, and the zero-target classes dropped: a satellite that
+    // is allowed to be nothing says nothing about what "growth" is.
+    expect(screen.getByText('65% Equities · 30% Bonds · 5% Property')).toBeTruthy()
+    expect(screen.getByText('85% Equities · 10% Bonds · 5% Property')).toBeTruthy()
+  })
+
+  it('fills in the preset that is stored, and claims no edit', async () => {
+    await open(READS)
+
+    expect((screen.getByRole('radio', { name: /Balanced/ }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: /Growth/ }) as HTMLInputElement).checked).toBe(false)
+    expect(screen.queryByText(/no longer match a preset/)).toBeNull()
+    // Nothing to send yet.
+    expect(saveRisk().disabled).toBe(true)
+  })
+
+  it('shows each band as three boxes and what those three read as', async () => {
+    await open(READS)
+
+    expect(band('Equities', 'Floor').value).toBe('5500')
+    expect(band('Equities', 'Target').value).toBe('6500')
+    expect(band('Equities', 'Ceiling').value).toBe('7500')
+    // Plain integers in the boxes and the percentages beside them: `6.500` in a
+    // basis-points field means 65% to a Belgian and 0,065% to a parser.
+    expect(screen.getByText('55% – 65% – 75%')).toBeTruthy()
+  })
+
+  it('sends the name of a preset and lets the server supply the numbers', async () => {
+    const calls = await open({ ...READS, '/api/settings/advice': json(PAYLOAD) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /Growth/ }))
+    // The boxes follow the pick, so what is on screen is what would be saved.
+    expect(band('Equities', 'Target').value).toBe('8500')
+    fireEvent.click(saveRisk())
+
+    await waitFor(() => {
+      expect(writes(calls)).toHaveLength(1)
+    })
+    expect(writes(calls)[0]?.path).toBe('/api/settings/advice')
+    // The name alone. Sending both would be this panel deciding that twelve numbers it
+    // did not choose are still "growth".
+    expect(writes(calls)[0]?.body).toEqual({ profile: 'growth' })
+  })
+
+  it('has nothing to send when the preset picked is the one already stored', async () => {
+    await open(READS)
+    fireEvent.click(screen.getByRole('radio', { name: /Balanced/ }))
+    expect(saveRisk().disabled).toBe(true)
+  })
+
+  it('sends all four bands when one number is edited by hand', async () => {
+    const calls = await open({ ...READS, '/api/settings/advice': json(PAYLOAD) })
+
+    // Equities down 5 points, bonds up 5, so the targets still add up.
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6000' } })
+    fireEvent.change(band('Bonds', 'Target'), { target: { value: '3500' } })
+    fireEvent.click(saveRisk())
+
+    await waitFor(() => {
+      expect(writes(calls)).toHaveLength(1)
+    })
+    // The whole set, and no `profile`: four targets with one left over from the previous
+    // profile is exactly the state that adds up to 97%.
+    expect(writes(calls)[0]?.body).toEqual({
+      bands: {
+        EQUITY: { minBp: 5_500, targetBp: 6_000, maxBp: 7_500 },
+        FIXED_INCOME: { minBp: 2_000, targetBp: 3_500, maxBp: 4_000 },
+        REAL_ESTATE: { minBp: 0, targetBp: 500, maxBp: 1_500 },
+        COMMODITY: { minBp: 0, targetBp: 0, maxBp: 1_000 },
+      },
+    })
+  })
+
+  it('says the profile has become custom while it is being typed', async () => {
+    await open(READS)
+
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6000' } })
+    // Before any round trip: the profile in force is the numbers, and the reader should
+    // not have to save to find out what saving would do.
+    expect(screen.getByText(/no longer match a preset/)).toBeTruthy()
+    // And no radio claims the numbers any more.
+    expect((screen.getByRole('radio', { name: /Balanced/ }) as HTMLInputElement).checked).toBe(
+      false,
+    )
+  })
+
+  it('drops the typed numbers when a different preset is picked', async () => {
+    await open(READS)
+
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6000' } })
+    fireEvent.click(screen.getByRole('radio', { name: /Defensive/ }))
+    // Carrying "6000" into defensive would silently rebuild the band the picker was
+    // asked to replace.
+    expect(band('Equities', 'Target').value).toBe('4000')
+    expect(screen.queryByText(/no longer match a preset/)).toBeNull()
+  })
+
+  it('refuses a grouped basis-points figure rather than reading it as four digits', async () => {
+    const calls = await open(READS)
+
+    // `6.500` is 65% on screen everywhere else in the app; in this box it has no valid
+    // reading at all, and `Number('6.500')` is 6,5 — a floor of 0,065%.
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6.500' } })
+    expect(saveRisk().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('adds the targets up live and refuses a set that does not make 100%', async () => {
+    const calls = await open(READS)
+
+    expect(screen.getByText('Targets add up to 100%.')).toBeTruthy()
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6000' } })
+
+    // 60 + 30 + 5 + 0. Answered before the save rather than after a round trip — and
+    // still refused by the server, which is the only place the rule is enforced.
+    expect(screen.getByText('Targets add up to 95%.')).toBeTruthy()
+    expect(saveRisk().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('sends the two thresholds in their own units', async () => {
+    const calls = await open({ ...READS, '/api/settings/advice': json(PAYLOAD) })
+
+    // Basis points as an integer, money as money — and the money box shows the server's
+    // cents through `formatMoney`, which is what a page doing its own division fails.
+    expect(screen.getByLabelText('Smallest trade worth making').getAttribute('value')).toBe(
+      eur('500,00'),
+    )
+    fireEvent.change(screen.getByLabelText('Ignore drift under'), { target: { value: '150' } })
+    fireEvent.change(screen.getByLabelText('Smallest trade worth making'), {
+      target: { value: '750,50' },
+    })
+    fireEvent.click(saveRisk())
+
+    await waitFor(() => {
+      expect(writes(calls)).toHaveLength(1)
+    })
+    expect(writes(calls)[0]?.body).toEqual({ toleranceBp: 150, minTradeCents: 75_050 })
+  })
+
+  it('says what a basis-points threshold will be read as', async () => {
+    await open(READS)
+    expect(screen.getByText(/In basis points past a band edge, so 1%/)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Ignore drift under'), { target: { value: '250' } })
+    expect(screen.getByText(/so 2,5%/)).toBeTruthy()
+  })
+
+  it('puts a refusal about the bands beside the panel that sent them', async () => {
+    await open({
+      ...READS,
+      '/api/settings/advice': failure('invalidBody', 'That request was not valid.', 400, [
+        { path: 'bands', message: 'targets add up to 95,00% instead of 100%' },
+      ]),
+    })
+
+    fireEvent.change(band('Equities', 'Target'), { target: { value: '6000' } })
+    fireEvent.change(band('Bonds', 'Target'), { target: { value: '3500' } })
+    fireEvent.click(saveRisk())
+
+    const issue = await screen.findByText('targets add up to 95,00% instead of 100%')
+    expect(issue.closest('.risk')).not.toBeNull()
+    expect(screen.queryByText('That request was not valid.')).toBeNull()
+  })
+
+  it('leaves the whole profile read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(band('Equities', 'Target').disabled).toBe(true)
+    expect((screen.getByRole('radio', { name: /Growth/ }) as HTMLInputElement).disabled).toBe(true)
+    expect(saveRisk().disabled).toBe(true)
+    // But every number stays readable: this is the panel that explains the advice.
+    expect(band('Equities', 'Target').value).toBe('6500')
   })
 })
 

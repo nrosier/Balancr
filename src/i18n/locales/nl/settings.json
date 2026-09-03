@@ -154,6 +154,27 @@
     "versionsNone": "Nog niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
     "which": "Welke instructies"
   },
+  "risk": {
+    "column": {
+      "class": "Activaklasse",
+      "maxBp": "Plafond",
+      "minBp": "Bodem",
+      "reads": "Leest als",
+      "targetBp": "Doel"
+    },
+    "custom": "Deze cijfers komen niet meer overeen met een voorinstelling, dus het profiel wordt als eigen profiel bewaard.",
+    "hint": "De banden waartegen het portefeuilleadvies wordt afgemeten. Elk voorstel op de portefeuillepagina bestaat omdat een aandeel een van deze banden verliet; hier houdt \"wat risico, maar niet te veel\" op een bijvoeglijk naamwoord te zijn. Een wijziging is zichtbaar zodra die pagina opnieuw gelezen wordt.",
+    "inputLabel": "{{name}}, {{edge}}",
+    "minTrade": "Kleinste zinvolle verrichting",
+    "minTradeHint": "Een correctie onder {{value}} wordt gemeld maar nooit voorgesteld.",
+    "notANumber": "Een geheel aantal basispunten, graag.",
+    "presets": "Profiel",
+    "reads": "{{min}} – {{target}} – {{max}}",
+    "sum": "De doelen tellen op tot {{value}}.",
+    "title": "Risicoprofiel",
+    "tolerance": "Negeer afwijking onder",
+    "toleranceHint": "In basispunten voorbij de rand van een band, dus {{value}}. Nul zou elke ochtend een verrichting voorstellen."
+  },
   "status": {
     "check": {
       "actual": "Actual Budget",

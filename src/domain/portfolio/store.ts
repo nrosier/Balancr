@@ -40,6 +40,8 @@ export function persistPortfolioSnapshots(
           priceCurrency: holding.priceCurrency,
           valueCents: holding.valueCents,
           currency: holding.currency,
+          assetClass: holding.assetClass,
+          assetSubClass: holding.assetSubClass,
           computedAt,
         })
         .onConflictDoUpdate({
@@ -53,6 +55,8 @@ export function persistPortfolioSnapshots(
             priceCurrency: sql`excluded.price_currency`,
             valueCents: sql`excluded.value_cents`,
             currency: sql`excluded.currency`,
+            assetClass: sql`excluded.asset_class`,
+            assetSubClass: sql`excluded.asset_sub_class`,
             computedAt: sql`excluded.computed_at`,
           },
         })

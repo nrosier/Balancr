@@ -57,6 +57,7 @@ export const AUDIT_ACTIONS = [
    * row says what the text became, and the entry says who made it and when.
    */
   'settings.params',
+  'settings.advice',
   'settings.locale',
   /**
    * A job someone started by hand.

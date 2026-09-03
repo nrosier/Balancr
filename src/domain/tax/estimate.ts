@@ -89,11 +89,23 @@ export interface Trade {
  * go and find out, and "record `fsma_registered` for this fund" is a task where "the
  * registration status is unknown" is a shrug.
  */
-export type UnknownReason = 'fsma_registered' | 'distribution' | 'interest_component'
+export const UNKNOWN_REASONS = ['fsma_registered', 'distribution', 'interest_component'] as const
+export type UnknownReason = (typeof UNKNOWN_REASONS)[number]
 
 /** An input the estimate supplied for itself, and that the caller should repeat. */
-export type Assumption = 'full_annual_exemption' | 'debt_claims_from_asset_class'
+export const ASSUMPTIONS = ['full_annual_exemption', 'debt_claims_from_asset_class'] as const
+export type Assumption = (typeof ASSUMPTIONS)[number]
 
+/**
+ * A note on the `?: T | undefined` in the two interfaces below.
+ *
+ * They travel to the browser as JSON, inside `portfolioSchema`, and JSON has one way to
+ * be absent where `exactOptionalPropertyTypes` has two. A line parsed back out of a
+ * response schema therefore has `bounds?: … | undefined`, and without the `| undefined`
+ * written here it would not be assignable to what `describeTaxEstimate` takes — which is
+ * the one function that has to run on both sides of the wire. Producers are unaffected:
+ * an omitted key still satisfies these, and nothing here writes an explicit `undefined`.
+ */
 /** Where a line's number came from — the rate, the cap, and who says so. */
 export interface TaxBasis {
   readonly rate_bp: number
@@ -103,9 +115,9 @@ export interface TaxBasis {
   /** True when the cap, rather than the rate, decided the amount. */
   readonly capped: boolean
   /** Which beurstaks tier applied, for the rules that have tiers. */
-  readonly tier?: string
+  readonly tier?: string | undefined
   readonly citation: string
-  readonly source_url?: string
+  readonly source_url?: string | undefined
   readonly last_verified: string
   readonly status: 'confirmed' | 'transcribed'
   /** Which dated ruleset this came from. */
@@ -117,8 +129,8 @@ export interface TaxLine {
   /** The amount owed, or `null` when a fact is missing — `bounds` then says how much. */
   readonly amount_cents: number | null
   /** What it could be, when the missing fact only chooses between known rates. */
-  readonly bounds?: { readonly min_cents: number; readonly max_cents: number }
-  readonly unknown?: UnknownReason
+  readonly bounds?: { readonly min_cents: number; readonly max_cents: number } | undefined
+  readonly unknown?: UnknownReason | undefined
   /** `null` only on an unknown line, where no single rule applied. */
   readonly basis: TaxBasis | null
   readonly assumptions: readonly Assumption[]

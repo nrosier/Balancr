@@ -1,0 +1,240 @@
+/*
+ * The risk profile, the drift against it, and the trades that would close it (#41).
+ *
+ * Its own stylesheet for the reason `insights.css` has one: two shapes here exist
+ * nowhere else on the site, and both are load-bearing rather than decorative.
+ *
+ *  - **`.band`** draws a class's floor, target and actual share on one 0–100% axis, so
+ *    a column of them can be compared down the page: a target at 65% sits two thirds
+ *    along in every row. It is `aria-hidden` in the markup and every figure in it is a
+ *    cell in the same row, so this is the one place where colour carries no meaning of
+ *    its own — the state badge beside it says the word.
+ *  - **`.suggestion`** is a bordered block rather than a table row, because a trade is
+ *    an argument: an amount, the drift that motivates it, the instrument, and what the
+ *    beurstaks on it comes to. Those wrap at every width and have no columns worth
+ *    aligning across cards.
+ *
+ * The tax block inside a card is nested lists of short sentences, not a table. Its
+ * provenance line — rate, cap, citation, date — is the part that makes the figure
+ * checkable, so it is always visible rather than behind a disclosure: a number nobody
+ * can trace is a number this app made up.
+ */
+
+/* ---------------------------------------------------------------------------
+   The band bar
+   --------------------------------------------------------------------------- */
+
+.band-cell {
+  min-width: 9rem;
+}
+
+.band {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 6rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+/* The band itself: everywhere this class is allowed to be. */
+.band__range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+}
+
+/* The target, as a tick rather than a fill — a band is not a point. */
+.band__target {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--border-strong);
+}
+
+/* Where the portfolio actually is. Taller than the track, so it reads as a marker. */
+.band__share {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--positive);
+}
+
+.band__share--above,
+.band__share--below {
+  background: var(--warn);
+}
+
+/*
+ * The numbers under the bar.
+ *
+ * Present because the bar is `aria-hidden` and because a bar without a scale is a
+ * picture: the floor and the ceiling are what somebody edits in settings, and reading
+ * them off a 9rem track is guesswork.
+ */
+.band__label {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Suggestions
+   --------------------------------------------------------------------------- */
+
+.suggestion-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.suggestion__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+}
+
+.suggestion__amount {
+  font-size: var(--type-md);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestion__class {
+  color: var(--text-muted);
+  font-size: var(--type-base);
+}
+
+.suggestion__reason {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-base);
+  line-height: var(--lead-normal);
+}
+
+.suggestion__funding,
+.suggestion__instrument {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+}
+
+.suggestion__instrument {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.suggestion__fund {
+  font-weight: var(--weight-medium);
+}
+
+/* An ISIN is a code to be read a character at a time and compared with a statement. */
+.suggestion__isin {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: 0.02em;
+}
+
+.suggestion__blocked {
+  margin-top: var(--space-2);
+}
+
+/* ---------------------------------------------------------------------------
+   The tax block inside a card
+   --------------------------------------------------------------------------- */
+
+.suggestion__tax {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.suggestion__taxHead {
+  margin: 0;
+  font-size: var(--type-sm);
+}
+
+.suggestion__taxLabel {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.suggestion__taxTotal {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-medium);
+}
+
+.suggestion__taxLines {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestion__taxLines > li {
+  display: grid;
+  gap: 2px;
+}
+
+.suggestion__taxTerm {
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+}
+
+.suggestion__taxAmount {
+  font-size: var(--type-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestion__taxDetail {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+}
+
+/* What is still missing, in the colour the rest of the site uses for "act on this". */
+.suggestion__taxTodo {
+  color: var(--warn);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+}
+
+.suggestion__omits {
+  margin: var(--space-2) 0 0;
+  color: var(--warn);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+}
+
+.suggestion__skipped {
+  margin-top: var(--space-3);
+}

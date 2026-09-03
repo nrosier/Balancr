@@ -29,6 +29,16 @@ import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import {
+  BAND_CLASSES,
+  bandsOf,
+  isPreset,
+  loadProfile,
+  PROFILE_IDS,
+  PROFILE_KEY,
+  PROFILE_PRESETS,
+  saveProfile,
+} from '../../domain/advice/profile.ts'
+import {
   decidedFields,
   dedupeCandidates,
   dismissMirror,
@@ -134,6 +144,36 @@ const paramsPatchRequest = z.strictObject({
 })
 
 /**
+ * A risk-profile patch, checked for shape and nothing more.
+ *
+ * The bounds and the cross-field rules — targets adding up to exactly 100%, minimum ≤
+ * target ≤ maximum, a custom profile stating its own bands — live in `riskProfileSchema`
+ * and are enforced by `saveProfile`, which is the only thing that sees the merged result.
+ * Same division as `paramsPatchRequest`: a second copy of every bound here would mean the
+ * copy that fell behind is the one refusing a request that was fine.
+ *
+ * `bands` is exhaustive by construction — `z.record` over the class enum requires all
+ * four — because bands are replaced wholesale. A patch carrying one band would leave
+ * three from the previous profile, which is precisely how four targets come to add up to
+ * something other than 100%.
+ */
+const advicePatchRequest = z.strictObject({
+  profile: z.enum(PROFILE_IDS).optional(),
+  bands: z
+    .record(
+      z.enum(BAND_CLASSES),
+      z.strictObject({
+        minBp: z.number().int(),
+        targetBp: z.number().int(),
+        maxBp: z.number().int(),
+      }),
+    )
+    .optional(),
+  toleranceBp: z.number().int().optional(),
+  minTradeCents: z.number().int().optional(),
+})
+
+/**
  * The profile fields a user may change about themselves: the language, and nothing
  * else. `role` is absent on purpose — promoting a viewer to owner from a page any
  * viewer can open would make the distinction decorative.
@@ -228,6 +268,26 @@ function promptSetting(db: Db, key: PromptKey, locale: string): PromptSetting {
   })
 }
 
+/**
+ * The risk profile, with the presets' numbers alongside it.
+ *
+ * `bandsOf` rather than the stored `bands` field, which is absent for a named preset: the
+ * screen draws band editors and there is always a set of bands in force, so sending null
+ * would make every consumer repeat the preset lookup — and the browser cannot do that
+ * lookup, because `PROFILE_PRESETS` lives on this side.
+ */
+function riskProfileSetting(db: Db): Settings['advice'] {
+  const profile = loadProfile(db)
+  return {
+    profile: profile.profile,
+    isPreset: isPreset(profile),
+    bands: bandsOf(profile),
+    toleranceBp: profile.toleranceBp,
+    minTradeCents: profile.minTradeCents,
+    presets: PROFILE_PRESETS,
+  }
+}
+
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
@@ -245,6 +305,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     locales: { supported: config.SUPPORTED_LOCALES, default: config.DEFAULT_LOCALE },
     params: loadParams(db),
     paramDefaults: DEFAULT_PARAMS,
+    advice: riskProfileSetting(db),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -368,6 +429,49 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: touchedGroups(before, patch),
       after: touchedGroups(after, patch),
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * The risk profile every drift figure and every suggestion is measured against (#41).
+   *
+   * Unlike the aggregation parameters, this takes effect immediately: drift is computed
+   * per request from the stored allocation, so the portfolio page shows the new bands on
+   * its next load. That is the whole reason it is a setting rather than a job input — the
+   * gesture is "widen the equity band and see what that does to the advice".
+   *
+   * A contradictory set of bands fails here rather than in `parseBody`, for the same
+   * reason the parameters do: only the merged result can be checked, and a 500 for a form
+   * that submitted twelve numbers adding up to 97% would be a lie about whose mistake it
+   * was.
+   */
+  app.patch('/api/settings/advice', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(advicePatchRequest, request.body)
+
+    const before = loadProfile(db)
+    let after
+    try {
+      after = saveProfile(db, patch)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.advice',
+      entity: 'settings',
+      entityRef: PROFILE_KEY,
+      actorId: user.id,
+      // The whole profile, not the touched fields: it is fifteen numbers, and the
+      // question an audit entry answers here is "what were the bands when that advice
+      // was given", which needs all of them.
+      before,
+      after,
     })
 
     return buildSettings(db, request)

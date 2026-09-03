@@ -85,6 +85,13 @@
       "when": 1788400338191,
       "tag": "0011_shallow_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788465596189,
+      "tag": "0012_old_rhino",
+      "breakpoints": true
     }
   ]
 }

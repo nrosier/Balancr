@@ -154,6 +154,27 @@
     "versionsNone": "Nothing saved yet, so the built-in instructions are in use.",
     "which": "Which instructions"
   },
+  "risk": {
+    "column": {
+      "class": "Asset class",
+      "maxBp": "Ceiling",
+      "minBp": "Floor",
+      "reads": "Reads as",
+      "targetBp": "Target"
+    },
+    "custom": "These numbers no longer match a preset, so the profile will be saved as custom.",
+    "hint": "The bands the portfolio advice is measured against. Every suggestion on the portfolio page exists because a share left one of these, which is where \"some risk, but not too much\" stops being an adjective. A change shows the next time that page is read.",
+    "inputLabel": "{{name}}, {{edge}}",
+    "minTrade": "Smallest trade worth making",
+    "minTradeHint": "A correction under {{value}} is reported but never suggested.",
+    "notANumber": "A whole number of basis points, please.",
+    "presets": "Profile",
+    "reads": "{{min}} – {{target}} – {{max}}",
+    "sum": "Targets add up to {{value}}.",
+    "title": "Risk profile",
+    "tolerance": "Ignore drift under",
+    "toleranceHint": "In basis points past a band edge, so {{value}}. Zero would propose a trade every morning."
+  },
   "status": {
     "check": {
       "actual": "Actual Budget",

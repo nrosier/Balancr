@@ -32,6 +32,11 @@
  * viewer can; then the prompt editor, which is the point of the page; then thresholds
  * and account mapping, which are set once and revisited rarely; then AI spend, which
  * is read, not set. The build block is last because it exists for a bug report.
+ *
+ * The risk profile sits above the thresholds for a reason: it is the only panel here
+ * whose numbers produce a suggestion to move money, and somebody arriving because the
+ * portfolio page proposed a trade is looking for these twelve boxes rather than for the
+ * EWMA half-life.
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -39,6 +44,7 @@ import { useT } from '../i18n.ts'
 import { AccountsPanel } from '../settings/Accounts.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
+import { RiskPanel } from '../settings/Risk.tsx'
 import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
@@ -92,6 +98,7 @@ export function Settings(): ReactNode {
 
               <LanguagePanel {...props} />
               <PromptsPanel {...props} />
+              <RiskPanel {...props} />
               <ThresholdsPanel {...props} />
               <AccountsPanel {...props} />
               <SpendPanel {...props} />

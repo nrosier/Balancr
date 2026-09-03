@@ -27,6 +27,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
+import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
@@ -286,6 +287,123 @@ describe('PATCH /api/settings/params', () => {
     })
     expect(res.statusCode).toBe(403)
     expect(loadParams(ctx.db)).toEqual(DEFAULT_PARAMS)
+  })
+})
+
+describe('PATCH /api/settings/advice', () => {
+  it('publishes the bands in force and every preset to choose from', async () => {
+    // The presets travel on the wire because `PROFILE_PRESETS` lives on this side: the
+    // settings screen offers three named choices and shows their numbers, and it cannot
+    // import them. A default install is `balanced`, unedited.
+    const advice = (await get('/api/settings')).json<Settings>().advice
+
+    expect(advice.profile).toBe('balanced')
+    expect(advice.isPreset).toBe(true)
+    expect(advice.bands).toEqual(PROFILE_PRESETS.balanced)
+    expect(advice.presets).toEqual(PROFILE_PRESETS)
+    expect(advice.toleranceBp).toBe(100)
+    expect(advice.minTradeCents).toBe(50_000)
+  })
+
+  it('takes a named preset and drops any bands that were stored', async () => {
+    await patch('/api/settings/advice', { bands: PROFILE_PRESETS.growth, profile: 'custom' })
+
+    const res = await patch('/api/settings/advice', { profile: 'defensive' })
+    expect(res.statusCode).toBe(200)
+
+    const advice = res.json<Settings>().advice
+    expect(advice.profile).toBe('defensive')
+    expect(advice.isPreset).toBe(true)
+    expect(advice.bands).toEqual(PROFILE_PRESETS.defensive)
+    // Picking a preset has to mean picking its numbers. Bands left behind would make
+    // the screen say "defensive" over somebody else's allocation.
+    expect(loadProfile(ctx.db).bands).toBeUndefined()
+  })
+
+  it('turns an edited preset into a custom profile rather than relabelling it', async () => {
+    const edited = {
+      ...PROFILE_PRESETS.balanced,
+      EQUITY: { minBp: 6_000, targetBp: 7_000, maxBp: 8_000 },
+      FIXED_INCOME: { minBp: 1_500, targetBp: 2_500, maxBp: 3_500 },
+    }
+
+    const res = await patch('/api/settings/advice', { bands: edited })
+    expect(res.statusCode).toBe(200)
+
+    const advice = res.json<Settings>().advice
+    expect(advice.profile).toBe('custom')
+    expect(advice.isPreset).toBe(false)
+    expect(advice.bands).toEqual(edited)
+  })
+
+  it('refuses targets that do not add up, and names the field', async () => {
+    const res = await patch('/api/settings/advice', {
+      bands: { ...PROFILE_PRESETS.balanced, COMMODITY: { minBp: 0, targetBp: 1_000, maxBp: 2_000 } },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues).toEqual([
+      { path: 'bands', message: 'targets add up to 110.00% instead of 100%' },
+    ])
+    expect(loadProfile(ctx.db).bands).toBeUndefined()
+  })
+
+  it('refuses a target outside its own band', async () => {
+    const res = await patch('/api/settings/advice', {
+      bands: { ...PROFILE_PRESETS.balanced, EQUITY: { minBp: 7_000, targetBp: 6_500, maxBp: 7_500 } },
+    })
+
+    expect(res.statusCode).toBe(400)
+    // The class, not just `bands`: fourteen numbers on screen and one of them is wrong.
+    expect(res.json<ErrorBody>().error.issues?.[0]?.path).toBe('bands.EQUITY')
+  })
+
+  it('refuses a patch carrying one band instead of all four', async () => {
+    // The state this refusal exists for: three bands from the previous profile beside
+    // one new one, four targets that no longer sum to 100%, and a set of suggestions
+    // that contradict each other. Bands are replaced wholesale or not at all.
+    const res = await patch('/api/settings/advice', {
+      bands: { EQUITY: { minBp: 6_000, targetBp: 7_000, maxBp: 8_000 } },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(loadProfile(ctx.db).bands).toBeUndefined()
+  })
+
+  it('changes the thresholds without touching the bands', async () => {
+    const res = await patch('/api/settings/advice', { toleranceBp: 250, minTradeCents: 100_000 })
+    expect(res.statusCode).toBe(200)
+
+    const advice = res.json<Settings>().advice
+    expect(advice.toleranceBp).toBe(250)
+    expect(advice.minTradeCents).toBe(100_000)
+    expect(advice.profile).toBe('balanced')
+    expect(advice.bands).toEqual(PROFILE_PRESETS.balanced)
+  })
+
+  it('records the whole profile on both sides of the change', async () => {
+    await patch('/api/settings/advice', { profile: 'growth' })
+
+    const entry = ctx.db.select().from(auditLog).all().at(-1)
+    expect(entry?.action).toBe('settings.advice')
+    // "What were the bands when that advice was given" needs all of them, so the entry
+    // carries the profile rather than the touched fields.
+    expect(JSON.parse(entry?.beforeJson ?? '{}').profile).toBe('balanced')
+    expect(JSON.parse(entry?.afterJson ?? '{}').profile).toBe('growth')
+  })
+
+  it('refuses a field name it does not know', async () => {
+    const res = await patch('/api/settings/advice', { tolerance: 250 })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues).toEqual([
+      { path: 'tolerance', message: 'Unknown field.' },
+    ])
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await patch('/api/settings/advice', { profile: 'growth' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadProfile(ctx.db).profile).toBe('balanced')
   })
 })
 
