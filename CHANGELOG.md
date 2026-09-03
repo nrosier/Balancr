@@ -6,6 +6,57 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A contrast check in the gate, and it derives its pairs from the stylesheets**
+  ([#35](https://github.com/nrosier/Balancr/issues/35)). `npm run contrast:check`
+  reads every rule under `web/src`, measures each foreground against its stated
+  background, and fails under 4.5:1 for text or 3:1 for a border, a plotted shape
+  or the focus ring — in both themes. A hand-kept list of pairs was the obvious
+  design and the wrong one: it goes stale the moment a component is styled, and it
+  describes pairs the cascade never renders. The first version of this check was
+  written against such a list and named a pair that does not exist, which is how
+  the design changed.
+
+  A rule that sets only `color` inherits a background no stylesheet can name, so
+  the token is measured against all four surfaces the layout paints large areas
+  with. That is the strict reading, and it is the one that found the real defect:
+  a grey that clears the white card and fails the slightly darker page behind it.
+
+  Every pair is printed with its measured ratio and its remaining margin, on
+  success as well as failure. That is not decoration — it is what showed three
+  pairs passing by 0.01 after the first round of fixes, which is a floor met and
+  no headroom, so the values were recomputed to sit clear of it. The tightest pair
+  in the palette now passes by 0.25.
+
+- **The holdings table's scroll box is a named region.** Six columns of figures
+  cannot reflow onto a phone, so the box takes `tabIndex={0}` and is the only way
+  to reach the right-hand columns without a pointer. That makes it a focus stop,
+  and a focus stop with no role and no name announces itself as nothing at all. It
+  is now a `region` labelled by the same `<caption>` that names the table — one
+  accessible name, stated once, reached two ways.
+
+### Changed
+
+- **`--border-strong` and `--chart-axis` are repainted to clear the floor.** The
+  input border sat at 1.54:1 against its own fill and 1.78:1 against the card in
+  dark, where 3:1 is the requirement for the edge that tells someone where a text
+  box is. Chart axis labels are text and sat at 4.28:1. Both keep their hue and
+  saturation and lose only lightness, so the palette reads as it did.
+
+- **`--text-faint` is gone, and the four places that used it for text use
+  `--text-muted`.** A validation message, a version string, a diff's line numbers
+  and a sign-in separator — all of them informational, all of them under 4.5:1 on
+  the page behind them. Darkening the token to clear every surface produced
+  `#636b77`, which is indistinguishable from `--text-muted` at `#5a6373`, so there
+  was no third tier to keep: a grey light enough to read as faint is a grey under
+  the floor. Quieter is now done with size, which is what the settings stylesheet
+  already said about disabled controls — change the background, keep the text
+  colour, because a viewer has to be able to read the thresholds they cannot
+  change.
+
 ## [0.5.17] — 2026-09-03
 
 ### Fixed

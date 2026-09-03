@@ -97,7 +97,7 @@
 .brand__version {
   font-size: var(--type-xs);
   font-weight: var(--weight-regular);
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 /*

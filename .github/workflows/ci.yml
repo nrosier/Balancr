@@ -41,6 +41,12 @@ jobs:
       - name: README badges
         run: npm run badges:check
 
+      # `npm test` asserts the same floor, but only this prints the table: every pair
+      # with its measured ratio and how much room it has left. A pair passing by 0.25 is
+      # something to know before it is repainted, not after.
+      - name: Colour contrast
+        run: npm run contrast:check
+
       - name: Tests
         run: npm test
 

@@ -1,8 +1,11 @@
 /**
  * Who is signed in, and the way out.
  *
- * The name is hidden on narrow screens by CSS rather than removed here, so the
- * markup does not depend on a viewport measurement taken in JavaScript.
+ * The name is narrowed by CSS rather than removed here, so the markup does not depend
+ * on a viewport measurement taken in JavaScript. It truncates to an ellipsis at 12
+ * characters on a phone, which is a deliberate loss: the header is chrome, the full
+ * identity is on the settings page, and a `title` on a plain `span` is unreachable by
+ * keyboard and by touch, so it would only look like a fix.
  *
  * Sign-out is deliberately not optimistic. The server has to accept the POST — it
  * is what deletes the session row — and pretending otherwise would leave a browser
