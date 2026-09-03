@@ -6,6 +6,62 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **The insights page — findings, the narrative, both queues, and the ledger of
+  every call** ([#32](https://github.com/nrosier/Balancr/issues/32)). The last of
+  the five views, and the one that had to show its own workings: it renders what a
+  model concluded about a month, so it also renders every call that was made and
+  exactly what went out in each one. The five sections are in that order on purpose
+  — conclusions, then the reasoning, then what is still being asked, then what is
+  being proposed, then the evidence.
+
+  Findings are grouped by severity with the worst group first, and the grouping
+  comes from `SEVERITY_RANK` rather than an order written out a second time, so the
+  page cannot disagree with the ranking the server kept findings by. Severity is
+  carried by the group heading and the sentence, not by colour alone. A code this
+  bundle has no sentence for, or a signal missing the metric its sentence
+  interpolates, is **dropped** rather than printed as a bare code or as a sentence
+  with a hole in it — a finding that cannot be stated is not a finding.
+
+  The narrative is inserted as HTML, which is worth stating plainly: `util/markdown.ts`
+  escapes the model's text *first* and only then emits a fixed list of tags, none of
+  which take attributes, so there is no `href`, `src` or `style` for a payload to
+  hang an injection on. It has to happen on the server anyway, because the stored
+  Markdown says `c7` where a category name belongs and only the server can resolve
+  the label. The byline names the model beside the date, so last night's analysis is
+  distinguishable from one written three weeks ago by a model since swapped out.
+
+  Both queues are read-only in this version and **say so on screen** rather than
+  implying it by the absence of buttons: answering a clarification re-analyses the
+  month and applying a proposal writes an audit row, and both belong to
+  [#43](https://github.com/nrosier/Balancr/issues/43)–[#45](https://github.com/nrosier/Balancr/issues/45).
+  Shipping the queues before the buttons is deliberate — the queue is what tells you
+  the analysis is asking about the right categories, and that is worth reading early.
+  Clarification cards show the model's guess rather than an open question, with the
+  materiality share beside it so the threshold is legible instead of mysterious.
+
+  The ledger is the privacy claim made checkable from a browser instead of from a
+  SQLite prompt on the host. Every attempt is a row, `capped` and `blocked`
+  included, because those are the answers that are *missing* from the page above; a
+  failed run shows the upstream message verbatim, the only text on the screen
+  Balancr did not write. The payload is fetched when a row is opened, not with the
+  page — twenty redacted bundles would be most of `/api/insights`, downloaded on
+  every visit to render a list of dates and costs — and one row is open at a time.
+  A payload that will not parse says so as a note, not as an error: the row around
+  it is still true, and that is the audit view reporting a finding about itself.
+
+### Changed
+
+- `GET /api/insights` now carries `model` on the narrative object, for the byline.
+- `web/src/pages/Placeholder.tsx` is `PageHeader.tsx`, and the placeholder itself is
+  gone along with the `page.*.soon` strings: all five pages render their own content
+  now, so a component whose job was to say "coming next" has no callers.
+- `.badge` moved out of `settings.css` into `theme/components.css`, now that a
+  second page labels a status with it.
+
 ## [0.5.20] — 2026-09-03
 
 ### Added
