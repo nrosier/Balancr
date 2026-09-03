@@ -108,6 +108,7 @@ docker run -d --name "$NAME" \
   -e SESSION_SECRET=verification-session-secret-of-sufficient-length \
   -e AUTH_LOCAL_ENABLED=true \
   -e JOBS_ENABLED=false \
+  -e FUND_UNIVERSE_PATH=/app/config/fund-universe.example.yaml \
   "$IMAGE" >/dev/null
 
 # --- time to first response ---------------------------------------------------
@@ -208,6 +209,16 @@ if grep -q 'egress allowlist installed' <<<"$logs"; then
   pass 'the egress allowlist was installed at startup'
 else
   fail 'no egress allowlist in the startup logs'
+fi
+
+# The container is started with FUND_UNIVERSE_PATH pointing at the shipped template, so
+# this proves two things at once: the COPY put it in the image, and the file parses under
+# the schema as published. A universe that only validates in the repository would fail
+# for the one person who copied it out of the image (#40).
+if grep -q 'fund universe loaded' <<<"$logs"; then
+  pass 'the shipped fund universe template loads'
+else
+  fail 'the shipped fund universe template did not load'
 fi
 
 # --- budgets ------------------------------------------------------------------

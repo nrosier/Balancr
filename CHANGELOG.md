@@ -6,6 +6,45 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A curated fund universe: the only instruments advice may propose**
+  ([#40](https://github.com/nrosier/Balancr/issues/40)). A YAML file, written by the person
+  whose money it is, read fresh on every use so an edit needs no restart. `assertProposable`
+  is the only way to turn an ISIN into a fund a proposal may act on, and the same gate is
+  exported as a Zod schema (`proposableIsinSchema`) so a payload type cannot be written that
+  skips it — the alternative, a plain string field plus a call somewhere in a handler, is one
+  refactor away from being forgotten. Absent file means empty universe means advice proposes
+  nothing and says so at startup; a malformed file is a warning at boot and an exception at
+  the point of use, because "the fund list was broken so I ignored it" is not a thing to do
+  quietly when the next step is a trade.
+- **ISIN check-digit validation**
+  ([#40](https://github.com/nrosier/Balancr/issues/40)). The only claim in a hand-written
+  fund list that code can verify without a network. A transposed pair of characters is
+  otherwise a valid-looking reference to a different instrument, and the refusal says which
+  mistake it was — wrong length, wrong shape, or `ends in 4 but its check digit is 3` —
+  because the fix differs and the reader has a KID in front of them.
+- **Three rules the loader enforces, and a fourth that expires**
+  ([#40](https://github.com/nrosier/Balancr/issues/40)). Accumulating share classes only
+  (a distributing one pays out dividends that Belgian roerende voorheffing taxes at 30%
+  every year, which is a different decision and not an interchangeable one); EEA-domiciled
+  UCITS only (the passport that means a KID exists and a Belgian broker can sell it — why
+  `IWDA` qualifies and `VTI` cannot); `ter_percent` rather than `ter`, because a factor of a
+  hundred in that field is invisible in every screen that shows it. And `last_verified`,
+  which past `FUND_UNIVERSE_MAX_AGE_DAYS` (365) makes an entry unproposable rather than
+  merely flagged — and leaves it out of what the model is shown at all, so a stale fund is
+  never offered and then refused.
+- **`FUND_UNIVERSE_PATH` and `FUND_UNIVERSE_MAX_AGE_DAYS`**
+  ([#40](https://github.com/nrosier/Balancr/issues/40)). The path defaults to
+  `./config/fund-universe.yaml`, which nothing creates: `config/fund-universe.example.yaml`
+  is a template of eleven accumulating UCITS funds that ships in the image beside it, and
+  copying a template is not the same as having vetted it. Both values appear in the startup
+  configuration summary, because "advice proposed nothing" is answered by one of them.
+  `scripts/verify-image.sh` boots the built image pointed at the shipped template, so the
+  file people copy out of the image is proven to parse under the schema as published.
+
 ## [0.7.0] — 2026-09-03
 
 ### Added

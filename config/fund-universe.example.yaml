@@ -1,0 +1,207 @@
+# The fund universe — the only instruments Balancr's advice may propose (#40).
+#
+# Copy this file somewhere Balancr can read it and point FUND_UNIVERSE_PATH at it:
+#
+#   cp config/fund-universe.example.yaml data/fund-universe.yaml   # local
+#   FUND_UNIVERSE_PATH=/data/fund-universe.yaml                    # in a container
+#
+# Then read it. Copying this file is not the same as having vetted it, and the app
+# cannot tell the difference — which is what `last_verified` is for. Every line below
+# was transcribed from a product page while this template was written; the ISINs are
+# check-digit valid, and that is the only claim the code can verify. Whether the name
+# beside an ISIN is the right fund, whether that TER is this year's, and whether the
+# share class is the accumulating one are things a person confirms, once, with the KID
+# open — and then writes the date.
+#
+# Three rules the loader enforces, and why:
+#
+#   accumulating only  A distributing class pays out dividends that Belgian roerende
+#                      voorheffing taxes at 30% every year. The accumulating class of
+#                      the same index reinvests inside the fund. They are not
+#                      interchangeable, so only one of them belongs in a list of things
+#                      to propose.
+#   EEA domicile       A UCITS fund domiciled in the EEA has a KID and a broker who can
+#                      sell it to you. A US-domiciled ETF has neither, however good its
+#                      TER looks — this is why VTI is not on this list and IWDA is.
+#   ter_percent        Percent per year. `0.2` is twenty basis points, not twenty
+#                      percent. The key is spelled this way because a factor of a
+#                      hundred in this field would be invisible in every screen that
+#                      shows it.
+#
+# An entry older than FUND_UNIVERSE_MAX_AGE_DAYS (365 by default) stops being
+# proposable until somebody re-checks it. That is deliberate: a list everybody agrees
+# should be reviewed some day never is, unless it stops working.
+#
+# There is no requirement to keep any of these. A universe of three funds you
+# understand is worth more than eleven you copied.
+
+version: 1
+
+funds:
+  # --- Equity, global -------------------------------------------------------------
+  - isin: IE00B4L5Y983
+    name: iShares Core MSCI World UCITS ETF USD (Acc)
+    ticker: IWDA
+    asset_class: equity
+    region: developed
+    currency: USD
+    ter_percent: 0.20
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ishares.com/uk/individual/en/products/251882/
+    last_verified: 2026-09-03
+    notes: Developed markets only — no emerging markets. The most widely held building
+      block on Belgian brokers, which is why it is first.
+
+  - isin: IE00BFY0GT14
+    name: SPDR MSCI World UCITS ETF (Acc)
+    ticker: SWRD
+    asset_class: equity
+    region: developed
+    currency: USD
+    ter_percent: 0.12
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ssga.com/lu/en_gb/institutional/etfs/spdr-msci-world-ucits-etf-swrd-gy
+    last_verified: 2026-09-03
+    notes: The same index as IWDA at a lower TER and a smaller fund. Cheaper is not
+      automatically better — check the spread and the size before switching.
+
+  - isin: IE00BK5BQT80
+    name: Vanguard FTSE All-World UCITS ETF (USD) Accumulating
+    ticker: VWCE
+    asset_class: equity
+    region: world
+    currency: USD
+    ter_percent: 0.22
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.vanguard.co.uk/professional/product/etf/equity/9679/ftse-all-world-ucits-etf-usd-accumulating
+    last_verified: 2026-09-03
+    notes: Developed plus emerging in one line. One fund is a complete equity
+      allocation, which is worth more than a basis point to most people.
+
+  - isin: IE00B6R52259
+    name: iShares MSCI ACWI UCITS ETF (Acc)
+    ticker: ISAC
+    asset_class: equity
+    region: world
+    currency: USD
+    ter_percent: 0.20
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ishares.com/uk/individual/en/products/251850/
+    last_verified: 2026-09-03
+
+  - isin: IE00B3YLTY66
+    name: SPDR MSCI ACWI IMI UCITS ETF (Acc)
+    ticker: SPYI
+    asset_class: equity
+    region: world
+    currency: USD
+    ter_percent: 0.17
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ssga.com/lu/en_gb/institutional/etfs/spdr-msci-acwi-imi-ucits-etf-spyi-gy
+    last_verified: 2026-09-03
+    notes: IMI means small caps are included as well — the widest single-fund equity
+      exposure on this list.
+
+  # --- Equity, regional -----------------------------------------------------------
+  - isin: IE00B5BMR087
+    name: iShares Core S&P 500 UCITS ETF USD (Acc)
+    ticker: CSPX
+    asset_class: equity
+    region: us
+    currency: USD
+    ter_percent: 0.07
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ishares.com/uk/individual/en/products/253743/
+    last_verified: 2026-09-03
+    notes: A world fund is already around two thirds US. Holding this beside one is a
+      decision to overweight, not diversification.
+
+  - isin: LU0908500753
+    name: Amundi Stoxx Europe 600 UCITS ETF Acc
+    ticker: MEUD
+    asset_class: equity
+    region: europe
+    currency: EUR
+    ter_percent: 0.07
+    domicile: LU
+    distribution: accumulating
+    ucits: true
+    source: https://www.amundietf.be/en/individual/products/equity/amundi-stoxx-europe-600-ucits-etf-acc/lu0908500753
+    last_verified: 2026-09-03
+    notes: Euro-denominated, so no currency conversion on the way in — which is not the
+      same as no currency risk.
+
+  - isin: IE00BKM4GZ66
+    name: iShares Core MSCI EM IMI UCITS ETF (Acc)
+    ticker: EMIM
+    asset_class: equity
+    region: emerging
+    currency: USD
+    ter_percent: 0.18
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ishares.com/uk/individual/en/products/264659/
+    last_verified: 2026-09-03
+    notes: What a developed-markets fund leaves out. Pointless beside an all-world fund
+      unless the intention is to overweight emerging markets.
+
+  # --- Bonds ----------------------------------------------------------------------
+  - isin: IE00BDBRDM35
+    name: iShares Core Global Aggregate Bond UCITS ETF EUR Hedged (Acc)
+    ticker: AGGH
+    asset_class: bond
+    region: world
+    currency: EUR
+    ter_percent: 0.10
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    hedged_to: EUR
+    source: https://www.ishares.com/uk/individual/en/products/291771/
+    last_verified: 2026-09-03
+    notes: Hedged to euro, which is the point of a bond fund for a euro investor —
+      unhedged foreign bonds are a currency bet with a bond's return.
+
+  - isin: IE00BG47KH54
+    name: Vanguard Global Aggregate Bond UCITS ETF EUR Hedged Accumulating
+    ticker: VAGF
+    asset_class: bond
+    region: world
+    currency: EUR
+    ter_percent: 0.10
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    hedged_to: EUR
+    source: https://www.vanguard.co.uk/professional/product/etf/bond/9645/global-aggregate-bond-ucits-etf-eur-hedged-accumulating
+    last_verified: 2026-09-03
+
+  # --- Cash-like ------------------------------------------------------------------
+  - isin: LU0290358497
+    name: Xtrackers II EUR Overnight Rate Swap UCITS ETF 1C
+    ticker: XEON
+    asset_class: cash
+    region: eurozone
+    currency: EUR
+    ter_percent: 0.10
+    domicile: LU
+    distribution: accumulating
+    ucits: true
+    source: https://etf.dws.com/en-lu/LU0290358497-eur-overnight-rate-swap-ucits-etf-1c/
+    last_verified: 2026-09-03
+    notes: Tracks the euro overnight rate. Balancr treats an emergency fund as cash
+      wherever it sits; this is here for money that has a job in a year or two, and it
+      is not a savings account — the value can fall.

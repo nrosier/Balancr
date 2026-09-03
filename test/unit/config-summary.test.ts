@@ -109,6 +109,15 @@ describe('configSummary', () => {
     })
   })
 
+  it('names the fund universe path and its verification window (#40)', async () => {
+    // "Advice proposed nothing" is answered by these two lines: either the path is not
+    // where the file is, or the window has expired on every entry in it.
+    expect(await summary()).toMatchObject({
+      FUND_UNIVERSE_PATH: './config/fund-universe.yaml',
+      FUND_UNIVERSE_MAX_AGE_DAYS: 365,
+    })
+  })
+
   it('does not carry the client secret at all, masked or otherwise', async () => {
     // Not in the summary in any form: it is the one OIDC value with no diagnostic
     // use, so the safest thing a log can say about it is nothing.

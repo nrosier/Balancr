@@ -141,6 +141,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
+| **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
@@ -235,6 +236,64 @@ Both factors are mandatory, five failures shut the account for fifteen minutes,
 and `AUTH_LOCAL_ALLOWED_CIDRS` is matched against the TCP peer address rather than
 `X-Forwarded-For`: a header is exactly what a request through the tunnel would
 set. Which also means Traefik's own address must not be in that range.
+
+## The fund universe
+
+Portfolio advice may only propose an instrument that is on a list you wrote. There is no
+default list: `FUND_UNIVERSE_PATH` points at `./config/fund-universe.yaml`, nothing
+creates that file, and until it exists advice proposes nothing and says why in the startup
+log. What ships in the image is a template beside it.
+
+```sh
+cp config/fund-universe.example.yaml data/fund-universe.yaml
+$EDITOR data/fund-universe.yaml
+```
+
+In a container, keep it on the data volume — `FUND_UNIVERSE_PATH=/data/fund-universe.yaml`
+— so an upgrade replaces the template and not your list. The file is re-read on every use,
+so an edit takes effect without a restart.
+
+One entry, which is all the format is:
+
+```yaml
+version: 1
+funds:
+  - isin: IE00B4L5Y983
+    name: iShares Core MSCI World UCITS ETF USD (Acc)
+    ticker: IWDA                 # never used as an identifier; for finding it
+    asset_class: equity          # equity | bond | cash | property | commodity
+    region: developed
+    currency: USD
+    ter_percent: 0.20            # percent per year: 0.20 is twenty basis points
+    domicile: IE
+    distribution: accumulating
+    ucits: true
+    source: https://www.ishares.com/uk/individual/en/products/251882/
+    last_verified: 2026-09-03
+```
+
+Four things are checked when it loads, and a file that fails any of them is refused with
+the line and the fund named:
+
+- **The ISIN's check digit.** A transposed pair of characters is otherwise a valid-looking
+  reference to a different fund, and nothing downstream would notice.
+- **Accumulating only.** A distributing share class pays out dividends that Belgian
+  roerende voorheffing taxes at 30% every year, whether or not the money was wanted. The
+  accumulating class of the same index reinvests inside the fund. They are not
+  interchangeable, so only one of them belongs on a list of things to propose.
+- **EEA-domiciled UCITS.** That is the passport that means a KID exists and a Belgian
+  broker can sell it to you — which is why `IWDA` is a legitimate entry and `VTI` is not,
+  however good its TER looks.
+- **`last_verified` within `FUND_UNIVERSE_MAX_AGE_DAYS`** (365). Past it, the entry is not
+  flagged, it is unproposable, and it is left out of what the model is shown at all. A
+  list everybody agrees should be reviewed some day never is, unless it stops working.
+
+What none of that checks is whether the name beside an ISIN is the right fund, whether the
+TER is this year's, or whether the share class is the accumulating one. That is what
+`source` and `last_verified` are for: the first makes the claim checkable in one click, the
+second records when somebody did. **Copying the template is not vetting it** — the app
+cannot tell the difference, and a universe of three funds you understand is worth more than
+eleven you copied.
 
 ## Backups
 
@@ -435,7 +494,7 @@ ends.
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
-| `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
+| `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | 🔄 |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
@@ -443,10 +502,30 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0` is released: the data refreshes on a schedule and on
-demand, the database is backed up and the restore is proven, the digest arrives monthly,
-and the container's hardening is checked rather than declared. Next is `0.8.0`,
-investment advice, shipping as `0.7.1`, `0.7.2`, … on the way.
+**Where it is now** — `0.7.0` is released and `0.8.0` has started: the data refreshes on
+a schedule and on demand, the database is backed up and the restore is proven, the digest
+arrives monthly, the container's hardening is checked rather than declared, and advice now
+has a universe of instruments it is allowed to name. The Belgian tax module and the
+risk-bounded advice that uses both are what is left of that milestone; they ship as
+`0.7.2`, `0.7.3`, … until it closes as `0.8.0`.
+
+The first slice of investment advice is a list, not a model
+([#40](https://github.com/nrosier/Balancr/issues/40)). Asked what to buy, a language model
+answers fluently with a ticker it has read somewhere — a US-domiciled ETF no Belgian broker
+can sell, a distributing share class that hands 30% of its dividends to roerende
+voorheffing every year, a symbol that means two different funds on two exchanges. So there
+is a file, written by the person whose money it is, and nothing outside it has a name
+advice can use: one function turns an ISIN into a fund a proposal may act on, it is also
+exported as a schema, and there is no other constructor — so a payload type cannot be
+written that skips the check. Three of the guarantees are mechanical rather than
+procedural. Every ISIN's check digit is verified. Every entry carries the issuer page its
+numbers came from. And every entry carries `last_verified`, past which it is not
+stale-with-a-warning but unproposable — and excluded from what the model is shown, because
+a refusal at apply time reads as the app breaking while a fund that was never offered reads
+as a list needing an evening. What the image ships is a template of eleven accumulating
+UCITS funds; what `FUND_UNIVERSE_PATH` points at by default is a file nothing creates,
+because a universe nobody has vetted should propose nothing. CI starts the built image
+against the template to prove that the copy people make actually parses.
 
 The deployment is hardened, and — the part that took the work — checked
 ([#39](https://github.com/nrosier/Balancr/issues/39)). Non-root, a read-only root

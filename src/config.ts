@@ -202,6 +202,33 @@ const EnvSchema = z.object({
    */
   BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 
+  // Investing
+  /**
+   * The file listing the funds advice may propose. Absent means it may propose nothing.
+   *
+   * A path rather than a table because curating this is an evening with a broker's fund
+   * list open, and a text file is the right tool for that (#40). It is read per use, so
+   * an edit takes effect without a restart — the natural reaction to "advice suggested
+   * nothing" is to open the file, and having to restart afterwards is how people
+   * conclude the feature is broken.
+   *
+   * The default path is inside the image, which is read-only: point this at somewhere in
+   * the data volume — `/data/fund-universe.yaml` — to keep your own list across upgrades.
+   * `config/fund-universe.example.yaml` is a starting point, not a vetted list; copying
+   * it is not the same as having checked it, which is what `last_verified` is about.
+   */
+  FUND_UNIVERSE_PATH: z.string().min(1).default('./config/fund-universe.yaml'),
+  /**
+   * How long a fund's verification counts for, in days.
+   *
+   * A TER changes, a share class merges, a fund closes, and the file cannot know. Past
+   * this age an entry stops being proposable and starts being a to-do — enforced rather
+   * than displayed, because a list everyone agrees should be re-checked some day never
+   * is. A year by default: ongoing charges are published annually, and a fortnightly
+   * nag over a number that moves once a year would only teach people to raise this.
+   */
+  FUND_UNIVERSE_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
+
   // Egress
   /**
    * Whether this process refuses to connect to a host nobody configured.
@@ -454,6 +481,8 @@ export function configSummary(): Record<string, unknown> {
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
     BACKUP_KEEP: config.BACKUP_KEEP,
+    FUND_UNIVERSE_PATH: config.FUND_UNIVERSE_PATH,
+    FUND_UNIVERSE_MAX_AGE_DAYS: config.FUND_UNIVERSE_MAX_AGE_DAYS,
     EGRESS_MODE: config.EGRESS_MODE,
     EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
