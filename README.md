@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.6.4-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.7.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -411,15 +411,16 @@ same reason.
 not the version where the first piece of it landed.
 
 Work merged on the way there releases as a **patch of the current minor**. The
-`0.7.0` milestone is in progress now, so its slices release as `0.6.1`, `0.6.2`, …
+`0.8.0` milestone is in progress now, so its slices release as `0.7.1`, `0.7.2`, …
 — each one a real version for a real merge, none of them claiming a milestone that
 is not finished yet. The minor is the promise kept; the patches are the progress
 toward it.
 
 Two milestones can be in flight at once, and then they share that one patch series,
-which is what just happened: `0.6.0` was claimed the day its last issue closed, and
-the operational work that had landed before it simply continues as `0.6.1`,
-`0.6.2`, … A patch number never means a milestone; only a minor does.
+which is what happened on the way here: `0.6.0` was claimed the day its last issue
+closed, and the operational work that had already landed simply continued as
+`0.6.1`, `0.6.2`, … until its own milestone closed as `0.7.0`. A patch number never
+means a milestone; only a minor does.
 
 When every requested feature is in, releases become `1.0.0-rc.N` for real-world
 testing; **1.0.0 ships when the testing says it is ready**, not when the checklist
@@ -433,7 +434,7 @@ ends.
 | `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ✅ |
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
-| `0.7.0` | Backups, monthly digest, operational hardening | 🔄 `0.6.x` |
+| `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
@@ -442,9 +443,10 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, all seven issues done; it releases as `0.7.0` next.
-`0.6.0` is done too: all five views are on screen, in both languages, drawing real
-figures.
+**Where it is now** — `0.7.0` is released: the data refreshes on a schedule and on
+demand, the database is backed up and the restore is proven, the digest arrives monthly,
+and the container's hardening is checked rather than declared. Next is `0.8.0`,
+investment advice, shipping as `0.7.1`, `0.7.2`, … on the way.
 
 The deployment is hardened, and — the part that took the work — checked
 ([#39](https://github.com/nrosier/Balancr/issues/39)). Non-root, a read-only root
@@ -786,9 +788,9 @@ moves and renames the database it replaces instead of deleting it. Most of what 
 there would be recomputed by morning anyway; what would not is the part you typed, which
 is the reason any of this exists. See [Backups](#backups).
 
-What is left of the operational milestone: deployment hardening
-([#39](https://github.com/nrosier/Balancr/issues/39)). It ships as `0.6.5`, and closing
-it closes `0.7.0`.
+That closes the operational milestone. What comes next is `0.8.0`: advice about the
+portfolio rather than only a picture of it — a curated fund universe, tax-aware
+proposals, and the Belgian rules that decide what a move actually costs.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.
