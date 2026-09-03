@@ -35,6 +35,11 @@ import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
+import {
+  aiAvailability,
+  type AiAvailability,
+  type AiOffReason,
+} from '../../domain/ai/availability.ts'
 import { loadPrompt, resolvePrompt } from '../../domain/ai/prompts.ts'
 import { startRefresh, type Job } from '../../jobs/index.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
@@ -118,22 +123,46 @@ function dryRunPrompt(
 }
 
 /**
- * A model switched off, as opposed to an allowance spent.
+ * The sentence for each way the layer can be off. Codes are the client's; these are
+ * for the operator reading a `409` body out of `curl`.
+ */
+const UNAVAILABLE: Readonly<Record<AiOffReason, string>> = {
+  notConfigured:
+    'No Gemini credentials are configured, so this deployment cannot call a model. ' +
+    'Everything computed locally is unaffected.',
+  switchedOff: 'AI_ENABLED is false, so model calls are switched off here.',
+  budgetZero: 'The monthly AI budget is zero, so model calls are switched off here.',
+}
+
+/**
+ * A model that cannot be called, as opposed to an allowance spent.
  *
  * The two look alike and are not. An exhausted budget is handled inside the run by the
  * cost guard, which serves the cached answer and a banner — a `202` there is honest,
- * because something does happen. A budget of *zero* means this deployment has decided
- * not to call Gemini at all, and starting a job whose only act would be to record that
- * it did nothing is worse than saying so. `409` rather than `403`: raising the budget
- * makes the same request work, which is what that status means.
+ * because something does happen. A layer that is *off* — no credential,
+ * `AI_ENABLED=false`, or a budget of zero — means this deployment cannot or will not
+ * call Gemini at all, and starting a job whose only act would be to record that it did
+ * nothing is worse than saying so.
  *
- * A number rather than a read of `config`, so the branch is testable. See
- * `requireJobsEnabled`.
+ * **`409` rather than `403` or `503`.** Nothing here is about permission, and nothing
+ * is transient: setting the variable makes the same request work, which is exactly what
+ * `409` means. `503` would invite a client to retry a request that will fail
+ * identically until someone edits `.env`.
+ *
+ * The three reasons differ only in the message, which is for whoever is holding `curl`.
+ * A *client* never has to reach this branch to learn the state: the same reason code is
+ * on `/api/insights` and `/api/settings`, so the page knows before it draws the button
+ * rather than after it has been pressed.
+ *
+ * Takes the availability rather than reading `config`, so the branch is testable
+ * without a module reset. See `requireJobsEnabled`.
  */
-export function requireModelSwitchedOn(budgetEur: number): void {
-  if (budgetEur === 0) {
-    throw conflict('The monthly AI budget is zero, so model calls are switched off here.')
-  }
+export function requireAiAvailable(availability: AiAvailability): void {
+  if (availability.enabled) return
+  // Cannot be null when `enabled` is false — the type pairs them — but reaching for a
+  // non-null assertion to say so is not worth it in a guard.
+  const reason = availability.reason ?? 'notConfigured'
+  throw conflict(UNAVAILABLE[reason])
 }
 
 export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonly Job[]): void {
@@ -147,6 +176,10 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    */
   app.get('/api/ai/estimate', (request: FastifyRequest): AiEstimate => {
     const user = requireUser(request)
+    // Refused before it is priced. The estimate would compute happily — it is local
+    // arithmetic over the payload — and answering with a number for a run that cannot
+    // be started is what puts a priced button on a page that has no model behind it.
+    requireAiAvailable(aiAvailability())
     const query = request.query as { month?: string } | undefined
     const month = monthToRun(db, query?.month)
 
@@ -167,6 +200,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    */
   app.post('/api/ai/dry-run', { ...aiRateLimit() }, async (request: FastifyRequest) => {
     const user = requireOwner(request)
+    requireAiAvailable(aiAvailability())
     const body = parseBody(dryRunRequest, request.body)
     const locale = body.locale ?? user.locale
     const month = monthToRun(db, body.month)
@@ -237,7 +271,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     (request: FastifyRequest, reply: FastifyReply): RefreshAccepted => {
       const user = requireOwner(request)
       requireJobsEnabled(config.JOBS_ENABLED)
-      requireModelSwitchedOn(config.GEMINI_MONTHLY_BUDGET_EUR)
+      requireAiAvailable(aiAvailability())
 
       const outcome = startRefresh(db, registry, ['ai'])
       if ('busy' in outcome) throw busyError(outcome.busy)

@@ -25,7 +25,11 @@ import { Findings } from '../insights/Findings.tsx'
 import { Ledger } from '../insights/Ledger.tsx'
 import { Narrative } from '../insights/Narrative.tsx'
 import { Proposals, Questions } from '../insights/Pending.tsx'
-import { formatMicroEur, type Insights as InsightsPayload } from '../shared.ts'
+import {
+  formatMicroEur,
+  type AiAvailabilityWire,
+  type Insights as InsightsPayload,
+} from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -104,11 +108,57 @@ function Sections({
         </div>
       ) : null}
 
+      {data.ai.enabled ? null : <AiOff availability={data.ai} />}
+
       <Findings signals={data.signals} month={data.month} />
-      <Narrative narrative={data.narrative} />
-      <Questions questions={data.questions} />
-      <Proposals proposals={data.proposals} />
-      <Ledger runs={data.runs} />
+
+      {/*
+        Four sections that only a model can fill, each with its own "nothing yet" copy.
+        On a deployment without a key that copy is a lie by omission — nothing is
+        pending, nothing ever will be — so the empty ones are dropped and the panel
+        above says why. Anything already stored still renders: switching the model off
+        should not throw away last month's narrative.
+      */}
+      {data.ai.enabled || data.narrative !== null ? (
+        <Narrative narrative={data.narrative} />
+      ) : null}
+      {data.ai.enabled || data.questions.length > 0 ? (
+        <Questions questions={data.questions} />
+      ) : null}
+      {data.ai.enabled || data.proposals.length > 0 ? (
+        <Proposals proposals={data.proposals} />
+      ) : null}
+      {data.ai.enabled || data.runs.length > 0 ? <Ledger runs={data.runs} /> : null}
     </>
+  )
+}
+
+/**
+ * What is missing, what is unaffected, and the one line of `.env` that changes it.
+ *
+ * Three sentences in that order, because the reader's first question is whether the
+ * numbers above are trustworthy — they are, they never involved a model — and only then
+ * what they are missing. An `info` notice rather than `warn`: running without a key is a
+ * supported configuration, not a fault, and a yellow banner on every visit would teach
+ * its owner to ignore the one that means the budget is spent.
+ *
+ * The reason arrives as a code and the sentence is chosen here, so both catalogues carry
+ * the wording and neither the API nor this component can render half a translation.
+ */
+function AiOff({ availability }: { availability: AiAvailabilityWire }): ReactNode {
+  const { t } = useT()
+  // Cannot be null while `enabled` is false, but the type does not know that from here
+  // and a non-null assertion to say so is not worth the lint.
+  const reason = availability.reason ?? 'notConfigured'
+
+  return (
+    <div className="notice notice--info" role="status">
+      <p className="notice__lead">{t('ai:off.title')}</p>
+      <p>{t(`ai:off.reason.${reason}`)}</p>
+      <p>{t('ai:off.kept')}</p>
+      <p className="notice__meta">{t('ai:off.adds')}</p>
+      <p className="notice__meta">{t(`ai:off.how.${reason}`)}</p>
+      <p className="notice__hint">{t('ai:off.privacy')}</p>
+    </div>
   )
 }

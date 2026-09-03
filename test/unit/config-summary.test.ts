@@ -73,6 +73,20 @@ describe('configSummary', () => {
     expect(dump.PUBLIC_BASE_URL).toBe('https://balancr.example.com')
   })
 
+  it('says whether a model is available at all, not just which key is set (#165)', async () => {
+    // The first question about an instance with no findings is whether it was ever
+    // going to have any, and three variables decide it. The derived answer is printed
+    // beside the switch so a reader does not have to work it out from a masked key and
+    // a provider name.
+    const dump = await summary()
+
+    expect(dump.AI_ENABLED).toBe(true)
+    expect(dump.aiConfigured).toBe(true)
+    // Not a secret — a project id travels in every Vertex request — and `unset` is the
+    // interesting value: it is the default provider's credential.
+    expect(dump.GOOGLE_CLOUD_PROJECT).toBe('unset')
+  })
+
   it('does not carry the client secret at all, masked or otherwise', async () => {
     // Not in the summary in any form: it is the one OIDC value with no diagnostic
     // use, so the safest thing a log can say about it is nothing.

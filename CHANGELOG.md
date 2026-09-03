@@ -6,6 +6,41 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **The AI layer is optional, and an instance without it says so instead of refusing
+  to start** ([#165](https://github.com/nrosier/Balancr/issues/165)). `vertex` is the
+  default provider and needs `GOOGLE_CLOUD_PROJECT`, so a copied `.env.example` with
+  the Gemini block untouched could not boot at all — a paid dependency demanded of
+  someone who wanted the budget figures. Missing credentials now switch the model off
+  silently; only a *contradiction* is still refused, where the provider names one
+  credential and the other one is the one that is set. `AI_ENABLED` is the second half:
+  a way to pause spending without editing a key out of `.env` and back in.
+- **One reason code, five surfaces.** `aiAvailability()` distinguishes no credential,
+  `AI_ENABLED=false` and a budget of zero, in that order of precedence, and it reaches
+  the pages on `/api/insights` and `/api/settings` as a code rather than a sentence, so
+  both catalogues carry the wording. The insights page prints what is missing, what is
+  unaffected — the signals, the burn rate, the net worth, none of which ever involved a
+  model — and the one line of `.env` that changes it. The three sections only a model
+  can fill are dropped rather than printing their own "nothing pending yet", which on a
+  deployment without a key is a lie by omission; anything already stored still renders,
+  because switching the model off is not a reason to throw away last month's narrative.
+- **The two controls that spend money check first.** The by-hand analysis and the prompt
+  editor's test run explain the state in place of their button, rather than discovering
+  the refusal by being pressed. The prompt editor otherwise stays fully usable: writing
+  and versioning the instructions is worth doing before buying a key.
+
+### Changed
+
+- **The nightly AI pass reports `ok` with a reason instead of failing.** An instance
+  that never bought a key does not want a red job row every night for a dependency it
+  deliberately does not have, and the ops row names the variable to change rather than
+  saying "0 findings" for the third night running. The three paid endpoints answer
+  `409` with the reason spelled out — not `503`, which would invite a retry of a request
+  that will fail identically until someone edits `.env`.
+
 ## [0.6.2] — 2026-09-03
 
 ### Fixed

@@ -136,7 +136,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 |---|---|
 | **Actual** | `ACTUAL_SERVER_URL`, `ACTUAL_PASSWORD`, `ACTUAL_SYNC_ID`, `ACTUAL_E2E_PASSWORD` (encrypted budgets only) |
 | **Ghostfolio** | `GHOSTFOLIO_URL`, `GHOSTFOLIO_SECURITY_TOKEN` |
-| **Gemini** | `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
+| **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
@@ -144,6 +144,14 @@ Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
 `FORMAT_LOCALE` decides how money and dates are written. They are separate
 because `Intl` with `en-BE` produces `€1,234.56` — so an English UI would
 otherwise render amounts that no longer match your bank statements.
+
+The whole Gemini block is optional. Leave the credential empty and Balancr starts
+anyway: the aggregation, the overspend signals, the burn rate and the net-worth history
+are computed locally and never involved a model, and the pages that would have needed one
+name the variable to set. `AI_ENABLED=false` switches it off with the key left in place;
+`GEMINI_MONTHLY_BUDGET_EUR=0` does the same. What is refused is a contradiction —
+`GEMINI_PROVIDER=vertex` with only `GEMINI_API_KEY` set, or the reverse — because that
+is a typo rather than a decision.
 
 `TRUSTED_PROXY_CIDRS` is the one to get right. Authentik's identity headers are
 honoured only from peers inside that range; without it, anyone who reaches the
@@ -281,10 +289,23 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, four of its six issues done. `0.6.0` is done too:
+**Where it is now** — `0.7.0`, five of its seven issues done. `0.6.0` is done too:
 all five views are on screen, in both languages, drawing real figures.
 
-The one thing the last release got wrong about itself is fixed
+Gemini is now optional ([#165](https://github.com/nrosier/Balancr/issues/165)). It was
+not: `vertex` is the default provider and needs a Google Cloud project, so a copied
+`.env.example` with the AI block untouched would not boot — a paid dependency demanded
+of someone who only wanted to see where their money went. Missing credentials switch the
+model off instead, and the pages say which line of `.env` would switch it on. Only a
+contradiction is still refused, where the provider names one credential and the other is
+the one that is set, because that is a typo rather than a choice. `AI_ENABLED=false` is
+the other half: pause the spending without editing a key out of the file and back in.
+Everything that computes a number is unaffected either way — the aggregation, the four
+overspend signals, the burn rate, the net-worth history never involved a model — so the
+insights page still draws them and drops only the three sections a model would have
+filled. A narrative written while the key was in place stays readable.
+
+The one thing the release before last got wrong about itself is fixed
 ([#121](https://github.com/nrosier/Balancr/issues/121)): every process start was asking
 Google to cache a system prompt Google will not cache — the floor is 1024 tokens and
 Balancr's prompts are 453 and 589 — so two models each spent a doomed round trip
@@ -580,14 +601,10 @@ it is what puts that language in the editor's picker — so divergence is visibl
 of being the default. Going back switches the override off rather than deleting it, so
 its versions stay readable and activating one is the way back.
 
-Next is the operational milestone: refreshing the data on demand rather than waiting
-for the next scheduled run ([#122](https://github.com/nrosier/Balancr/issues/122)), a
-context cache that never applies because the system prompt sits under Gemini's
-1024-token minimum ([#121](https://github.com/nrosier/Balancr/issues/121)), backups
-and a restore that is proven by being run
-([#38](https://github.com/nrosier/Balancr/issues/38)), and deployment hardening
-([#39](https://github.com/nrosier/Balancr/issues/39)). Those ship as `0.6.1`,
-`0.6.2`, … until the last of them closes `0.7.0`.
+What is left of the operational milestone: backups and a restore that is proven by
+being run ([#38](https://github.com/nrosier/Balancr/issues/38)), and deployment
+hardening ([#39](https://github.com/nrosier/Balancr/issues/39)). Those ship as `0.6.4`,
+`0.6.5`, … until the last of them closes `0.7.0`.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

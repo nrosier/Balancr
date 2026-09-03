@@ -11,9 +11,11 @@
  *
  *  - **Local work first.** Expiring stale proposals costs nothing and must happen
  *    on a night when Gemini is unreachable too, so it runs before any call.
- *  - **A budget of zero means off.** Not "capped every night": a user who set the
+ *  - **An unavailable model means off, not failed.** No key, `AI_ENABLED=false` or a
+ *    budget of zero: the job records the reason and reports `ok`. A user who set the
  *    budget to nothing does not want a `capped` ledger row every 24 hours telling
- *    them so.
+ *    them so, and an instance that never bought a key does not want a red row for a
+ *    dependency it deliberately does not have (#165).
  *  - **The finished month is analysed once more, then left alone.** Its last days
  *    of spend arrived after the previous night's run, so the figures it was judged
  *    on were never its final ones — but re-analysing a closed month every night for
@@ -31,6 +33,7 @@ import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
 import { latestStoredMonth } from '../domain/aggregate/month-store.ts'
 import { runAnalysis, type AnalysisOutcome } from '../domain/ai/analysis.ts'
+import { aiAvailability } from '../domain/ai/availability.ts'
 import { spendMonthOf } from '../domain/ai/budget.ts'
 import { runNarrative, type NarrativeOutcome } from '../domain/ai/narrative.ts'
 import { expireProposals } from '../domain/ai/proposals.ts'
@@ -83,9 +86,21 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
   // First, because it is free and correct even on a night with no network.
   const expired = expireProposals(db, now)
 
-  if (config.GEMINI_MONTHLY_BUDGET_EUR === 0) {
-    log.info({ expired }, 'AI budget is zero; the nightly model passes are off')
-    return { enabled: false, expired, months: 0, findings: 0, queued: 0 }
+  // One check for all three ways the layer can be off, so the ops row names the
+  // variable to change rather than saying "0 findings" for the third night running.
+  // `ok`, not an error: an instance with no key is correctly configured, and a red
+  // job row every night would train its owner to ignore the column.
+  const availability = aiAvailability()
+  if (!availability.enabled) {
+    log.info({ expired, reason: availability.reason }, 'the AI layer is off; nothing to run')
+    return {
+      enabled: false,
+      reason: availability.reason,
+      expired,
+      months: 0,
+      findings: 0,
+      queued: 0,
+    }
   }
 
   const latest = latestStoredMonth(db)

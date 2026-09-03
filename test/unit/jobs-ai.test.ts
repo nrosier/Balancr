@@ -6,8 +6,9 @@
  *
  *  - **A page load never pays.** Everything the Insights view reads is written
  *    here, and the narrative is written once per month however many nights run.
- *  - **A budget of zero is off, not capped.** No call, no ledger row, and the local
- *    housekeeping still happens.
+ *  - **An unavailable model is off, not capped and not failed.** No key, `AI_ENABLED=false`
+ *    or a budget of zero: no call, no ledger row, the reason on the job detail, and the
+ *    local housekeeping still happens (#165).
  *  - **A provider fault reaches the `jobs` row.** A month with no facts and a
  *    capped budget do not: those are states, and a nightly job stuck in `error`
  *    because the budget worked is a status nobody believes.
@@ -336,15 +337,30 @@ describe('the nightly pass', () => {
   })
 })
 
-describe('with the AI budget set to zero', () => {
+describe('with the model unavailable', () => {
+  /**
+   * The three ways an owner can end up with no model, and the environment for each.
+   *
+   * All three are the owner's own configuration, so all three behave identically —
+   * which is the point of testing them together rather than testing the one that
+   * happens to be implemented. The distinction that matters is only the reason code,
+   * because that is what decides which sentence the pages print and which variable
+   * the ops log names (#165).
+   */
+  const off = [
+    { reason: 'notConfigured', env: { GEMINI_API_KEY: undefined } },
+    { reason: 'switchedOff', env: { AI_ENABLED: 'false' } },
+    { reason: 'budgetZero', env: { GEMINI_MONTHLY_BUDGET_EUR: '0' } },
+  ] as const
+
   /**
    * A fresh module graph: `config` validates and freezes at import, so the only
    * way to test the switch a user actually turns is to rebuild the graph with it
    * turned off.
    */
-  async function freshJob(): Promise<typeof aiJob> {
+  async function freshJob(env: Record<string, string | undefined>): Promise<typeof aiJob> {
     vi.resetModules()
-    vi.stubEnv('GEMINI_MONTHLY_BUDGET_EUR', '0')
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value)
     const fresh = await import('../../src/jobs/ai.ts')
     return fresh.aiJob
   }
@@ -354,17 +370,18 @@ describe('with the AI budget set to zero', () => {
     vi.resetModules()
   })
 
-  it('does not call the model, and does not log a capped run either', async () => {
-    seedTwoMonths()
-    const job = await freshJob()
+  for (const { reason, env } of off) {
+    it(`reports ${reason} without calling the model or logging a capped run`, async () => {
+      seedTwoMonths()
+      const job = await freshJob(env)
 
-    const detail = (await job.run({ db, now: NIGHT, log: logger })) as JobDetail
+      const detail = (await job.run({ db, now: NIGHT, log: logger })) as JobDetail
 
-    expect(detail).toMatchObject({ enabled: false, months: 0 })
-    // Not a `capped` row every 24 hours: a zero budget is a decision, not an
-    // incident.
-    expect(db.select().from(aiRuns).all()).toHaveLength(0)
-  })
+      expect(detail).toMatchObject({ enabled: false, reason, months: 0 })
+      // Not a `capped` row every 24 hours: none of the three is an incident.
+      expect(db.select().from(aiRuns).all()).toHaveLength(0)
+    })
+  }
 
   it('still does the local housekeeping', async () => {
     seedTwoMonths()
@@ -377,7 +394,7 @@ describe('with the AI budget set to zero', () => {
         expiresAt: new Date('2026-02-01T00:00:00Z'),
       })
       .run()
-    const job = await freshJob()
+    const job = await freshJob({ GEMINI_MONTHLY_BUDGET_EUR: '0' })
 
     const detail = (await job.run({ db, now: NIGHT, log: logger })) as JobDetail
 

@@ -121,9 +121,13 @@ const RUNS: AiRun[] = [
   },
 ]
 
+/** The configured-and-on answer, which is what every fixture but one carries. */
+const AI_ON = { enabled: true, reason: null } as const
+
 /** A month the AI layer has been all the way through. */
 const FULL: InsightsPayload = {
   freshness: FRESH,
+  ai: AI_ON,
   month: '2026-08',
   signals: SIGNALS,
   narrative: {
@@ -202,6 +206,7 @@ const FULL: InsightsPayload = {
 /** What a deployment whose AI job has never run answers. */
 const EMPTY: InsightsPayload = {
   freshness: FRESH,
+  ai: AI_ON,
   month: null,
   signals: [],
   narrative: null,
@@ -276,6 +281,75 @@ describe('the page', () => {
       'Proposed changes',
       'What was sent',
     ])
+  })
+
+  it('explains an absent model and drops the sections only a model can fill (#165)', async () => {
+    // The signals are deterministic TypeScript over the aggregated facts, so they are
+    // exactly what a deployment without a key should still get. The other three
+    // sections would each print their own "nothing yet" copy, which on this deployment
+    // is a lie by omission: nothing is pending and nothing ever will be.
+    serve({
+      '/api/insights': json({
+        ...FULL,
+        ai: { enabled: false, reason: 'notConfigured' },
+        narrative: null,
+        questions: [],
+        proposals: [],
+        runs: [],
+      } satisfies InsightsPayload),
+    })
+    renderApp(<Insights />)
+
+    await screen.findByText('What stands out')
+    expect(screen.getByText('The assistant is switched off')).toBeTruthy()
+    expect(screen.getByText(/No Gemini key is configured/)).toBeTruthy()
+    // The variable to set, not just the fact that something is missing.
+    expect(screen.getByText(/GEMINI_API_KEY/)).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'What stands out',
+    ])
+  })
+
+  it('names the switch when a key exists but the flag is false (#165)', async () => {
+    // A different sentence per reason, because the fix is a different line of `.env`.
+    serve({
+      '/api/insights': json({
+        ...FULL,
+        ai: { enabled: false, reason: 'switchedOff' },
+        narrative: null,
+        questions: [],
+        proposals: [],
+        runs: [],
+      } satisfies InsightsPayload),
+    })
+    renderApp(<Insights />)
+
+    await screen.findByText('What stands out')
+    expect(screen.getByText(/Set AI_ENABLED=true/)).toBeTruthy()
+    expect(screen.queryByText(/No Gemini key is configured/)).toBeNull()
+  })
+
+  it('keeps a narrative written while the model was on (#165)', async () => {
+    // Switching the model off is not a reason to throw away last month's analysis. The
+    // panel explains why nothing new is arriving; what is stored still reads.
+    serve({
+      '/api/insights': json({
+        ...FULL,
+        ai: { enabled: false, reason: 'switchedOff' },
+      } satisfies InsightsPayload),
+    })
+    renderApp(<Insights />)
+
+    await screen.findByText('This month in words')
+    expect(screen.getByText('The assistant is switched off')).toBeTruthy()
+  })
+
+  it('says nothing about a switched-off model while it is on', async () => {
+    serve({ '/api/insights': json(FULL) })
+    renderApp(<Insights />)
+
+    await screen.findByText('What stands out')
+    expect(screen.queryByText('The assistant is switched off')).toBeNull()
   })
 
   it('says nothing about the AI budget while there is any left', async () => {

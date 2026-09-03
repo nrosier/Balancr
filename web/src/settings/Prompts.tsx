@@ -45,6 +45,7 @@ import {
   formatMonth,
   isSharedLocale,
   SHARED_LOCALE,
+  type AiAvailabilityWire,
   type AiDryRun,
   type AiEstimate,
   type PromptBody,
@@ -278,7 +279,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         onJump={jumpTo}
       />
 
-      {entry.key === TESTABLE_KEY ? (
+      {entry.key !== TESTABLE_KEY ? null : settings.ai.availability.enabled ? (
         <DryRun
           entry={entry}
           state={state}
@@ -287,7 +288,12 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           run={run?.for === selection ? run.result : null}
           onRun={(result) => setRun({ for: selection, result })}
         />
-      ) : null}
+      ) : (
+        // The editor stays usable without a model — writing and versioning the text costs
+        // nothing and is worth doing before buying a key — but the one control that would
+        // call Gemini says why it cannot instead of failing when pressed (#165).
+        <DryRunOff availability={settings.ai.availability} />
+      )}
 
       <Versions
         entry={entry}
@@ -467,6 +473,27 @@ function DiffView({ diff }: { diff: PromptDiff }): ReactNode {
   )
 }
 
+/**
+ * The test run's heading with the reason in place of the button.
+ *
+ * The same three sentences the insights panel prints, from the same `ai:off.*` keys: a
+ * reader who has just written a prompt and cannot test it needs the variable to set, not
+ * a control that has quietly gone missing.
+ */
+function DryRunOff({ availability }: { availability: AiAvailabilityWire }): ReactNode {
+  const { t } = useT()
+  // Never null while `enabled` is false; the type cannot prove it at this point.
+  const reason = availability.reason ?? 'notConfigured'
+
+  return (
+    <section className="prompt__dryrun">
+      <h3 className="panel__subtitle">{t('settings:prompt.dryRun.title')}</h3>
+      <p className="muted">{t(`ai:off.reason.${reason}`)}</p>
+      <p className="muted">{t(`ai:off.how.${reason}`)}</p>
+    </section>
+  )
+}
+
 interface DryRunProps {
   entry: PromptSetting
   state: SettingsPanelProps['state']
@@ -499,7 +526,9 @@ function DryRun({ entry, state, owner, estimate, run, onRun }: DryRunProps): Rea
   const promptId = entry.active.id
   const priced: AiEstimate | null = estimate.data
   // A 409 is the fresh-deployment answer — nothing has been aggregated, so there is no
-  // month to price a run against. Anything else is a real failure and says so.
+  // month to price a run against. Anything else is a real failure and says so. The
+  // endpoint's other 409, an unavailable model, cannot arrive here: this component is
+  // not mounted in that case, which is what keeps one code to one sentence (#165).
   const noMonth = estimate.error?.code === 'conflict'
 
   return (
