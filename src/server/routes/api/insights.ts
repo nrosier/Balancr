@@ -17,6 +17,12 @@
  *
  * Everything else is codes and integers.
  *
+ * `ai` says whether a model can run here at all. Three of the five sections below it
+ * are the AI layer's output, and on a deployment with no key they are empty arrays that
+ * look exactly like "nothing to report" — so the flag is what lets the page explain
+ * itself rather than draw four blank cards (#165). The deterministic `signals` are
+ * unaffected either way, which is the whole point.
+ *
  * The ledger is here too, and it is the part that makes the rest of the page
  * checkable: `runs` lists every attempt with its cost and status, and one of them
  * can be opened to read the payload it was prepared with, byte for byte. The
@@ -27,6 +33,7 @@ import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import { latestStoredMonth } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import { aiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
 import { latestNarrative, renderNarrative } from '../../../domain/ai/narrative.ts'
@@ -48,6 +55,7 @@ export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): I
 
   return insightsSchema.parse({
     freshness: freshness(db),
+    ai: aiAvailability(),
     month,
     signals: month === null ? [] : loadSignals(db, month),
     narrative:

@@ -18,6 +18,7 @@
  */
 import { z } from 'zod'
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
+import { AI_OFF_REASONS } from '../../../domain/ai/availability.ts'
 
 /**
  * An amount of money: whole cents, and never a float.
@@ -30,6 +31,20 @@ export const cents = (): z.ZodType<number> => z.int()
 
 /** Basis points. 10 000 = 100%, and again an integer, for the same reason. */
 export const basisPoints = (): z.ZodType<number> => z.int()
+
+/**
+ * Whether the AI layer can run here, on two payloads that both need the answer.
+ *
+ * The reason list is imported from the domain rather than retyped, so a fourth way for
+ * the layer to be off cannot reach the availability function and miss the wire. A
+ * client switching on `reason` gets a compile error for the case it has not handled,
+ * which is the point of putting it in the contract at all.
+ */
+export const aiAvailabilitySchema = z.object({
+  enabled: z.boolean(),
+  /** Null exactly when `enabled` is true. */
+  reason: z.enum(AI_OFF_REASONS).nullable(),
+})
 
 /**
  * Micro-euros: a millionth of a euro, and the unit every AI cost is stored in.
@@ -288,6 +303,24 @@ export const aiRunSchema = z.object({
 
 export const insightsSchema = z.object({
   freshness: freshnessSchema,
+  /**
+   * Whether a model can run here at all, and which variable to change if not.
+   *
+   * First in the payload because it decides how everything after it reads. Three of
+   * the five sections on this page — the narrative, the open clarification cards and
+   * the proposals — exist only if a model ran; on a deployment with no key they are
+   * empty arrays, and an empty array is indistinguishable from "nothing to report".
+   * So the page needs to be told which of the two it is looking at, or it draws four
+   * blank cards and reads as broken (#165).
+   *
+   * `signals` is on the other side of that line and is not affected: it is
+   * deterministic TypeScript over the aggregated facts, and it is the whole reason an
+   * AI-less Balancr is still worth opening.
+   *
+   * A code rather than a sentence, like every other reason on the wire — see
+   * `domain/ai/availability.ts` for what the three of them mean.
+   */
+  ai: aiAvailabilitySchema,
   month: monthKey().nullable(),
   signals: z.array(signalSchema),
   narrative: z
@@ -638,6 +671,16 @@ export const settingsSchema = z.object({
     }),
   ),
   ai: z.object({
+    /**
+     * Whether the panel's figures and its one paid button mean anything.
+     *
+     * Off, every number below is a true zero of an unused allowance, and the run-by-
+     * hand control would price a call the server refuses with a `409`. The panel says
+     * so instead. Same object as `insights.ai`, from the same function, because a page
+     * that offered the button and a page that explained its absence disagreeing about
+     * which one to draw is exactly the bug one shared answer prevents.
+     */
+    availability: aiAvailabilitySchema,
     /** From `.env`, not editable here: a model is a deployment decision. */
     models: z.object({ fast: z.string(), deep: z.string() }),
     month: monthKey(),
@@ -812,6 +855,7 @@ export type PromptBody = z.infer<typeof promptBodySchema>
 export type PromptDiff = z.infer<typeof promptDiffSchema>
 export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
+export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>

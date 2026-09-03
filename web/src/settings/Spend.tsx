@@ -23,7 +23,7 @@
 import { useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { formatBp, formatDecimal, formatMicroEur, formatMonth } from '../shared.ts'
-import type { AiEstimate, RefreshAccepted } from '../shared.ts'
+import type { AiAvailabilityWire, AiEstimate, RefreshAccepted } from '../shared.ts'
 import { Metric } from '../ui/Metric.tsx'
 import { Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
@@ -71,7 +71,11 @@ export function SpendPanel({ settings, state, owner, estimate }: SettingsPanelPr
         />
       </div>
 
-      <Rerun state={state} owner={owner} estimate={estimate} />
+      {ai.availability.enabled ? (
+        <Rerun state={state} owner={owner} estimate={estimate} />
+      ) : (
+        <RerunOff availability={ai.availability} />
+      )}
 
       {ai.history.length === 0 ? null : (
         <>
@@ -134,7 +138,9 @@ function Rerun({
   const priced: AiEstimate | null = estimate.data
   // The fresh-deployment answer, same as the prompt editor's: nothing aggregated, so no
   // month to price a run against. Any other failure leaves the section empty rather than
-  // offering a button with no price on it.
+  // offering a button with no price on it. The other `409` from that endpoint — an
+  // unavailable model — cannot reach here: this component is not rendered at all in that
+  // case, which is the only reason one code can stand for one sentence (#165).
   const noMonth = estimate.error?.code === 'conflict'
 
   return (
@@ -208,6 +214,32 @@ function Rerun({
           {t('settings:ai.rerun.started')}
         </p>
       )}
+    </section>
+  )
+}
+
+/**
+ * The same section with the button removed and the reason in its place.
+ *
+ * Not a hidden control: a heading that disappears is read as a feature that was taken
+ * away, and the number above it — a budget, a spend of zero — invites exactly the
+ * question this answers. The wording is `ai:off.*`, shared with the panel on the
+ * insights page, because two catalogues explaining the same three states in different
+ * words is how one of them ends up wrong.
+ *
+ * No estimate is shown. Pricing a run that cannot start is what puts a figure in front
+ * of someone as though pressing something would spend it.
+ */
+function RerunOff({ availability }: { availability: AiAvailabilityWire }): ReactNode {
+  const { t } = useT()
+  // Never null while `enabled` is false; the type cannot say so at this point.
+  const reason = availability.reason ?? 'notConfigured'
+
+  return (
+    <section className="rerun">
+      <h3 className="panel__subtitle">{t('settings:ai.rerun.title')}</h3>
+      <p className="muted">{t(`ai:off.reason.${reason}`)}</p>
+      <p className="muted">{t(`ai:off.how.${reason}`)}</p>
     </section>
   )
 }

@@ -56,6 +56,22 @@
     "unnamedAccount": "een naamloze rekening",
     "unnamedCategory": "een naamloze categorie"
   },
+  "off": {
+    "title": "De assistent staat uit",
+    "reason": {
+      "notConfigured": "Er is geen Gemini-sleutel ingesteld, dus hier wordt geen model aangeroepen.",
+      "switchedOff": "Er is een sleutel ingesteld, maar AI_ENABLED staat op false.",
+      "budgetZero": "Het maandbudget voor AI staat op nul, dus er wordt geen model aangeroepen."
+    },
+    "kept": "Alles hieronder wordt hier berekend, uit je eigen cijfers — de signalen, het besteedtempo en de vermogensgeschiedenis blijven volledig.",
+    "adds": "Een model zou er een geschreven samenvatting van de maand aan toevoegen, gerangschikte bevindingen en de vragen die aanvullen waar elk budget voor dient.",
+    "how": {
+      "notConfigured": "Zet GEMINI_API_KEY (of GOOGLE_CLOUD_PROJECT voor Vertex) in .env en herstart.",
+      "switchedOff": "Zet AI_ENABLED=true in .env en herstart.",
+      "budgetZero": "Verhoog GEMINI_MONTHLY_BUDGET_EUR in .env en herstart."
+    },
+    "privacy": "Alleen categorienamen en bedragen zouden verstuurd worden. Nooit een tegenpartij, nooit een transactie."
+  },
   "privacy": {
     "caption_one": "De meest recente aanvraag aan het model.",
     "caption_other": "De {{value}} meest recente aanvragen aan het model, nieuwste eerst.",

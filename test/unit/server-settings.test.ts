@@ -145,6 +145,9 @@ describe('GET /api/settings', () => {
     expect(settings.paramDefaults).toEqual(DEFAULT_PARAMS)
     expect(settings.accounts).toHaveLength(3)
     expect(settings.ai.models.fast.length).toBeGreaterThan(0)
+    // The two controls that spend money read this rather than discovering the
+    // refusal by pressing: the analysis rerun and the prompt editor's test run (#165).
+    expect(settings.ai.availability).toEqual({ enabled: true, reason: null })
   })
 
   it('lists one shared prompt per key, with the text it is really using', async () => {

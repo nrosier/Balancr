@@ -47,6 +47,7 @@ import {
   saveParams,
   unknownParamFields,
 } from '../../domain/aggregate/params.ts'
+import { aiAvailability } from '../../domain/ai/availability.ts'
 import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
 import {
@@ -265,6 +266,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       signals: candidate.signals,
     })),
     ai: {
+      availability: aiAvailability(),
       models: { fast: config.GEMINI_MODEL_FAST, deep: config.GEMINI_MODEL_DEEP },
       month: budget.month,
       spentMicroEur: budget.spentMicroEur,

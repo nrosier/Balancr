@@ -123,6 +123,77 @@ describe('a development deployment', () => {
   })
 })
 
+describe('a deployment with no Gemini credential (#165)', () => {
+  /**
+   * The whole point of the change: this used to be a refusal to boot.
+   *
+   * `vertex` is the default provider and needs `GOOGLE_CLOUD_PROJECT`, so a copied
+   * `.env.example` with the AI block untouched could not start — and the half of
+   * Balancr that can be trusted with a number is the half that never calls a model.
+   * Someone who has not bought a key is entitled to the aggregation, the four
+   * overspend signals, the burn rate and the net worth.
+   */
+  for (const provider of ['aistudio', 'vertex'] as const) {
+    it(`boots on ${provider} with nothing configured for it`, async () => {
+      expect(
+        await loadWith({ GEMINI_PROVIDER: provider, GEMINI_API_KEY: '' }),
+      ).toBeNull()
+    })
+  }
+
+  it('reports itself as neither credentialed nor configured', async () => {
+    const config = await configWith({ GEMINI_PROVIDER: 'aistudio', GEMINI_API_KEY: '' })
+
+    expect(config.aiCredentialed).toBe(false)
+    expect(config.aiConfigured).toBe(false)
+  })
+
+  it('reads a key on the switched-off deployment as credentialed but not configured', async () => {
+    // The two flags exist separately for exactly this case. One flag would report
+    // `switchedOff` for a missing key as well, sending its owner to flip a variable
+    // that changes nothing.
+    const config = await configWith({ AI_ENABLED: 'false' })
+
+    expect(config.aiCredentialed).toBe(true)
+    expect(config.aiConfigured).toBe(false)
+  })
+
+  it('is configured when the credential and the switch agree', async () => {
+    const config = await configWith({ AI_ENABLED: 'true' })
+
+    expect(config.aiConfigured).toBe(true)
+  })
+
+  /**
+   * Missing is fine; contradictory is not.
+   *
+   * A key set for the other provider is not an instance that skipped the AI block —
+   * it is one that filled it in and picked the wrong `GEMINI_PROVIDER`, and starting
+   * quietly with the model off would hide a typo behind a supported configuration.
+   */
+  const contradictions = [
+    {
+      provider: 'vertex',
+      env: { GEMINI_PROVIDER: 'vertex' },
+      names: ['GOOGLE_CLOUD_PROJECT', 'GEMINI_API_KEY'],
+    },
+    {
+      provider: 'aistudio',
+      env: { GEMINI_PROVIDER: 'aistudio', GEMINI_API_KEY: '', GOOGLE_CLOUD_PROJECT: 'balancr' },
+      names: ['GEMINI_API_KEY', 'GOOGLE_CLOUD_PROJECT'],
+    },
+  ] as const
+
+  for (const { provider, env, names } of contradictions) {
+    it(`refuses ${provider} configured with the other provider's credential`, async () => {
+      const error = await loadWith(env)
+
+      // Both names, because the fix is either one: set this, or switch to that.
+      for (const name of names) expect(error?.message).toContain(name)
+    })
+  }
+})
+
 describe('a variable left blank in a copied .env.example (#118)', () => {
   // The six optional variables, and what each has to survive being blank. Table
   // rather than one test apiece because the interesting part is that the list is
@@ -248,6 +319,16 @@ describe('.env.example as shipped (#118)', () => {
     // The regression that matters, because this is the file the README tells you to
     // copy. Before #118 it failed on the optional variables it ships empty.
     expect(await loadWith({ ...shipped(), ...filledIn })).toBeNull()
+  })
+
+  it('boots with the whole Gemini block left as shipped (#165)', async () => {
+    // `vertex` is the default provider and this file ships its credential empty, so
+    // before #165 the copy-and-fill-in flow could not start without a Google Cloud
+    // project — a paid dependency demanded of someone who wanted the budget figures.
+    // Everything that computes a number is unaffected by not having it.
+    const error = await loadWith({ ...shipped(), ...filledIn, GOOGLE_CLOUD_PROJECT: '' })
+
+    expect(error).toBeNull()
   })
 
   it('boots with the OIDC block left empty and local login turned on', async () => {
