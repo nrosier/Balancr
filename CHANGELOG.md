@@ -6,6 +6,63 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **Deployment hardening, verified rather than declared**
+  ([#39](https://github.com/nrosier/Balancr/issues/39)). Non-root, a read-only root
+  filesystem, `cap_drop: ALL` and `no-new-privileges` were already in the Dockerfile and
+  `compose.yaml` — as configuration, which is to say as claims. `scripts/verify-image.sh`
+  now starts the built image with exactly those flags and asks the running container: is
+  this uid non-root and is it `node`, does `/app` really refuse a write, does `/data`
+  really accept one, is `CapEff` all zeroes, is `NoNewPrivs` set, do both native modules
+  load, and does the image's own `HEALTHCHECK` command work — a broken one makes Docker
+  restart a healthy container every interval, forever. CI runs it on every image build.
+  Runnable by hand, which is why it is a script rather than workflow YAML.
+- **Egress restricted to the hosts this deployment is configured for**
+  ([#39](https://github.com/nrosier/Balancr/issues/39)). `EGRESS_MODE=enforce` by
+  default: a connection to anything that is not Actual, Ghostfolio, the OIDC issuer or
+  Google's Gemini endpoint is refused, and the host is logged. The allowlist is derived
+  from the same `.env` values the adapters read, so it cannot drift from the
+  configuration — moving Ghostfolio to a new hostname needs no second edit. `warn` allows
+  and logs instead, which is how you see what a newly added dependency wants before
+  deciding whether it should have it; `EGRESS_EXTRA_HOSTS` covers an outbound proxy. A
+  denial logs the host and never the path or query, because on an exfiltration attempt
+  the query string is the data. What it defends against is a dependency rather than a
+  network: it wraps global `fetch`, so it covers the Ghostfolio adapter, the Gemini SDK
+  and `openid-client`, and it does not cover a library reaching for `node:http` directly,
+  a native module, or a child process — stated plainly in `src/egress.ts` rather than
+  oversold, and the reason the network-level rule is still worth having.
+- **The mode of `.env` is checked at every start**
+  ([#39](https://github.com/nrosier/Balancr/issues/39)). One line if the file holding the
+  Actual password, Ghostfolio token, Gemini key, session secret and backup passphrase is
+  group- or world-readable, naming the mode and the command that fixes it. A warning, not
+  a refusal. Silent in a container, where compose reads `.env` on the host and there is
+  no such file to have a mode.
+- **Image size and startup time recorded in the job summary**
+  ([#39](https://github.com/nrosier/Balancr/issues/39)) — 410 MB and one second to the
+  first `/healthz` on amd64 today — with ceilings a little above those. Not targets:
+  tripwires, so a change that doubles either has to be a deliberate edit to the script
+  rather than something nobody noticed.
+
+### Fixed
+
+- **The runtime prune understood one of the two prebuild layouts, and shipped seven
+  unloadable binaries per image** ([#39](https://github.com/nrosier/Balancr/issues/39)).
+  `scripts/prune-runtime-deps.mjs` handled `prebuilds/<platform>-<arch>/` directories,
+  which is what `argon2` ships, and not flat `prebuilds/<platform>-<arch>.node` files,
+  which is what `better-sqlite3` 13 ships — so every image up to this one carried all
+  eight of its platform binaries, including Windows and macOS. Vendored C sources go too:
+  10 MB of SQLite amalgamation per copy of `better-sqlite3`, read only by `node-gyp` at
+  install time, and there are three copies. Seventy megabytes in total. The pruner also
+  takes the target architecture as an argument now instead of assuming amd64, because the
+  same bug in reverse deletes the only binary an arm64 build can load, and it refuses to
+  leave a native package with no binary at all rather than letting that surface as a
+  container that will not start. All of it covered by
+  `test/unit/prune-runtime-deps.test.ts`, which asserts what survives as well as what
+  goes: deleting too little was silent for six milestones.
+
 ## [0.6.4] — 2026-09-03
 
 ### Added

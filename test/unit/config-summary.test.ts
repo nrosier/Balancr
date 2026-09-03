@@ -99,6 +99,16 @@ describe('configSummary', () => {
     })
   })
 
+  it('names the egress mode and the hosts allowed beyond the three (#39)', async () => {
+    // The summary is where the answer to "why did that request fail" starts, and for a
+    // denied connection the answer is these two values. Neither is a secret: a hostname
+    // this deployment talks to is already in the logs of whatever it talked to.
+    expect(await summary()).toMatchObject({
+      EGRESS_MODE: 'enforce',
+      EGRESS_EXTRA_HOSTS: [],
+    })
+  })
+
   it('does not carry the client secret at all, masked or otherwise', async () => {
     // Not in the summary in any form: it is the one OIDC value with no diagnostic
     // use, so the safest thing a log can say about it is nothing.

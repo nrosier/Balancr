@@ -202,6 +202,30 @@ const EnvSchema = z.object({
    */
   BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 
+  // Egress
+  /**
+   * Whether this process refuses to connect to a host nobody configured.
+   *
+   * `enforce` (the default) is the useful setting; `warn` logs and allows, which is how
+   * you find out what a newly added dependency wants to reach before deciding whether
+   * it should have it; `off` leaves `fetch` alone. The default is the strict one because
+   * the allowlist is derived from the same `.env` values the adapters use, so a correct
+   * configuration already allows everything a correct install needs — see `egress.ts`
+   * for what the wrapper does and does not cover.
+   */
+  EGRESS_MODE: z.enum(['enforce', 'warn', 'off']).default('enforce'),
+  /**
+   * Hostnames to allow beyond Actual, Ghostfolio, the OIDC issuer and Google.
+   *
+   * Hostnames, not URLs: `proxy.internal`, not `https://proxy.internal:8443/`. There is
+   * one predictable reason to need this — an outbound HTTP proxy, or a self-hosted
+   * Ghostfolio reached through a different name than the one in `GHOSTFOLIO_URL` — and
+   * an unpredictable one, which is that a future dependency reaches somewhere none of
+   * this file knows about. The escape hatch exists so the answer to that day is a line
+   * in `.env` rather than `EGRESS_MODE=off`.
+   */
+  EGRESS_EXTRA_HOSTS: csv(''),
+
   // Locale
   SUPPORTED_LOCALES: csv('en,nl'),
   DEFAULT_LOCALE: z.string().min(2).default('en'),
@@ -430,6 +454,8 @@ export function configSummary(): Record<string, unknown> {
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
     BACKUP_KEEP: config.BACKUP_KEEP,
+    EGRESS_MODE: config.EGRESS_MODE,
+    EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
     DEFAULT_LOCALE: config.DEFAULT_LOCALE,
     FORMAT_LOCALE: config.FORMAT_LOCALE,

@@ -9,10 +9,12 @@ name: Image
 # release.yml anyway, so the image is built once per change regardless — the
 # pull-request build was a third one, a few minutes earlier.
 #
-# What the image build *does* verify uniquely is how the image is assembled: the
-# production install (`npm ci --omit=dev` plus the runtime prune) against the
-# lockfile, the multi-stage copy, and the Dockerfile itself. None of that can
-# change without one of the paths below changing with it.
+# What the image build *does* verify uniquely is how the image is assembled and
+# how it behaves once started: the production install (`npm ci --omit=dev` plus
+# the runtime prune) against the lockfile, the multi-stage copy, the Dockerfile
+# itself, and then — since #39 — the running container's posture, because
+# `read_only: true` and `cap_drop: ALL` are claims until something checks them.
+# None of that can change without one of the paths below changing with it.
 #
 # `package.json` is on that list, which also makes this the milestone gate: the
 # version bump that closes a milestone touches it, so the last pull request of
@@ -22,11 +24,13 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - compose.yaml
       - package.json
       - package-lock.json
       - tsconfig.build.json
       - scripts/copy-assets.mjs
       - scripts/prune-runtime-deps.mjs
+      - scripts/verify-image.sh
       - .github/workflows/image.yml
   workflow_dispatch:
 
@@ -44,12 +48,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      # Build only — publishing happens in release.yml, so a pull request proves
-      # the Dockerfile works without pushing anything.
+      # Loaded into the local daemon rather than pushed: publishing happens in
+      # release.yml, and the next step needs to actually run this image.
       - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: balancr:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # A built image is not a working one. This starts it with the same flags
+      # compose uses and checks the hardening is real rather than declared —
+      # non-root, an unwritable /app, no capabilities, a healthcheck that works —
+      # and records size and startup time in the job summary so a regression in
+      # either is something a reviewer walks past rather than has to go looking
+      # for (#39). The script runs by hand too; that is why it is a script.
+      - name: Verify the image
+        run: scripts/verify-image.sh balancr:ci

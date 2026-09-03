@@ -321,6 +321,34 @@ describe('the backup settings (#38)', () => {
   })
 })
 
+describe('the egress settings (#39)', () => {
+  it('defaults to enforcing, because the allowlist comes from the same .env', async () => {
+    // A correct configuration already allows everything a correct install needs, so
+    // there is nothing to ease into: the strict setting is the one that ships.
+    const config = await configWith({})
+    expect(config.EGRESS_MODE).toBe('enforce')
+    expect(config.EGRESS_EXTRA_HOSTS).toEqual([])
+  })
+
+  it('refuses a mode it does not have, rather than falling back to a lenient one', async () => {
+    // `EGRESS_MODE=disabled` reads as off to a human. Silently treating it as
+    // `enforce` would be confusing and silently treating it as `off` would be worse.
+    const error = await loadWith({ EGRESS_MODE: 'disabled' })
+    expect(error?.message).toContain('EGRESS_MODE')
+  })
+
+  it('accepts all three modes it documents', async () => {
+    for (const mode of ['enforce', 'warn', 'off'] as const) {
+      expect((await configWith({ EGRESS_MODE: mode })).EGRESS_MODE).toBe(mode)
+    }
+  })
+
+  it('reads the extra hosts as a list, trimmed', async () => {
+    const config = await configWith({ EGRESS_EXTRA_HOSTS: 'proxy.internal, mirror.test ,' })
+    expect(config.EGRESS_EXTRA_HOSTS).toEqual(['proxy.internal', 'mirror.test'])
+  })
+})
+
 describe('.env.example as shipped (#118)', () => {
   /**
    * `.env.example` exactly as a new deployment would inherit it — every line,
