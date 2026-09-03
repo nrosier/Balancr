@@ -33,9 +33,10 @@ and prioritise what it already knows.
 - **Where the money goes** — every category, every month, reconciled against
   Actual's own figures rather than recomputed and hoped for.
 - **Overspending, four ways** — over what you assigned, over what is *available*
-  after carryover, over your own 12-month norm, and (later) over Belgian
-  reference spending for a comparable household. They are reported separately,
-  because they mean different things.
+  after carryover, over your own 12-month norm, and over what a comparable Belgian
+  household spends. They are reported separately, because they mean different
+  things — and the last one is context rather than a verdict, which is why it can
+  never read as an alert.
 - **Burn rate** — projected month-end totals from spend so far, so a warning
   arrives mid-month instead of as a post-mortem.
 - **Portfolio** — allocation, returns and holdings from Ghostfolio, deduplicated
@@ -81,6 +82,10 @@ half-English, and costs a fraction of what shipping raw transactions would.
 - **No CDN, no external assets.** All JavaScript, CSS and fonts are bundled and
   served from the container, so the UI works on a locked-down network and leaks
   nothing to a third party by loading a page.
+- **Who lives here stays here.** The household roster behind
+  [the benchmark](#comparing-with-belgian-households) — a year of birth, a share of the
+  time, an optional name — is never part of a payload. What the model may see about that
+  comparison is a survey line, a share and a euro figure.
 
 ## Quick start
 
@@ -145,6 +150,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
 | **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS`, `TAX_RULES_PATH` |
+| **Benchmark** | `BENCHMARK_PATH` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
@@ -415,6 +421,72 @@ And nothing is executed: Balancr never places a trade, and both upstream tools s
 read-only.
 
 
+## Comparing with Belgian households
+
+Your own twelve-month norm answers "is this month unusual for me". It cannot answer "is
+€650 a month on food a lot", and that second question is what the budget page's last card is
+for.
+
+The reference is Statbel's **Household Budget Survey**: the share of its total an average
+Belgian household spends on each of ten lines. It lives in
+[`config/statbel-benchmark.yaml`](config/statbel-benchmark.yaml) — a dated file carrying the
+survey, the year, a citation, the day somebody last checked it and a `status` per block,
+the same arrangement as [Belgian tax](#belgian-tax) — and `BENCHMARK_PATH` points at it.
+Point that at a path that does not exist and the card disappears while every other figure
+stays exactly as it was: not everybody wants their spending held up against an average, and
+that is a supported choice rather than a broken install.
+
+Nothing in the app edits those shares. A screen that let anybody type over them would be a
+screen that manufactures a reference, which is the one failure that would make this feature
+worse than not having it. Two things are yours to supply:
+
+- **Which line each envelope belongs to** — Settings → Benchmark mapping, as one of the
+  twelve COICOP divisions, the international classification the survey itself is published
+  against. The picker offers the twelve divisions rather than the ten survey lines because
+  three divisions share the survey's "other expenditure" line, so "other" would store a code
+  nothing could later resolve; the line each division feeds is shown beside the choice
+  instead. There is a thirteenth entry, `00`, for what is not household consumption at all:
+  savings, investments, taxes, transfers, debt repayment. Those are set aside rather than
+  counted at zero — a budget holds plenty of them, and counting them would make every real
+  share look small — and the card says how much was set aside.
+- **Who lives here** — Settings → Household, as a year of birth and a share of the time per
+  person. A year rather than a "child" checkbox, because a checkbox is right on the day it is
+  ticked and quietly wrong from the next birthday, with nothing on screen to say so. Only the
+  year is stored: a full date of birth would be more personal data than the scale can use.
+
+The household is what makes the two comparable at all — a single parent spends less than the
+average household and is not being frugal. The scale is the **modified OECD** one, also from
+the file: 1,0 for the first person, 0,5 for each additional adult, 0,3 for a child under
+fourteen. One part of that calculation is Balancr's and not the source's, and is labelled as
+Balancr's wherever it shows: somebody who is here half the time counts at half their weight.
+The published scale has no notion of part-time membership, so a prorated household prints the
+assumption next to the figure it produced. Ages are taken as of the year being compared, so a
+member who turned fourteen in March is a child in last January's comparison and an adult in
+this one.
+
+Two thresholds decide whether anything is said:
+
+| Threshold | Value | What it prevents |
+|---|---|---|
+| Share of the month mapped | `70%` | Under it, no comparison is drawn and the card says what to map instead. 100% would mean the feature never switches on, because nobody maps every envelope; 50% would mean a chart about the mapping rather than about the spending. |
+| Difference worth a finding | `20%`, and the same materiality floor in euros as every other signal | Rounding, a category that straddles two divisions and a month with five weekends each move a group by a few percent, and none of them is news. A line 40% over by €12 stays quiet too. |
+
+**A difference is `info` and cannot become anything else.** The severity is capped in the
+payload rather than by convention, and the stylesheet has no red cell to render one in,
+because a household above the transport line has done nothing wrong and neither has one
+below the restaurants line. There is deliberately no "below benchmark" finding: spending
+less than average on transport is what not owning a car looks like, and flagging it would be
+telling somebody their frugality is a problem.
+
+The survey's euro total per household has not been transcribed, so the comparison today is
+of **shares** — how your month divides against how theirs does — and the card says outright
+that nothing in it claims you spend more than they do. Filling in the file's optional
+`reference_household` block switches the same card to euro-for-euro, scaled to your
+household's size on the scale. Either way the card cites the survey, the year and the date
+the file was last checked, and lists the blocks nobody has yet confirmed against the source —
+including, at the moment, the shares themselves.
+
+
 ## Backups
 
 One passphrase switches them on. There is no separate flag:
@@ -615,24 +687,46 @@ ends.
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ✅ |
-| `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
+| `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | 🔄 `0.8.x` |
 | `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.8.0` is done: the app gives advice about the portfolio rather
-than only a picture of it. What is held is measured against a risk profile you set in
-numbers, every class outside its band arrives with the trade that would close it and the
-drift figure that motivates it, that trade may only name a fund from a list you vetted
-yourself, and what acting would cost in Belgian tax is computed in euros before anything is
-done. Underneath that, `0.7.0`'s operational half is in place: the data refreshes on a
-schedule and on demand, the database is backed up and the restore is proven, the digest
-arrives monthly, and the container's hardening is checked rather than declared. `0.9.0` is
-next — the Statbel benchmark, a custody-aware split of what a child costs, and the first
-proposal handlers that write back to Actual — and its slices ship as `0.8.1`, `0.8.2`, …
-until that milestone closes as `0.9.0`.
+**Where it is now** — `0.9.0` is under way, and its first slice is on screen: a category
+can now be held up against something other than your own past. Ten lines of Statbel's
+Household Budget Survey, your envelopes mapped onto them by COICOP division, and an
+equivalence scale that makes a one-adult household comparable to an average one — including
+a member who is here half the time, which the published scale has no notion of and which
+every screen printing the figure says out loud. A difference reads as context and can never
+read as an alert: a national average is evidence about the country, not about you. Behind
+that, `0.8.0` is done — what is held is measured against a risk profile you set in numbers,
+every class outside its band arrives with the trade that would close it, that trade may only
+name a fund from a list you vetted yourself, and what acting would cost in Belgian tax is
+computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
+a schedule and on demand, the database is backed up and the restore is proven, the digest
+arrives monthly, and the container's hardening is checked rather than declared. What is left
+in `0.9.0` is a custody-aware split of what a child costs, the benchmark's drift figure in
+the monthly narrative, and the first proposal handlers that write back to Actual; its slices
+ship as `0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+
+A month's spending now has an outside reference
+([#43](https://github.com/nrosier/Balancr/issues/43)). Statbel's Household Budget Survey
+publishes what share of its total an average Belgian household puts on housing, food,
+transport and seven other lines; your envelopes carry a COICOP division, and the budget page
+divides your month the same way. Savings, tax and transfers are set aside rather than
+counted, because the survey's shares are shares of household consumption and nothing else —
+and under 70% of the month mapped there is no comparison at all, since a chart built on a
+third of the money would be a chart about the mapping. The reference is then scaled to who
+lives here through the modified OECD scale, out of the same file, with the one part that is
+Balancr's rather than the source's marked as such: somebody here half the time counts at
+half their weight, which the published scale does not support and the card says beside the
+figure. Nothing in the file was transcribed as euros, so today's comparison is of shares and
+says that nothing in it claims you spend more than they do. A difference is `info` in the
+payload, capped there rather than by convention, and the stylesheet has no red cell to
+render one in. See
+[Comparing with Belgian households](#comparing-with-belgian-households).
 
 The slice that closed the milestone is the one that puts the other two on screen
 ([#41](https://github.com/nrosier/Balancr/issues/41)). "Some risk, but not super high risk"
@@ -1024,10 +1118,11 @@ moves and renames the database it replaces instead of deleting it. Most of what 
 there would be recomputed by morning anyway; what would not is the part you typed, which
 is the reason any of this exists. See [Backups](#backups).
 
-That closed the operational milestone, and `0.8.0` closed the advice one above it. What
-comes next is `0.9.0`: the outside numbers — a Statbel benchmark to compare a category
-against something other than your own past, a custody-aware split of what a child costs,
-and the first proposal handlers allowed to write back to Actual.
+That closed the operational milestone, and `0.8.0` closed the advice one above it. `0.9.0`
+is the outside numbers, and the Statbel benchmark at the top of this section is its first
+slice; what remains in it is a custody-aware split of what a child costs, the benchmark's
+drift figure in the monthly narrative, and the first proposal handlers allowed to write back
+to Actual.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

@@ -109,6 +109,92 @@ const ADVICE: Payload['advice'] = {
   presets: BANDS,
 }
 
+/**
+ * The benchmark side of the payload: the shipped file, a two-person household and a
+ * mapping with one of everything the panel has to tell apart.
+ *
+ * `Rent` is stored as `04.5.1` on purpose. A stored code may be deeper than the picker
+ * offers, and a `<select>` whose value matches no option silently displays the first —
+ * "Not mapped" — which would tell somebody a category is unmapped while the comparison
+ * counts it under housing. `Bank charges` is `00`, which is mapped and deliberately
+ * feeds no reference line. `Coffee` is unmapped, and `Salary` is income.
+ */
+const BENCHMARK: Payload['benchmark'] = {
+  file: {
+    source: {
+      survey: 'Household Budget Survey (HBS)',
+      year: 2024,
+      citation: 'Statbel, Household Budget Survey 2024 — structure of household expenditure',
+      sourceUrl: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs',
+      lastVerified: '2026-09-03',
+      status: 'transcribed',
+    },
+    equivalence: {
+      scale: 'modified_oecd',
+      firstPersonBp: 10_000,
+      additionalPersonBp: 5_000,
+      childBp: 3_000,
+      childAgeBelow: 14,
+      citation: 'Eurostat — equivalised disposable income, modified OECD scale',
+      sourceUrl: null,
+      lastVerified: '2026-09-03',
+      status: 'transcribed',
+    },
+    groups: [
+      { id: 'food', shareBp: 1_400, coicop: ['01'] },
+      { id: 'alcohol_tobacco', shareBp: 170, coicop: ['02'] },
+      { id: 'clothing', shareBp: 370, coicop: ['03'] },
+      { id: 'housing', shareBp: 3_060, coicop: ['04'] },
+      { id: 'furnishings', shareBp: 500, coicop: ['05'] },
+      { id: 'health', shareBp: 480, coicop: ['06'] },
+      { id: 'transport', shareBp: 1_170, coicop: ['07'] },
+      { id: 'recreation', shareBp: 790, coicop: ['09'] },
+      { id: 'hotels_restaurants', shareBp: 730, coicop: ['11'] },
+      { id: 'other', shareBp: 1_330, coicop: ['08', '10', '12'] },
+    ],
+    hasReferenceHousehold: false,
+    transcribed: ['source', 'equivalence'],
+  },
+  household: {
+    members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+  },
+  outsideCode: '00',
+  categories: [
+    {
+      categoryId: 'cat-coffee',
+      categoryName: 'Coffee',
+      isIncome: false,
+      hidden: false,
+      coicop: null,
+      spentCents: 8_000,
+    },
+    {
+      categoryId: 'cat-rent',
+      categoryName: 'Rent',
+      isIncome: false,
+      hidden: false,
+      coicop: '04.5.1',
+      spentCents: 120_000,
+    },
+    {
+      categoryId: 'cat-bank',
+      categoryName: 'Bank charges',
+      isIncome: false,
+      hidden: false,
+      coicop: '00',
+      spentCents: 1_500,
+    },
+    {
+      categoryId: 'cat-salary',
+      categoryName: 'Salary',
+      isIncome: true,
+      hidden: false,
+      coicop: null,
+      spentCents: 0,
+    },
+  ],
+}
+
 const PAYLOAD: Payload = {
   build: { version: '0.5.6', revision: 'abc1234' },
   profile: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
@@ -187,6 +273,7 @@ const PAYLOAD: Payload = {
   dedupe: [
     { ghostfolioId: 'g-broker', actualId: 'a-mirror', signals: ['name', 'balance'] },
   ],
+  benchmark: BENCHMARK,
   ai: {
     availability: { enabled: true, reason: null },
     models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
@@ -388,6 +475,10 @@ beforeAll(async () => {
 })
 
 afterEach(async () => {
+  // Before anything that awaits: one case freezes `Date` to pin the household's "as of"
+  // year, and a frozen clock left behind is the kind of failure that lands on the next
+  // test written months later.
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   // i18next is a singleton for the whole file, so the language test would otherwise
@@ -412,6 +503,8 @@ describe('the shape of the page', () => {
       'Assistant instructions',
       'Thresholds',
       'Accounts',
+      'Household',
+      'Benchmark mapping',
       'AI usage',
       'Status of this instance',
     ]) {
@@ -837,6 +930,204 @@ describe('accounts', () => {
         },
       ])
     })
+  })
+})
+
+describe('the household', () => {
+  const household = (): HTMLElement => form('household')
+
+  const saveHousehold = (): HTMLButtonElement =>
+    within(household()).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  const memberField = (label: string, at = 0): HTMLInputElement =>
+    (screen.getAllByLabelText(label)[at] ?? document.createElement('input')) as HTMLInputElement
+
+  it('says what each row reads as on the scale, and as of when', async () => {
+    // Only `Date` is faked, so the testing library's own waiting still uses real timers.
+    // The year has to be pinned at all: the panel classifies a member by their age *now*,
+    // so a test written against the wall clock would pass until the fixture's teenager has
+    // a birthday and then fail on a morning nobody touched this code.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-04T12:00:00Z'))
+
+    await open(READS)
+
+    // Born 2013, so thirteen in 2026 and under the file's threshold of fourteen, and here
+    // half the time. The row has to say both, because the weight that combination
+    // produces is 0,15 and nothing else on screen would explain that figure.
+    expect(
+      within(household()).getByText(/Counts at the child weight, 50\s?% of the time\./),
+    ).toBeTruthy()
+    expect(screen.getByText(/The weights below read as of 2026/)).toBeTruthy()
+  })
+
+  it('has nothing to save until a box is touched', async () => {
+    await open(READS)
+
+    expect(saveHousehold().disabled).toBe(true)
+  })
+
+  it('sends the whole roster, because removing a row cannot be expressed as a merge', async () => {
+    const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
+
+    fireEvent.click(within(household()).getByRole('button', { name: 'Add someone' }))
+    fireEvent.change(memberField('Name', 1), { target: { value: 'Lodger' } })
+    fireEvent.change(memberField('Year of birth', 1), { target: { value: '1998' } })
+    fireEvent.click(saveHousehold())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [
+              { birthYear: 2013, custodyBp: 5_000, label: 'Teenager' },
+              { birthYear: 1998, custodyBp: 10_000, label: 'Lodger' },
+            ],
+          },
+        },
+      ])
+    })
+  })
+
+  it('refuses a half-typed year rather than sending it', async () => {
+    const calls = await open(READS)
+
+    fireEvent.change(memberField('Year of birth'), { target: { value: '20' } })
+
+    expect(screen.getByText(/A four-digit year/)).toBeTruthy()
+    expect(saveHousehold().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('refuses a grouped custody share, which would read as five basis points', async () => {
+    const calls = await open(READS)
+
+    // `5.000` is 50% in every other reading on this site and `Number('5.000')` is 5 —
+    // a child who lives here 0,05% of the time.
+    fireEvent.change(memberField('Time here'), { target: { value: '5.000' } })
+
+    expect(saveHousehold().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('names the source of every figure the comparison uses', async () => {
+    await open(READS)
+
+    expect(
+      screen.getByText(/Statbel, Household Budget Survey 2024/, { exact: false }),
+    ).toBeTruthy()
+    expect(screen.getByText(/modified OECD scale/, { exact: false })).toBeTruthy()
+    // The two blocks nobody has confirmed, named rather than flagged with a symbol.
+    expect(
+      screen.getByText(/not yet confirmed at the source: the published shares and the equivalence scale\./),
+    ).toBeTruthy()
+    // No euro total was transcribed, so the panel says which comparison is impossible
+    // rather than leaving the budget page to be mysteriously share-only.
+    expect(screen.getByText(/only the mix is compared/)).toBeTruthy()
+  })
+
+  it('leaves the roster read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(memberField('Year of birth').disabled).toBe(true)
+    expect(saveHousehold().disabled).toBe(true)
+    // Still readable: the point of showing a viewer the panel is that they can see what
+    // the comparison was drawn against.
+    expect(memberField('Year of birth').value).toBe('2013')
+  })
+})
+
+describe('the benchmark mapping', () => {
+  const picker = (name: string): HTMLSelectElement =>
+    screen.getByLabelText(`COICOP division for ${name}`) as HTMLSelectElement
+
+  it('shows a deeper stored code as the division it counts as', async () => {
+    await open(READS)
+
+    // `04.5.1` is what is stored and `04` is what the comparison reads. A picker that
+    // could not match the value would fall back to its first option and say "Not
+    // mapped" about a category that is being counted under housing.
+    expect(picker('Rent').value).toBe('04')
+    expect(screen.getByText('Housing, water and energy')).toBeTruthy()
+  })
+
+  it('says which reference line a division feeds, and that `00` feeds none', async () => {
+    await open(READS)
+
+    expect(picker('Bank charges').value).toBe('00')
+    expect(screen.getByText('Not compared')).toBeTruthy()
+  })
+
+  it('counts only what a comparison would call unmapped', async () => {
+    await open(READS)
+
+    // Four categories, but income is not compared and two are mapped: only `Coffee` is
+    // missing a division, and a count that included `Salary` would send somebody
+    // looking for a mapping that changes nothing.
+    expect(screen.getByText('1 of 4 categories has no division yet.')).toBeTruthy()
+  })
+
+  it('writes one division as soon as it is picked', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/categories/cat-coffee/coicop': json(PAYLOAD),
+    })
+
+    fireEvent.change(picker('Coffee'), { target: { value: '01' } })
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-coffee/coicop',
+          method: 'PATCH',
+          body: { coicop: '01' },
+        },
+      ])
+    })
+  })
+
+  it('sends null to take a wrong mapping back', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/categories/cat-rent/coicop': json(PAYLOAD),
+    })
+
+    fireEvent.change(picker('Rent'), { target: { value: '' } })
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-rent/coicop',
+          method: 'PATCH',
+          body: { coicop: null },
+        },
+      ])
+    })
+  })
+
+  it('offers the twelve divisions plus the one code that means "not consumption"', async () => {
+    await open(READS)
+
+    const options = Array.from(picker('Coffee').options, (option) => option.value)
+    expect(options).toEqual([
+      '',
+      '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12',
+      '00',
+    ])
+  })
+
+  it('leaves the mapping read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(picker('Coffee').disabled).toBe(true)
   })
 })
 

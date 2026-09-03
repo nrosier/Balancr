@@ -64,6 +64,10 @@ function input(overrides: Partial<SignalInput> = {}): SignalInput {
     mismatches: [],
     accounts: [],
     latestPortfolioSnapshot: null,
+    // No benchmark file in a unit fixture: the comparison is a caller's input here
+    // precisely because it reads a YAML and a settings row, neither of which this
+    // orchestrator should have to have on disk to be tested.
+    benchmark: { kind: 'unavailable', reason: 'no_file', mappedShareBp: null },
     params: DEFAULT_PARAMS,
     ...overrides,
   }

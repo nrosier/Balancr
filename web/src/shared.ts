@@ -26,6 +26,10 @@
  *    says so: the settings screen draws four bands and offers three presets, and the
  *    order of both is a decision made once. The rest of `domain/advice/` reaches the
  *    database and stays on the server.
+ *  - **The benchmark vocabulary.** `domain/benchmark/vocabulary.ts` is split out of the
+ *    loader for this import: the mapping form draws a picker over the twelve COICOP
+ *    divisions plus the reserved `00`, and the benchmark card names the two thresholds the
+ *    comparison applied. Everything else in `domain/benchmark/` reads a YAML file off disk.
  *  - **The shared-prompt sentinel.** `domain/ai/prompt-locale.ts` is its own module for
  *    this import: the prompt editor has to know which value means "not a language's own
  *    text", and a literal `'*'` on this side is how the picker's first entry comes to
@@ -70,6 +74,9 @@ export type {
   AiRun,
   AiRunPayload,
   BandsSetting,
+  BenchmarkGroupLine,
+  BenchmarkSetting,
+  BenchmarkWire,
   Budget,
   DriftLine,
   Freshness,
@@ -108,6 +115,17 @@ export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'
+
+export {
+  BENCHMARK_GROUPS,
+  COICOP_DIVISIONS,
+  divisionOf,
+  MAX_HOUSEHOLD_MEMBERS,
+  MIN_DELTA_BP,
+  MIN_MAPPED_BP,
+  OUTSIDE_CONSUMPTION,
+} from '../../src/domain/benchmark/vocabulary.ts'
+export type { BenchmarkGroup, CoicopDivision } from '../../src/domain/benchmark/vocabulary.ts'
 
 export type {
   BootstrapResponse,

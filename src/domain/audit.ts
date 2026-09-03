@@ -60,6 +60,18 @@ export const AUDIT_ACTIONS = [
   'settings.advice',
   'settings.locale',
   /**
+   * Who lives here, and which reference line a category feeds (#43).
+   *
+   * `settings.coicop` is the one entry on this list that lands in `category_meta`, a
+   * table the AI path already writes through `proposal.apply`. Same entity on purpose:
+   * a category's history should read as one list whether the mapping came from an
+   * approved proposal or from somebody picking it off a menu, and the alternative — a
+   * second action name against `settings` — would hide half of it from the view that
+   * matters.
+   */
+  'settings.household',
+  'settings.coicop',
+  /**
    * A job someone started by hand.
    *
    * The odd one out, and worth saying why it belongs. Nothing a refresh writes is

@@ -29,6 +29,7 @@ import {
 } from '../domain/aggregate/month-store.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
+import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
 import { persistSignals } from '../domain/aggregate/signals-store.ts'
 import { latestSnapshotDate } from '../domain/portfolio/store.ts'
@@ -85,6 +86,12 @@ interface Shared {
   netWorthHistory: readonly { date: string; totalCents: number }[]
   latestPortfolioSnapshot: string | null
   params: ReturnType<typeof loadParams>
+  /**
+   * The benchmark file, the household and the category mapping, read once for the
+   * whole pass (#43). Shared rather than per month for the same reason the account
+   * list is: none of the three is a fact about a particular month.
+   */
+  benchmark: ReturnType<typeof benchmarkContext>
 }
 
 /**
@@ -105,11 +112,12 @@ export function judgeMonth(
   if (totalsHistory.length === 0) return null
 
   const window = totalsHistory.map((totals) => totals.month)
+  const facts = loadFacts(db, month)
   const result = computeSignals({
     month,
     today: shared.today,
     monthProgress: monthElapsed,
-    facts: loadFacts(db, month),
+    facts,
     totalsHistory,
     netWorth: shared.netWorth,
     netWorthHistory: shared.netWorthHistory,
@@ -120,6 +128,7 @@ export function judgeMonth(
     mismatches: loadMismatches(db, [month]),
     accounts: shared.accounts,
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
+    benchmark: compareMonth(shared.benchmark, month, facts),
     params: shared.params,
   })
 
@@ -143,6 +152,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     netWorthHistory: loadNetWorthHistory(db),
     latestPortfolioSnapshot: latestSnapshotDate(db),
     params: loadParams(db),
+    benchmark: benchmarkContext(db),
   }
 
   let months = 0

@@ -1,4 +1,66 @@
 {
+  "benchmark": {
+    "block": {
+      "equivalence": "the equivalence scale",
+      "reference_household": "the average household's euro total",
+      "source": "the published shares"
+    },
+    "caption": "Your spending per group, against {{survey}} {{year}} shares",
+    "column": {
+      "difference": "Difference",
+      "group": "Group",
+      "reference": "Reference",
+      "referenceShare": "Their share",
+      "state": "Reads as",
+      "yourShare": "Your share",
+      "yours": "You"
+    },
+    "group": {
+      "alcohol_tobacco": "Alcohol and tobacco",
+      "clothing": "Clothing and footwear",
+      "food": "Food and non-alcoholic drinks",
+      "furnishings": "Furnishings and household goods",
+      "health": "Health",
+      "hotels_restaurants": "Restaurants and hotels",
+      "housing": "Housing, water and energy",
+      "other": "Other expenditure",
+      "recreation": "Recreation and culture",
+      "transport": "Transport"
+    },
+    "household": {
+      "children_one": "{{value}} of them counts at the child weight.",
+      "children_other": "{{value}} of them count at the child weight.",
+      "line_one": "You and {{value}} other person: {{scale}} on the equivalence scale.",
+      "line_other": "You and {{value}} others: {{scale}} on the equivalence scale.",
+      "prorated": "Somebody is here part of the time, so their weight is cut to their share of it. That proration is Balancr's own assumption — the published scale has no notion of part-time membership.",
+      "solo": "One person: {{scale}} on the equivalence scale."
+    },
+    "lede": {
+      "level": "What {{month}} came to, against what a household of your size spent according to the {{survey}} {{year}}: your {{total}} of compared spending against theirs, euro for euro.",
+      "mix": "How your {{total}} of {{month}} spending divides, against the shares Belgian households reported in the {{survey}} {{year}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
+    },
+    "mapped": "{{share}} of your {{consumption}} of household spending is mapped to a group, and only that part is compared.",
+    "outside": "{{amount}} of savings, taxes and transfers sits outside the comparison: it is not household consumption, and the survey's shares do not cover it.",
+    "source": "{{citation}}. Last checked {{verified}}.",
+    "state": {
+      "above": "Above reference",
+      "below": "Below reference",
+      "inLine": "In line",
+      "unmapped": "Nothing mapped"
+    },
+    "title": "Compared with Belgian households",
+    "transcribed": "Not yet confirmed at the source: {{blocks}}.",
+    "unavailable": {
+      "hint": "Map your categories to a COICOP division under Settings and the comparison appears here.",
+      "no_mapping": "None of this month's spending is mapped to a benchmark group, so there is nothing to compare it against yet.",
+      "too_unmapped": "Only {{share}} of this month's spending is mapped to a benchmark group, under the {{floor}} a comparison needs. What it would say about housing would really be a statement about the mapping."
+    },
+    "unmapped": {
+      "hint": "Give each of these a COICOP division under Settings and they join the comparison.",
+      "line": "{{name}} — {{value}}, {{share}} of the month",
+      "title": "Left out of the comparison"
+    }
+  },
   "category": {
     "description": "What is this for?",
     "descriptionHint": "Your own note. The assistant uses it to reason about this category.",

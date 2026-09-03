@@ -26,6 +26,13 @@ import {
   UNAVAILABLE_REASONS,
 } from '../../../domain/advice/suggest.ts'
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
+import { BENCHMARK_BASES, BENCHMARK_UNAVAILABLE } from '../../../domain/benchmark/compare.ts'
+import {
+  BENCHMARK_BLOCKS,
+  BENCHMARK_GROUPS,
+  COICOP_DIVISIONS,
+  OUTSIDE_CONSUMPTION,
+} from '../../../domain/benchmark/vocabulary.ts'
 import { AI_OFF_REASONS } from '../../../domain/ai/availability.ts'
 import { ASSUMPTIONS, UNKNOWN_REASONS } from '../../../domain/tax/estimate.ts'
 import { TAX_RULE_IDS } from '../../../domain/tax/rules.ts'
@@ -184,6 +191,93 @@ export const categoryFactSchema = z.object({
   trendCents: z.array(cents()),
 })
 
+// ---------------------------------------------------------------------------
+//  Benchmark (#43)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a reference figure came from and when anybody last checked.
+ *
+ * The same four fields the tax block carries, and for the same reason: a national
+ * average with no citation is a number this app made up. `status` is the one worth
+ * reading — `transcribed` means the figures were typed in off a summary page and
+ * nobody has confirmed them against the survey's own tables.
+ */
+export const benchmarkSourceSchema = z.object({
+  survey: z.string(),
+  year: z.int(),
+  citation: z.string(),
+  sourceUrl: z.string().nullable(),
+  lastVerified: dateKey(),
+  status: z.enum(['confirmed', 'transcribed']),
+})
+
+/** One reference line: your spending on it, the published share, and the gap. */
+export const benchmarkGroupSchema = z.object({
+  group: z.enum(BENCHMARK_GROUPS),
+  yourCents: cents(),
+  /** Your share of *compared* spending — unmapped categories are in neither side. */
+  yourShareBp: basisPoints(),
+  referenceShareBp: basisPoints(),
+  /** The reference as money, on whichever basis the comparison says it used. */
+  benchmarkCents: cents(),
+  /** Signed. Null where the reference is zero, which no percentage can describe. */
+  deltaBp: basisPoints().nullable(),
+  deltaCents: cents(),
+  /** How many of your categories feed this line, so the mapping reads as a total. */
+  categories: z.int().nonnegative(),
+})
+
+/**
+ * Your month against the household budget survey, or the reason there is no comparison.
+ *
+ * A discriminated union rather than a nullable object, because "no benchmark" has four
+ * distinct causes and each needs a different sentence: no file shipped, no spending in
+ * the month, nothing mapped at all, and too little mapped to be worth drawing. A `null`
+ * would collapse all four into a blank space on the page.
+ *
+ * `basis` is on the wire because the two comparisons answer different questions — see
+ * `compare.ts` — and `transcribed` and `household.prorated` are there because #43 asks
+ * for the assumption to be stated on screen, which means the screen has to be told.
+ */
+export const benchmarkComparisonSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('ok'),
+    month: monthKey(),
+    basis: z.enum(BENCHMARK_BASES),
+    groups: z.array(benchmarkGroupSchema),
+    comparedCents: cents(),
+    consumptionCents: cents(),
+    /** Savings, taxes and transfers: excluded by mapping rather than by omission. */
+    outsideCents: cents(),
+    mappedShareBp: basisPoints(),
+    /** Categories with no COICOP code, largest first, with what they are worth. */
+    unmapped: z.array(
+      z.object({
+        categoryId: z.string(),
+        categoryName: z.string(),
+        spentCents: cents(),
+        shareBp: basisPoints(),
+      }),
+    ),
+    household: z.object({
+      /** The household's size on the equivalence scale, in basis points. */
+      bp: basisPoints(),
+      prorated: z.boolean(),
+      children: z.int().nonnegative(),
+      members: z.int().nonnegative(),
+    }),
+    referenceHouseholdBp: basisPoints().nullable(),
+    source: benchmarkSourceSchema,
+    transcribed: z.array(z.enum(BENCHMARK_BLOCKS)),
+  }),
+  z.object({
+    kind: z.literal('unavailable'),
+    reason: z.enum(BENCHMARK_UNAVAILABLE),
+    mappedShareBp: basisPoints().nullable(),
+  }),
+])
+
 export const budgetSchema = z.object({
   freshness: freshnessSchema,
   month: monthKey(),
@@ -213,6 +307,15 @@ export const budgetSchema = z.object({
   trendMonths: z.array(monthKey()),
   categories: z.array(categoryFactSchema),
   signals: z.array(signalSchema),
+  /**
+   * The Statbel comparison, computed for this request rather than stored.
+   *
+   * On the budget response and not on `insights`, because it is context for a month's
+   * spending and the month picker is here. Recomputed per request for the reason
+   * `context.ts` gives: it is a function of the COICOP mapping and the household, both
+   * of which are edited two clicks away in settings.
+   */
+  benchmark: benchmarkComparisonSchema,
   uncategorised: z
     .object({ txnCount: z.int().nonnegative(), amountCents: cents() })
     .nullable(),
@@ -864,6 +967,84 @@ export const statusSchema = z.object({
  * its twenty-odd fields. A hand-written mirror would drift on the first threshold
  * anyone adds, and drift here means a form that silently drops a field.
  */
+/**
+ * What the benchmark panel edits, and the file it is editing against.
+ *
+ * `file` is null when no benchmark is configured, which is a supported deployment and
+ * not a fault — the panel then says the comparison is off rather than drawing an empty
+ * form. Everything under it is read-only: the shares are the survey's, and a screen that
+ * let somebody edit them would be a screen that manufactures a reference.
+ *
+ * The two editable things are `household` and the per-category `coicop` code. The
+ * mapping is offered as the **twelve COICOP divisions** plus `00`, not as the ten
+ * reference groups, because three divisions share the survey's "other" line and picking
+ * "other" would leave the code ambiguous. `groups` travels with the file so the form can
+ * show which reference line each division feeds.
+ */
+export const benchmarkSettingSchema = z.object({
+  file: z
+    .object({
+      source: benchmarkSourceSchema,
+      equivalence: z.object({
+        scale: z.string(),
+        firstPersonBp: basisPoints(),
+        additionalPersonBp: basisPoints(),
+        childBp: basisPoints(),
+        childAgeBelow: z.int().positive(),
+        citation: z.string(),
+        sourceUrl: z.string().nullable(),
+        lastVerified: dateKey(),
+        status: z.enum(['confirmed', 'transcribed']),
+      }),
+      groups: z.array(
+        z.object({
+          id: z.enum(BENCHMARK_GROUPS),
+          shareBp: basisPoints(),
+          coicop: z.array(z.enum(COICOP_DIVISIONS)),
+        }),
+      ),
+      /**
+       * Whether the file carries the average household's euro total and size.
+       *
+       * Without it only the `mix` comparison is possible, and the panel has to say so —
+       * otherwise the euro figures nobody can see look like a bug rather than a block
+       * left blank on purpose.
+       */
+      hasReferenceHousehold: z.boolean(),
+      transcribed: z.array(z.enum(BENCHMARK_BLOCKS)),
+    })
+    .nullable(),
+  household: z.object({
+    members: z.array(
+      z.object({
+        birthYear: z.int(),
+        custodyBp: basisPoints(),
+        label: z.string().optional(),
+      }),
+    ),
+  }),
+  /** The code that means "not household consumption", for the picker's own entry. */
+  outsideCode: z.literal(OUTSIDE_CONSUMPTION),
+  /**
+   * Every category Balancr has seen, with the division it is mapped to.
+   *
+   * From `category_meta` rather than from a month's facts: a category with no spending
+   * this month still needs mapping, and the point of this list is to get through it.
+   * `spentCents` is the latest computed month, so the biggest unmapped envelope can be
+   * dealt with first.
+   */
+  categories: z.array(
+    z.object({
+      categoryId: z.string(),
+      categoryName: z.string(),
+      isIncome: z.boolean(),
+      hidden: z.boolean(),
+      coicop: z.string().nullable(),
+      spentCents: cents(),
+    }),
+  ),
+})
+
 export const settingsSchema = z.object({
   /**
    * Which build is answering.
@@ -886,6 +1067,8 @@ export const settingsSchema = z.object({
   paramDefaults: aggregateParamsSchema,
   /** The risk profile advice is measured against. See `riskProfileSettingSchema`. */
   advice: riskProfileSettingSchema,
+  /** The benchmark file, the household it is scaled to, and the mapping. */
+  benchmark: benchmarkSettingSchema,
   prompts: z.array(promptSchema),
   accounts: z.array(accountSettingSchema),
   /**
@@ -1104,6 +1287,9 @@ export type PromptDiff = z.infer<typeof promptDiffSchema>
 export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
+export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
+export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>
+export type BenchmarkGroupLine = z.infer<typeof benchmarkGroupSchema>
 export type BandsSetting = z.infer<typeof bandsSettingSchema>
 export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
