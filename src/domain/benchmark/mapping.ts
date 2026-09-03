@@ -24,6 +24,15 @@
  *    may *write* is the division alone, because that is the granularity the comparison
  *    uses and offering four levels of a classification nobody has to hand would be a form
  *    people abandon.
+ *
+ * `custody_shared` (#44) is here for the first of those reasons word for word. Its only
+ * writers were an approved `category_meta.set` proposal and an answered
+ * `custody_shared_unknown` clarification — both of which need a Gemini key — so the
+ * shared-cost split was a feature an installation without AI could not switch on at all.
+ * It shares this module rather than sitting beside the split itself because the row, the
+ * guard against conjuring one, and the settings list both fields are read out of are the
+ * same three things; splitting them would mean two copies of `requireCategory` and two
+ * lists of categories on one screen.
  */
 import { eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
@@ -44,6 +53,16 @@ export interface CategoryMapping {
   readonly hidden: boolean
   /** As stored, which may be a deeper code than the picker offers. Null when unmapped. */
   readonly coicop: string | null
+  /**
+   * Whether the cost is split with a co-parent (#44).
+   *
+   * On the same row as the mapping because it is the same question asked of the same
+   * list — "what kind of cost is this" — and because a person going through fifty
+   * envelopes should do it once. The split itself ignores this on income and hidden
+   * categories, which is why the form disables it there rather than storing a flag that
+   * does nothing.
+   */
+  readonly custodyShared: boolean
   /** The latest computed month, so the biggest envelope can be dealt with first. */
   readonly spentCents: number
 }
@@ -78,6 +97,7 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
       isIncome: categoryMeta.isIncome,
       hidden: categoryMeta.hidden,
       coicop: categoryMeta.coicopCode,
+      custodyShared: categoryMeta.custodyShared,
     })
     .from(categoryMeta)
     .all()
@@ -95,23 +115,44 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
 }
 
 /**
- * Stores one category's division, or clears it.
+ * Throws unless the category already has a metadata row.
  *
- * Throws rather than inserting when the category is unknown: `category_meta` rows are
- * written by the sync pass out of what Actual actually has, and a row conjured here would
- * be a category that exists only in Balancr — which would then show up in the mapping
+ * Both writers below update rather than upsert, and that is deliberate: `category_meta`
+ * rows are written by the sync pass out of what Actual actually has, and a row conjured
+ * here would be a category that exists only in Balancr — which would then show up in this
  * table for ever with no way to tell it from a real one.
  */
-export function saveCoicop(db: Db, categoryId: string, code: CoicopChoice | null): void {
+function requireCategory(db: Db, categoryId: string): void {
   const existing = db
     .select({ categoryId: categoryMeta.categoryId })
     .from(categoryMeta)
     .where(eq(categoryMeta.categoryId, categoryId))
     .get()
   if (existing === undefined) throw new MappingError(`category ${categoryId} has no metadata row`)
+}
+
+/** Stores one category's division, or clears it. */
+export function saveCoicop(db: Db, categoryId: string, code: CoicopChoice | null): void {
+  requireCategory(db, categoryId)
 
   db.update(categoryMeta)
     .set({ coicopCode: code, updatedAt: new Date() })
+    .where(eq(categoryMeta.categoryId, categoryId))
+    .run()
+}
+
+/**
+ * Flags one category as shared with a co-parent, or takes the flag back (#44).
+ *
+ * A boolean and not nullable, unlike the division: there is no third state to express. A
+ * category is either one the arrangement splits or it is not, and "unknown" is what the
+ * clarification queue is for.
+ */
+export function saveCustodyShared(db: Db, categoryId: string, shared: boolean): void {
+  requireCategory(db, categoryId)
+
+  db.update(categoryMeta)
+    .set({ custodyShared: shared, updatedAt: new Date() })
     .where(eq(categoryMeta.categoryId, categoryId))
     .run()
 }

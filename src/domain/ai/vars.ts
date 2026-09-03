@@ -130,6 +130,15 @@ const NUMERIC_VARS: {
       target: monthsFromBp(m.targetMonthsBp, translate),
     }),
   net_worth_high: (m) => present({ amount: money(m.amountCents) }),
+  // `amount` is the offset — the co-parent's share of what you paid — and `paid` is
+  // Actual's own figure, printed beside it because the sentence is only honest with
+  // both: half of something is not a claim until the something is on screen.
+  custody_offset: (m) =>
+    present({
+      amount: money(m.offsetCents),
+      paid: money(m.paidCents),
+      share: percent(m.shareBp),
+    }),
 
   // --- data hygiene ---
   // A count arrives pre-formatted, unlike a duration: these sentences have no

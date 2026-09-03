@@ -812,3 +812,12 @@
 .mapping__flag {
   margin-left: var(--space-2);
 }
+
+/*
+ * The co-parent checkbox (#44). Centred under its header and no wider than the word
+ * above it, so a column of ticks reads as a column rather than as fifty stray boxes
+ * drifting left of a heading three times their width.
+ */
+.mapping__shared {
+  text-align: center;
+}

@@ -68,6 +68,7 @@ import {
   loadMapping,
   MappingError,
   saveCoicop,
+  saveCustodyShared,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
 import { aiAvailability } from '../../domain/ai/availability.ts'
@@ -212,6 +213,20 @@ const householdPatchRequest = z.strictObject({
       label: z.string().optional(),
     }),
   ),
+  /**
+   * The share of a shared cost that is yours, or null to derive it from the roster (#44).
+   *
+   * Nullable because going back to a derived share is a correction somebody has to be able
+   * to make, and a field that only accepts numbers makes "stop guessing for me" the one
+   * gesture the form cannot express.
+   *
+   * Optional so a form that predates the field is not rejected — and, like `members`,
+   * omitting it *replaces* rather than preserves: the household is one row written
+   * wholesale, so a patch without this field leaves a derived share behind. That is the
+   * safe direction of the two, because a stated share silently surviving a roster edit is
+   * how somebody ends up reading a split they thought they had removed.
+   */
+  sharedCostBp: z.number().int().nullable().optional(),
 })
 
 /**
@@ -223,6 +238,16 @@ const householdPatchRequest = z.strictObject({
  * `mapping.ts` for why the picker stops at two digits.
  */
 const coicopPatchRequest = z.strictObject({ coicop: z.enum(COICOP_CHOICES).nullable() })
+
+/**
+ * Whether one category's cost is split with a co-parent (#44).
+ *
+ * A required boolean, not an optional one: a checkbox always knows which way it was just
+ * moved, and an absent field would make "no longer shared" impossible to send — the same
+ * argument the nullable division above makes, arriving at a plainer type because there
+ * are only two states to express.
+ */
+const custodySharedPatchRequest = z.strictObject({ custodyShared: z.boolean() })
 
 const accountPatchRequest = z.strictObject({
   kind: z.enum(['checking', 'savings', 'credit', 'investment', 'cash', 'other']).optional(),
@@ -381,6 +406,7 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
         custodyBp: member.custodyBp,
         ...(member.label === undefined ? {} : { label: member.label }),
       })),
+      sharedCostBp: household.sharedCostBp,
     },
     outsideCode: '00',
     categories: loadMapping(db, latestStoredMonth(db)),
@@ -653,6 +679,50 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: { coicopCode: before.coicop },
       after: { coicopCode: coicop },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Whether a category's cost is shared with a co-parent (#44).
+   *
+   * The third writer of `category_meta` a person can reach without a Gemini key, and the
+   * only one for this column: before it, `custody_shared` could be set by approving a
+   * `category_meta.set` proposal or answering a `custody_shared_unknown` clarification,
+   * and nothing else — which made the shared-cost split the one feature on the budget page
+   * that an installation with no AI configured could never switch on. "Make AI optional"
+   * is a requirement, so a flag only the model can set is a bug in the requirement's terms.
+   *
+   * Deliberately not refused for an income or hidden category, though the split ignores
+   * both: a category can be hidden after it was flagged, and a route that rejected the
+   * flag would then also refuse to let it be *removed*. The form disables the box instead,
+   * which says the same thing where somebody can read it.
+   */
+  app.patch('/api/settings/categories/:id/custody-shared', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const categoryId = (request.params as { id: string }).id
+    const { custodyShared } = parseBody(custodySharedPatchRequest, request.body)
+
+    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      saveCustodyShared(db, categoryId, custodyShared)
+    } catch (error) {
+      // As above: only reachable if a sync dropped the category between the two
+      // statements, which is a 404 rather than a 500 because nothing is broken.
+      if (error instanceof MappingError) throw notFound('No such category.')
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.custodyShared',
+      entity: 'category_meta',
+      entityRef: categoryId,
+      actorId: user.id,
+      before: { custodyShared: before.custodyShared },
+      after: { custodyShared },
     })
 
     return buildSettings(db, request)

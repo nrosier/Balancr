@@ -60,6 +60,11 @@ const ALL_METRICS: Record<string, number> = {
   shortfallCents: 225_000,
   previousHighCents: 4_800_000,
   gainCents: 120_000,
+  // custody (#44): what was paid on shared costs, what is borne, and the share applied
+  offsetCents: 26_000,
+  paidCents: 52_000,
+  borneCents: 26_000,
+  shareBp: 5_000,
   // hygiene
   count: 1_312,
   differenceCents: -1_450,
@@ -213,6 +218,20 @@ describe('rendering carries the finding through', () => {
     const household = signal('savings_rate_low', { categoryId: null, categoryName: null })
     expect(renderSignal(household, 'en')).not.toBeNull()
     expect(renderSignal(household, 'nl')).not.toBeNull()
+  })
+
+  it('prints the paid figure beside the offset in the custody finding (#44)', () => {
+    // Both numbers or neither: "€ 260 is the co-parent's" is not a claim anybody can
+    // check until the € 520 it came out of is in the same sentence. The share is there
+    // for the same reason — it is what makes the arithmetic visible rather than magic.
+    const custody = signal('custody_offset', { categoryId: null, categoryName: null })
+    expect(norm(renderSignal(custody, 'en')?.text ?? '')).toBe(
+      "You paid € 520,00 on shared costs; at a 50% share, € 260,00 of that is the co-parent's.",
+    )
+    expect(norm(renderSignal(custody, 'nl')?.text ?? '')).toContain('\u20ac 520,00')
+    // Good news by declaration: paying a bill that gets split is not an overrun, and the
+    // insights page styles it apart from one.
+    expect(renderSignal(custody)?.negative).toBe(false)
   })
 
   it('translates the benchmark group a benchmark finding names (#43)', () => {
