@@ -2,7 +2,7 @@
  * One figure, large, with the smaller figures it is made of underneath.
  *
  * Every value arrives already formatted, and that is deliberate for the same reason
- * `Placeholder` takes finished strings: a component that took cents and a catalogue
+ * `PageHeader` takes finished strings: a component that took cents and a catalogue
  * key would be a second formatting layer, and the first thing that goes wrong in a
  * second formatting layer is that it forgets `format.ts` and prints `1,234.56`.
  * `value: null` is the exception it does have to know about — "not known yet" is a

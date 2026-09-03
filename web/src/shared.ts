@@ -57,6 +57,8 @@ export type {
   AccountSetting,
   AiDryRun,
   AiEstimate,
+  AiRun,
+  AiRunPayload,
   Budget,
   Freshness,
   Hygiene,
@@ -74,7 +76,12 @@ export type {
   Status,
 } from '../../src/server/routes/api/schemas.ts'
 
-export { FINDING_SPECS, isFindingCode, missingVars } from '../../src/domain/ai/codes.ts'
+export {
+  FINDING_SPECS,
+  isFindingCode,
+  missingVars,
+  SEVERITY_RANK,
+} from '../../src/domain/ai/codes.ts'
 export type { FindingCode, Severity } from '../../src/domain/ai/codes.ts'
 
 export { findingVars, isNeverReconciled } from '../../src/domain/ai/vars.ts'

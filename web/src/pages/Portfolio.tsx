@@ -29,7 +29,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { FreshnessNote } from '../ui/Freshness.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
-import { PageHeader } from './Placeholder.tsx'
+import { PageHeader } from './PageHeader.tsx'
 
 /** Whole euro. Cents on a portfolio total are noise, and the row prices carry them. */
 const euro = (cents: number): string => formatMoney(cents, { whole: true })

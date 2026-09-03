@@ -9,7 +9,7 @@
 import type { ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { Link } from '../router.tsx'
-import { PageHeader } from './Placeholder.tsx'
+import { PageHeader } from './PageHeader.tsx'
 
 export function NotFound(): ReactNode {
   const { t } = useT()
