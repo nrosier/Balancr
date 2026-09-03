@@ -175,7 +175,7 @@
   grid-column: 1 / -1;
   margin: 0;
   font-size: var(--type-xs);
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .thresholds__field .field__issue {
@@ -366,7 +366,7 @@
 .diff__gutter {
   flex: 0 0 2.5rem;
   text-align: right;
-  color: var(--text-faint);
+  color: var(--text-muted);
   user-select: none;
 }
 

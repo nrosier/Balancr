@@ -497,7 +497,7 @@
  */
 .table-scroll {
   overflow-x: auto;
-  /* The element takes `tabIndex={0}`, so it is reachable and scrollable by keyboard. */
+  /* A named `region` with `tabIndex={0}`, so it is reachable and scrollable by keyboard. */
   scrollbar-gutter: stable;
 }
 

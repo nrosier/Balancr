@@ -358,6 +358,16 @@ describe('a portfolio with positions in it', () => {
     const table = await screen.findByRole('table')
     expect(table.parentElement?.getAttribute('tabindex')).toBe('0')
   })
+
+  it('names that focus stop, so it announces as something rather than as nothing', async () => {
+    // A `tabIndex` on a bare `div` is a stop a screen reader reaches and cannot
+    // describe. The caption already names the table; the region borrows it rather than
+    // inventing a second name that could drift from the first.
+    show()
+    const region = await screen.findByRole('region', { name: '3 holdings, largest first.' })
+    expect(region.className).toBe('table-scroll')
+    expect(region.querySelector('table')).not.toBeNull()
+  })
 })
 
 describe('money at the broker that is not invested', () => {
