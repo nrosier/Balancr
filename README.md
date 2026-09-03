@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.5.16-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.5.17-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -486,7 +486,7 @@ Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)), the
 accessibility and responsive pass
 ([#35](https://github.com/nrosier/Balancr/issues/35)) and per-locale prompts
 ([#133](https://github.com/nrosier/Balancr/issues/133)) —
-shipping as `0.5.17`, `0.5.18`, … until every issue in that milestone is closed and
+shipping as `0.5.18`, `0.5.19`, … until every issue in that milestone is closed and
 `0.6.0` lands.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
