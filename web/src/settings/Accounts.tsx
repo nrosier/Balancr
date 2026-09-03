@@ -21,13 +21,14 @@
  */
 import type { ReactNode } from 'react'
 import { useT } from '../i18n.ts'
+import { formatList } from '../shared.ts'
 import type { AccountSetting } from '../shared.ts'
 import { ACCOUNT_KINDS } from './kinds.ts'
 import { Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
 
 export function AccountsPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const { accounts, dedupe } = settings
 
   const nameOf = (id: string): string =>
@@ -52,41 +53,72 @@ export function AccountsPanel({ settings, state, owner }: SettingsPanelProps): R
               <p className="notice__lead">{t('settings:accounts.dedupe.title')}</p>
               <p className="notice__hint">{t('settings:accounts.dedupe.hint')}</p>
               <ul className="dedupe">
-                {dedupe.map((pair) =>
-                  pair.possibleMirrorIds.map((mirrorId) => (
-                    <li className="dedupe__pair" key={`${pair.ghostfolioId}:${mirrorId}`}>
-                      <p className="dedupe__text">
-                        {t('settings:accounts.dedupe.pair', {
-                          ghostfolio: nameOf(pair.ghostfolioId),
-                          actual: nameOf(mirrorId),
-                        })}
-                      </p>
-                      <div className="dedupe__actions">
-                        {[pair.ghostfolioId, mirrorId].map((truthId) => (
-                          <button
-                            key={truthId}
-                            type="button"
-                            className="button button--quiet"
-                            disabled={!owner || state.busy}
-                            onClick={() => {
-                              state.save(
-                                `group:${truthId}`,
-                                'POST',
-                                '/api/settings/accounts/group',
-                                {
-                                  accountMapIds: [pair.ghostfolioId, mirrorId],
-                                  sourceOfTruthId: truthId,
-                                },
-                              )
-                            }}
-                          >
-                            {t('settings:accounts.dedupe.useThis', { name: nameOf(truthId) })}
-                          </button>
-                        ))}
-                      </div>
-                    </li>
-                  )),
-                )}
+                {dedupe.map((pair) => (
+                  <li className="dedupe__pair" key={`${pair.ghostfolioId}:${pair.actualId}`}>
+                    <p className="dedupe__text">
+                      {t('settings:accounts.dedupe.pair', {
+                        ghostfolio: nameOf(pair.ghostfolioId),
+                        actual: nameOf(pair.actualId),
+                      })}
+                    </p>
+                    {/*
+                      The evidence, in words. A suggestion a person cannot audit gets
+                      either accepted blindly or silenced destructively, and silencing
+                      it used to mean grouping two unrelated accounts — which drops
+                      real money out of net worth. Saying why is what makes the
+                      dismissal an informed answer rather than an escape.
+                    */}
+                    <p className="dedupe__why">
+                      {t('settings:accounts.dedupe.because', {
+                        signals: formatList(
+                          pair.signals.map((signal) =>
+                            t(`settings:accounts.dedupe.signal.${signal}`),
+                          ),
+                          language,
+                        ),
+                      })}
+                    </p>
+                    <div className="dedupe__actions">
+                      {[pair.ghostfolioId, pair.actualId].map((truthId) => (
+                        <button
+                          key={truthId}
+                          type="button"
+                          className="button button--quiet"
+                          disabled={!owner || state.busy}
+                          onClick={() => {
+                            state.save(
+                              `group:${truthId}`,
+                              'POST',
+                              '/api/settings/accounts/group',
+                              {
+                                accountMapIds: [pair.ghostfolioId, pair.actualId],
+                                sourceOfTruthId: truthId,
+                              },
+                            )
+                          }}
+                        >
+                          {t('settings:accounts.dedupe.useThis', { name: nameOf(truthId) })}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="button button--quiet"
+                        disabled={!owner || state.busy}
+                        title={t('settings:accounts.dedupe.notMirroredHint')}
+                        onClick={() => {
+                          state.save(
+                            `dismiss:${pair.ghostfolioId}`,
+                            'POST',
+                            `/api/settings/accounts/${pair.ghostfolioId}/not-mirrored`,
+                            {},
+                          )
+                        }}
+                      >
+                        {t('settings:accounts.dedupe.notMirrored')}
+                      </button>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}
