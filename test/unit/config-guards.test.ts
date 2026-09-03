@@ -349,6 +349,43 @@ describe('the egress settings (#39)', () => {
   })
 })
 
+describe('the fund universe settings (#40)', () => {
+  it('defaults the path to a file that is not in the image, so a new install is silent', async () => {
+    // The shipped template is `fund-universe.example.yaml`; this default points at the
+    // name without `example`, which nothing creates. No file means an empty universe
+    // means advice proposes nothing, which is the right behaviour for a list nobody has
+    // vetted yet.
+    const config = await configWith({})
+    expect(config.FUND_UNIVERSE_PATH).toBe('./config/fund-universe.yaml')
+    expect(config.FUND_UNIVERSE_MAX_AGE_DAYS).toBe(365)
+  })
+
+  it('refuses an empty path rather than reading the working directory', async () => {
+    expect((await loadWith({ FUND_UNIVERSE_PATH: '' }))?.message).toContain('FUND_UNIVERSE_PATH')
+  })
+
+  it('reads the age window as a whole number of days', async () => {
+    expect((await configWith({ FUND_UNIVERSE_MAX_AGE_DAYS: '90' })).FUND_UNIVERSE_MAX_AGE_DAYS)
+      .toBe(90)
+  })
+
+  it('refuses zero days, which would make every fund unproposable', async () => {
+    // Zero is not "always re-check": it is an app that can never propose anything, with
+    // no message saying why. Someone who wants that should empty the file.
+    expect((await loadWith({ FUND_UNIVERSE_MAX_AGE_DAYS: '0' }))?.message)
+      .toContain('FUND_UNIVERSE_MAX_AGE_DAYS')
+  })
+
+  it('refuses a decade and a fraction of a day', async () => {
+    // Ten years is not a verification window, it is the check turned off in a way that
+    // still looks configured.
+    expect((await loadWith({ FUND_UNIVERSE_MAX_AGE_DAYS: '3651' }))?.message)
+      .toContain('FUND_UNIVERSE_MAX_AGE_DAYS')
+    expect((await loadWith({ FUND_UNIVERSE_MAX_AGE_DAYS: '30.5' }))?.message)
+      .toContain('FUND_UNIVERSE_MAX_AGE_DAYS')
+  })
+})
+
 describe('.env.example as shipped (#118)', () => {
   /**
    * `.env.example` exactly as a new deployment would inherit it — every line,
