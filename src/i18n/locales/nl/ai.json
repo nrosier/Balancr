@@ -16,8 +16,11 @@
     "frequency_unknown": "Hoe vaak komt {{category}} terug?",
     "hint": "Eén keer beantwoord, blijvend onthouden.",
     "nature_unknown": "Is {{category}} een vaste kost, een variabele kost, of vrij besteedbaar?",
+    "none": "Er is niets dat uitleg nodig heeft.",
     "purpose_unknown": "Waarvoor gebruik je {{category}}?",
+    "readOnly": "Deze beantwoorden komt samen met het gesprek met de assistent, in een latere versie. Voorlopig is dit de lijst die hij heeft opgebouwd.",
     "sensitive_unknown": "Moet de naam {{category}} verborgen blijven voor de AI?",
+    "share": "{{share}} van de uitgaven deze maand",
     "suggestion": "Vermoeden: {{guess}}",
     "title": "Help de assistent begrijpen"
   },
@@ -29,6 +32,7 @@
     "emergency_fund_short": "Je buffer dekt {{months}}, minder dan de {{target}} die je nastreeft.",
     "income_change": "Je inkomen wijkt {{delta}} af van je gebruikelijke {{baseline}}.",
     "irregular_expense": "Een ongebruikelijke uitgave van {{amount}} in {{category}}.",
+    "month": "Voor {{month}}",
     "net_worth_high": "Je nettovermogen bereikte een nieuwe top van {{amount}}.",
     "no_spend_streak": "Al {{months}} niets besteed aan {{category}}.",
     "none": "Er is niets dat je aandacht vraagt.",
@@ -45,6 +49,7 @@
   "narrative": {
     "capped": "Maandelijks AI-budget bereikt — dit is de laatste analyse.",
     "generatedAt": "Geschreven op {{when}} door {{model}}",
+    "none": "Er is nog geen verhaal geschreven voor deze maand.",
     "stale": "Gebaseerd op gegevens van {{when}}.",
     "title": "Deze maand in woorden",
     "translate": "Dit in het {{language}} schrijven",
@@ -52,8 +57,29 @@
     "unnamedCategory": "een naamloze categorie"
   },
   "privacy": {
+    "caption_one": "De meest recente aanvraag aan het model.",
+    "caption_other": "De {{value}} meest recente aanvragen aan het model, nieuwste eerst.",
+    "column": {
+      "cost": "Kosten",
+      "kind": "Soort",
+      "model": "Model",
+      "status": "Resultaat",
+      "tokens": "Tokens",
+      "when": "Wanneer"
+    },
+    "hidePayload": "Verberg de verzonden gegevens",
     "hint": "Enkel categorienamen en bedragen. Geen tegenpartijen, geen verrichtingen.",
+    "kind": {
+      "chat": "Gesprek",
+      "clarify": "Vraag",
+      "dryrun": "Testrun",
+      "findings": "Analyse",
+      "narrative": "Verhaal"
+    },
+    "none": "Er zijn nog geen aanvragen verstuurd.",
     "title": "Wat is verzonden",
+    "tokens": "{{input}} in / {{output}} uit",
+    "unreadable": "De bewaarde gegevens konden niet worden gelezen.",
     "viewPayload": "Toon de exacte verzonden gegevens"
   },
   "proposal": {
@@ -68,6 +94,8 @@
       "userDescription": "Waarvoor het dient"
     },
     "hint": "Er verandert niets tot je het toepast.",
+    "none": "Er staat niets te wachten om toegepast te worden.",
+    "readOnly": "Een wijziging toepassen komt in een latere versie. Voorlopig kun je precies nalezen wat er zou veranderen.",
     "title": "Voorgestelde wijzigingen",
     "value": {
       "unset": "niet ingesteld"

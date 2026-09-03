@@ -99,8 +99,7 @@
       "lede": "Where the money went this month, and whether it is on track."
     },
     "insights": {
-      "lede": "What the analysis found, and what it wants you to confirm.",
-      "soon": "Coming next: findings by severity, the monthly narrative, the clarification queue and proposal review."
+      "lede": "What the analysis found, and what it wants you to confirm."
     },
     "overview": {
       "lede": "Net worth, savings rate and the health of the underlying data."

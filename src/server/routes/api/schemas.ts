@@ -256,6 +256,36 @@ export const portfolioSchema = z.object({
 //  Insights
 // ---------------------------------------------------------------------------
 
+/**
+ * One row of the AI ledger, without the payload that is the point of it.
+ *
+ * The payload is deliberately not here. Twenty redacted bundles of a few thousand
+ * tokens each would be most of this response, fetched on every page load, to render
+ * a list of dates and costs — `GET /api/insights/runs/:id/payload` fetches one when
+ * somebody actually opens it.
+ *
+ * A row exists whether or not the call went out, which is why `status` is on the
+ * wire beside the tokens: `capped` and `blocked` rows have a payload and cost
+ * nothing, and they are the ones worth reading, because they are the answers that
+ * are missing from the page. `error` is the upstream message stored verbatim — the
+ * only text in this file that Balancr did not write — and it is here because a
+ * failed run that will not say why is indistinguishable from one that never ran.
+ */
+export const aiRunSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['findings', 'narrative', 'clarify', 'chat', 'dryrun']),
+  model: z.string(),
+  locale: z.string(),
+  status: z.enum(['ok', 'error', 'blocked', 'capped']),
+  inputTokens: z.int().nonnegative(),
+  outputTokens: z.int().nonnegative(),
+  cachedTokens: z.int().nonnegative(),
+  costMicroEur: microEur(),
+  durationMs: z.int().nonnegative().nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+})
+
 export const insightsSchema = z.object({
   freshness: freshnessSchema,
   month: monthKey().nullable(),
@@ -264,9 +294,30 @@ export const insightsSchema = z.object({
     .object({
       period: z.string(),
       locale: z.string(),
-      /** Markdown, generated in this locale. The one free-text field in the API. */
-      body: z.string(),
+      /**
+       * The narrative as HTML, generated in this locale. The one free-text field
+       * in the API.
+       *
+       * Rendered here rather than shipped as its stored Markdown, because the
+       * stored text is not readable by anything: the model was given the month as
+       * opaque labels (`c7`, `a3`) and wrote them back, so `bodyMd` says "c7 is
+       * 18% above" and only the server can resolve `c7` to a name. Substituting
+       * on the way out is also what keeps the names out of the row — the translate
+       * action sends `bodyMd` back to Google, and a sensitive category's name must
+       * not be in it.
+       *
+       * Sanitised by `util/markdown.ts`, which escapes first and emits a fixed tag
+       * list with no attributes. It is meant to be inserted as HTML; that is the
+       * contract, and it is why the sanitiser is on this side of the wire.
+       */
+      html: z.string(),
       generatedAt: z.string(),
+      /**
+       * Which model wrote it, for the byline — `null` only if the run it hangs off
+       * has been pruned, which cannot happen while the row exists (`ai_narratives.
+       * run_id` cascades) but is on the wire as nullable rather than as a lie.
+       */
+      model: z.string().nullable(),
     })
     .nullable(),
   /**
@@ -325,6 +376,32 @@ export const insightsSchema = z.object({
     usedBp: basisPoints(),
     exceeded: z.boolean(),
   }),
+  /**
+   * The recent ledger, newest first — every attempt, not only the ones that
+   * produced what is above.
+   *
+   * On the insights payload rather than on settings, where the monthly totals
+   * live, because this is the page that shows what the model concluded and the
+   * ledger is where "and here is what it was told" hangs off. A page that shows
+   * conclusions and hides the input is asking to be trusted.
+   */
+  runs: z.array(aiRunSchema),
+})
+
+/**
+ * `GET /api/insights/runs/:id/payload` — exactly what was prepared for one call.
+ *
+ * The privacy claim, checkable from the browser rather than from a SQLite prompt on
+ * the host. `payload` is whatever the redactor produced, echoed unshaped: giving it
+ * a schema of its own here would mean this endpoint decides what a payload may
+ * contain, and a payload containing something it should not would then be quietly
+ * dropped on the way out instead of shown to the person looking for exactly that.
+ *
+ * `null` means the stored JSON would not parse, which is a finding rather than an
+ * error — the row is still worth showing, and the page says so.
+ */
+export const aiRunPayloadSchema = aiRunSchema.extend({
+  payload: z.json(),
 })
 
 // ---------------------------------------------------------------------------
@@ -697,6 +774,8 @@ export type Overview = z.infer<typeof overviewSchema>
 export type Budget = z.infer<typeof budgetSchema>
 export type Portfolio = z.infer<typeof portfolioSchema>
 export type Insights = z.infer<typeof insightsSchema>
+export type AiRun = z.infer<typeof aiRunSchema>
+export type AiRunPayload = z.infer<typeof aiRunPayloadSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type Status = z.infer<typeof statusSchema>
 export type CheckReason = (typeof checkReasons)[number]
