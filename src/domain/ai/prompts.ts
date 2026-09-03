@@ -15,13 +15,16 @@
  *
  * Authored in English regardless of UI language — one canonical text to maintain
  * and reason about — with an explicit output-language directive appended per run.
- * Stored per locale so a translation can diverge later without a migration.
+ * Stored **once**, under `SHARED_LOCALE`, for the same reason: the rule this prompt
+ * exists to state is "never produce a number", and that is precisely the rule you
+ * least want drifting between two translations. A per-locale row is written only
+ * when someone deliberately overrides one language. See `prompt-locale.ts`.
  */
 import { and, desc, eq } from 'drizzle-orm'
-import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { prompts } from '../../db/schema.ts'
 import { diffLines, type Diff } from '../../util/diff.ts'
+import { SHARED_LOCALE } from './prompt-locale.ts'
 
 export type PromptRow = typeof prompts.$inferSelect
 
@@ -251,27 +254,53 @@ export function activatePrompt(db: Db, id: string): PromptRow {
 }
 
 /**
- * Writes the built-in defaults for any (key, locale) that has no version yet.
+ * Stops using a language's override, so the shared text applies again.
  *
- * Idempotent, and safe to run at every startup: a key that already has versions
- * is left alone, including one whose active version is an edited text. A fresh
- * database therefore boots with a working, inspectable prompt rather than with a
- * hidden constant nobody can see in the UI.
+ * Deactivation rather than deletion, because no gesture in this module destroys text
+ * that produced an output: the override's versions stay readable, and reactivating one
+ * is the ordinary rollback. `resolvePrompt` then falls through to `SHARED_LOCALE`,
+ * which is what a language with no override of its own has always meant.
+ *
+ * Refuses on the shared row itself. Deactivating it would leave every language on the
+ * built-in constant with nothing in the UI saying so, and the gesture wanted there is
+ * activating a different version.
+ */
+export function deactivateOverride(db: Db, key: PromptKey, locale: string): number {
+  if (locale === SHARED_LOCALE) {
+    throw new Error('the shared prompt cannot be deactivated; activate a version instead')
+  }
+  return db
+    .update(prompts)
+    .set({ active: false })
+    .where(and(eq(prompts.key, key), eq(prompts.locale, locale), eq(prompts.active, true)))
+    .run().changes
+}
+
+/**
+ * Writes the built-in default for any key that has no shared version yet.
+ *
+ * One row per key, not one per key per locale. Seeding per locale is what created
+ * the bug this replaced: every locale had an active row, so the locale fallback
+ * designed for "nobody has written a Dutch prompt" could never fire, and an edit
+ * made in English simply stopped applying to a Dutch run.
+ *
+ * Idempotent, and safe to run at every startup: a key that already has a shared
+ * version is left alone, including one whose active version is an edited text. A
+ * fresh database therefore boots with a working, inspectable prompt rather than
+ * with a hidden constant nobody can see in the UI.
  */
 export function seedPrompts(db: Db): number {
   let written = 0
   for (const key of PROMPT_KEYS) {
-    for (const locale of config.SUPPORTED_LOCALES) {
-      if (listPromptVersions(db, key, locale).length > 0) continue
-      createPromptVersion(db, {
-        key,
-        locale,
-        body: DEFAULT_PROMPTS[key],
-        note: 'built-in default',
-        activate: true,
-      })
-      written += 1
-    }
+    if (listPromptVersions(db, key, SHARED_LOCALE).length > 0) continue
+    createPromptVersion(db, {
+      key,
+      locale: SHARED_LOCALE,
+      body: DEFAULT_PROMPTS[key],
+      note: 'built-in default',
+      activate: true,
+    })
+    written += 1
   }
   return written
 }
@@ -289,26 +318,25 @@ export interface ResolvedPrompt {
 /**
  * The prompt a run should use.
  *
- * Three steps down, each of which is a real situation: the locale's active
- * version, then `DEFAULT_LOCALE`'s (a Dutch prompt nobody has written yet is
- * better served by the English one than by nothing), then the built-in text (a
- * database whose prompt rows were deleted must still be able to produce a run).
+ * Three steps down, each of which is a real situation: an override written for this
+ * language, then the shared text (the ordinary case — one canonical prompt for every
+ * language), then the built-in constant (a database whose prompt rows were deleted
+ * must still be able to produce a run).
+ *
+ * The old middle step read `DEFAULT_LOCALE`'s active version, which was standing in
+ * for the shared row and could never be reached, because seeding gave every locale
+ * an active row of its own.
  */
 export function resolvePrompt(db: Db, key: PromptKey, locale: string): ResolvedPrompt {
-  const active = loadActivePrompt(db, key, locale)
-  if (active !== null) {
-    return { id: active.id, key, locale: active.locale, version: active.version, body: active.body }
-  }
-
-  if (locale !== config.DEFAULT_LOCALE) {
-    const fallback = loadActivePrompt(db, key, config.DEFAULT_LOCALE)
-    if (fallback !== null) {
+  for (const candidate of locale === SHARED_LOCALE ? [SHARED_LOCALE] : [locale, SHARED_LOCALE]) {
+    const active = loadActivePrompt(db, key, candidate)
+    if (active !== null) {
       return {
-        id: fallback.id,
+        id: active.id,
         key,
-        locale: fallback.locale,
-        version: fallback.version,
-        body: fallback.body,
+        locale: active.locale,
+        version: active.version,
+        body: active.body,
       }
     }
   }

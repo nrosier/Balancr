@@ -111,10 +111,9 @@
       "warning": "A test run calls the model and costs real money. Nothing it produces is kept."
     },
     "fallback": {
-      "builtIn": "Nothing is stored for this language, so the built-in instructions are in use.",
-      "otherLocale": "Nothing is stored for this language, so version {{version}} of the {{locale}} instructions is in use."
+      "builtIn": "Nothing is stored yet, so the built-in instructions are in use."
     },
-    "hint": "Written in English whatever the interface language; the assistant answers in yours.",
+    "hint": "One set of instructions for every interface language; the assistant answers in yours.",
     "key": {
       "analysis": {
         "system": "Findings"
@@ -123,9 +122,19 @@
         "system": "Monthly narrative"
       }
     },
-    "locale": "Language of the instructions",
+    "language": {
+      "shared": "All languages"
+    },
+    "locale": "Applies to",
     "note": "What changed",
     "notePlaceholder": "Why this version exists",
+    "override": {
+      "create": "Write a version for {{language}} only",
+      "drop": "Go back to the shared instructions",
+      "hint": "The instructions are addressed to the model, not to the reader, so one English text serves every language — the reply language is a separate instruction added to every run. Write a version for one language only if that language genuinely needs different instructions.",
+      "off": "Switched off: this language uses the shared instructions. Making a version active below turns it back on.",
+      "title": "Just for one language"
+    },
     "save": "Save as a new version",
     "saveAndActivate": "Make it active straight away",
     "title": "Assistant instructions",
