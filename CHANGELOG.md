@@ -6,6 +6,38 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+
+- **Context caching is no longer asked for at a size it cannot be granted**
+  ([#121](https://github.com/nrosier/Balancr/issues/121)). Google will not cache a
+  context below 1024 tokens. Balancr's system prompts are 453 and 589 tokens, so every
+  process start spent a failed `caches.create` per model to rediscover that, and wrote
+  `context caching unavailable` into the log of a system that was working exactly as
+  designed.
+
+  The minimum is now a local rule rather than a discovered error: the instruction's
+  token count is estimated before the call and the create is skipped when it is plainly
+  short, logged once at debug as a statement of fact. The estimate deliberately
+  over-states English prose — three characters per token against a real four — because
+  the two errors are not symmetric: guessing high can only make Balancr attempt a create
+  the provider then refuses, which is one round trip and the old behaviour, while
+  guessing low would silently skip a cache that would have worked. The provider stays
+  the authority, and a create that is attempted and rejected still falls back to sending
+  the instruction inline.
+
+  The mechanism stays. The fund universe ([#40](https://github.com/nrosier/Balancr/issues/40))
+  is what caching was built for and what will push the prompt past the floor, at which
+  point this check stops firing and nothing else changes.
+
+### Added
+
+- `GEMINI_CACHE_MIN_TOKENS` (default `1024`). Google changing the floor becomes a
+  config edit rather than a release, and `0` disables the check entirely — ask, and take
+  the provider's answer.
+
+
 ## [0.6.1] — 2026-09-03
 
 ### Added
