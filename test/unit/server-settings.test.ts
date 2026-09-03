@@ -29,7 +29,8 @@ import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
-import { createPromptVersion, loadActivePrompt } from '../../src/domain/ai/prompts.ts'
+import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
+import { createPromptVersion, loadActivePrompt, resolvePrompt } from '../../src/domain/ai/prompts.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -146,17 +147,41 @@ describe('GET /api/settings', () => {
     expect(settings.ai.models.fast.length).toBeGreaterThan(0)
   })
 
-  it('lists a prompt for every key and locale, with the text it is really using', async () => {
+  it('lists one shared prompt per key, with the text it is really using', async () => {
     const settings = (await get('/api/settings')).json<Settings>()
 
-    // Two keys × two locales, and the Dutch entries resolve to the English or
-    // built-in body rather than to an empty box.
-    expect(settings.prompts).toHaveLength(4)
+    // One entry per key, not one per key per locale. A language appears only when
+    // someone has written an override for it, so an entry under a language code is a
+    // divergence rather than a copy of the seed.
+    expect(settings.prompts).toHaveLength(2)
+    expect(settings.prompts.map((prompt) => prompt.locale)).toEqual([
+      SHARED_LOCALE,
+      SHARED_LOCALE,
+    ])
     for (const prompt of settings.prompts) {
       expect(prompt.active.body.length).toBeGreaterThan(0)
     }
-    const dutch = settings.prompts.find((p) => p.locale === 'nl')
-    expect(dutch?.versions).toEqual([])
+  })
+
+  it('lists a language override alongside the shared prompt, once one exists', async () => {
+    createPromptVersion(ctx.db, {
+      key: 'analysis.system',
+      locale: 'nl',
+      body: 'Je rangschikt signalen.',
+      activate: true,
+    })
+
+    const settings = (await get('/api/settings')).json<Settings>()
+
+    expect(settings.prompts).toHaveLength(3)
+    const override = settings.prompts.find((prompt) => prompt.locale === 'nl')
+    expect(override?.key).toBe('analysis.system')
+    expect(override?.active.body).toBe('Je rangschikt signalen.')
+    // And the shared entry still reads as the shared text, not as the override.
+    const shared = settings.prompts.find(
+      (prompt) => prompt.key === 'analysis.system' && prompt.locale === SHARED_LOCALE,
+    )
+    expect(shared?.active.body).not.toBe('Je rangschikt signalen.')
   })
 
   it('does not put a prompt body in the version list, or an external id in an account', async () => {
@@ -321,7 +346,7 @@ describe('the account mapping', () => {
     expect(account?.decidedFields.sort()).toEqual(['includeInNetWorth', 'kind'])
     // The whole payload, so the screen replaces its state rather than patching it.
     expect(settings.params).toEqual(DEFAULT_PARAMS)
-    expect(settings.prompts).toHaveLength(4)
+    expect(settings.prompts).toHaveLength(2)
     expect(auditActions(ctx.db)).toContain('account.map')
   })
 
@@ -572,5 +597,84 @@ describe('the prompt editor', () => {
       { token: viewer },
     )
     expect(diff.statusCode).toBe(200)
+  })
+
+  it('stores a shared version that every language then resolves to', async () => {
+    const res = await post('/api/settings/prompts', {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body,
+      activate: true,
+    })
+    expect(res.statusCode).toBe(200)
+
+    // The bug this replaced: an edit made in one language stopped applying to the
+    // other, and nothing said so.
+    for (const locale of ['en', 'nl']) {
+      expect(resolvePrompt(ctx.db, 'analysis.system', locale).body).toBe(body)
+    }
+  })
+
+  it('sends a language back to the shared prompt without deleting its versions', async () => {
+    createPromptVersion(ctx.db, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body,
+      activate: true,
+    })
+    createPromptVersion(ctx.db, {
+      key: 'analysis.system',
+      locale: 'nl',
+      body: 'Je rangschikt signalen.',
+      activate: true,
+    })
+
+    const res = await post('/api/settings/prompts/analysis.system/nl/shared')
+    expect(res.statusCode).toBe(200)
+    expect(resolvePrompt(ctx.db, 'analysis.system', 'nl').body).toBe(body)
+    // The entry stays in the payload with its history, because nothing here destroys
+    // text and reactivating a version is the ordinary rollback. What changed is what
+    // the language resolves to, and the payload says so: `active.locale` is now the
+    // shared one, which is how the editor knows to label it switched off.
+    const settings = res.json<Settings>()
+    const override = settings.prompts.find((prompt) => prompt.locale === 'nl')
+    expect(override?.versions).toHaveLength(1)
+    expect(override?.versions[0]?.active).toBe(false)
+    expect(override?.active.locale).toBe(SHARED_LOCALE)
+    expect(loadActivePrompt(ctx.db, 'analysis.system', 'nl')).toBeNull()
+    expect(auditActions(ctx.db)).toEqual(['prompt.activate'])
+  })
+
+  it('answers 409 when the language has no override to switch off', async () => {
+    // 409 rather than 404: the language exists, the request simply changed nothing.
+    const res = await post('/api/settings/prompts/analysis.system/nl/shared')
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('refuses to switch off the shared prompt itself', async () => {
+    const res = await post(`/api/settings/prompts/analysis.system/${SHARED_LOCALE}/shared`)
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses to switch off a locale the deployment does not support', async () => {
+    const res = await post('/api/settings/prompts/analysis.system/fr/shared')
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('is refused for a viewer', async () => {
+    createPromptVersion(ctx.db, {
+      key: 'analysis.system',
+      locale: 'nl',
+      body: 'Je rangschikt signalen.',
+      activate: true,
+    })
+
+    const res = await post(
+      '/api/settings/prompts/analysis.system/nl/shared',
+      {},
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(loadActivePrompt(ctx.db, 'analysis.system', 'nl')).not.toBeNull()
   })
 })

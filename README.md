@@ -297,7 +297,10 @@ order behind both `<html lang>` and the strings underneath it, where the attribu
 to say `en` to everyone. And the palette has been measured rather than assumed
 ([#35](https://github.com/nrosier/Balancr/issues/35)): the gate now fails on a colour
 pair under the contrast floor, in either theme, and one token that could not clear it is
-gone. Insights ([#32](https://github.com/nrosier/Balancr/issues/32)) is last.
+gone. And the assistant's instructions are one text rather than one per language
+([#133](https://github.com/nrosier/Balancr/issues/133)): editing them used to change
+what English runs and leave Dutch on the old wording, silently. Insights
+([#32](https://github.com/nrosier/Balancr/issues/32)) is last.
 
 **Three decisions are what make it safe to hand someone.** Every write answers with
 the whole settings payload rather than the row it changed, so the page is a projection
@@ -496,11 +499,19 @@ of it, one of them a text-box border at 1.54:1, and one token — a third, faint
 turned out to have no value that both reads as faint and clears the floor, so it is gone
 and small print is quieter by size instead.
 
-Next are insights ([#32](https://github.com/nrosier/Balancr/issues/32)) and
-per-locale prompts
-([#133](https://github.com/nrosier/Balancr/issues/133)) —
-shipping as `0.5.19`, `0.5.20`, … until every issue in that milestone is closed and
-`0.6.0` lands.
+The assistant's instructions are one text, not one per language
+([#133](https://github.com/nrosier/Balancr/issues/133)). They were seeded under every
+supported locale, so editing them changed what English runs and left the Dutch copy of
+the same rule as it was, with nothing saying so — and the fallback that was supposed to
+prevent that could never fire, because every language had a version of its own. They are
+stored once now, and the reply language is what it always was: a separate directive
+appended to every run. A language can still diverge, but it takes a button, and pressing
+it is what puts that language in the editor's picker — so divergence is visible instead
+of being the default. Going back switches the override off rather than deleting it, so
+its versions stay readable and activating one is the way back.
+
+Next is insights ([#32](https://github.com/nrosier/Balancr/issues/32)) — the last issue
+in the milestone, so it ships as `0.6.0` rather than as another patch.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

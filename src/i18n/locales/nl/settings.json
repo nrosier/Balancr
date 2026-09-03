@@ -111,10 +111,9 @@
       "warning": "Een testrun roept het model op en kost echt geld. Niets wat eruit komt, wordt bewaard."
     },
     "fallback": {
-      "builtIn": "Voor deze taal is niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
-      "otherLocale": "Voor deze taal is niets bewaard, dus versie {{version}} van de {{locale}} instructies is in gebruik."
+      "builtIn": "Er is nog niets bewaard, dus de ingebouwde instructies zijn in gebruik."
     },
-    "hint": "In het Engels geschreven, ongeacht de interfacetaal; de assistent antwoordt in de jouwe.",
+    "hint": "Één set instructies voor elke interfacetaal; de assistent antwoordt in de jouwe.",
     "key": {
       "analysis": {
         "system": "Bevindingen"
@@ -123,9 +122,19 @@
         "system": "Maandverhaal"
       }
     },
-    "locale": "Taal van de instructies",
+    "language": {
+      "shared": "Alle talen"
+    },
+    "locale": "Geldt voor",
     "note": "Wat er veranderd is",
     "notePlaceholder": "Waarom deze versie bestaat",
+    "override": {
+      "create": "Een versie schrijven voor alleen {{language}}",
+      "drop": "Terug naar de gedeelde instructies",
+      "hint": "De instructies zijn gericht aan het model, niet aan de lezer, dus één Engelse tekst volstaat voor elke taal — de antwoordtaal is een aparte instructie die aan elke run wordt toegevoegd. Schrijf alleen een versie voor één taal als die taal echt andere instructies nodig heeft.",
+      "off": "Uitgeschakeld: deze taal gebruikt de gedeelde instructies. Hieronder een versie activeren zet ze weer aan.",
+      "title": "Alleen voor één taal"
+    },
     "save": "Bewaren als nieuwe versie",
     "saveAndActivate": "Meteen activeren",
     "title": "Instructies voor de assistent",

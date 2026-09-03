@@ -48,9 +48,11 @@ import {
   unknownParamFields,
 } from '../../domain/aggregate/params.ts'
 import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
+import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
 import {
   activatePrompt,
   createPromptVersion,
+  deactivateOverride,
   diffAgainstActive,
   listPromptVersions,
   loadActivePrompt,
@@ -98,6 +100,18 @@ import {
 const localeRequest = z.string().refine((value) => config.SUPPORTED_LOCALES.includes(value), {
   message: 'unsupported locale',
 })
+
+/**
+ * The same, plus the sentinel that means "every language".
+ *
+ * Separate from `localeRequest` because a *user* can never have `*` as their
+ * language, and one schema admitting both would make that storable.
+ */
+const promptLocaleRequest = z
+  .string()
+  .refine((value) => value === SHARED_LOCALE || config.SUPPORTED_LOCALES.includes(value), {
+    message: 'unsupported locale',
+  })
 
 /**
  * One group of aggregation parameters, as numbers and nothing else.
@@ -157,7 +171,7 @@ const promptBodyRequest = z
 
 const promptCreateRequest = z.strictObject({
   key: z.enum(PROMPT_KEYS),
-  locale: localeRequest,
+  locale: promptLocaleRequest,
   body: promptBodyRequest,
   /** Why this version exists, for the list. Not the text — that is the row. */
   note: z.string().max(500).optional(),
@@ -166,7 +180,7 @@ const promptCreateRequest = z.strictObject({
 
 const promptDiffRequest = z.strictObject({
   key: z.enum(PROMPT_KEYS),
-  locale: localeRequest,
+  locale: promptLocaleRequest,
   body: promptBodyRequest,
 })
 
@@ -230,9 +244,20 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     locales: { supported: config.SUPPORTED_LOCALES, default: config.DEFAULT_LOCALE },
     params: loadParams(db),
     paramDefaults: DEFAULT_PARAMS,
-    prompts: PROMPT_KEYS.flatMap((key) =>
-      config.SUPPORTED_LOCALES.map((locale) => promptSetting(db, key, locale)),
-    ),
+    // The shared text first, then only those languages someone has actually written
+    // an override for. Listing every supported locale unconditionally is what made
+    // the divergence look mandatory: four entries carrying two texts, and no way to
+    // tell an override from a copy of the seed.
+    //
+    // A switched-off override keeps its entry, because its versions still exist and
+    // reactivating one is the rollback gesture. `active.locale` is what distinguishes
+    // the two states, and it is already on the wire.
+    prompts: PROMPT_KEYS.flatMap((key) => [
+      promptSetting(db, key, SHARED_LOCALE),
+      ...config.SUPPORTED_LOCALES.map((locale) => promptSetting(db, key, locale)).filter(
+        (entry) => entry.versions.length > 0,
+      ),
+    ]),
     accounts: accounts.map(toAccountSetting),
     dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db)).map((candidate) => ({
       ghostfolioId: candidate.ghostfolio.id,
@@ -644,6 +669,43 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: previous === null ? null : { id: previous.id, version: previous.version },
       after: { id: activated.id, version: activated.version },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Stop using one language's override, so the shared prompt applies to it again.
+   *
+   * The text is not deleted — the override's versions stay in the list, and
+   * reactivating one is the ordinary rollback. `404` would be a lie when there is
+   * nothing to switch off: the language exists, the request simply changed nothing,
+   * which is what `409` says.
+   */
+  app.post('/api/settings/prompts/:key/:locale/shared', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const params = request.params as { key: string; locale: string }
+    const key = promptKeyOf(params.key)
+    if (params.locale === SHARED_LOCALE) {
+      throw badRequest('The shared prompt is what the others fall back to.')
+    }
+    if (!config.SUPPORTED_LOCALES.includes(params.locale)) {
+      throw badRequest(`Unsupported locale: ${params.locale}`)
+    }
+
+    const previous = loadActivePrompt(db, key, params.locale)
+    if (previous === null) throw conflict('That language has no override to switch off.')
+    deactivateOverride(db, key, params.locale)
+
+    recordAudit(db, {
+      action: 'prompt.activate',
+      entity: 'prompts',
+      entityRef: previous.id,
+      actorId: user.id,
+      before: { id: previous.id, version: previous.version, locale: previous.locale },
+      // Null rather than the shared row's id: what was recorded is that this
+      // language stopped having an answer of its own, not that it gained one.
+      after: null,
     })
 
     return buildSettings(db, request)
