@@ -386,6 +386,26 @@ describe('the fund universe settings (#40)', () => {
   })
 })
 
+describe('the tax rules path (#42)', () => {
+  it('defaults to the file the image ships, because the rules are not per-install', async () => {
+    // The opposite of the fund universe: nobody curates their own tax code, so the
+    // default points at a real file inside the image and an estimate works out of the box.
+    // Overriding it is for someone tracking a change before Balancr ships it.
+    expect((await configWith({})).TAX_RULES_PATH).toBe('./config/belgian-tax.yaml')
+  })
+
+  it('refuses an empty path rather than reading the working directory', async () => {
+    expect((await loadWith({ TAX_RULES_PATH: '' }))?.message).toContain('TAX_RULES_PATH')
+  })
+
+  it('has no companion max-age variable, on purpose', async () => {
+    // A stale rate with its date next to it still beats no estimate, so tax staleness is
+    // shown and never enforced. An age limit here would take the tax figures off screen
+    // on a date nobody chose — see the doc comment in config.ts.
+    expect(Object.keys(await configWith({}))).not.toContain('TAX_RULES_MAX_AGE_DAYS')
+  })
+})
+
 describe('.env.example as shipped (#118)', () => {
   /**
    * `.env.example` exactly as a new deployment would inherit it — every line,

@@ -118,6 +118,11 @@ describe('configSummary', () => {
     })
   })
 
+  it('names the tax rules path (#42)', async () => {
+    // "Why does that estimate use last year's rate" is answered by which file was read.
+    expect(await summary()).toMatchObject({ TAX_RULES_PATH: './config/belgian-tax.yaml' })
+  })
+
   it('does not carry the client secret at all, masked or otherwise', async () => {
     // Not in the summary in any form: it is the one OIDC value with no diagnostic
     // use, so the safest thing a log can say about it is nothing.

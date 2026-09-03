@@ -30,13 +30,13 @@
  * `FUND_UNIVERSE_MAX_AGE_DAYS` is not proposable, which turns "we should re-check this
  * list some day" into a thing that stops working until someone does.
  */
-import { readFileSync } from 'node:fs'
-import { parse as parseYaml, YAMLParseError } from 'yaml'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import { logger } from '../../logger.ts'
+import { ageInDays } from '../verified-date.ts'
+import { readYamlFile } from '../../yaml-file.ts'
 import { normaliseIsin } from './isin.ts'
-import { universeFileSchema, type FundEntry } from './schema.ts'
+import { universeFileSchema, type FundEntry, type UniverseFile } from './schema.ts'
 
 const log = logger.child({ module: 'universe' })
 
@@ -61,9 +61,6 @@ export const EMPTY_UNIVERSE: FundUniverse = {
   byIsin: new Map(),
 }
 
-/** Milliseconds in a day, for the staleness arithmetic below. */
-const DAY_MS = 24 * 60 * 60 * 1_000
-
 // ---------------------------------------------------------------------------
 //  Loading
 // ---------------------------------------------------------------------------
@@ -79,42 +76,16 @@ const DAY_MS = 24 * 60 * 60 * 1_000
  * likely mistake is the path pointing somewhere else than the file being edited.
  */
 export function loadUniverse(path: string = config.FUND_UNIVERSE_PATH): FundUniverse {
-  let text: string
-  try {
-    text = readFileSync(path, 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return EMPTY_UNIVERSE
-    throw new UniverseError(
-      `cannot read the fund universe at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-
-  let raw: unknown
-  try {
-    raw = parseYaml(text)
-  } catch (error) {
-    // A YAML error knows the line and column; passing that through is the difference
-    // between a fixable message and "invalid YAML" against a file of eighty entries.
-    const where =
-      error instanceof YAMLParseError && error.linePos !== undefined
-        ? ` at line ${error.linePos[0].line}, column ${error.linePos[0].col}`
-        : ''
-    throw new UniverseError(
-      `${path} is not valid YAML${where}: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-
-  // An empty file parses to null, and someone who emptied the file meant to have no
-  // funds rather than to have a schema violation about a missing key.
-  if (raw === null || raw === undefined) return { path, funds: [], byIsin: new Map() }
-
-  const parsed = universeFileSchema.safeParse(raw)
-  if (!parsed.success) {
-    throw new UniverseError(`${path} is not a valid fund universe:\n${z.prettifyError(parsed.error)}`)
-  }
+  const empty: UniverseFile = { version: 1, funds: [] }
+  const read = readYamlFile(path, universeFileSchema, 'fund universe', { emptyValue: empty })
+  // No file is not an error: it is a new install, or someone who wants the budget half
+  // only. An emptied file is the same statement made deliberately, which is why the
+  // reader is handed a value for it rather than left to fail the schema on a missing key.
+  if (read.kind === 'absent') return EMPTY_UNIVERSE
+  if (read.kind === 'problem') throw new UniverseError(read.message)
 
   const byIsin = new Map<string, FundEntry>()
-  for (const fund of parsed.data.funds) {
+  for (const fund of read.value.funds) {
     const existing = byIsin.get(fund.isin)
     if (existing !== undefined) {
       // Refused rather than last-one-wins: two rows for one ISIN disagree about
@@ -127,7 +98,7 @@ export function loadUniverse(path: string = config.FUND_UNIVERSE_PATH): FundUniv
     byIsin.set(fund.isin, fund)
   }
 
-  return { path, funds: parsed.data.funds, byIsin }
+  return { path, funds: read.value.funds, byIsin }
 }
 
 /**
@@ -162,8 +133,7 @@ export function lookupFund(universe: FundUniverse, isin: string): FundEntry | nu
 
 /** How many days ago this entry was last confirmed against its source. */
 export function verificationAgeDays(fund: FundEntry, asOf: Date = new Date()): number {
-  const verified = Date.parse(`${fund.last_verified}T00:00:00Z`)
-  return Math.floor((asOf.getTime() - verified) / DAY_MS)
+  return ageInDays(fund.last_verified, asOf)
 }
 
 export interface FreshnessOptions {

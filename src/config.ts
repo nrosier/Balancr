@@ -228,6 +228,22 @@ const EnvSchema = z.object({
    * nag over a number that moves once a year would only teach people to raise this.
    */
   FUND_UNIVERSE_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
+  /**
+   * Where the dated Belgian tax rules live (#42).
+   *
+   * Rates, tiers, caps and thresholds for the beurstaks, roerende voorheffing, the
+   * Reynders levy and the tax on realised gains — as a file, because a government
+   * changes them and a rate in a `const` is a rate that is silently wrong the year after
+   * next. Balancr ships a filled-in file and uses it in place; point this at a copy on
+   * the data volume if you want to correct a rate without waiting for a release.
+   *
+   * There is deliberately no max-age variable to go with it. A fund entry that is out of
+   * date means proposing the wrong instrument, so #40 refuses to act on one; a tax rate
+   * that is out of date is usually still right, and an estimate carrying its rate's
+   * citation and verification date is far more useful than no figure at all. Staleness
+   * here is shown, not enforced.
+   */
+  TAX_RULES_PATH: z.string().min(1).default('./config/belgian-tax.yaml'),
 
   // Egress
   /**
@@ -483,6 +499,7 @@ export function configSummary(): Record<string, unknown> {
     BACKUP_KEEP: config.BACKUP_KEEP,
     FUND_UNIVERSE_PATH: config.FUND_UNIVERSE_PATH,
     FUND_UNIVERSE_MAX_AGE_DAYS: config.FUND_UNIVERSE_MAX_AGE_DAYS,
+    TAX_RULES_PATH: config.TAX_RULES_PATH,
     EGRESS_MODE: config.EGRESS_MODE,
     EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
