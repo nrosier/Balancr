@@ -115,6 +115,8 @@ so the browser talks to the real API.
 | `npm run dev` | Server in watch mode with `.env` loaded |
 | `npm run dev:web` | Vite dev server for the UI, proxying to the above |
 | `npm run probe` | Read-only check of Actual and Ghostfolio, and a category-by-category reconciliation against Actual's own totals |
+| `npm run backup:verify` | Decrypt a snapshot in a temp directory and prove it restores — the newest one, or `-- --all` |
+| `npm run backup:restore` | Put a snapshot back, after verifying it in full |
 | `npm test` | Unit tests — server under Node, UI under jsdom |
 | `npm run typecheck` | TypeScript, no emit — two programs, server and browser |
 | `npm run i18n:check` | Key, interpolation and plural parity between `en` and `nl` |
@@ -138,6 +140,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Ghostfolio** | `GHOSTFOLIO_URL`, `GHOSTFOLIO_SECURITY_TOKEN` |
 | **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
+| **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
 Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
@@ -232,6 +235,94 @@ and `AUTH_LOCAL_ALLOWED_CIDRS` is matched against the TCP peer address rather th
 `X-Forwarded-For`: a header is exactly what a request through the tunnel would
 set. Which also means Traefik's own address must not be in that range.
 
+## Backups
+
+One passphrase switches them on. There is no separate flag:
+
+```ini
+BACKUP_PASSPHRASE=write-this-down-somewhere-else
+BACKUP_DIR=./data/backups
+BACKUP_KEEP=14
+```
+
+Every night, after the other jobs, the database is copied with `VACUUM INTO` — a
+consistent copy taken through SQLite rather than a file grabbed from underneath a
+running WAL — and encrypted to `data/backups/balancr-20260903T030012Z.db.enc` with
+AES-256-GCM under a scrypt-derived key. Sixteen characters is the minimum for the
+passphrase because these files sit on disk, where a short one is attacked offline at
+whatever rate the attacker's hardware allows.
+
+**Nothing can recover a snapshot without that passphrase.** Not Balancr, not the
+database, not Google. Write it down somewhere that is not `.env`.
+
+Leaving it empty is a legitimate configuration — the job logs one line saying backups
+are off and reports success — and it is the right one if the volume is already covered
+by a host snapshot or a restic job.
+
+What is worth protecting is smaller than it looks. Almost everything in the database is
+recomputed from Actual and Ghostfolio on the next nightly run, so losing it costs a
+night. What does not come back is the part you typed: every category description, COICOP
+code and sensitivity flag built up by answering questions about your own budget, plus
+the prompt versions and the AI cost ledger. `/data/actual` is deliberately not in the
+snapshot — it is a cache of a budget the Actual server still holds, and re-downloading
+it is one call.
+
+`BACKUP_DIR` defaults to `./data/backups`, which is inside the one volume. That is a
+real limit, stated plainly: a backup living in the volume it backs up survives a bad
+migration, a mistaken bulk edit and a corrupted page, and does **not** survive losing
+the volume. Point it at another mount, or copy the files off, if you want the second
+case covered too.
+
+A file is deleted only when it is both older than `BACKUP_KEEP` days **and** surplus to
+`BACKUP_KEEP` files. Both clauses, because either one alone gets a case wrong: taking a
+backup by hand before something risky would otherwise evict a scheduled one, and an
+instance switched off for a month would come back, run one backup, and delete its own
+history for being old.
+
+### Checking that they work
+
+```sh
+npm run backup:verify            # the newest snapshot
+npm run backup:verify -- --all   # every one, at a key derivation apiece
+```
+
+This is the question a nightly job cannot answer about itself: that the passphrase in
+`.env` today is the one those files were written with, that they decrypt, and that what
+comes out is this deployment's data rather than an empty schema. It decrypts to a
+private temp directory, runs `PRAGMA integrity_check`, counts the rows in eight tables
+and deletes the copy. It never touches the snapshot, the live database or an upstream,
+so it is safe to run against production — and worth running after changing the
+passphrase, after an upgrade, and occasionally for no reason at all.
+
+### Restoring
+
+Stop the server first: SQLite tolerates a great deal, but not having its file replaced
+while it holds a connection to it.
+
+```sh
+docker compose stop balancr
+npm run backup:restore -- --latest              # or a named snapshot
+npm run db:migrate                              # if the snapshot predates this build
+docker compose start balancr
+```
+
+The snapshot is decrypted and integrity-checked **in full before anything moves**, so a
+wrong passphrase, a truncated file or a database that opens but fails its integrity
+check all stop while the current database is still in place. Nothing is deleted either:
+the database being replaced is renamed to `balancr.db.pre-restore-<stamp>`, with its
+`-wal` and `-shm` sidecars moved alongside it, so restoring the wrong snapshot is undone
+with one `mv`. Deleting those copies is left to you.
+
+Then check Settings → Status. The upstream figures re-sync on the next nightly run, or
+immediately from the refresh control on any page.
+
+This procedure is not assumed to work. `test/unit/backup-restore.test.ts` runs it on
+every test run — restoring over a corrupted database, over a database with stale WAL
+sidecars, and refusing a wrong passphrase and a damaged snapshot while asserting the
+target is left byte-for-byte unchanged. It has also been performed by hand end to end:
+a migrated database with a hand-typed category description, backed up, overwritten with
+garbage, restored, and the description read back.
+
 ## Architecture
 
 ```
@@ -239,7 +330,7 @@ Fastify ──┬── /api/*     read-only, against Balancr's own SQLite
           ├── /auth/*    OIDC (Authentik) + CIDR-gated local login
           └── static     Vite/React SPA, everything bundled locally
           │
-cron ─────┴── sync → aggregate → snapshot → nightly AI run
+cron ─────┴── sync → aggregate → snapshot → nightly AI run → encrypted backup
           │
 adapters ─┼── actual/      @actual-app/api, sole owner of the sync dataDir
           ├── ghostfolio/  REST, capability-probed
@@ -289,7 +380,7 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, five of its seven issues done. `0.6.0` is done too:
+**Where it is now** — `0.7.0`, six of its seven issues done. `0.6.0` is done too:
 all five views are on screen, in both languages, drawing real figures.
 
 Gemini is now optional ([#165](https://github.com/nrosier/Balancr/issues/165)). It was
@@ -601,10 +692,20 @@ it is what puts that language in the editor's picker — so divergence is visibl
 of being the default. Going back switches the override off rather than deleting it, so
 its versions stay readable and activating one is the way back.
 
-What is left of the operational milestone: backups and a restore that is proven by
-being run ([#38](https://github.com/nrosier/Balancr/issues/38)), and deployment
-hardening ([#39](https://github.com/nrosier/Balancr/issues/39)). Those ship as `0.6.4`,
-`0.6.5`, … until the last of them closes `0.7.0`.
+The database is now backed up, and the restore is proven rather than assumed
+([#38](https://github.com/nrosier/Balancr/issues/38)). One passphrase in `.env` switches
+it on; a nightly `VACUUM INTO` copy is encrypted with AES-256-GCM under a scrypt-derived
+key, and retention deletes a file only when it is both older than `BACKUP_KEEP` days and
+surplus to `BACKUP_KEEP` files — so a backup taken by hand before something risky never
+evicts a scheduled one. `npm run backup:verify` answers the question the job cannot ask
+about itself, and `npm run backup:restore` verifies a snapshot in full before anything
+moves and renames the database it replaces instead of deleting it. Most of what is in
+there would be recomputed by morning anyway; what would not is the part you typed, which
+is the reason any of this exists. See [Backups](#backups).
+
+What is left of the operational milestone: deployment hardening
+([#39](https://github.com/nrosier/Balancr/issues/39)). It ships as `0.6.5`, and closing
+it closes `0.7.0`.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

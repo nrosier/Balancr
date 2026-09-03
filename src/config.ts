@@ -159,6 +159,49 @@ const EnvSchema = z.object({
    */
   JOBS_HISTORY_MONTHS: z.coerce.number().int().min(1).max(120).default(24),
 
+  // Backups
+  /**
+   * The passphrase the nightly snapshot is encrypted with. Absent means no backups.
+   *
+   * There is no `BACKUP_ENABLED` beside it, because the passphrase already is the
+   * switch and a second one could only ever contradict it. An instance whose `/data`
+   * is already covered by a host-level snapshot or a restic job wants nothing here,
+   * and gets nothing: the job logs one line saying it is off and reports success, the
+   * same way the AI layer stands down without a key (#165). Refusing to boot over a
+   * missing backup passphrase would be the wrong trade for a budget tool.
+   *
+   * Sixteen characters minimum when it is set. This is the only key material Balancr
+   * generates a file for rather than sends over a wire: an attacker who has the file
+   * has it for as long as they want, so the passphrase is guessed offline at whatever
+   * rate their hardware allows. scrypt makes each guess expensive; a short passphrase
+   * makes the number of guesses small, and no KDF fixes that.
+   *
+   * **Lose it and the backups are gone.** They are not recoverable from this app, the
+   * database, or anything Google holds. Keep it wherever the Actual password lives.
+   */
+  BACKUP_PASSPHRASE: z.preprocess(blankToUndefined, z.string().min(16).optional()),
+  /**
+   * Where the encrypted snapshots are written. Created if it does not exist.
+   *
+   * Under `./data` by default, which means inside the one volume — deliberately, and
+   * with a plain limitation: a backup in the volume it backs up survives a bad
+   * migration, a mistaken bulk edit and a corrupted page, and does not survive losing
+   * the volume. Point this at a mount that is not the data volume, or copy the files
+   * off it, if the second case is one you want covered. The README says so too.
+   */
+  BACKUP_DIR: z.string().min(1).default('./data/backups'),
+  /**
+   * How many snapshots to keep. The oldest beyond this are deleted after a successful
+   * one is written — in that order, so a failed backup never costs an old one.
+   *
+   * Fourteen daily files, because the failure this guards against is rarely noticed
+   * the same day: a category description overwritten by a bulk edit, or facts
+   * recomputed from a budget that was itself wrong, is usually spotted the next time
+   * someone reads the page. A fortnight of dailies is roughly 14 copies of a database
+   * measured in megabytes.
+   */
+  BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
+
   // Locale
   SUPPORTED_LOCALES: csv('en,nl'),
   DEFAULT_LOCALE: z.string().min(2).default('en'),
@@ -384,6 +427,9 @@ export function configSummary(): Record<string, unknown> {
     JOBS_SYNC_INTERVAL_MINUTES: config.JOBS_SYNC_INTERVAL_MINUTES,
     JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,
     JOBS_HISTORY_MONTHS: config.JOBS_HISTORY_MONTHS,
+    BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
+    BACKUP_DIR: config.BACKUP_DIR,
+    BACKUP_KEEP: config.BACKUP_KEEP,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
     DEFAULT_LOCALE: config.DEFAULT_LOCALE,
     FORMAT_LOCALE: config.FORMAT_LOCALE,

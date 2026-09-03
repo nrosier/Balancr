@@ -11,8 +11,13 @@
  * settled should be filled the same night the nightly pass records it, and because
  * it reads the snapshot dates that pass has already written.
  *
- * `ai` is last for a second reason: it is the only job that costs money, so it is
- * the one that should be looking at tonight's data rather than yesterday's.
+ * `ai` is next to last for a second reason: it is the only job that costs money, so it
+ * is the one that should be looking at tonight's data rather than yesterday's.
+ *
+ * `backup` is last, and nothing depends on it either — a backup is read by no job, so
+ * its position cannot be derived from the graph. It is last because every nightly job
+ * becomes due in the same tick and runs in this order, so anywhere earlier would write
+ * a file describing the state from before that night's work.
  *
  * `probe` is first and depends on nothing. It is not part of the chain at all — it
  * writes no fact any other job reads — but when Ghostfolio's contract has changed the
@@ -21,6 +26,7 @@
  */
 import { aiJob } from './ai.ts'
 import { backfillJob } from './backfill.ts'
+import { backupJob } from './backup.ts'
 import { netWorthJob } from './networth.ts'
 import { portfolioJob } from './portfolio.ts'
 import { probeJob } from './probe.ts'
@@ -36,6 +42,7 @@ export const registry: readonly Job[] = [
   backfillJob,
   signalsJob,
   aiJob,
+  backupJob,
 ]
 
 export { createScheduler, type Scheduler } from './scheduler.ts'
