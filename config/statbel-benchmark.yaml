@@ -1,0 +1,175 @@
+# What Belgian households spend, as a reference to sit next to your own figures (#43).
+#
+# Balancr reads this file to answer one question: "is what I spend on housing unusual for
+# a Belgian household?" It ships filled in and is used in place, so nothing here needs
+# setting up. Point BENCHMARK_PATH at a copy on your data volume if you want to correct a
+# figure without waiting for a release:
+#
+#   cp config/statbel-benchmark.yaml data/statbel-benchmark.yaml    # local
+#   BENCHMARK_PATH=/data/statbel-benchmark.yaml                     # in a container
+#
+# READ THIS BEFORE TRUSTING A COMPARISON. The `groups` below are marked
+# `status: transcribed`: they were read off Statbel's published summary table for the
+# Household Budget Survey and nobody has checked them against the survey's own
+# spreadsheet. That is not a formality — it is why every comparison Balancr draws from
+# this file carries the year, the source and, while the status stays `transcribed`, a note
+# saying the figures have not been confirmed at the source. When you have checked a
+# figure against the XLSX download, set `status: confirmed` and `last_verified` to the day
+# you did it. The caveat then disappears by itself.
+#
+# What this file is not: a target, a budget, or a verdict. It is what other households
+# did. A household with no car spends nothing on transport and is not doing anything
+# wrong; a comparison is context, which is why Balancr never raises a benchmark
+# difference above `info` and never turns one into a suggestion.
+#
+# Structure, and why there are two kinds of comparison.
+#
+#   `groups` are the ten lines of Statbel's summary table, each with its share of the
+#   total household budget in basis points (1400 = 14,00%) and the COICOP divisions it
+#   covers. Shares are what makes the *mix* comparison possible — how your spending is
+#   divided, against how theirs is — and that needs no euro amount and no household size
+#   at all. This is the comparison Balancr always draws.
+#
+#   `reference_household` is optional and ships commented out. It carries the average
+#   household's monthly total in cents plus its size on the equivalence scale, which is
+#   what a *level* comparison needs: "you spend more on food than a comparable household",
+#   not just "food is a bigger share of your budget". Those two numbers are not on the
+#   summary page — they are in the survey's own spreadsheet — so transcribing them is a
+#   deliberate act, with instructions below.
+#
+#   `equivalence` is the scale used to make your household comparable to the average one.
+#   It only matters for the level comparison; the mix comparison ignores it.
+#
+# COICOP is the international classification of household consumption that Statbel
+# publishes against. Divisions 01–12 cover consumption. Balancr reserves the code `00`
+# for everything that is not household consumption at all — savings, investments, taxes,
+# transfers, debt repayment — because a budget contains plenty of those and counting them
+# as consumption would make every other share look small. Categories mapped to `00` are
+# left out of the comparison entirely rather than counted as unmapped.
+
+version: 1
+jurisdiction: BE
+
+# ---------------------------------------------------------------------------
+#  Where the shares come from.
+# ---------------------------------------------------------------------------
+source:
+  survey: 'Household Budget Survey (HBS)'
+  year: 2024
+  citation: 'Statbel, Household Budget Survey 2024 — structure of household expenditure'
+  source_url: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs'
+  last_verified: '2026-09-03'
+  status: transcribed
+  notes: >-
+    Shares of total household expenditure from the survey's summary table, covering
+    roughly 5.500 Belgian households. Read off the published page; the underlying XLSX
+    download is the authority and has not been opened. Rounded to two decimals at source,
+    which is why the ten shares sum to exactly 100,00% here.
+
+# ---------------------------------------------------------------------------
+#  The scale that makes two households comparable.
+# ---------------------------------------------------------------------------
+#
+# The modified OECD scale, which Eurostat uses for equivalised income: the first adult
+# counts 1,0, every further person aged 14 or over counts 0,5, and every child under 14
+# counts 0,3. A single parent with one young child is therefore 1,3 "equivalent adults",
+# and spends less than an average household of 2,3 without spending unusually.
+#
+# The scale says nothing about part-time household membership. Balancr prorates a child's
+# weight by the custody share you enter, and says so on screen every time it does: that
+# proration is Balancr's own assumption, not something the published scale supports.
+equivalence:
+  scale: modified_oecd
+  first_person_bp: 10000
+  additional_person_bp: 5000
+  child_bp: 3000
+  child_age_below: 14
+  citation: 'Eurostat — equivalised disposable income, modified OECD scale'
+  source_url: 'https://ec.europa.eu/eurostat/statistics-explained/index.php?title=Glossary:Equivalised_disposable_income'
+  last_verified: '2026-09-03'
+  status: transcribed
+
+# ---------------------------------------------------------------------------
+#  The average household in euros. Optional, and off by default.
+# ---------------------------------------------------------------------------
+#
+# Fill this in and Balancr adds a second comparison: your spending against what a
+# household of your size on the scale above spends, in euros, per month. Leave it out and
+# only the mix comparison appears — which is the honest default, because guessing either
+# number would make every euro figure on the page wrong by whatever the guess was off by.
+#
+# To fill it in, from the survey page linked in `source`:
+#
+#   1. Download the XLSX for the year in `source.year` (about 7 MB).
+#   2. Find total average expenditure per household per year, in euros. Divide by 12,
+#      multiply by 100, round to a whole number: that is `mean_monthly_cents`.
+#   3. Find the average household size the survey reports, and the age split if it gives
+#      one. Convert it with the scale above — 1,0 for the first person, 0,5 per further
+#      adult, 0,3 per child under 14 — and write the result in basis points as
+#      `equivalent_adults_bp` (2,3 adults-equivalent = 23000).
+#   4. Set `last_verified` to today and `status: confirmed`, since you will have read it
+#      at the source.
+#
+# reference_household:
+#   mean_monthly_cents: 0
+#   equivalent_adults_bp: 0
+#   citation: 'Statbel HBS <year> — mean expenditure and household composition'
+#   last_verified: '2026-01-01'
+#   status: transcribed
+
+# ---------------------------------------------------------------------------
+#  The ten lines of the summary table.
+# ---------------------------------------------------------------------------
+#
+# `id` is a fixed vocabulary: the same ten ids appear in the code and in both catalogues,
+# so a group cannot be renamed here without failing the load. `coicop` lists the
+# divisions the group covers; between them the ten groups cover 01–12 exactly once, which
+# the loader checks.
+groups:
+  - id: food
+    share_bp: 1400
+    coicop: ['01']
+
+  - id: alcohol_tobacco
+    share_bp: 170
+    coicop: ['02']
+
+  - id: clothing
+    share_bp: 370
+    coicop: ['03']
+
+  # The largest line by a wide margin, and the one a mortgage or a rent lands in. Statbel
+  # counts imputed rent for owner-occupiers here, which Balancr's figures do not: an
+  # owner without a mortgage will read as far below the reference for that reason alone.
+  - id: housing
+    share_bp: 3060
+    coicop: ['04']
+
+  - id: furnishings
+    share_bp: 500
+    coicop: ['05']
+
+  # Out-of-pocket health spending only. Belgian social security carries most of the cost
+  # elsewhere, which is why the share is small.
+  - id: health
+    share_bp: 480
+    coicop: ['06']
+
+  - id: transport
+    share_bp: 1170
+    coicop: ['07']
+
+  - id: recreation
+    share_bp: 790
+    coicop: ['09']
+
+  - id: hotels_restaurants
+    share_bp: 730
+    coicop: ['11']
+
+  # Statbel's own residual line, and it is genuinely three divisions: communication (08),
+  # education (10) and miscellaneous goods and services (12) — insurance, childcare,
+  # personal care, bank charges. Split out in the table Balancr reads, so split out here.
+  - id: other
+    share_bp: 1330
+    coicop: ['08', '10', '12']

@@ -92,12 +92,12 @@ const monthsFromBp = (bp: number | undefined, translate: Translate): string | un
 /**
  * How each code's numbers read.
  *
- * `category` and `account` are deliberately absent: both come from the signal's
- * single name field, which keeps one rule for them rather than seventeen.
+ * `category`, `account` and `group` are deliberately absent: all three come from
+ * the signal's single name field, which keeps one rule for them rather than
+ * seventeen.
  *
- * Two codes have no producer yet — `above_benchmark` waits on the Statbel model
- * and `no_spend_streak` on the streak detector — so the keys named here are the
- * contract those producers will emit against.
+ * One code has no producer yet — `no_spend_streak` waits on the streak detector —
+ * so the keys named here are the contract that producer will emit against.
  */
 const NUMERIC_VARS: {
   readonly [C in FindingCode]: (metrics: Metrics, translate: Translate) => Vars
@@ -145,8 +145,9 @@ const NUMERIC_VARS: {
 /** The formatted variables a signal's sentence needs, its name included. */
 export function findingVars(signal: SignalFacts, translate: Translate): Vars {
   const vars = NUMERIC_VARS[signal.code](signal.metrics, translate)
-  // `unreconciled_account` names an account and the rest name a category — one
-  // field either way, because a signal is about exactly one thing.
+  // `unreconciled_account` names an account, `above_benchmark` names a benchmark
+  // group and the rest name a category — one field either way, because a signal is
+  // about exactly one thing.
   // Widened: `spec.vars` is a literal tuple, so `includes` would otherwise only
   // accept the strings that particular code already declares.
   const spec: { readonly vars: readonly string[] } = FINDING_SPECS[signal.code]
@@ -154,8 +155,18 @@ export function findingVars(signal: SignalFacts, translate: Translate): Vars {
     ? 'account'
     : spec.vars.includes('category')
       ? 'category'
-      : null
-  if (nameVar !== null && signal.categoryName !== null) vars[nameVar] = signal.categoryName
+      : spec.vars.includes('group')
+        ? 'group'
+        : null
+  if (nameVar === null || signal.categoryName === null) return vars
+  // A category and an account are named by whoever keeps the budget and travel as
+  // text; a benchmark group is one of ten fixed ids and is *translated*, because
+  // `housing` is a key and not a word anybody wants to read on a Dutch page. Same
+  // field, because a group is still the one thing the signal is about (#43).
+  vars[nameVar] =
+    nameVar === 'group'
+      ? translate(`budget:benchmark.group.${signal.categoryName}`, {})
+      : signal.categoryName
   return vars
 }
 

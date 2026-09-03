@@ -2,9 +2,12 @@
  * The month, in the order someone asks about it.
  *
  * Four figures, then where the money went, then whether each envelope held, then
- * whether this month is on pace, then twelve months of shape per envelope. Each answer
- * is narrower than the one before it, which is also why the charts are in that order:
- * nobody wants a wall of sparklines before they know whether the month balanced.
+ * whether this month is on pace, then twelve months of shape per envelope, and last how
+ * the month compares with what Belgian households spend. Each answer is narrower than the
+ * one before it, which is also why the charts are in that order: nobody wants a wall of
+ * sparklines before they know whether the month balanced. The benchmark is last because it
+ * is the only figure on the page that is not about this household — context to read once
+ * the month itself is understood, and never a verdict on it (#43).
  *
  * **The month is a query parameter, not a route.** `?month=` on the endpoint and
  * `useState` here, rather than `/budget/2026-08`, because `useResource` refetches on a
@@ -30,6 +33,7 @@ import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts'
+import { Benchmark } from '../budget/Benchmark.tsx'
 import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
 import { SpendSankey } from '../charts/SpendSankey.tsx'
@@ -40,6 +44,7 @@ import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
+import '../budget/benchmark.css'
 
 /**
  * The one job behind every figure on this page.
@@ -100,7 +105,8 @@ interface FiguresProps {
 
 function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
   const { t, language } = useT()
-  const { categories, month, months, signals, totals, trendMonths, uncategorised } = data
+  const { benchmark, categories, month, months, signals, totals, trendMonths, uncategorised } =
+    data
 
   const rendered = useMemo(() => renderSignals(signals, t), [signals, t])
   const spending = useMemo(() => categories.filter((category) => !category.isIncome), [categories])
@@ -185,6 +191,7 @@ function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
 
           <Pace signals={rendered} t={t} />
           <TrendWall categories={trend} months={trendMonths} signals={rendered} />
+          <Benchmark benchmark={benchmark} />
         </>
       )}
     </>

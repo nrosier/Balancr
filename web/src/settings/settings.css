@@ -735,3 +735,80 @@
 .status__warnings {
   gap: var(--space-1);
 }
+
+/* ---------------------------------------------------------------------------
+   Benchmark: the household and the COICOP mapping (#43)
+
+   Two panels, almost no CSS. The mapping is a table the global sheet already styles,
+   and the only thing added for it is a gap between a category's name and the badge
+   that says it is income — which the sheet cannot supply, because `.badge` does not
+   know whether it follows text.
+
+   The roster earns its rules: three boxes per row that have to stay one row on a
+   desktop and stack on a phone, and a sentence under them saying what the row reads
+   as. `auto-fit` with a floor does both without a media query — the same bargain
+   `.risk__fields` makes, at a narrower floor because a year is four characters.
+   --------------------------------------------------------------------------- */
+
+.household {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.member__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+/* What the two numbers above it mean on the equivalence scale, in the smallest type on
+   the panel: it is a read-back of what was just typed, not a second thing to read. */
+.member__reads {
+  margin: 0;
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.members__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.provenance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-4);
+  max-width: 70ch;
+  font-size: var(--type-xs);
+  color: var(--text-muted);
+}
+
+.mapping__flag {
+  margin-left: var(--space-2);
+}

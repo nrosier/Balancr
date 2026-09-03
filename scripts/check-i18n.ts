@@ -15,6 +15,12 @@ import {
   CLARIFICATION_SPECS,
   FINDING_SPECS,
 } from '../src/domain/ai/codes.ts'
+import {
+  BENCHMARK_BLOCKS,
+  BENCHMARK_GROUPS,
+  COICOP_DIVISIONS,
+  OUTSIDE_CONSUMPTION,
+} from '../src/domain/benchmark/vocabulary.ts'
 
 const localesDir = fileURLToPath(new URL('../src/i18n/locales', import.meta.url))
 const SOURCE = 'en'
@@ -162,7 +168,31 @@ for (const [prefix, specs] of codeGroups) {
   }
 }
 
-// 6. Layout bounds. Dutch runs 10-30% longer than English, and where that shows is
+// 6. The benchmark vocabulary. Both of these are closed sets in code that reach the
+//    screen as identifiers, and both would ship as one: `housing` as a table row header
+//    in the Dutch UI, or `07` as the label of a menu entry somebody has to choose from.
+//    Neither is a string the fallback chain can rescue, because `en` would render the
+//    identifier too — the catalogue is the only place either has a name at all.
+const vocabularies: Array<[string, readonly string[], string]> = [
+  ['budget:benchmark.group.', BENCHMARK_GROUPS, 'benchmark group'],
+  // The file's three blocks, which both the card and the settings panel name when
+  // nobody has confirmed one against the source.
+  ['budget:benchmark.block.', BENCHMARK_BLOCKS, 'benchmark file block'],
+  // The twelve COICOP divisions plus `00`: every entry the mapping picker offers, and
+  // the reason it is this list and not the ten groups is in `mapping.ts`.
+  ['settings:benchmark.coicop.', [...COICOP_DIVISIONS, OUTSIDE_CONSUMPTION], 'COICOP division'],
+]
+for (const [prefix, ids, what] of vocabularies) {
+  for (const id of ids) {
+    for (const [lang, flat] of catalogues) {
+      if (flat.get(`${prefix}${id}`) === undefined) {
+        fail(`${lang}: ${what} "${id}" has no name at "${prefix}${id}"`)
+      }
+    }
+  }
+}
+
+// 7. Layout bounds. Dutch runs 10-30% longer than English, and where that shows is
 //    wherever the box is fixed: the bottom tab bar, a button beside another button, a
 //    chart legend, a badge in a table cell. Those boxes are sized for the Dutch string
 //    rather than the English one — see `.nav__label` in `web/src/shell/shell.css` and
@@ -194,6 +224,11 @@ const bounds: Array<{ prefix: string; max: number; box: string }> = [
   { prefix: 'common:nav.', max: 18, box: 'two lines of a fifth of a 360px tab bar' },
   { prefix: 'common:action.', max: 20, box: 'a button sharing a row with another button' },
   { prefix: 'budget:metric.', max: 24, box: 'two rows of the bullet-chart legend' },
+  {
+    prefix: 'budget:benchmark.state.',
+    max: 24,
+    box: "the benchmark table's last column, which does not wrap",
+  },
   ...BADGE_GROUPS.map((prefix) => ({ prefix, max: BADGE_MAX, box: 'a badge in a table cell' })),
 ]
 for (const { prefix, max, box } of bounds) {

@@ -26,7 +26,7 @@
   },
   "findings": {
     "above_baseline": "{{category}} ligt {{delta}} boven je 12-maandsgemiddelde van {{baseline}}.",
-    "above_benchmark": "{{category}} ligt {{delta}} boven de Belgische referentie van {{benchmark}}.",
+    "above_benchmark": "{{group}} ligt {{delta}} boven de Belgische referentie van {{benchmark}} voor die groep.",
     "below_baseline": "{{category}} ligt {{delta}} onder je gebruikelijke niveau.",
     "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen.",
     "emergency_fund_short": "Je buffer dekt {{months}}, minder dan de {{target}} die je nastreeft.",

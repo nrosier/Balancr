@@ -11,8 +11,9 @@
  *    genuinely in the red. This is the one that costs money.
  *  - **`above_baseline`** — above your own norm for this category, whatever was
  *    assigned. Catches the envelope that was simply budgeted too generously.
- *  - **`above_benchmark`** — above what a comparable household spends. Stubbed
- *    until the Statbel model lands; see `benchmarkSignals`.
+ *  - **`above_benchmark`** — a bigger share of the budget than Belgian
+ *    households spend on that line (#43). Group-level and always `info`: it is
+ *    context about the country, not evidence about you. See `benchmarkSignals`.
  *
  * Every relative signal is gated on an absolute floor. A €7 envelope going 40%
  * over is €2.80: arithmetically true, and noise. Getting flagged for it is how
@@ -22,6 +23,8 @@
  * testable without mocking time.
  */
 import { capSeverity, SEVERITY_RANK, type FindingCode, type Severity } from '../ai/codes.ts'
+import type { BenchmarkComparison } from '../benchmark/compare.ts'
+import { MIN_DELTA_BP } from '../benchmark/vocabulary.ts'
 import type { AggregateParams } from './params.ts'
 import type { MonthlyFact } from './spend.ts'
 
@@ -184,17 +187,63 @@ export function categorySignals(
 }
 
 /**
- * External-benchmark comparison. Returns nothing in v1, by design.
+ * Where your spending sits against what Belgian households spend (#43).
  *
- * The comparison the app was asked for — against median spending for a Belgian
- * single-parent household with joint custody of one teenager — needs a Statbel
- * HBS mapping plus an equivalence scale, and neither can be invented here. The
- * code exists in the vocabulary and this is where it will be produced, so the
- * gap is visible in the source rather than implied by its absence. Returning an
- * empty array keeps every caller and chart already written for it correct.
+ * Group-level, not category-level, and that is the whole shape of it. The reference is
+ * ten published lines of a household budget survey, so the only thing it can be compared
+ * with is your spending aggregated the same way — a single envelope has no counterpart in
+ * the source, and inventing one per category would be the reference figure divided by
+ * however many envelopes somebody happens to keep.
+ *
+ * Three restraints, and each of them is a decision not to overclaim:
+ *
+ *  - **Only above, never below.** `above_benchmark` has no opposite in the vocabulary on
+ *    purpose. Spending less than average on transport is what not owning a car looks like,
+ *    and a page that flagged it would be telling somebody their frugality is a finding.
+ *  - **`info`, always.** `capSeverity` enforces it, and `FINDING_SPECS` says why: this is
+ *    context. Your own baseline is evidence about you; a national average is evidence
+ *    about the country, and it cannot know that you live in Brussels or that your rent
+ *    includes heating.
+ *  - **Two thresholds, both absolute.** `MIN_DELTA_BP` for the relative gap and the shared
+ *    materiality floor for the euros, so a line that is 40% over by €12 stays quiet — the
+ *    same rule every other signal in this file is gated on.
+ *
+ * The group id travels in `categoryName`, which is why this builds its signals literally
+ * rather than through `signal()`: there is no `MonthlyFact` behind a group, and `vars.ts`
+ * translates the id through the catalogue rather than printing it. `categoryId` stays null
+ * for the same reason it is null for a household-level signal — a benchmark line belongs
+ * to no single envelope, and attaching it to one would make it show up under that
+ * envelope's name on the budget page.
  */
-export function benchmarkSignals(): Signal[] {
-  return []
+export function benchmarkSignals(
+  comparison: BenchmarkComparison,
+  params: AggregateParams,
+): Signal[] {
+  if (comparison.kind !== 'ok') return []
+  const { materialityFloorCents } = params.overspend
+  const signals: Signal[] = []
+
+  for (const line of comparison.groups) {
+    if (line.deltaBp === null) continue
+    if (line.deltaBp < MIN_DELTA_BP) continue
+    if (line.deltaCents < materialityFloorCents) continue
+    signals.push({
+      code: 'above_benchmark',
+      categoryId: null,
+      categoryName: line.group,
+      severity: capSeverity('above_benchmark', 'info'),
+      metrics: {
+        deltaBp: line.deltaBp,
+        benchmarkCents: line.benchmarkCents,
+        yourCents: line.yourCents,
+        excessCents: line.deltaCents,
+        referenceShareBp: line.referenceShareBp,
+        yourShareBp: line.yourShareBp,
+      },
+    })
+  }
+
+  return sortSignals(signals)
 }
 
 /**

@@ -40,7 +40,10 @@ export const FINDING_SPECS = {
   // material amount is the top of the panel. `overspend.baselineAlertBp` is the
   // threshold, and would be a knob that cannot do anything if this were 'warn'.
   above_baseline: { vars: ['category', 'delta', 'baseline'], maxSeverity: 'alert', negative: true },
-  above_benchmark: { vars: ['category', 'delta', 'benchmark'], maxSeverity: 'info', negative: true },
+  // `group`, not `category`: the reference is ten published lines of a household
+  // budget survey, so the only thing comparable to it is spending aggregated the
+  // same way. An envelope has no counterpart in the source (#43).
+  above_benchmark: { vars: ['group', 'delta', 'benchmark'], maxSeverity: 'info', negative: true },
 
   // --- trajectory ---
   burn_rate_over: { vars: ['category', 'projected', 'assigned'], maxSeverity: 'warn', negative: true },
@@ -84,8 +87,8 @@ export const CLARIFICATION_SPECS = {
  * The ceiling in `FINDING_SPECS` is the contract for a code, and both the
  * deterministic signal producers and the model's own output run through here —
  * otherwise the declared maximum would be documentation rather than a rule, and
- * `above_benchmark` (an `info` by design, since v1 has no benchmark) could
- * arrive as an alert.
+ * `above_benchmark` (an `info` by design: a national average is context
+ * about the country, not evidence about you) could arrive as an alert.
  */
 export function capSeverity(code: FindingCode, severity: Severity): Severity {
   const ceiling = FINDING_SPECS[code].maxSeverity

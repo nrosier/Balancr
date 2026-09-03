@@ -245,6 +245,17 @@ const EnvSchema = z.object({
    */
   TAX_RULES_PATH: z.string().min(1).default('./config/belgian-tax.yaml'),
 
+  /**
+   * Where the household-budget benchmark lives (#43).
+   *
+   * Same arrangement as the tax rules, with one difference: this file is genuinely
+   * optional. A deployment that points this at nothing gets no comparison against a
+   * national average and every other figure unchanged — which is a reasonable thing to
+   * want, and is why `benchmarkOrNull` treats an absent file as a choice rather than as
+   * a misconfiguration to log about every quarter of an hour.
+   */
+  BENCHMARK_PATH: z.string().min(1).default('./config/statbel-benchmark.yaml'),
+
   // Egress
   /**
    * Whether this process refuses to connect to a host nobody configured.
@@ -500,6 +511,7 @@ export function configSummary(): Record<string, unknown> {
     FUND_UNIVERSE_PATH: config.FUND_UNIVERSE_PATH,
     FUND_UNIVERSE_MAX_AGE_DAYS: config.FUND_UNIVERSE_MAX_AGE_DAYS,
     TAX_RULES_PATH: config.TAX_RULES_PATH,
+    BENCHMARK_PATH: config.BENCHMARK_PATH,
     EGRESS_MODE: config.EGRESS_MODE,
     EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,

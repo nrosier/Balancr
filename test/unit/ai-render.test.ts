@@ -72,7 +72,10 @@ const ALL_METRICS: Record<string, number> = {
 const signal = (code: FindingCode, overrides: Partial<Signal> = {}): Signal => ({
   code,
   categoryId: 'cat-1',
-  categoryName: 'Groceries',
+  // `above_benchmark` is the one code whose name field is not a name: it carries one of
+  // the ten benchmark group ids, which is *translated* rather than printed (#43). A
+  // category name in there is a missing translation, which is exactly what it should be.
+  categoryName: code === 'above_benchmark' ? 'housing' : 'Groceries',
   severity: 'warn',
   metrics: ALL_METRICS,
   ...overrides,
@@ -210,5 +213,21 @@ describe('rendering carries the finding through', () => {
     const household = signal('savings_rate_low', { categoryId: null, categoryName: null })
     expect(renderSignal(household, 'en')).not.toBeNull()
     expect(renderSignal(household, 'nl')).not.toBeNull()
+  })
+
+  it('translates the benchmark group a benchmark finding names (#43)', () => {
+    // The one finding whose name field is not a name: `overspend.ts` puts one of the ten
+    // benchmark group ids in `categoryName`, and `housing` is a key rather than a word
+    // anybody wants to read. The loop above cannot catch this — it names a category, so
+    // the sentence renders with a raw key in it and nothing complains.
+    const benchmark = signal('above_benchmark', { categoryId: null, categoryName: 'housing' })
+    expect(norm(renderSignal(benchmark, 'en')?.text ?? '')).toContain(
+      'Housing, water and energy',
+    )
+    expect(norm(renderSignal(benchmark, 'nl')?.text ?? '')).toContain('Huisvesting')
+    // And no key survives into either sentence, which is the failure this guards.
+    for (const lang of ['en', 'nl']) {
+      expect(renderSignal(benchmark, lang)?.text ?? '').not.toMatch(/benchmark\.group\./)
+    }
   })
 })

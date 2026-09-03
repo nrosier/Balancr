@@ -1,0 +1,62 @@
+/*
+ * The benchmark card (#43).
+ *
+ * Almost nothing, and deliberately so: the card is a `.table` and a `.notice`, both of
+ * which the shared components own, because a comparison against a national average is
+ * six columns of numbers and not a new shape. What is here is the three pieces the shared
+ * stylesheet has no name for — the lede above the table, the qualifications below it, and
+ * the provenance line under those.
+ *
+ * **No colour carries meaning in this file, and that is the point.** #43 asks for a
+ * benchmark delta as `info` and never as an alert, and a red cell is an alert whatever the
+ * payload calls it: a household above the transport line and below the restaurants one has
+ * not done anything wrong in either direction. So the last column is emphasised by weight
+ * and says the word — `--above` and `--below` are the same rule twice on purpose, one per
+ * direction, so a future decision to distinguish them has somewhere to go without a reader
+ * having to guess today which one meant trouble.
+ */
+
+/* The basis sentence. Same shape as `.panel__hint`, which lives in the settings sheet. */
+.benchmark__lede {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  color: var(--text-muted);
+}
+
+/*
+ * What the figures above are and are not: how much of the month is mapped, what was left
+ * out as savings or tax, and the household the reference was scaled to. A list rather
+ * than a paragraph because each line is independently true and any of them can be absent.
+ */
+.benchmark__meta {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  color: var(--text-muted);
+}
+
+/* Survey, year, citation, verification date — the part that makes the figure checkable. */
+.benchmark__source {
+  margin: 0;
+  max-width: 70ch;
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+  color: var(--text-muted);
+}
+
+/* A line above the reference by more than the finding threshold, and one below it. */
+.benchmark__state--above,
+.benchmark__state--below {
+  font-weight: var(--weight-semibold);
+}
+
+/* No categories map here, so the row's share is not a claim about spending. */
+.benchmark__state--unmapped {
+  color: var(--text-muted);
+}
