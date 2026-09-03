@@ -254,8 +254,14 @@ describe('the language', () => {
     await act(async () => {
       await setLanguage('nl')
     })
-    // A second flush, because the effect that would undo it runs on the render the
-    // switch itself caused. Without this the assertion could land before the revert.
+    // Waited for rather than asserted straight away: the switch loads a catalogue, so
+    // the Dutch heading is one or more microtasks out and a single flush is a race.
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portefeuille')
+    })
+    // Then a flush, because the effect that would undo it runs on the render the switch
+    // itself caused — and it is the *absence* of that revert this test is about, so the
+    // assertion has to come after it would have happened.
     await act(async () => {
       await Promise.resolve()
     })

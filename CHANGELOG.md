@@ -6,6 +6,81 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A risk profile, in numbers rather than an adjective**
+  ([#41](https://github.com/nrosier/Balancr/issues/41)). "Some risk, but not super high
+  risk" cannot motivate a trade, so Settings → Risk profile is where it becomes twelve
+  numbers: a floor, a target and a ceiling for equities, bonds, property and commodities,
+  plus the two thresholds that decide when a drift is worth acting on at all. Three presets
+  arrive with their own figures shown before anything is committed to, and they come from
+  the server rather than being written out again in the browser — a second copy of
+  "balanced" is a second definition of the profile the advice was computed against.
+- **Editing a band makes the profile `custom`, and the panel says so as it happens**
+  ([#41](https://github.com/nrosier/Balancr/issues/41)). The profile in force is the
+  numbers; the name is a label on them. So a hand edit sends the bands and no name, an
+  untouched preset sends the name and no bands, and the two are mutually exclusive by
+  construction. All four bands travel together, because four targets with one left over
+  from the previous profile is precisely the state that adds up to 97%.
+- **The drift from it, one row per band class, worst first**
+  (`src/domain/advice/drift.ts`). Including the classes worth nothing: zero bonds against
+  a 30% target is the most actionable row the page can draw, and a table built from what
+  is held would leave it out entirely. Shares are of the *invested* value, which the
+  caption states — cash at a broker is not an asset class, and on an instance whose
+  Ghostfolio holds a synced bank balance measuring against the total would drop every
+  class below its floor at once. A class Ghostfolio has and the profile has no band for
+  comes back as `unmapped` with its share, never quietly folded into a neighbour.
+- **A trade per class that left its band, carrying the figure that motivates it**
+  (`src/domain/advice/suggest.ts`). #41 asks for no suggestion without its drift figure,
+  so `Suggestion` holds the whole `DriftLine` it came from and cannot be constructed
+  without it — the reason on the card and the row in the table are one function over one
+  field rather than two paragraphs that can drift apart. A purchase may only name an
+  instrument that came through `assertProposable`, so a class with no fresh fund in the
+  universe produces a card saying which of the two reasons it is instead of a plausible
+  ticker.
+- **`funding`, because the size of a trade depends on where the money comes from**
+  (`src/domain/advice/suggest.ts`). Buying from cash grows the base the share is a share
+  of, so closing an apparent gap at a 65% target takes nearly three times the gap; when
+  the same report also wants a sale, the two fund each other and the gap *is* the trade.
+  Each suggestion states which case it is. One figure quoted for both would be wrong by a
+  factor of three in whichever case it was not written for.
+- **What acting would cost, from the tax module, on every card**
+  ([#42](https://github.com/nrosier/Balancr/issues/42) put to work). The same
+  `describeTaxEstimate` a digest would call, so the estimate reads identically everywhere
+  and the browser holds no second copy of the tax vocabulary. `taxOmits` is never empty on
+  a sale: the realised gain needs a cost base this app never sees, and a total that
+  quietly dropped it would read as complete.
+- **A band outside its edge and left alone says which threshold suppressed it**
+  (`skipped`). A red row with no suggestion under it is a bug report waiting to be filed,
+  so the page names the threshold, the distance past the edge and the size of the trade —
+  the three numbers needed to judge whether the threshold is set right.
+- **Ghostfolio's class labels, per position** (`0012_old_rhino.sql`). `asset_class` and
+  `asset_sub_class` on `portfolio_snapshots`: a sale has to name the position it would
+  come out of, and the sub-class is what beurstaks turns on — 0,35% on a share against
+  0,12–1,32% on a fund, so pricing every position as a fund overstates a share's exit by
+  nearly four times. No backfill and no default: today's holdings are re-fetched every
+  pass, and a historical row whose label was never recorded stays null and is simply not a
+  candidate, which is the honest reading of "we do not know what this is".
+
+### Changed
+
+- **`GET /api/portfolio` computes the drift rather than reading it**
+  (`src/server/routes/api/portfolio.ts`). The one exception to that route's rule, stated
+  where it is broken: drift is a comparison against a profile the settings page can change
+  at any moment, so a figure written by the nightly job would disagree with the bands on
+  screen for up to a day. `portfolio_metrics.drift_json` stays null for the same reason.
+  The profile, the fund universe and the tax rules are three cheap reads, each of which
+  degrades to "no advice" rather than to a 500.
+- **The tax wire types spell `| undefined` on their optional fields**
+  (`src/domain/tax/estimate.ts`). JSON has one way to be absent and
+  `exactOptionalPropertyTypes` has two, so a line parsed back out of the response schema
+  was not assignable to the one function that has to run on both sides of the wire.
+  Producers are unaffected. `UNKNOWN_REASONS` and `ASSUMPTIONS` became const arrays at the
+  same time, so the response schema enumerates them from the domain rather than repeating
+  them.
+
 ## [0.7.2] — 2026-09-03
 
 ### Added

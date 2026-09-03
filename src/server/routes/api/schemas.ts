@@ -17,8 +17,18 @@
  * what the SPA in `0.6.0` may rely on, expressed once, next to nothing else.
  */
 import { z } from 'zod'
+import { DRIFT_STATES } from '../../../domain/advice/drift.ts'
+import { BAND_CLASSES, PRESET_IDS, PROFILE_IDS } from '../../../domain/advice/profile.ts'
+import {
+  FUNDINGS,
+  SKIP_REASONS,
+  TAX_OMISSIONS,
+  UNAVAILABLE_REASONS,
+} from '../../../domain/advice/suggest.ts'
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { AI_OFF_REASONS } from '../../../domain/ai/availability.ts'
+import { ASSUMPTIONS, UNKNOWN_REASONS } from '../../../domain/tax/estimate.ts'
+import { TAX_RULE_IDS } from '../../../domain/tax/rules.ts'
 
 /**
  * An amount of money: whole cents, and never a float.
@@ -209,6 +219,230 @@ export const budgetSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+//  Advice
+// ---------------------------------------------------------------------------
+
+/**
+ * A tax estimate, in the tax module's own spelling.
+ *
+ * The only snake_case in this file, and deliberately so. `describeTaxEstimate` turns an
+ * estimate into sentences and is written to run on both sides of the wire — the browser
+ * renders the tax block, a digest email would render the same one — so the shape that
+ * arrives here has to be the shape that function takes. Renaming twelve fields to house
+ * style would buy a consistent camelCase at the price of a mapper in each direction whose
+ * only job is spelling, plus a second vocabulary for the same numbers, and the rates and
+ * the fields are named after `config/belgian-tax.yaml`, which is the document these
+ * figures have to be checked against.
+ *
+ * `basis` is the provenance and is why the block can be trusted: the rate, the cap that
+ * bit, the citation and the date it was last checked. A number without it would be a
+ * number this app made up.
+ */
+export const taxBasisSchema = z.object({
+  rate_bp: basisPoints(),
+  base_cents: cents(),
+  /** The per-transaction ceiling, or `null` where the rule has none. */
+  cap_cents: cents().nullable(),
+  capped: z.boolean(),
+  /** Which beurstaks tier applied, for the rules that have tiers. */
+  tier: z.string().optional(),
+  citation: z.string(),
+  source_url: z.string().optional(),
+  last_verified: dateKey(),
+  /**
+   * Whether a person has checked this rule against its citation.
+   *
+   * On the wire because the page says so out loud. Every rule in the shipped file is
+   * `transcribed`, and an estimate that presented a transcribed rate with the same
+   * confidence as a confirmed one would be overstating what anybody has verified.
+   */
+  status: z.enum(['confirmed', 'transcribed']),
+  effective_from: dateKey(),
+})
+
+export const taxLineSchema = z.object({
+  rule: z.enum(TAX_RULE_IDS),
+  /** `null` when a fact is missing; `bounds` then says what it lies between. */
+  amount_cents: cents().nullable(),
+  bounds: z.object({ min_cents: cents(), max_cents: cents() }).optional(),
+  /** Which missing fact, named after the field to go and record. */
+  unknown: z.enum(UNKNOWN_REASONS).optional(),
+  basis: taxBasisSchema.nullable(),
+  assumptions: z.array(z.enum(ASSUMPTIONS)),
+})
+
+export const taxEstimateSchema = z.object({
+  lines: z.array(taxLineSchema),
+  /** The sum of what is known — a floor when `complete` is false. */
+  total_cents: cents(),
+  total_min_cents: cents(),
+  /** `null` when an unknown line has no bounds at all. */
+  total_max_cents: cents().nullable(),
+  complete: z.boolean(),
+  transcribed: z.array(z.enum(TAX_RULE_IDS)),
+  effective_from: dateKey(),
+  last_verified: dateKey(),
+})
+
+/**
+ * One class measured against its band — the reason a suggestion exists.
+ *
+ * The band's three numbers travel on the line rather than beside the advice as a copy of
+ * the profile, because the line is where they are read: a page drawing a marker at the
+ * target and a bar between the edges needs them per class, and a second copy is a second
+ * thing to keep in step with the settings the user just changed.
+ */
+export const driftLineSchema = z.object({
+  assetClass: z.enum(BAND_CLASSES),
+  valueCents: cents(),
+  shareBp: basisPoints(),
+  minBp: basisPoints(),
+  targetBp: basisPoints(),
+  maxBp: basisPoints(),
+  /** Signed distance from target: positive means overweight. */
+  driftBp: basisPoints(),
+  state: z.enum(DRIFT_STATES),
+  /** How far past the band edge. Zero when inside — this, not `driftBp`, is the alarm. */
+  outsideBp: basisPoints(),
+  /** The drift as money. Not the size of the trade: see `funding` below. */
+  gapCents: cents(),
+})
+
+export const driftReportSchema = z.object({
+  /** Worst first, and one line per band class, so a zero holding is still visible. */
+  lines: z.array(driftLineSchema),
+  /**
+   * Value in classes no band covers, largest first.
+   *
+   * `assetClass` is a plain string here rather than the band enum: this is exactly the
+   * case of a class Ghostfolio has and the profile does not, which is a thing to report
+   * and not a thing to fail on.
+   */
+  unmapped: z.array(
+    z.object({ assetClass: z.string(), valueCents: cents(), shareBp: basisPoints() }),
+  ),
+  /** What the shares are shares of: the invested value, cash excluded. */
+  investedValueCents: cents(),
+  worstOutsideBp: basisPoints(),
+})
+
+export const suggestionSchema = z.object({
+  action: z.enum(['buy', 'sell']),
+  assetClass: z.enum(BAND_CLASSES),
+  /** Cents, and never negative — the direction is `action`, not the sign. */
+  amountCents: z.int().nonnegative(),
+  /**
+   * Where the money comes from, which is why the amount is what it is.
+   *
+   * `paired` means a trade the other way funds it and the invested total does not move,
+   * so the amount is the gap. `cash` means the total does move, and closing a gap then
+   * takes nearly three times the gap at a 65% target. A client that showed the amount
+   * without this would be showing a figure that only makes sense in one of the two cases.
+   */
+  funding: z.enum(FUNDINGS),
+  /** The drift that motivates it. The issue's requirement, as a required field. */
+  reason: driftLineSchema,
+  /**
+   * The fund a purchase names, or `null` with `unavailable` set.
+   *
+   * Only ever an instrument from the curated universe (#40) — nothing here can name a
+   * ticker that came out of a model. `terPercent` is the one genuine float on this wire:
+   * a TER is 0,12% and rounding it to cents or basis points would flatten the difference
+   * between two funds that is the only reason the cheaper one was chosen.
+   */
+  fund: z
+    .object({
+      isin: z.string(),
+      name: z.string(),
+      terPercent: z.number().nonnegative(),
+      /** How many funds could have filled this line, this one included. */
+      alternatives: z.int().positive(),
+    })
+    .nullable(),
+  /** For a sale: the position it would come out of, when the snapshot can name one. */
+  position: z
+    .object({
+      isin: z.string().nullable(),
+      name: z.string().nullable(),
+      valueCents: cents(),
+      alternatives: z.int().positive(),
+    })
+    .nullable(),
+  unavailable: z.enum(UNAVAILABLE_REASONS).optional(),
+  /** What acting would cost, or `null` when there are no tax rules to price it with. */
+  tax: taxEstimateSchema.nullable(),
+  /**
+   * What that estimate leaves out.
+   *
+   * Never empty for a sale: the realised gain depends on a cost base this app never
+   * sees, so capital gains are absent from the total rather than guessed at, and the
+   * page has to be able to say so. A total that quietly excluded a 10% tax would read
+   * as a complete one.
+   */
+  taxOmits: z.array(z.enum(TAX_OMISSIONS)),
+})
+
+/**
+ * The bands as the settings page edits them.
+ *
+ * `z.record` over the class enum rather than four spelled-out keys, because Zod 4 makes
+ * an enum-keyed record exhaustive: a band missing for one class is a rejected payload
+ * rather than a class that silently has no target. That is also what makes a partial
+ * `bands` patch impossible, which is the rule `saveProfile` states — four targets, one of
+ * them left over from the previous profile, is exactly the state that adds up to 97%.
+ */
+export const bandsSettingSchema = z.record(
+  z.enum(BAND_CLASSES),
+  z.object({ minBp: basisPoints(), targetBp: basisPoints(), maxBp: basisPoints() }),
+)
+
+/**
+ * The risk profile as the settings screen shows it (#41).
+ *
+ * The presets travel with it, numbers included. The picker has to be able to say what
+ * "defensive" *means* before somebody commits to it, and `PROFILE_PRESETS` cannot be
+ * imported into the browser — it lives beside the settings table and the logger. A
+ * hand-written copy in the page would be a second definition of the profile the advice
+ * was actually computed against.
+ */
+export const riskProfileSettingSchema = z.object({
+  profile: z.enum(PROFILE_IDS),
+  /** Whether the bands are still exactly the preset they are named after. */
+  isPreset: z.boolean(),
+  /** The bands in force, whichever they came from — never null, never partial. */
+  bands: bandsSettingSchema,
+  toleranceBp: basisPoints(),
+  minTradeCents: cents(),
+  presets: z.record(z.enum(PRESET_IDS), bandsSettingSchema),
+})
+
+export const adviceSchema = z.object({
+  profile: z.enum(PROFILE_IDS),
+  /** Whether the bands are still exactly the preset they are named after. */
+  isPreset: z.boolean(),
+  toleranceBp: basisPoints(),
+  minTradeCents: cents(),
+  drift: driftReportSchema,
+  /** Worst drift first, in the drift report's own order. */
+  suggestions: z.array(suggestionSchema),
+  /**
+   * Lines outside their band that produced no suggestion, and why.
+   *
+   * On the wire because "the page draws a red band and suggests nothing" is a bug
+   * report waiting to be filed. `amountCents` is the trade that was suppressed, so the
+   * threshold can be judged against the number it suppressed.
+   */
+  skipped: z.array(
+    z.object({
+      assetClass: z.enum(BAND_CLASSES),
+      outsideBp: basisPoints(),
+      amountCents: z.int().nonnegative(),
+      reason: z.enum(SKIP_REASONS),
+    }),
+  ),
+})
+
+// ---------------------------------------------------------------------------
 //  Portfolio
 // ---------------------------------------------------------------------------
 
@@ -265,6 +499,15 @@ export const portfolioSchema = z.object({
   ),
   holdings: z.array(holdingSchema),
   history: z.array(netWorthPointSchema),
+  /**
+   * The risk profile, the drift against it, and what would close the drift (#41).
+   *
+   * Null when there is no invested value to measure — a fresh install, or a date whose
+   * row predates the invested/cash split. Bands are shares of the invested value, so
+   * without one every class is trivially 100% below target, and an empty portfolio would
+   * be shown four red bands and four suggestions to buy nothing.
+   */
+  advice: adviceSchema.nullable(),
 })
 
 // ---------------------------------------------------------------------------
@@ -641,6 +884,8 @@ export const settingsSchema = z.object({
   locales: z.object({ supported: z.array(z.string()), default: z.string() }),
   params: aggregateParamsSchema,
   paramDefaults: aggregateParamsSchema,
+  /** The risk profile advice is measured against. See `riskProfileSettingSchema`. */
+  advice: riskProfileSettingSchema,
   prompts: z.array(promptSchema),
   accounts: z.array(accountSettingSchema),
   /**
@@ -841,6 +1086,9 @@ export type Hygiene = z.infer<typeof hygieneSchema>
 export type Overview = z.infer<typeof overviewSchema>
 export type Budget = z.infer<typeof budgetSchema>
 export type Portfolio = z.infer<typeof portfolioSchema>
+export type Advice = z.infer<typeof adviceSchema>
+export type Suggestion = z.infer<typeof suggestionSchema>
+export type DriftLine = z.infer<typeof driftLineSchema>
 export type Insights = z.infer<typeof insightsSchema>
 export type AiRun = z.infer<typeof aiRunSchema>
 export type AiRunPayload = z.infer<typeof aiRunPayloadSchema>
@@ -855,6 +1103,8 @@ export type PromptBody = z.infer<typeof promptBodySchema>
 export type PromptDiff = z.infer<typeof promptDiffSchema>
 export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
+export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
+export type BandsSetting = z.infer<typeof bandsSettingSchema>
 export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>

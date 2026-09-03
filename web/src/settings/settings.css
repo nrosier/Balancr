@@ -85,6 +85,113 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Risk profile
+
+   Two shapes. The preset list is a radio group whose label carries a second line —
+   what the preset *means* in targets — because a name nobody can unpack is a name
+   nobody should commit money to. The band editor is a table with three inputs per row,
+   which is the one form on the site where a grid is right: twelve numbers with the same
+   unit, compared down three columns, and a floor that has to line up with the floor
+   above it.
+   --------------------------------------------------------------------------- */
+
+.risk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.risk__presets {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.risk__legend {
+  padding: 0 0 var(--space-2);
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.risk__preset {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.risk__presetName {
+  font-size: var(--type-base);
+  font-weight: var(--weight-medium);
+}
+
+/* The second line of the label, under the name rather than beside it: three targets in
+   Dutch do not fit on one line beside a radio at any width worth designing for. */
+.risk__presetBands {
+  grid-column: 2;
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.risk__custom {
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-xs);
+  color: var(--warn);
+}
+
+.risk__bands {
+  min-width: 26rem;
+}
+
+.risk__input {
+  width: 5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk__reads {
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.risk__sum {
+  margin: 0;
+  font-size: var(--type-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one live refusal in this panel. Coloured, because a sum that does not reach 100%
+   is the difference between a save and a rejected request. */
+.risk__sum--off {
+  color: var(--negative);
+  font-weight: var(--weight-medium);
+}
+
+.risk__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+
+.risk__note {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-xs);
+}
+
+.risk__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* ---------------------------------------------------------------------------
    Thresholds
    --------------------------------------------------------------------------- */
 

@@ -186,7 +186,9 @@ const BADGE_GROUPS = [
   'common:source.',
   'common:status.',
   'common:theme.',
+  'portfolio:advice.badge.',
   'portfolio:assetClass.',
+  'portfolio:suggest.action.',
 ]
 const bounds: Array<{ prefix: string; max: number; box: string }> = [
   { prefix: 'common:nav.', max: 18, box: 'two lines of a fifth of a 360px tab bar' },

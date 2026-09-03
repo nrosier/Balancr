@@ -24,12 +24,24 @@ import { invalidBody, type FieldIssue } from './errors.ts'
  *
  * An issue with no path — a cross-field rule that names the object itself — keeps an
  * empty path rather than being dropped. It is still the reason the request failed.
+ *
+ * A rejected unknown key is the one issue Zod reports against the *parent*: a strict
+ * object says "unrecognized key" and puts the path at the object, which leaves a form
+ * with a message and nothing to attach it to. So it is expanded into one entry per key,
+ * with the key on the path — a misspelt field then highlights the field the sender
+ * meant, which is the whole reason these paths travel to the client at all.
  */
 export function fieldIssues(error: z.ZodError): FieldIssue[] {
-  return error.issues.map((issue) => ({
-    path: issue.path.map((segment) => String(segment)).join('.'),
-    message: issue.message,
-  }))
+  return error.issues.flatMap((issue) => {
+    const path = issue.path.map((segment) => String(segment)).join('.')
+    if (issue.code === 'unrecognized_keys') {
+      return issue.keys.map((key) => ({
+        path: path === '' ? key : `${path}.${key}`,
+        message: 'Unknown field.',
+      }))
+    }
+    return [{ path, message: issue.message }]
+  })
 }
 
 /** Parses a request body, or throws a 400 naming the fields that were wrong. */

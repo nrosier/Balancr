@@ -26,7 +26,7 @@ import { screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Portfolio } from '../src/pages/Portfolio.tsx'
 import { formatQuantity } from '../src/ui/HoldingsTable.tsx'
-import type { Freshness, Portfolio as PortfolioPayload } from '../src/shared.ts'
+import type { Advice, Freshness, Portfolio as PortfolioPayload } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
 
 /**
@@ -102,6 +102,7 @@ const FULL: PortfolioPayload = {
     { date: '2026-08-01', totalCents: 4_200_000 },
     { date: '2026-09-01', totalCents: 5_000_000 },
   ],
+  advice: null,
 }
 
 /** Nothing has ever been snapshotted. */
@@ -115,6 +116,7 @@ const EMPTY: PortfolioPayload = {
   allocation: [],
   holdings: [],
   history: [],
+  advice: null,
 }
 
 /**
@@ -147,6 +149,198 @@ const MIXED: PortfolioPayload = {
       priceCurrency: 'EUR',
       valueCents: 500_000,
       currency: 'EUR',
+    },
+  ],
+}
+
+/**
+ * A beurstaks line as `estimateTrade` produces one: a rate, a base, and who says so.
+ *
+ * Written out rather than imported from the domain, because the point of these tests is
+ * that the page renders what the *wire* carries — snake_case fields and all — and a
+ * fixture built by calling the estimator would pass even if the schema and the page had
+ * drifted apart. 0,12% of € 10.000 is € 12,00, which is arithmetic a reader can check.
+ */
+const BUY_TAX: NonNullable<Advice['suggestions'][number]['tax']> = {
+  lines: [
+    {
+      rule: 'tob',
+      amount_cents: 1_200,
+      basis: {
+        rate_bp: 12,
+        base_cents: 1_000_000,
+        cap_cents: 400_000,
+        capped: false,
+        citation: 'WDRT art. 120',
+        last_verified: '2026-01-15',
+        status: 'confirmed',
+        effective_from: '2025-01-01',
+      },
+      assumptions: [],
+    },
+  ],
+  total_cents: 1_200,
+  total_min_cents: 1_200,
+  total_max_cents: 1_200,
+  complete: true,
+  transcribed: [],
+  effective_from: '2025-01-01',
+  last_verified: '2026-01-15',
+}
+
+/** The same rule on the sale, still transcribed — which is what raises the caveat. */
+const SELL_TAX: NonNullable<Advice['suggestions'][number]['tax']> = {
+  ...BUY_TAX,
+  lines: [
+    {
+      ...BUY_TAX.lines[0]!,
+      amount_cents: 660,
+      basis: { ...BUY_TAX.lines[0]!.basis!, base_cents: 550_000, status: 'transcribed' },
+    },
+  ],
+  total_cents: 660,
+  total_min_cents: 660,
+  total_max_cents: 660,
+  transcribed: ['tob'],
+}
+
+/**
+ * The advice for `FULL`, computed by hand against the invested € 50.000.
+ *
+ * Every figure here is one the server would have produced, and they are worth checking
+ * by hand because the page must not recompute any of them: equities are 7.600 bp of the
+ * invested value against a 7.500 ceiling, so 100 bp outside; bonds are 1.000 bp against
+ * a 2.000 floor, so 1.000 bp outside and € 10.000 short of the 3.000 bp target.
+ *
+ * The bands are the balanced preset with a floor added under property, which is why
+ * `isPreset` is false — and it makes property a third line outside its band whose € 2.500
+ * correction falls under the € 3.000 minimum trade. So one fixture carries all four
+ * outcomes at once: a sale, a purchase, a line suppressed by a threshold, and a class
+ * Ghostfolio holds that the profile has no band for.
+ */
+const ADVICE: Advice = {
+  profile: 'balanced',
+  isPreset: false,
+  toleranceBp: 50,
+  minTradeCents: 300_000,
+  drift: {
+    investedValueCents: 5_000_000,
+    worstOutsideBp: 1_000,
+    // Worst first, in the server's own order. The page does not re-sort.
+    lines: [
+      {
+        assetClass: 'FIXED_INCOME',
+        valueCents: 500_000,
+        shareBp: 1_000,
+        minBp: 2_000,
+        targetBp: 3_000,
+        maxBp: 4_000,
+        driftBp: -2_000,
+        state: 'below',
+        outsideBp: 1_000,
+        gapCents: 1_000_000,
+      },
+      {
+        assetClass: 'REAL_ESTATE',
+        valueCents: 0,
+        shareBp: 0,
+        minBp: 500,
+        targetBp: 500,
+        maxBp: 1_500,
+        driftBp: -500,
+        state: 'below',
+        outsideBp: 500,
+        gapCents: 250_000,
+      },
+      {
+        assetClass: 'EQUITY',
+        valueCents: 3_800_000,
+        shareBp: 7_600,
+        minBp: 5_500,
+        targetBp: 6_500,
+        maxBp: 7_500,
+        driftBp: 1_100,
+        state: 'above',
+        outsideBp: 100,
+        gapCents: -550_000,
+      },
+      {
+        assetClass: 'COMMODITY',
+        valueCents: 0,
+        shareBp: 0,
+        minBp: 0,
+        targetBp: 0,
+        maxBp: 1_000,
+        driftBp: 0,
+        state: 'inside',
+        outsideBp: 0,
+        gapCents: 0,
+      },
+    ],
+    unmapped: [{ assetClass: 'unknown', valueCents: 700_000, shareBp: 1_400 }],
+  },
+  suggestions: [
+    {
+      action: 'buy',
+      assetClass: 'FIXED_INCOME',
+      amountCents: 1_000_000,
+      funding: 'paired',
+      reason: {
+        assetClass: 'FIXED_INCOME',
+        valueCents: 500_000,
+        shareBp: 1_000,
+        minBp: 2_000,
+        targetBp: 3_000,
+        maxBp: 4_000,
+        driftBp: -2_000,
+        state: 'below',
+        outsideBp: 1_000,
+        gapCents: 1_000_000,
+      },
+      fund: {
+        isin: 'IE00B3F81R35',
+        name: 'iShares Core Euro Aggregate Bond',
+        terPercent: 0.09,
+        alternatives: 2,
+      },
+      position: null,
+      tax: BUY_TAX,
+      taxOmits: [],
+    },
+    {
+      action: 'sell',
+      assetClass: 'EQUITY',
+      amountCents: 550_000,
+      funding: 'paired',
+      reason: {
+        assetClass: 'EQUITY',
+        valueCents: 3_800_000,
+        shareBp: 7_600,
+        minBp: 5_500,
+        targetBp: 6_500,
+        maxBp: 7_500,
+        driftBp: 1_100,
+        state: 'above',
+        outsideBp: 100,
+        gapCents: -550_000,
+      },
+      fund: null,
+      position: {
+        isin: 'IE00B4L5Y983',
+        name: 'iShares Core MSCI World',
+        valueCents: 3_800_000,
+        alternatives: 1,
+      },
+      tax: SELL_TAX,
+      taxOmits: ['capital_gains'],
+    },
+  ],
+  skipped: [
+    {
+      assetClass: 'REAL_ESTATE',
+      outsideBp: 500,
+      amountCents: 250_000,
+      reason: 'below_min_trade',
     },
   ],
 }
@@ -367,6 +561,249 @@ describe('a portfolio with positions in it', () => {
     const region = await screen.findByRole('region', { name: '3 holdings, largest first.' })
     expect(region.className).toBe('table-scroll')
     expect(region.querySelector('table')).not.toBeNull()
+  })
+})
+
+describe('the risk profile and the drift from it', () => {
+  const show = (advice: Advice | null): void => {
+    serve(json({ ...FULL, advice }))
+    renderApp(<Portfolio />)
+  }
+
+  it('says there is nothing to measure rather than dropping the section', async () => {
+    // `advice: null` means no invested value, which is a state to explain and not a
+    // reason to hide a feature — a missing section reads as one nobody built.
+    show(null)
+    expect(await screen.findByText(/nothing invested to measure/)).toBeTruthy()
+    // And no suggestions section at all: there is nothing to suggest against.
+    expect(screen.queryByRole('heading', { level: 2, name: 'What would bring it back' })).toBeNull()
+  })
+
+  it('names the profile, the denominator, and that the bands were edited', async () => {
+    show(ADVICE)
+    // The invested € 50.000, not the € 50.000 total — they agree in this fixture, and
+    // the sentence says which one it is so the reader of `MIXED` is not left guessing.
+    const line = await screen.findByText(/Measured against the Balanced profile/)
+    expect(line.textContent?.replace(SPACES, ' ')).toBe(
+      'Measured against the Balanced profile, over € 50.000 invested. · bands edited',
+    )
+  })
+
+  it('keeps the preset name unqualified when the numbers still match it', async () => {
+    show({ ...ADVICE, isPreset: true })
+    const line = await screen.findByText(/Measured against the Balanced profile/)
+    expect(line.textContent).not.toContain('bands edited')
+  })
+
+  it('gives every band class a row, including the ones worth nothing', async () => {
+    show(ADVICE)
+    await screen.findByRole('region', { name: /Each asset class as a share/ })
+
+    // Four rows for four bands. A table built from the slices Ghostfolio returned
+    // would have two, and the missing bonds are the most actionable line on the page.
+    const names = screen
+      .getAllByRole('rowheader')
+      .map((cell) => cell.textContent)
+      .slice(0, 4)
+    expect(names).toEqual(['Bonds', 'Property', 'Equities', 'Commodities'])
+  })
+
+  it('leaves the server order alone, which is worst drift first', async () => {
+    show(ADVICE)
+    await screen.findByRole('region', { name: /Each asset class as a share/ })
+    // Bonds are 1.000 bp outside and equities 100, so bonds lead — even though equities
+    // are the larger holding and the larger distance from target.
+    expect(screen.getAllByRole('rowheader')[0]?.textContent).toBe('Bonds')
+  })
+
+  it('prints the share, the target and the band as the server sent them', async () => {
+    show(ADVICE)
+    await screen.findByRole('region', { name: /Each asset class as a share/ })
+
+    const cells = row('Bonds').map((cell) => cell.replace(SPACES, ' '))
+    expect(cells[1]).toBe('10%')
+    expect(cells[2]).toBe('30%')
+    // The band, not just the target: a share between target and ceiling is fine, and
+    // against a bare target it would read as an error.
+    expect(cells[3]).toBe('20% to 40%')
+  })
+
+  it('shows the gap as signed money, so a sale reads as one', async () => {
+    show(ADVICE)
+    await screen.findByRole('region', { name: /Each asset class as a share/ })
+
+    // € 10.000 short of target in bonds, € 5.500 too much in equities. The sign is the
+    // direction, and the caption says the last column is what would move.
+    expect(row('Bonds')[4]?.replace(SPACES, ' ')).toBe('+€ 10.000')
+    expect(row('Equities')[4]?.replace(SPACES, ' ')).toBe('€ -5.500')
+  })
+
+  it('badges on the distance past the edge, not on the distance from target', async () => {
+    show(ADVICE)
+    await screen.findByRole('region', { name: /Each asset class as a share/ })
+
+    // Both hold nothing. Property has a floor under it and commodities do not, so one
+    // is a problem and the other is exactly what the profile asked for — a table that
+    // badged on "is it held" or on `driftBp` would call them the same thing.
+    expect(row('Property')[5]).toBe('Below')
+    expect(row('Commodities')[5]).toBe('In band')
+    // And equities are above their ceiling by 100 bp while being 1.100 bp from target.
+    expect(row('Equities')[5]).toBe('Above')
+  })
+
+  it('reports a class the profile has no band for instead of folding it in', async () => {
+    show(ADVICE)
+    // 14% of the invested value with no target. Counting it as equities — or dropping it
+    // from the denominator — would make every other share on the page slightly wrong.
+    const line = await screen.findByText(/Unclassified: /)
+    expect(line.textContent?.replace(SPACES, ' ')).toBe(
+      'Unclassified: € 7.000, 14% of what is invested',
+    )
+  })
+
+  it('says so when every class is inside its band', async () => {
+    const balanced: Advice = {
+      ...ADVICE,
+      drift: {
+        ...ADVICE.drift,
+        worstOutsideBp: 0,
+        lines: ADVICE.drift.lines.map((line) => ({ ...line, state: 'inside', outsideBp: 0 })),
+      },
+      suggestions: [],
+      skipped: [],
+    }
+    show(balanced)
+    expect(await screen.findByText('Every asset class is inside its band. Nothing to do.'))
+      .toBeTruthy()
+  })
+
+  it('keeps the drift table reachable by keyboard and named by its caption', async () => {
+    show(ADVICE)
+    const region = await screen.findByRole('region', { name: /Each asset class as a share/ })
+    expect(region.getAttribute('tabindex')).toBe('0')
+  })
+})
+
+describe('the trades that would close the drift', () => {
+  const show = (advice: Advice): void => {
+    serve(json({ ...FULL, advice }))
+    renderApp(<Portfolio />)
+  }
+
+  /** One suggestion card's text, with `Intl`'s spaces normalised. */
+  const card = (index: number): string => {
+    const items = document.querySelectorAll('.suggestion-list > .suggestion')
+    return (items[index]?.textContent ?? '').replace(SPACES, ' ')
+  }
+
+  it('leads each card with the action, the amount and the class', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    expect(card(0)).toContain('Buy')
+    expect(card(0)).toContain('€ 10.000')
+    expect(card(0)).toContain('Bonds')
+    expect(card(1)).toContain('Sell')
+    expect(card(1)).toContain('€ 5.500')
+    expect(card(1)).toContain('Equities')
+  })
+
+  it('carries the drift figure that motivates it, in the table\'s own words', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    // #41's requirement, asserted: no suggestion without the drift that produced it.
+    // The same sentence the row would give, because both call one function on one line.
+    expect(card(0)).toContain('10% below its floor of 20%')
+    expect(card(1)).toContain('1% above its ceiling of 75%')
+  })
+
+  it('says where the money comes from, since that is what sized the trade', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+    // Paired, so the amount is the gap itself rather than the larger figure a purchase
+    // out of cash would need — a distinction worth a factor of three at a 65% target.
+    expect(card(0)).toContain('the invested total does not move')
+  })
+
+  it('names the fund a purchase would go into, with its cost and its alternatives', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    expect(card(0)).toContain('iShares Core Euro Aggregate Bond')
+    expect(card(0)).toContain('IE00B3F81R35')
+    // Two decimals on a TER: 0,09% and 0,19% differ by the digit somebody compares.
+    expect(card(0)).toContain('TER 0,09%')
+    expect(card(0)).toContain('one of 2 funds in your list')
+  })
+
+  it('names the position a sale would come out of, and how much of it is held', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    expect(card(1)).toContain('iShares Core MSCI World')
+    expect(card(1)).toContain('€ 38.000 held')
+    expect(card(1)).toContain('the only position in this class')
+  })
+
+  it('prices the trade and cites the rule it priced it with', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    // € 12,00 is 0,12% of € 10.000 — the page prints the server's figure and the base.
+    expect(card(0)).toContain('€ 12,00 in tax')
+    expect(card(0)).toContain('0,12% of € 10.000')
+    expect(card(0)).toContain('WDRT art. 120 · checked 15/01/2026')
+  })
+
+  it('admits what the tax figure leaves out, on the sale only', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    // The realised gain needs a cost base this app never sees. A total that quietly
+    // excluded a 10% tax would read as a complete one.
+    expect(card(1)).toContain('Capital gains are not in this figure')
+    expect(card(0)).not.toContain('Capital gains are not in this figure')
+  })
+
+  it('flags a rate nobody has checked against the law', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+    // The sale's rule is `transcribed`, the purchase's is `confirmed`. Presenting both
+    // with the same confidence would overstate what anyone has verified.
+    expect(card(1)).toContain('nobody has checked them against the law')
+    expect(card(0)).not.toContain('nobody has checked them against the law')
+  })
+
+  it('says a trade cannot be named rather than naming something plausible', async () => {
+    const blocked: Advice = {
+      ...ADVICE,
+      suggestions: [{ ...ADVICE.suggestions[0]!, fund: null, unavailable: 'no_fund_in_universe' }],
+    }
+    show(blocked)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    expect(card(0)).toContain('Nothing in your fund list covers this class')
+    // The drift is still stated: the class is still outside its band.
+    expect(card(0)).toContain('10% below its floor of 20%')
+  })
+
+  it('reports a band it left alone, and against which threshold', async () => {
+    show(ADVICE)
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+
+    // A red band with nothing under it is a bug report waiting to happen, so the
+    // sentence names the figure and the floor it fell under.
+    const skipped = await screen.findByText(/Property is 5% past its edge/)
+    expect(skipped.textContent?.replace(SPACES, ' ')).toBe(
+      'Property is 5% past its edge, but closing it takes only € 2.500 — under the € 3.000 you set as the smallest trade worth making.',
+    )
+  })
+
+  it('explains an empty list rather than leaving a heading over nothing', async () => {
+    show({ ...ADVICE, suggestions: [], skipped: [] })
+    await screen.findByRole('heading', { level: 2, name: 'What would bring it back' })
+    expect(screen.getByText(/Nothing worth trading/)).toBeTruthy()
   })
 })
 
