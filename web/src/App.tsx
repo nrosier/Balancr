@@ -12,6 +12,12 @@
  * and both live in this tree. It is the one piece of chrome outside the shell that a
  * language switch has to reach.
  *
+ * The language itself is settled twice, and both are needed. `/bootstrap` resolved it
+ * server-side before this component existed, which is what makes the very first paint
+ * and `<html lang>` correct. But that request was answered before the sign-in, so an
+ * account whose own setting differs from the browser's only becomes knowable when the
+ * session lands — and that is the effect below.
+ *
  * `CsrfProvider` is here for the pages rather than for this component: the settings
  * page writes, the route table hands pages no props, and the token config comes from
  * the same bootstrap payload this component already holds.
@@ -23,14 +29,14 @@
  * the sign-in screen through exactly the same path as a first visit. Wired once here
  * rather than per page, so #30 onwards inherit it.
  */
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, type CsrfConfig } from './api/client.ts'
 import { CsrfProvider } from './api/csrf.tsx'
 import { SessionExpiryProvider } from './api/resource.tsx'
 import { fetchSession, type SessionResponse } from './auth/session.ts'
 import { SignIn } from './auth/SignIn.tsx'
 import './auth/signin.css'
-import { useT } from './i18n.ts'
+import { setLanguage, useT } from './i18n.ts'
 import { NotFound } from './pages/NotFound.tsx'
 import { useRouter } from './router.tsx'
 import { routeFor } from './routes.ts'
@@ -63,6 +69,27 @@ export function App({ bootstrap }: AppProps): ReactNode {
   useEffect(load, [load])
 
   const route = routeFor(path)
+
+  const preferred = session?.user?.locale
+  const supported = bootstrap.locales.supported
+  /**
+   * The account locale this component has already acted on.
+   *
+   * Compared against instead of against the current language, because the settings page
+   * switches the language itself and the session payload it was read from is stale the
+   * moment it does. An effect that compared with `language` would fire on that switch,
+   * find the session still saying `en`, and put the UI straight back — the control would
+   * appear to do nothing until the next reload.
+   */
+  const adopted = useRef<string | null>(null)
+  useEffect(() => {
+    if (preferred === undefined || preferred === adopted.current) return
+    adopted.current = preferred
+    // A locale the bundle has no catalogue for would leave i18next falling back
+    // silently; better to keep the language the server already resolved.
+    if (!supported.includes(preferred)) return
+    void setLanguage(preferred)
+  }, [preferred, supported])
 
   useEffect(() => {
     const page = route === undefined ? t('notFound.title') : t(route.labelKey)

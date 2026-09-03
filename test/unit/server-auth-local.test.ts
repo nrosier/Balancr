@@ -19,6 +19,7 @@
  * case states its address.
  */
 import argon2 from 'argon2'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { Secret, TOTP } from 'otpauth'
@@ -27,7 +28,7 @@ import { createTestDb } from '../../src/db/index.ts'
 import { localCredentials, sessions, users } from '../../src/db/schema.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { ARGON2_OPTIONS, TOTP_PERIOD_SECONDS } from '../../src/server/auth/local.ts'
-import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
+import { CSRF_COOKIE, LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 
 const EMAIL = 'nick@example.test'
@@ -130,6 +131,15 @@ describe('from an allowed address', () => {
       cookies: { [SESSION_COOKIE]: session as string },
     })
     expect(session2.json<{ authenticated: boolean }>().authenticated).toBe(true)
+  })
+
+  it('remembers the account language, so the next document is in it', async () => {
+    // The login response is JSON; the *next* request is the one that renders
+    // `<html lang>`, and by then the only thing carrying this account's preference is
+    // this cookie. Without it a Dutch account gets one English document per sign-in.
+    ctx.db.update(users).set({ locale: 'nl' }).where(eq(users.id, userId)).run()
+    const res = await attempt()
+    expect(cookieValue(res, LOCALE_COOKIE)).toBe('nl')
   })
 
   it('refuses wrong details with 401 and no detail', async () => {

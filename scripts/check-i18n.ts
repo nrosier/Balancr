@@ -162,6 +162,50 @@ for (const [prefix, specs] of codeGroups) {
   }
 }
 
+// 6. Layout bounds. Dutch runs 10-30% longer than English, and where that shows is
+//    wherever the box is fixed: the bottom tab bar, a button beside another button, a
+//    chart legend, a badge in a table cell. Those boxes are sized for the Dutch string
+//    rather than the English one — see `.nav__label` in `web/src/shell/shell.css` and
+//    `CHROME_REM` in `web/src/charts/BudgetBullet.tsx` — and this is the other half of
+//    that bargain: a translation longer than its box holds fails here, rather than
+//    clipping on a phone screen nobody is looking at in Dutch.
+//
+//    A character count is a proxy for rendered width, and a coarse one. It is used
+//    anyway because it needs no browser and an author can check it by counting. Every
+//    bound below is a decision about a specific box; raising one means widening that
+//    box first, in the stylesheet that owns it.
+const BADGE_MAX = 24
+/** Groups rendered as a badge, a pill or a select option — narrow, and never wrapped. */
+const BADGE_GROUPS = [
+  'budget:group.',
+  'common:accountKind.',
+  'common:frequency.',
+  'common:job.',
+  'common:nature.',
+  'common:severity.',
+  'common:source.',
+  'common:status.',
+  'common:theme.',
+  'portfolio:assetClass.',
+]
+const bounds: Array<{ prefix: string; max: number; box: string }> = [
+  { prefix: 'common:nav.', max: 18, box: 'two lines of a fifth of a 360px tab bar' },
+  { prefix: 'common:action.', max: 20, box: 'a button sharing a row with another button' },
+  { prefix: 'budget:metric.', max: 24, box: 'two rows of the bullet-chart legend' },
+  ...BADGE_GROUPS.map((prefix) => ({ prefix, max: BADGE_MAX, box: 'a badge in a table cell' })),
+]
+for (const { prefix, max, box } of bounds) {
+  for (const [lang, flat] of catalogues) {
+    for (const [key, value] of flat) {
+      if (!key.startsWith(prefix) || value.length <= max) continue
+      fail(
+        `${lang}: "${key}" is ${String(value.length)} characters; ` +
+          `${String(max)} is what ${box} holds`,
+      )
+    }
+  }
+}
+
 if (problems.length > 0) {
   console.error(`i18n check failed — ${problems.length} problem(s):\n`)
   for (const problem of problems) console.error(`  ${problem}`)
@@ -172,5 +216,6 @@ const counts = Array.from(catalogues, ([lang, flat]) => `${lang}=${flat.size}`).
 console.log(
   `i18n ok — ${namespaces.length} namespaces, ${languages.length} languages (${counts}), ` +
     `${Object.keys(FINDING_SPECS).length} finding codes, ` +
-    `${Object.keys(CLARIFICATION_SPECS).length} clarification codes`,
+    `${Object.keys(CLARIFICATION_SPECS).length} clarification codes, ` +
+    `${bounds.length} length bounds`,
 )

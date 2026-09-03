@@ -13,16 +13,24 @@
  * a container that is still starting, or a proxy pointed at nothing. It has to offer a
  * retry rather than an empty dashboard, and the retry has to actually re-ask.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App.tsx'
+import { setLanguage } from '../src/i18n.ts'
 import type { BootstrapResponse, SessionResponse } from '../src/shared.ts'
-import { apiStub, clickLink, i18nReady, renderApp, resetTheme } from './helpers.tsx'
+import {
+  apiStub,
+  clickLink,
+  i18nReady,
+  renderApp,
+  resetLanguage,
+  resetTheme,
+} from './helpers.tsx'
 
 /** What `/bootstrap` answered. The version is what the header prints. */
 const BOOTSTRAP: BootstrapResponse = {
   version: '0.5.1',
-  locales: { supported: ['en', 'nl'], default: 'en' },
+  locales: { supported: ['en', 'nl'], default: 'en', active: 'en' },
   format: { locale: 'nl-BE', currency: 'EUR', timeZone: 'Europe/Brussels' },
   csrf: { cookie: 'balancr_csrf', header: 'x-csrf-token' },
 }
@@ -37,6 +45,18 @@ const SIGNED_IN: SessionResponse = {
   authenticated: true,
   user: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
   methods: { oidc: true, local: false },
+}
+
+/** The same account, with a language `/bootstrap` could not have known about. */
+const DUTCH_ACCOUNT: SessionResponse = {
+  ...SIGNED_IN,
+  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'nl', role: 'owner' },
+}
+
+/** A locale the deployment does not serve — `SUPPORTED_LOCALES` is `en,nl`. */
+const FRENCH_ACCOUNT: SessionResponse = {
+  ...SIGNED_IN,
+  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'fr', role: 'owner' },
 }
 
 const json = (body: unknown, status = 200): Response =>
@@ -193,6 +213,63 @@ describe('when someone is signed in', () => {
     // The sign-out POST is answered by the same queue, and the re-ask after it is what
     // decides the screen — not the button that was pressed.
     await screen.findByRole('link', { name: 'Sign in with Authentik' })
+  })
+})
+
+describe('the language', () => {
+  // i18next is a singleton per test file, so a case that proves the switch works would
+  // otherwise leave every test after it reading Dutch.
+  afterEach(resetLanguage)
+
+  it('follows the account once the session says what it is', async () => {
+    // `/bootstrap` was answered before anyone signed in, so it could only resolve the
+    // language from the cookie and the browser's header. The account's own setting
+    // arrives with the session, and both the strings and `<html lang>` have to move to
+    // it — the attribute included, because no document was reloaded to carry it.
+    serveSessions(json(DUTCH_ACCOUNT))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/portfolio' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portefeuille')
+    })
+    expect(document.documentElement.lang).toBe('nl')
+  })
+
+  it('leaves the resolved language alone when the account agrees with it', async () => {
+    serveSessions(json(SIGNED_IN))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/portfolio' })
+    await screen.findByRole('navigation', { name: 'Sections' })
+    expect(document.documentElement.lang).toBe('en')
+  })
+
+  it('does not undo a switch made after the session landed', async () => {
+    // What the settings page does: change the language, then answer with a payload the
+    // session state here knows nothing about. Adopting the session locale on every
+    // language change would put the UI back where it started, and the control on the
+    // settings page would look broken until the next full reload.
+    serveSessions(json(SIGNED_IN))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/portfolio' })
+    await screen.findByRole('navigation', { name: 'Sections' })
+
+    await act(async () => {
+      await setLanguage('nl')
+    })
+    // A second flush, because the effect that would undo it runs on the render the
+    // switch itself caused. Without this the assertion could land before the revert.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portefeuille')
+  })
+
+  it('ignores a locale this bundle has no catalogue for', async () => {
+    // A row written when the deployment served French, or `SUPPORTED_LOCALES` narrowed
+    // since. i18next would fall back on its own and say nothing; keeping the language
+    // the server resolved is the better of the two silences.
+    serveSessions(json(FRENCH_ACCOUNT))
+    renderApp(<App bootstrap={BOOTSTRAP} />, { path: '/portfolio' })
+    await screen.findByRole('navigation', { name: 'Sections' })
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portfolio')
   })
 })
 

@@ -50,6 +50,7 @@ import {
 import { newCsrfToken } from '../csrf.ts'
 import type { LocalLoginResponse, SessionResponse } from '../contract.ts'
 import { badRequest, HttpError, notFound } from '../errors.ts'
+import { rememberLocale } from '../locale.ts'
 import { inCidrs, peerAddress } from '../net.ts'
 import { loginRateLimit } from '../rate-limit.ts'
 import { LOCAL_LOGIN_CIDRS } from '../trust.ts'
@@ -183,6 +184,10 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
           cookieAttributes(true, Math.floor(sessionTtlMs() / 1000)),
         )
         void reply.setCookie(CSRF_COOKIE, newCsrfToken(), cookieAttributes(false))
+        // So the next first paint is already in this account's language. The SPA
+        // switches on the session answer either way, but that is a switch the visitor
+        // can see; the cookie is what makes the reload after it silent.
+        rememberLocale(reply, user.locale)
 
         const response: LocalLoginResponse = {
           authenticated: true,
@@ -280,6 +285,10 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
     // A fresh CSRF token for the authenticated session, so a value planted before
     // the login is not the one the session goes on using.
     void reply.setCookie(CSRF_COOKIE, newCsrfToken(), cookieAttributes(false))
+    // The redirect that follows loads the shell, so this is set on the response
+    // *before* the one that has to render `<html lang>` — a first visit after an OIDC
+    // login arrives in the account's language rather than the browser's.
+    rememberLocale(reply, user.locale)
 
     log.info({ userId: user.id, role: user.role }, 'signed in via OIDC')
     return reply.redirect(flow.returnTo, 303)

@@ -10,7 +10,9 @@
  *     wrong values would look right on this deployment and wrong on someone else's.
  *  2. **Catalogues and the chosen language**, so nothing renders an English string
  *     for a frame in a Dutch UI.
- *  3. **`<html lang>`**, set by `initI18n`.
+ *  3. **`<html lang>`**, which the server already set on the document it sent. The
+ *     bundle re-asserts it through `initI18n` so a later switch keeps it true, but the
+ *     value both agree on is the server's: `bootstrap.locales.active`.
  *
  * All three come from `/bootstrap`, which is `SUPPORTED_LOCALES`, `FORMAT_LOCALE`
  * and friends — the operator's `.env`, not the image. Baking them in would mean
@@ -37,26 +39,6 @@ import { initI18n } from './i18n.ts'
 import { RouterProvider } from './router.tsx'
 import { configureFormatting, type BootstrapResponse } from './shared.ts'
 import { ThemeProvider } from './theme/ThemeContext.tsx'
-
-/**
- * The language to start in.
- *
- * Interim: the browser's own preference order, narrowed to what the operator
- * enabled, falling back to `DEFAULT_LOCALE`. The full resolution order — user
- * setting, then cookie, then `Accept-Language`, then the default — needs the user
- * preference endpoint and lands with #34. `navigator.languages` is the same
- * information `Accept-Language` carries, so this is the third rung of that ladder
- * rather than a different rule.
- */
-function preferredLanguage(bootstrap: BootstrapResponse): string {
-  const supported = bootstrap.locales.supported
-  for (const tag of navigator.languages) {
-    // `nl-BE` should select `nl`; the catalogues are keyed by the base language.
-    const base = tag.toLowerCase().split('-')[0]
-    if (base !== undefined && supported.includes(base)) return base
-  }
-  return bootstrap.locales.default
-}
 
 /**
  * Shown when `/bootstrap` cannot be reached — the container is starting, or a proxy
@@ -106,9 +88,13 @@ configureFormatting({
   timeZone: bootstrap.format.timeZone,
 })
 
+// The server resolved this: the signed-in account's own setting, then the locale
+// cookie, then `Accept-Language`, then `DEFAULT_LOCALE`. Deciding it again here — off
+// `navigator.languages`, say — would be a second implementation of the same order, and
+// the way `<html lang>` ends up disagreeing with the strings underneath it.
 await initI18n({
   supported: bootstrap.locales.supported,
-  language: preferredLanguage(bootstrap),
+  language: bootstrap.locales.active,
 })
 
 createRoot(container).render(

@@ -16,7 +16,14 @@
  *     segment relative to its root (`UP_PATH_REGEXP`), and `join` would normalise
  *     that segment away *before* the guard ever saw it. Passing the raw parameter is
  *     what makes the traversal check work; "tidying" it up is what breaks it.
- *  3. **Unknown paths get `index.html`, but only when they look like a person
+ *  3. **The shell is a string, not a file.** `<html lang>` has to be right in the
+ *     first byte rather than after the bundle boots — a screen reader has announced
+ *     the document by then — so `shell.ts` precomputes one document per language at
+ *     startup and this file picks one per request. That is also why the shell response
+ *     carries `Vary`: it depends on the session cookie and on `Accept-Language`, and a
+ *     proxy that cached one language for everyone would be a worse bug than the one
+ *     being fixed.
+ *  4. **Unknown paths get `index.html`, but only when they look like a person
  *     typing an address.** A client-side router means `/budget` is a real URL that
  *     the server has no route for, so a deep link or a refresh has to be answered
  *     with the shell. That rule cannot be unconditional: `/api/spelling-mistake`
@@ -36,7 +43,10 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { config } from '../config.ts'
 import { logger } from '../logger.ts'
+import { resolveLocale } from './locale.ts'
+import { localeShells } from './shell.ts'
 import { APP_VERSION } from './version.ts'
 
 const log = logger.child({ module: 'server.spa' })
@@ -95,20 +105,40 @@ function wantsShell(request: FastifyRequest): boolean {
 }
 
 /**
- * Sends the shell, uncached.
+ * Sends the shell for this request's language, uncached.
  *
  * `no-store` because `index.html` is the one file whose name never changes while its
  * contents do: it names the hashed bundle, so a cached copy after a release points
  * at files that have been deleted, and the application fails to start with nothing
  * on screen to say why. It is roughly a kilobyte; the request is free.
+ *
+ * `Vary` says what the body depends on, and it is not decoration even with `no-store`
+ * in place: the two headers answer different audiences. `no-store` tells caches not to
+ * keep a copy, and `Vary` tells anything that keeps one anyway — a corporate proxy, a
+ * CDN with an override, a browser's back/forward store — that a copy is only good for
+ * the same cookie and the same `Accept-Language`. Without it, the first visitor's
+ * language is everyone's.
+ *
+ * The lookup cannot miss. `resolveLocale` filters every rung against
+ * `SUPPORTED_LOCALES`, `shell.ts` builds one document per entry in that list, and
+ * `config.ts` refuses to start unless `DEFAULT_LOCALE` is one of them. The throw is
+ * there to state that invariant rather than to handle a case: a 500 carrying a request
+ * id is diagnosable, and an empty 200 — which is what a silent fallback would send — is
+ * a blank page with nothing to look up.
  */
-function sendShell(root: string): (request: FastifyRequest, reply: FastifyReply) => FastifyReply {
-  return (_request, reply) =>
-    reply
+function sendShell(
+  shells: Map<string, string>,
+): (request: FastifyRequest, reply: FastifyReply) => FastifyReply {
+  return (request, reply) => {
+    const locale = resolveLocale(request)
+    const body = shells.get(locale) ?? shells.get(config.DEFAULT_LOCALE)
+    if (body === undefined) throw new Error(`no shell for "${locale}" and none for the default`)
+    return reply
       .header('cache-control', 'no-store')
-      // Without this, `@fastify/send` sets `public, max-age=0` and overwrites the
-      // header above — it applies its own set wholesale after the handler runs.
-      .sendFile(INDEX, root, { cacheControl: false })
+      .header('vary', 'accept-language, cookie')
+      .type('text/html; charset=utf-8')
+      .send(body)
+  }
 }
 
 /**
@@ -122,7 +152,7 @@ export function spaNotFoundHandler(
   root: string,
   fallback: (request: FastifyRequest, reply: FastifyReply) => void,
 ): (request: FastifyRequest, reply: FastifyReply) => void {
-  const shell = sendShell(root)
+  const shell = sendShell(localeShells(root))
   return (request, reply) => {
     if (wantsShell(request)) {
       shell(request, reply)
@@ -178,7 +208,7 @@ export async function registerSpa(app: FastifyInstance, root: string | null): Pr
       }),
   )
 
-  const shell = sendShell(root)
+  const shell = sendShell(localeShells(root))
   app.get('/', { config: { csrf: false, auth: false } }, shell)
 
   log.debug({ root }, 'serving the web bundle')

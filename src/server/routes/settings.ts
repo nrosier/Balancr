@@ -24,7 +24,7 @@
  * what the editor should show; grouping two accounts changes both rows and the
  * dedupe warning. One shape back, replace the state, no reconciliation.
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -62,6 +62,7 @@ import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
 import { badRequest, invalidBody, notFound } from '../errors.ts'
+import { rememberLocale } from '../locale.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 import { APP_REVISION, APP_VERSION } from '../version.ts'
 import {
@@ -343,14 +344,18 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * anyone else does — so `requireUser`, not `requireOwner`. `request.user` is
    * replaced before the response is built: it was loaded before the change, and a
    * payload still quoting the old locale would leave the page showing the language
-   * it just left.
+   * it just left. The locale cookie moves with it for the same reason, one load later.
    */
-  app.patch('/api/settings/profile', (request: FastifyRequest) => {
+  app.patch('/api/settings/profile', (request: FastifyRequest, reply: FastifyReply) => {
     const user = requireUser(request)
     const { locale } = parseBody(profilePatchRequest, request.body)
 
     const updated = setUserLocale(db, user.id, locale)
     request.user = updated
+    // The cookie is what the shell reads on the next full load, so it moves with the
+    // column. Without this the `<html lang>` after a reload would still be the old
+    // language while every string on the page was already the new one.
+    rememberLocale(reply, updated.locale)
 
     recordAudit(db, {
       action: 'settings.locale',

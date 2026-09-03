@@ -6,10 +6,15 @@
  * cron job's digest or from a chart tooltip. Adding a language is a directory, not a
  * code change.
  *
- * Full language switching — the resolution order, the cookie, `<html lang>` per
- * request, the control in the header — is issue #34's job. What is here is the part
- * the shell cannot start without: catalogues loaded, a language chosen from the
- * bootstrap payload, and `t()` wrapped so numbers come out Belgian.
+ * The language is not chosen here. The server resolves it — account setting, then
+ * locale cookie, then `Accept-Language`, then `DEFAULT_LOCALE` — and hands the answer
+ * over in `/bootstrap` as `locales.active`, having already written it into the
+ * document's `lang` attribute. `initI18n` starts from that, and `setLanguage` is the
+ * only thing that moves it afterwards: the settings control, and the session arriving
+ * with an account setting the anonymous `/bootstrap` could not have known.
+ *
+ * `<html lang>` is re-asserted on every one of those moves rather than left to the
+ * server's copy, because a switch inside the SPA does not reload the document.
  */
 import { useMemo } from 'react'
 import i18next, { type i18n as I18nInstance } from 'i18next'
