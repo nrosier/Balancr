@@ -419,6 +419,87 @@ export const spendMonthSchema = z.object({
 })
 
 /**
+ * The operational status of this instance: checks, jobs, upstream probes.
+ *
+ * `reason` is a closed vocabulary rather than a message because the settings page is
+ * rendered in two languages and a sentence composed here can only be in one of them.
+ * The strings that *are* text — a job's recorded error, a probe check's detail — are
+ * quoted from what an upstream or a job actually said, and are shown as quotations
+ * rather than as the application's own words.
+ */
+/**
+ * camelCase, unlike the hyphenated `shape-mismatch` the probe stores.
+ *
+ * These are the client's i18n keys — `t('status.reason.shapeMismatch')` — and every
+ * other catalogue key in this project is camelCase. The probe's own vocabulary stays
+ * hyphenated because it is written to a database column and read back by builds that
+ * did not write it; this one is a wire format between two files that ship together.
+ */
+export const checkReasons = [
+  /** No probe has run and no job has ever run. A new deployment, not a fault. */
+  'neverRun',
+  /** `JOBS_ENABLED=false`. Supported, and the reason everything else looks old. */
+  'jobsOff',
+  /** The job that reaches this upstream failed on its last attempt. */
+  'jobFailed',
+  /** Reachable, but not with anything we parse. Needs a code change, not patience. */
+  'shapeMismatch',
+  /** Down, restarting, or the token was rejected. Resolves itself. */
+  'unreachable',
+  /** Balancr's own database could not be read, so nothing else could be determined. */
+  'unreadable',
+] as const
+
+export const checkSchema = z.object({
+  name: z.enum(['database', 'actual', 'ghostfolio', 'jobs']),
+  status: z.enum(['ok', 'degraded', 'failed', 'unknown']),
+  reason: z.enum(checkReasons).nullable(),
+})
+
+export const jobStatusSchema = z.object({
+  name: z.string(),
+  status: z.enum(['idle', 'running', 'ok', 'error']),
+  lastRunAt: z.string().nullable(),
+  lastSuccessAt: z.string().nullable(),
+  nextRunAt: z.string().nullable(),
+  lastDurationMs: z.int().nonnegative().nullable(),
+  error: z.string().nullable(),
+  /** `every 60 minutes`, `daily at 03:00`. Null for a row no registry entry owns. */
+  schedule: z.string().nullable(),
+})
+
+export const probeStatusSchema = z.object({
+  source: z.string(),
+  status: z.enum(['ok', 'unreachable', 'shape-mismatch']),
+  checkedAt: z.string(),
+  checks: z.array(
+    z.object({
+      path: z.string(),
+      status: z.enum(['ok', 'unreachable', 'shape-mismatch']),
+      detail: z.string(),
+      error: z.string().optional(),
+    }),
+  ),
+  warnings: z.array(z.string()),
+  /** False when the stored report could not be read; the status still stands. */
+  detailAvailable: z.boolean(),
+})
+
+export const statusSchema = z.object({
+  /** Whether traffic should be routed here. One input: the database. */
+  ready: z.boolean(),
+  /** Something is wrong that does not stop this instance serving. */
+  degraded: z.boolean(),
+  at: z.string(),
+  version: z.string().nullable(),
+  revision: z.string().nullable(),
+  jobsEnabled: z.boolean(),
+  checks: z.array(checkSchema),
+  jobs: z.array(jobStatusSchema),
+  probes: z.array(probeStatusSchema),
+})
+
+/**
  * `GET /api/settings` — everything the settings screen shows, in one response.
  *
  * One request rather than six, because every panel on that page is small and the
@@ -617,6 +698,10 @@ export type Budget = z.infer<typeof budgetSchema>
 export type Portfolio = z.infer<typeof portfolioSchema>
 export type Insights = z.infer<typeof insightsSchema>
 export type Settings = z.infer<typeof settingsSchema>
+export type Status = z.infer<typeof statusSchema>
+export type CheckReason = (typeof checkReasons)[number]
+export type JobStatus = z.infer<typeof jobStatusSchema>
+export type ProbeStatus = z.infer<typeof probeStatusSchema>
 export type PromptSetting = z.infer<typeof promptSchema>
 export type PromptVersionSetting = z.infer<typeof promptVersionSchema>
 export type PromptBody = z.infer<typeof promptBodySchema>

@@ -178,6 +178,25 @@ function logProbe(report: ProbeReport): void {
 }
 
 /**
+ * A failed report as one message: which paths, in what way, with what error.
+ *
+ * Exported because two callers need the same sentence and neither should invent its
+ * own. `assertGhostfolioUsable` throws it, and the probe job records it in its `jobs`
+ * row — where it becomes the text on the status panel, which is why it names the paths
+ * rather than only the overall verdict. Returns null for a healthy report, so a caller
+ * can use it as the decision as well as the wording.
+ */
+export function describeProbeFailure(report: ProbeReport): string | null {
+  if (report.status === 'ok') return null
+
+  const failed = report.checks
+    .filter((c) => c.status !== 'ok')
+    .map((c) => `  ${c.path} [${c.status}]: ${c.error ?? 'unknown'}`)
+    .join('\n')
+  return `Ghostfolio probe failed (${report.status}):\n${failed}`
+}
+
+/**
  * Throws unless every probed endpoint parsed.
  *
  * For jobs that are about to persist portfolio figures — the point of the whole
@@ -185,11 +204,7 @@ function logProbe(report: ProbeReport): void {
  */
 export async function assertGhostfolioUsable(): Promise<ProbeReport> {
   const report = await probeGhostfolio()
-  if (report.status === 'ok') return report
-
-  const failed = report.checks
-    .filter((c) => c.status !== 'ok')
-    .map((c) => `  ${c.path} [${c.status}]: ${c.error ?? 'unknown'}`)
-    .join('\n')
-  throw new Error(`Ghostfolio probe failed (${report.status}):\n${failed}`)
+  const failure = describeProbeFailure(report)
+  if (failure === null) return report
+  throw new Error(failure)
 }

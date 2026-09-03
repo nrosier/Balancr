@@ -71,6 +71,7 @@
     "backfill": "History backfill",
     "networth": "Net worth",
     "portfolio": "Portfolio",
+    "probe": "Upstream probe",
     "signals": "Signals",
     "sync": "Budget sync"
   },
@@ -128,15 +129,20 @@
     "applied": "Applied",
     "blocked": "Blocked",
     "capped": "Budget cap reached",
+    "degraded": "Degraded",
     "error": "Error",
     "expired": "Expired",
+    "failed": "Failed",
     "idle": "Idle",
     "ok": "OK",
     "open": "Open",
     "pending": "Awaiting review",
     "rejected": "Rejected",
     "running": "Running",
-    "skipped": "Skipped"
+    "shapeMismatch": "Unexpected shape",
+    "skipped": "Skipped",
+    "unknown": "Not known",
+    "unreachable": "Unreachable"
   },
   "theme": {
     "dark": "Dark",

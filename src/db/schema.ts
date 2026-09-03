@@ -836,6 +836,39 @@ export const jobs = sqliteTable('jobs', {
 })
 
 /**
+ * The last capability probe per upstream, so readiness can answer without calling out.
+ *
+ * `/readyz` is hit by a container health check on a fixed schedule and by anyone who
+ * can reach the port. If it probed Ghostfolio on each request it would be both slow
+ * and an amplifier: one curl loop against an unauthenticated endpoint would turn into
+ * four authenticated requests per iteration against a service that is not even
+ * Balancr's. So the probe runs on a schedule, as a job, and writes what it found here.
+ *
+ * One row per source, latest wins — the same shape as `jobs`, and for the same reason:
+ * the question is always "what is true now", and a history of probe reports is a table
+ * that grows for ever to answer a question nobody asks.
+ *
+ * `status` is a column of its own rather than only a field inside `report_json` because
+ * it is the part readiness cannot do without. A row written by an older build whose
+ * report shape has since changed still yields a usable answer: status known, detail
+ * lost. A readiness endpoint that threw on a JSON parse would be reporting on itself.
+ *
+ * Actual has no row here, and that is deliberate. Probing it means `downloadBudget`,
+ * which pulls the whole budget file and takes the same `dataDir` lock the sync job
+ * takes — a probe that expensive is the sync job, so Actual's reachability is reported
+ * from that job's own row instead.
+ */
+export const upstreamProbes = sqliteTable('upstream_probes', {
+  /** `ghostfolio`. Text rather than an enum: a probe for a source this build does
+   *  not know about is a row to ignore, not a row that fails to parse. */
+  source: text().primaryKey(),
+  status: text({ enum: ['ok', 'unreachable', 'shape-mismatch'] }).notNull(),
+  checkedAt: integer('checked_at', { mode: 'timestamp_ms' }).notNull(),
+  /** The per-path checks and warnings. Shape facts only — never an amount. */
+  reportJson: text('report_json').notNull(),
+})
+
+/**
  * Rate-limit counters, kept in SQLite rather than in memory.
  *
  * The in-memory store the plugin ships with is the right default for a stateless
@@ -902,4 +935,5 @@ export const schema = {
   jobs,
   rateLimits,
   settings,
+  upstreamProbes,
 }

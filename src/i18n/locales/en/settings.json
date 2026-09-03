@@ -143,6 +143,45 @@
     "versionsNone": "Nothing saved yet, so the built-in instructions are in use.",
     "which": "Which instructions"
   },
+  "status": {
+    "check": {
+      "actual": "Actual Budget",
+      "database": "Balancr's database",
+      "ghostfolio": "Ghostfolio",
+      "jobs": "Scheduled jobs"
+    },
+    "degraded": "The pages are still served from the last run that succeeded.",
+    "jobs": {
+      "lastRun": "Last attempt",
+      "lastSuccess": "Last success",
+      "never": "Never",
+      "nextRun": "Next attempt",
+      "schedule": "Runs",
+      "seconds": "{{value}} s",
+      "title": "Background jobs",
+      "took": "Took"
+    },
+    "lede": "What is working, what is not, and when each background job last managed to run.",
+    "notServing": "This instance cannot serve pages.",
+    "probe": {
+      "checkedAt": "Checked {{when}}",
+      "lede": "Three of the four endpoints Balancr reads are Ghostfolio’s internal API, which is free to change on any upgrade. This is what each one answered.",
+      "noDetail": "The stored report could not be read, so only the verdict above is available.",
+      "notRunYet": "Ghostfolio has not been checked yet.",
+      "title": "Ghostfolio endpoint checks",
+      "warnings": "Worth knowing"
+    },
+    "reason": {
+      "jobFailed": "The job that reaches it failed on its last attempt.",
+      "jobsOff": "Scheduled jobs are switched off here, so nothing has been checked recently.",
+      "neverRun": "Nothing has run yet, so there is nothing to report.",
+      "shapeMismatch": "It answered, but not in a shape this version of Balancr can read. That needs a Balancr update rather than another attempt.",
+      "unreachable": "It could not be reached. This normally clears without anyone doing anything.",
+      "unreadable": "Balancr's own database could not be read, so nothing else could be checked."
+    },
+    "serving": "This instance is serving pages.",
+    "title": "Status of this instance"
+  },
   "thresholds": {
     "default": "Default {{value}}",
     "field": {

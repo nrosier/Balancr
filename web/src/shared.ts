@@ -61,14 +61,17 @@ export type {
   Freshness,
   Hygiene,
   Insights,
+  JobStatus,
   Overview,
   Portfolio,
   PromptBody,
   PromptDiff,
   PromptSetting,
   PromptVersionSetting,
+  ProbeStatus,
   Settings,
   SpendMonthSetting,
+  Status,
 } from '../../src/server/routes/api/schemas.ts'
 
 export { FINDING_SPECS, isFindingCode, missingVars } from '../../src/domain/ai/codes.ts'

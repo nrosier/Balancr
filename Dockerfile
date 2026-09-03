@@ -60,6 +60,12 @@ EXPOSE 3000
 ARG BALANCR_REVISION=""
 ENV BALANCR_REVISION=${BALANCR_REVISION}
 
+# Liveness, not readiness. `/healthz` touches nothing, so it answers while Actual is
+# unreachable and while a job is failing — which is the point: Docker restarts an
+# unhealthy container, and restarting Balancr because Ghostfolio is down turns one
+# outage into two. `/readyz` is the endpoint that reports upstream state, and it is
+# for a load balancer deciding whether to route, not for a supervisor deciding
+# whether to kill.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 

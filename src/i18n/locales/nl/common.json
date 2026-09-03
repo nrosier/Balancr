@@ -71,6 +71,7 @@
     "backfill": "Historiek aanvullen",
     "networth": "Nettovermogen",
     "portfolio": "Portefeuille",
+    "probe": "Verbindingstest",
     "signals": "Signalen",
     "sync": "Budgetsynchronisatie"
   },
@@ -128,15 +129,20 @@
     "applied": "Toegepast",
     "blocked": "Geblokkeerd",
     "capped": "Budgetplafond bereikt",
+    "degraded": "Verminderd",
     "error": "Fout",
     "expired": "Verlopen",
+    "failed": "Mislukt",
     "idle": "Inactief",
     "ok": "OK",
     "open": "Open",
     "pending": "Wacht op nazicht",
     "rejected": "Afgewezen",
     "running": "Bezig",
-    "skipped": "Overgeslagen"
+    "shapeMismatch": "Onverwachte vorm",
+    "skipped": "Overgeslagen",
+    "unknown": "Niet bekend",
+    "unreachable": "Onbereikbaar"
   },
   "theme": {
     "dark": "Donker",

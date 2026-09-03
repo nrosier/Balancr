@@ -19,6 +19,14 @@
  *    by anything on it, so each panel says when its change lands instead of pretending
  *    to show a result.
  *
+ * The status panel is the exception to the first rule and says so in its own header:
+ * it reads `/api/status`, not the settings payload, because readiness decays while the
+ * page is open and because it has to be able to be the thing that failed while the
+ * rest of the page loaded. The build block below it stays separate for the same reason
+ * in reverse — the version and revision come from the settings payload, so they are
+ * still on screen when `/api/status` is what is broken, which is when a bug report
+ * needs them most.
+ *
  * Panel order is the order someone arrives with a reason to be here: the language
  * control first because it is the one thing everyone changes and the only thing a
  * viewer can; then the prompt editor, which is the point of the page; then thresholds
@@ -31,6 +39,7 @@ import { AccountsPanel } from '../settings/Accounts.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { SpendPanel } from '../settings/Spend.tsx'
+import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
 import { useSettings } from '../settings/state.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -73,6 +82,7 @@ export function Settings(): ReactNode {
               <ThresholdsPanel {...props} />
               <AccountsPanel {...props} />
               <SpendPanel {...props} />
+              <StatusPanel />
 
               <section className="card panel">
                 <h2 className="card__title">{t('settings:build.title')}</h2>

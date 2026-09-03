@@ -285,10 +285,35 @@ async function open(replies: Record<string, Response | Error | (Response | Error
   return calls
 }
 
+/**
+ * The status panel's own endpoint, which is not part of the settings payload.
+ *
+ * A healthy instance, kept minimal: what the panel does with each verdict is
+ * `status.test.tsx`'s subject, and duplicating that fixture here would give this file a
+ * second thing to keep up to date for no assertion of its own.
+ */
+const STATUS = {
+  ready: true,
+  degraded: false,
+  at: '2026-09-03T02:00:00.000Z',
+  version: '0.5.6',
+  revision: 'abc1234',
+  jobsEnabled: true,
+  checks: [
+    { name: 'database', status: 'ok', reason: null },
+    { name: 'actual', status: 'ok', reason: null },
+    { name: 'ghostfolio', status: 'ok', reason: null },
+    { name: 'jobs', status: 'ok', reason: null },
+  ],
+  jobs: [],
+  probes: [],
+}
+
 /** The default: a full payload and an estimate the dry-run button can price. */
 const READS = {
   '/api/settings': json(PAYLOAD),
   '/api/ai/estimate': json(ESTIMATE),
+  '/api/status': json(STATUS),
 }
 
 const writes = (calls: Call[]): Call[] => calls.filter((call) => call.method !== 'GET')
@@ -323,18 +348,32 @@ describe('the shape of the page', () => {
   it('shows every panel, and the build the answer came from', async () => {
     await open(READS)
 
-    for (const title of ['Account', 'Assistant instructions', 'Thresholds', 'Accounts', 'AI usage']) {
+    for (const title of [
+      'Account',
+      'Assistant instructions',
+      'Thresholds',
+      'Accounts',
+      'AI usage',
+      'Status of this instance',
+    ]) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
     }
     expect(screen.getByText('abc1234')).toBeTruthy()
     expect(screen.getByText('0.5.6')).toBeTruthy()
   })
 
-  it('asks for the payload once, and for the estimate the test button needs', async () => {
+  it('asks for the payload once, and for the two things the panels fetch themselves', async () => {
     const calls = await open(READS)
     await screen.findByRole('button', { name: /^Test on/ })
 
-    expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
+    // In mount order, and each exactly once. `/api/status` is separate from the payload
+    // on purpose — `Settings.tsx` says why — so it is a third request rather than a
+    // sixth field, and it must not be asked for again on every render.
+    expect(calls.map((call) => call.path)).toEqual([
+      '/api/settings',
+      '/api/ai/estimate',
+      '/api/status',
+    ])
   })
 })
 

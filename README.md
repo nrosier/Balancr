@@ -255,6 +255,11 @@ Work merged on the way there releases as a **patch of the current minor**. The
 is not finished yet. The minor is the promise kept; the patches are the progress
 toward it.
 
+Two milestones can be in flight at once, and then they share that one patch series:
+`0.6.0` is claimed the day its last issue closes, and the later work that landed
+before it simply continues as `0.6.1`, `0.6.2`, … A patch number never means a
+milestone; only a minor does.
+
 When every requested feature is in, releases become `1.0.0-rc.N` for real-world
 testing; **1.0.0 ships when the testing says it is ready**, not when the checklist
 ends.
@@ -267,7 +272,7 @@ ends.
 | `0.4.0` | AI: redaction boundary, findings, narrative, cost guard | ✅ |
 | `0.5.0` | HTTP API, OIDC + local auth, sessions, rate limits | ✅ |
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | 🔄 `0.5.x` |
-| `0.7.0` | Backups, monthly digest, operational hardening | ⬜ |
+| `0.7.0` | Backups, monthly digest, operational hardening | 🔄 `0.5.x` |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ⬜ |
 | `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
@@ -275,7 +280,28 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.6.0`, seven of its eight web-UI slices. The settings page is in
+**Where it is now** — `0.6.0`, seven of its eight web-UI slices, with the first of the
+operational milestone alongside it.
+
+Balancr can now be asked whether it is working, and by whom
+([#37](https://github.com/nrosier/Balancr/issues/37)). Three questions had one
+endpoint between them; they have one each. `/healthz` stays liveness and touches
+nothing, because a container that restarts when Ghostfolio restarts turns one outage
+into two. `GET /readyz` answers whether traffic should be routed here, and carries
+names and verdicts only — it is unauthenticated, and an internal hostname, an internal
+port and an upstream's version fingerprint are not things to hand an unauthenticated
+caller. The detail lives behind the session on `GET /api/status`, and a test projects
+both payloads and pins the exact key set of each, so a field added later cannot reach
+the open endpoint by being forgotten. The capability probe runs on a schedule now
+rather than only at boot — it was a function nothing called after startup, which meant
+a Ghostfolio upgrade at 10:00 was discovered by the next aggregation quietly producing
+wrong numbers. An upstream nothing has probed reads "not known", never "ok". On screen
+it is a sixth settings panel: four checks with their reasons, every job with its last
+run, last success, next run, duration and schedule, and the probe's per-path report,
+with Ghostfolio unreachable drawn amber and a changed response shape drawn red,
+because only one of those is fixed by waiting.
+
+The settings page is in
 ([#33](https://github.com/nrosier/Balancr/issues/33)) — the one screen in the
 application that writes, and the eleven routes behind it: language, the seventeen
 thresholds the aggregation engine judges by, the prompt editor with its diff and its
