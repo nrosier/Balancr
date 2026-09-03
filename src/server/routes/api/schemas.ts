@@ -357,15 +357,23 @@ export const promptVersionSchema = z.object({
 
 export const promptSchema = z.object({
   key: z.string(),
+  /**
+   * `*` for the shared text every language uses, or a language code for an override
+   * someone wrote deliberately. See `domain/ai/prompt-locale.ts`.
+   *
+   * The payload carries the shared entry plus only those overrides that exist, so an
+   * entry appearing under a language code *is* a divergence rather than a copy of the
+   * seed — which is what the editor needs in order to say so.
+   */
   locale: z.string(),
   /**
    * What a run would use right now — which is not always a row in `versions`.
    *
-   * `resolvePrompt` falls back to `DEFAULT_LOCALE`'s active version and then to the
-   * built-in text, and the editor has to say which of the three it is looking at:
-   * editing "the active prompt" that is really the English one, or really the
-   * built-in constant, is how someone saves a Dutch prompt over nothing. `id: null`
-   * with `version: 0` is the built-in text.
+   * `resolvePrompt` falls back to the shared text and then to the built-in constant,
+   * and the editor has to say which of the three it is looking at: editing "the active
+   * prompt" that is really the shared one, or really the built-in constant, is how
+   * someone saves a Dutch prompt over nothing. `id: null` with `version: 0` is the
+   * built-in text.
    */
   active: z.object({
     id: z.string().nullable(),

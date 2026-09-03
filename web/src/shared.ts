@@ -18,6 +18,10 @@
  *    anything — because the API returns findings as codes and this side renders them.
  *    A browser-side copy of that table is how `{{delta}}` ends up printed literally on
  *    one screen and as `18%` on another.
+ *  - **The shared-prompt sentinel.** `domain/ai/prompt-locale.ts` is its own module for
+ *    this import: the prompt editor has to know which value means "not a language's own
+ *    text", and a literal `'*'` on this side is how the picker's first entry comes to
+ *    mean something different from what the server stores under it.
  *  - **The catalogues.** The same JSON files, not a copy: `npm run i18n:check`
  *    guarantees `en` and `nl` parity for one set of files, and a build-time copy is
  *    how a Dutch string gets fixed in the place nothing renders.
@@ -71,6 +75,7 @@ export { FINDING_SPECS, isFindingCode, missingVars } from '../../src/domain/ai/c
 export type { FindingCode, Severity } from '../../src/domain/ai/codes.ts'
 
 export { findingVars, isNeverReconciled } from '../../src/domain/ai/vars.ts'
+export { isSharedLocale, SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 export type { SignalFacts, Translate } from '../../src/domain/ai/vars.ts'
 
 export type {

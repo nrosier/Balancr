@@ -2,14 +2,21 @@
  * The prompt editor: which instructions are in use, what a change would look like, and
  * what it would produce before it becomes the ones that run every night.
  *
- * Four things here are deliberate and none of them is obvious.
+ * Five things here are deliberate and none of them is obvious.
  *
- * **What is being edited is not always a stored row.** `resolvePrompt` falls back from
- * the Dutch active version to the English one and from there to the built-in constant,
- * and the editor has to say which of the three it is showing. Someone who opens "the
- * Dutch analysis prompt", sees text, and saves an edit to it would otherwise have
- * created a Dutch version out of the English one without ever being told that is what
- * happened.
+ * **There is one set of instructions, not one per language.** They are addressed to the
+ * model, and the language of the reply is a separate directive appended to every run, so
+ * a second translation of them would be two copies of the rule "never produce a number"
+ * drifting apart. The picker's first entry is that shared text and it is where the editor
+ * opens; a language appears beside it only once someone has deliberately written a
+ * version for that language alone, which is why divergence is visible rather than the
+ * default.
+ *
+ * **What is being edited is not always a stored row.** `resolvePrompt` falls back from a
+ * language's own active version to the shared text and from there to the built-in
+ * constant, and the editor has to say which of the three it is showing. Someone who
+ * opens a Dutch prompt, sees text, and saves an edit to it would otherwise have created
+ * a Dutch version out of the shared one without ever being told that is what happened.
  *
  * **Saving and activating are separate.** The point of versioning a prompt is that the
  * text which produced last month's output still exists, so the default gesture stores a
@@ -31,12 +38,14 @@
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
-import { useT } from '../i18n.ts'
+import { useT, type TFunction } from '../i18n.ts'
 import {
   formatDateTime,
   formatDecimal,
   formatMicroEur,
   formatMonth,
+  isSharedLocale,
+  SHARED_LOCALE,
   type AiDryRun,
   type AiEstimate,
   type PromptBody,
@@ -59,17 +68,31 @@ interface Draft {
 
 const selectionOf = (key: string, locale: string): string => `${key}:${locale}`
 
+/**
+ * How a language reads, including the sentinel that stands for all of them.
+ *
+ * `settings:language.*` would be a real key on paper and an odd one on screen, and the
+ * shared entry is not a language — it is the absence of a choice of language.
+ */
+const languageName = (t: TFunction, locale: string): string =>
+  isSharedLocale(locale)
+    ? t('settings:prompt.language.shared')
+    : t(`settings:language.${locale}`, { defaultValue: locale })
+
 export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const { prompts } = settings
 
   const keys = useMemo(() => [...new Set(prompts.map((entry) => entry.key))], [prompts])
-  const locales = useMemo(() => [...new Set(prompts.map((entry) => entry.locale))], [prompts])
+  // Per key, not across all of them: one key can have a Dutch version while another has
+  // none, and offering Dutch for a key that has no Dutch row would select nothing.
+  const localesFor = (forKey: string): string[] =>
+    prompts.filter((entry) => entry.key === forKey).map((entry) => entry.locale)
 
   const [key, setKey] = useState<string>(() => keys[0] ?? '')
-  const [locale, setLocale] = useState<string>(() =>
-    locales.includes(settings.profile.locale) ? settings.profile.locale : (locales[0] ?? ''),
-  )
+  // The shared text, whatever the reader's own language: it is what runs unless someone
+  // has written an override, so it is what "the instructions" means.
+  const [locale, setLocale] = useState<string>(SHARED_LOCALE)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [diff, setDiff] = useState<{ stamp: string; diff: PromptDiff } | null>(null)
   const [run, setRun] = useState<{ for: string; result: AiDryRun } | null>(null)
@@ -90,9 +113,20 @@ export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): Re
 
   const select = (nextKey: string, nextLocale: string): void => {
     setKey(nextKey)
-    setLocale(nextLocale)
+    // Switching to a key that has no version for the language on screen falls back to
+    // the shared text rather than to an empty panel.
+    setLocale(localesFor(nextKey).includes(nextLocale) ? nextLocale : SHARED_LOCALE)
     // The run describes a version of what was selected; keeping it on screen under a
     // different prompt's heading would attribute one prompt's findings to another.
+    setRun(null)
+  }
+
+  // After a write that created or retired an override: the entry the picker needs
+  // exists in the answer, which `select`'s clamp — reading the payload this render was
+  // built from — would not yet know about.
+  const jumpTo = (nextLocale: string): void => {
+    setLocale(nextLocale)
+    setDraft(null)
     setRun(null)
   }
 
@@ -141,9 +175,9 @@ export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): Re
             disabled={state.busy}
             onChange={(event) => select(key, event.target.value)}
           >
-            {locales.map((option) => (
+            {localesFor(key).map((option) => (
               <option key={option} value={option}>
-                {t(`settings:language.${option}`, { defaultValue: option })}
+                {languageName(t, option)}
               </option>
             ))}
           </select>
@@ -233,6 +267,18 @@ export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): Re
 
       {diff === null || diff.stamp !== stamp ? null : <DiffView diff={diff.diff} />}
 
+      <Overrides
+        entry={entry}
+        promptKey={key}
+        locale={locale}
+        body={body}
+        written={localesFor(key)}
+        supported={settings.locales.supported}
+        state={state}
+        owner={owner}
+        onJump={jumpTo}
+      />
+
       {entry.key === TESTABLE_KEY ? (
         <DryRun
           entry={entry}
@@ -256,10 +302,14 @@ export function PromptsPanel({ settings, state, owner }: SettingsPanelProps): Re
 }
 
 /**
- * Which text the box actually contains, when it is not this locale's own version.
+ * Which text the box actually contains, when it is not the selection's own version.
  *
- * Silent on the ordinary case: a stored version for this locale needs no explanation,
- * and a notice on every prompt would train people to skip the one that matters.
+ * Silent on the two ordinary cases — the shared prompt with a stored version, and a
+ * language with an active override — because a notice on every prompt would train
+ * people to skip the one that matters. What is left is the two states someone could
+ * otherwise edit without noticing: nothing is stored anywhere, so the box holds a
+ * constant compiled into the build; or this language has versions but none of them is
+ * active, so what runs for it is the shared text and not what is on screen above.
  */
 function Fallback({ entry, locale }: { entry: PromptSetting; locale: string }): ReactNode {
   const { t } = useT()
@@ -276,13 +326,103 @@ function Fallback({ entry, locale }: { entry: PromptSetting; locale: string }): 
 
   return (
     <div className="notice notice--info" role="status">
-      <p className="notice__lead">
-        {t('settings:prompt.fallback.otherLocale', {
-          version: formatDecimal(active.version, 0),
-          locale: t(`settings:language.${active.locale}`, { defaultValue: active.locale }),
-        })}
-      </p>
+      <p className="notice__lead">{t('settings:prompt.override.off')}</p>
     </div>
+  )
+}
+
+interface OverridesProps {
+  entry: PromptSetting
+  promptKey: string
+  locale: string
+  body: string
+  /** The locales this key already has an entry for, the shared sentinel included. */
+  written: string[]
+  supported: string[]
+  state: SettingsPanelProps['state']
+  owner: boolean
+  onJump: (locale: string) => void
+}
+
+/**
+ * Making one language diverge, and undoing it.
+ *
+ * The whole point of the shared prompt is that there is normally nothing to decide here,
+ * so this is a button rather than an entry in the picker: a language cannot be selected
+ * until someone has deliberately given it a version, and the act of doing so is what
+ * puts it in the picker. Divergence stays possible and becomes visible, in that order.
+ *
+ * Going back is `deactivateOverride` rather than a delete, so the versions written for
+ * that language survive and activating one is the way back — the same rollback gesture
+ * as everywhere else on this panel, and no gesture here destroys text.
+ */
+function Overrides({
+  entry,
+  promptKey,
+  locale,
+  body,
+  written,
+  supported,
+  state,
+  owner,
+  onJump,
+}: OverridesProps): ReactNode {
+  const { t } = useT()
+  const missing = supported.filter((candidate) => !written.includes(candidate))
+  const overriding = !isSharedLocale(locale) && entry.active.locale === locale
+
+  // Nothing to offer: every language already has a version and this is the shared text.
+  if (!overriding && missing.length === 0) return null
+
+  return (
+    <section className="prompt__override">
+      <h3 className="panel__subtitle">{t('settings:prompt.override.title')}</h3>
+      <p className="muted">{t('settings:prompt.override.hint')}</p>
+      <div className="prompt__actions">
+        {overriding ? (
+          <button
+            type="button"
+            className="button button--quiet"
+            disabled={!owner || state.busy}
+            onClick={() => {
+              state.save(
+                `shared:${locale}`,
+                'POST',
+                `/api/settings/prompts/${promptKey}/${locale}/shared`,
+                undefined,
+                () => onJump(SHARED_LOCALE),
+              )
+            }}
+          >
+            {t('settings:prompt.override.drop')}
+          </button>
+        ) : (
+          missing.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              className="button button--quiet"
+              disabled={!owner || state.busy || body.trim() === ''}
+              onClick={() => {
+                // The box, like every other button on this panel that sends text: what
+                // is on screen becomes that language's first version, and it starts
+                // active because an inactive override changes nothing and would leave
+                // the language reading the shared text with no sign of why.
+                state.save(
+                  `override:${candidate}`,
+                  'POST',
+                  '/api/settings/prompts',
+                  { key: promptKey, locale: candidate, body, activate: true },
+                  () => onJump(candidate),
+                )
+              }}
+            >
+              {t('settings:prompt.override.create', { language: languageName(t, candidate) })}
+            </button>
+          ))
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -346,6 +486,12 @@ interface DryRunProps {
  * it spends money, and a row of identical buttons down a version history is how one
  * gets pressed by accident. Testing an older version is still a click — activate it,
  * or open it and save it as the newest — and neither of those costs anything.
+ *
+ * `promptId` pins which text runs, so the `locale` on the request decides only which
+ * language the findings come back in. Testing a language's override asks for that
+ * language, because reading its output is the point of having written it; testing the
+ * shared text asks for nothing and lets the server answer in the reader's own, which
+ * is what the nightly job would do for them.
  */
 function DryRun({ entry, state, owner, run, onRun }: DryRunProps): ReactNode {
   const { t, language } = useT()
@@ -384,7 +530,11 @@ function DryRun({ entry, state, owner, run, onRun }: DryRunProps): ReactNode {
                 'dry-run',
                 'POST',
                 '/api/ai/dry-run',
-                { locale: entry.locale, month: priced.month, ...(promptId === null ? {} : { promptId }) },
+                {
+                  month: priced.month,
+                  ...(isSharedLocale(entry.locale) ? {} : { locale: entry.locale }),
+                  ...(promptId === null ? {} : { promptId }),
+                },
                 onRun,
               )
             }}

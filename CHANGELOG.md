@@ -8,6 +8,51 @@ rather than when the feature list ends.
 
 ## [Unreleased]
 
+### Changed
+
+- **One set of instructions for the assistant, not one per language**
+  ([#133](https://github.com/nrosier/Balancr/issues/133)). The prompts were seeded
+  under every supported locale, which made the locale fallback in `resolvePrompt`
+  unreachable and turned an edit into a silent half-change: tightening the rule
+  "never state a figure you were not given" in English left the Dutch copy of that
+  rule exactly as it was, with nothing on screen saying so. They are now stored
+  once, under a `'*'` sentinel that means every language, and the reply language is
+  what it always was — a separate directive appended to every run, naming the
+  language rather than passing a bare code.
+
+  The sentinel rather than a nullable column, because both unique indexes on
+  `prompts` include `locale` and SQLite treats `NULL`s in a unique index as
+  distinct — so nullable would have quietly allowed two active shared versions of
+  the same prompt. There is a test that the index still refuses the second one.
+  It also means the change needs no schema migration at all: `locale` was already
+  `text not null`.
+
+  A language can still diverge, and doing so is now a deliberate act with a button
+  behind it rather than the default state. Writing a version for one language forks
+  the text on screen into it and is what puts that language in the editor's picker;
+  going back is `deactivateOverride`, which switches the override off without
+  deleting anything, so its versions stay readable and activating one is the way
+  back. The editor says which of the three texts is in the box — this language's own
+  version, the shared text, or the built-in constant — because someone who opens a
+  Dutch prompt, sees English, and saves an edit would otherwise have created a
+  Dutch version out of the shared one without being told.
+
+  Migration `0010_shared_prompt_locale.sql` collapses an existing install, and
+  deliberately only where it is provably safe: a key whose rows are all one body at
+  one version is the untouched seed, so the duplicates are dropped and the survivor
+  is renamed to `'*'`. A key whose languages have already diverged is left entirely
+  alone — no edit is destroyed and no language is promoted to speak for the rest —
+  and `seedPrompts` then writes the shared row it will fall back to, which leaves a
+  partly-diverged install in a state that is visible in the editor and fixable
+  there. Both behaviours have tests that replay the shipped SQL rather than a
+  paraphrase of it.
+
+  One consequence worth stating: the priced test run no longer sends a `locale`
+  when the shared prompt is what is being tested. `promptId` already pins the text,
+  so the field only chose which language the findings came back in, and the shared
+  prompt has no language of its own to ask for. The server answers in the reader's,
+  which is what the nightly job would do for them.
+
 ### Fixed
 
 - **`node_modules` is no longer tracked as a symlink into one machine's home

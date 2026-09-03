@@ -36,6 +36,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Settings } from '../src/pages/Settings.tsx'
 import { ACCOUNT_KINDS } from '../src/settings/kinds.ts'
+import { SHARED_LOCALE } from '../src/shared.ts'
 import type { AiDryRun, AiEstimate, PromptDiff, Settings as Payload } from '../src/shared.ts'
 import { i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
@@ -78,11 +79,13 @@ const PAYLOAD: Payload = {
   locales: { supported: ['en', 'nl'], default: 'en' },
   params: PARAMS,
   paramDefaults: PARAMS,
+  // One entry per key, under the sentinel that means every language — which is what
+  // the server sends until someone deliberately writes a version for one language.
   prompts: [
     {
       key: 'analysis.system',
-      locale: 'en',
-      active: { id: 'p2', version: 2, locale: 'en', body: 'Judge the signals.' },
+      locale: SHARED_LOCALE,
+      active: { id: 'p2', version: 2, locale: SHARED_LOCALE, body: 'Judge the signals.' },
       versions: [
         {
           id: 'p2',
@@ -105,24 +108,10 @@ const PAYLOAD: Payload = {
       ],
     },
     {
-      key: 'analysis.system',
-      locale: 'nl',
-      // Nothing stored for Dutch, so a run falls back to the English version — the
-      // case the editor has to announce rather than silently offer for editing.
-      active: { id: 'p2', version: 2, locale: 'en', body: 'Judge the signals.' },
-      versions: [],
-    },
-    {
       key: 'narrative.system',
-      locale: 'en',
+      locale: SHARED_LOCALE,
       // The built-in constant: no row anywhere, `id: null`, `version: 0`.
-      active: { id: null, version: 0, locale: 'en', body: 'Write the month up.' },
-      versions: [],
-    },
-    {
-      key: 'narrative.system',
-      locale: 'nl',
-      active: { id: null, version: 0, locale: 'en', body: 'Write the month up.' },
+      active: { id: null, version: 0, locale: SHARED_LOCALE, body: 'Write the month up.' },
       versions: [],
     },
   ],
@@ -219,7 +208,7 @@ const DRY_RUN: AiDryRun = {
 }
 
 const DIFF: PromptDiff = {
-  active: { id: 'p2', version: 2, locale: 'en' },
+  active: { id: 'p2', version: 2, locale: SHARED_LOCALE },
   stat: { added: 1, removed: 1, identical: false },
   lines: [
     { op: 'same', text: 'Judge the signals.', oldLine: 1, newLine: 1 },
@@ -571,6 +560,150 @@ describe('accounts', () => {
 })
 
 describe('prompts', () => {
+  /** One Dutch version, deliberately written and active: the diverged state. */
+  const DUTCH = {
+    key: 'analysis.system',
+    locale: 'nl',
+    active: { id: 'p3', version: 1, locale: 'nl', body: 'Beoordeel de signalen.' },
+    versions: [
+      {
+        id: 'p3',
+        version: 1,
+        active: true,
+        note: null,
+        createdBy: 'nick@example.com',
+        createdAt: '2026-09-01T09:00:00.000Z',
+        chars: 22,
+      },
+    ],
+  }
+
+  const DIVERGED: Payload = { ...PAYLOAD, prompts: [...PAYLOAD.prompts, DUTCH] }
+
+  /**
+   * The same Dutch version, switched off.
+   *
+   * The entry stays in the payload — deactivating does not delete the versions, and
+   * activating one is how it comes back — so the editor has to distinguish "Dutch runs
+   * its own text" from "Dutch has text nobody is using", which look identical in a box.
+   */
+  const RETIRED: Payload = {
+    ...PAYLOAD,
+    prompts: [
+      ...PAYLOAD.prompts,
+      {
+        ...DUTCH,
+        active: PAYLOAD.prompts[0]?.active ?? DUTCH.active,
+        versions: [{ ...(DUTCH.versions[0] ?? { id: 'p3' }), active: false }],
+      } as Payload['prompts'][number],
+    ],
+  }
+
+  const applies = (): HTMLSelectElement => screen.getByLabelText('Applies to') as HTMLSelectElement
+
+  it('opens on the shared instructions, with no language to choose between', async () => {
+    await open(READS)
+
+    // One option, and it is not a language: until someone writes a version for Dutch
+    // there is nothing a language picker could usefully select.
+    expect([...applies().options].map((option) => option.text)).toEqual(['All languages'])
+    expect(applies().value).toBe(SHARED_LOCALE)
+    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(
+      'Judge the signals.',
+    )
+  })
+
+  it('forks the text on screen into one language, and switches to it', async () => {
+    const calls = await open({ ...READS, '/api/settings/prompts': json(DIVERGED) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Write a version for Dutch only' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/prompts',
+          method: 'POST',
+          body: {
+            key: 'analysis.system',
+            locale: 'nl',
+            body: 'Judge the signals.',
+            activate: true,
+          },
+        },
+      ])
+    })
+    // And the answer's new entry is what is on screen: the gesture that created the
+    // divergence is what puts the language in the picker, so it has to land there.
+    await waitFor(() => expect(applies().value).toBe('nl'))
+    expect([...applies().options].map((option) => option.text)).toEqual([
+      'All languages',
+      'Dutch',
+    ])
+  })
+
+  it('offers no fork for a language that already has one', async () => {
+    await open({ ...READS, '/api/settings': json(DIVERGED) })
+
+    expect(screen.queryByRole('button', { name: 'Write a version for Dutch only' })).toBeNull()
+    // English is still on offer, and deliberately: the shared text is written in
+    // English but is not English's own, so English can diverge from it like any other.
+    expect(screen.getByRole('button', { name: 'Write a version for English only' })).toBeTruthy()
+  })
+
+  it('sends a language back to the shared instructions without deleting its versions', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(DIVERGED),
+      '/api/settings/prompts/analysis.system/nl/shared': json(PAYLOAD),
+    })
+
+    fireEvent.change(applies(), { target: { value: 'nl' } })
+    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(
+      'Beoordeel de signalen.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Go back to the shared instructions' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/prompts/analysis.system/nl/shared',
+          method: 'POST',
+          body: undefined,
+        },
+      ])
+    })
+    await waitFor(() => expect(applies().value).toBe(SHARED_LOCALE))
+  })
+
+  it('says a language’s own version is switched off rather than showing it as what runs', async () => {
+    await open({ ...READS, '/api/settings': json(RETIRED) })
+
+    fireEvent.change(applies(), { target: { value: 'nl' } })
+    expect(
+      screen.getByText(
+        'Switched off: this language uses the shared instructions. Making a version active below turns it back on.',
+      ),
+    ).toBeTruthy()
+    // Nothing to switch off, so the way back is the version list's Make active.
+    expect(screen.queryByRole('button', { name: 'Go back to the shared instructions' })).toBeNull()
+  })
+
+  it('falls back to the shared text when the key changes under a language', async () => {
+    await open({ ...READS, '/api/settings': json(DIVERGED) })
+
+    fireEvent.change(applies(), { target: { value: 'nl' } })
+    fireEvent.change(screen.getByLabelText('Which instructions'), {
+      target: { value: 'narrative.system' },
+    })
+
+    // The narrative prompt has no Dutch version, and an empty panel would be the
+    // alternative to landing on the text that actually runs.
+    expect(applies().value).toBe(SHARED_LOCALE)
+    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(
+      'Write the month up.',
+    )
+  })
+
   it('says when the text on screen is the built-in one rather than a stored version', async () => {
     await open(READS)
 
@@ -578,20 +711,7 @@ describe('prompts', () => {
       target: { value: 'narrative.system' },
     })
     expect(
-      screen.getByText('Nothing is stored for this language, so the built-in instructions are in use.'),
-    ).toBeTruthy()
-  })
-
-  it('says when the text on screen belongs to another language', async () => {
-    await open(READS)
-
-    fireEvent.change(screen.getByLabelText('Language of the instructions'), {
-      target: { value: 'nl' },
-    })
-    expect(
-      screen.getByText(
-        'Nothing is stored for this language, so version 2 of the English instructions is in use.',
-      ),
+      screen.getByText('Nothing is stored yet, so the built-in instructions are in use.'),
     ).toBeTruthy()
   })
 
@@ -609,7 +729,7 @@ describe('prompts', () => {
           method: 'POST',
           body: {
             key: 'analysis.system',
-            locale: 'en',
+            locale: SHARED_LOCALE,
             body: 'Judge harder.',
             note: 'sharper',
           },
@@ -627,7 +747,7 @@ describe('prompts', () => {
     await waitFor(() => {
       expect(writes(calls)[0]?.body).toEqual({
         key: 'analysis.system',
-        locale: 'en',
+        locale: SHARED_LOCALE,
         body: 'Judge harder.',
         activate: true,
       })
@@ -678,11 +798,14 @@ describe('the test run', () => {
     fireEvent.click(await testButton())
 
     await screen.findByText('That run cost € 0,0021.')
+    // No `locale`: `promptId` already pins the text, so the field would only choose the
+    // language the findings come back in, and the shared prompt has no language of its
+    // own to ask for. The server answers in the reader's, as the nightly job does.
     expect(writes(calls)).toEqual([
       {
         path: '/api/ai/dry-run',
         method: 'POST',
-        body: { locale: 'en', month: '2026-08', promptId: 'p2' },
+        body: { month: '2026-08', promptId: 'p2' },
       },
     ])
   })
