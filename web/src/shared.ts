@@ -55,6 +55,7 @@ export type { FormatSettings } from '../../src/i18n/format-config.ts'
 
 export type {
   AccountSetting,
+  AiAvailabilityWire,
   AiDryRun,
   AiEstimate,
   AiRun,

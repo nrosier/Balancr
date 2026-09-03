@@ -151,6 +151,7 @@ const PAYLOAD: Payload = {
     { ghostfolioId: 'g-broker', actualId: 'a-mirror', signals: ['name', 'balance'] },
   ],
   ai: {
+    availability: { enabled: true, reason: null },
     models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
     month: '2026-09',
     spentMicroEur: 2_500_000,
@@ -882,6 +883,23 @@ describe('the test run', () => {
     expect(screen.queryByRole('button', { name: /^Test on/ })).toBeNull()
   })
 
+  it('says why it cannot run rather than offering a button that would fail (#165)', async () => {
+    // The editor stays fully usable without a key — writing and versioning the text is
+    // worth doing before buying one — so the heading stays and only the control goes.
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        ai: { ...PAYLOAD.ai, availability: { enabled: false, reason: 'notConfigured' } },
+      } satisfies Payload),
+    })
+
+    await screen.findByRole('heading', { name: 'Test run' })
+    expect(screen.queryByRole('button', { name: /^Test on/ })).toBeNull()
+    // The variable to set, in both places that would have offered to spend money.
+    expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(2)
+  })
+
   it('is not offered for the narrative prompt, which the server will not run', async () => {
     await open(READS)
     await testButton()
@@ -904,6 +922,28 @@ describe('AI spend', () => {
     expect(screen.getByText('€ 4,20')).toBeTruthy()
     // Token counts through the formatter, not `String(number)`.
     expect(screen.getByText(/Analyses 31 · In 92\.000 · Out 12\.400 · Cached 61\.000/)).toBeTruthy()
+  })
+
+  it('replaces the by-hand run with the reason it cannot happen (#165)', async () => {
+    // Not a hidden control: a heading that disappears reads as a feature taken away,
+    // and the budget printed just above it invites exactly this question. The figures
+    // stay, because a history of what was spent is still worth reading.
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        ai: { ...PAYLOAD.ai, availability: { enabled: false, reason: 'budgetZero' } },
+      } satisfies Payload),
+    })
+
+    await screen.findByRole('heading', { name: 'Run by hand' })
+    expect(screen.queryByRole('button', { name: 'Run the analysis now' })).toBeNull()
+    // Twice: this panel and the prompt editor's test run, from the same key, because
+    // two catalogues explaining the same state in different words is how one goes wrong.
+    expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(2)
+    // No price on a run that cannot start.
+    expect(screen.queryByText(/would cost about/)).toBeNull()
+    expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
   })
 })
 

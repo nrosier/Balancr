@@ -354,6 +354,18 @@ describe('GET /api/insights', () => {
     expect(body.proposals).toEqual([])
   })
 
+  it('says whether a model is available, so an empty section can be explained (#165)', async () => {
+    // Three of the five sections need a model, and an empty array from a deployment
+    // without a key is indistinguishable from "nothing to report". The flag is what
+    // lets the page print the difference. The test environment has a key, so `enabled`
+    // is the interesting assertion here; the three off codes are covered as a unit.
+    const body = (await get('/api/insights')).json()
+
+    expect(body.ai).toEqual({ enabled: true, reason: null })
+    // The deterministic half is unaffected by the flag either way.
+    expect(body.signals).not.toEqual([])
+  })
+
   it('never calls the model to answer a read', async () => {
     // Asserted by the absence of an `ai_runs` row: a request that reached Gemini
     // would have written one, and the whole cost guard depends on it not happening.

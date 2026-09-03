@@ -56,6 +56,22 @@
     "unnamedAccount": "an unnamed account",
     "unnamedCategory": "an unnamed category"
   },
+  "off": {
+    "title": "The assistant is switched off",
+    "reason": {
+      "notConfigured": "No Gemini key is configured, so nothing here calls a model.",
+      "switchedOff": "A key is configured, but AI_ENABLED is set to false.",
+      "budgetZero": "The monthly AI budget is set to zero, so no model is called."
+    },
+    "kept": "Everything below is computed here, from your own figures — the signals, the burn rate and the net-worth history are unaffected.",
+    "adds": "A model would add a written summary of the month, ranked findings and the questions that fill in what each budget is for.",
+    "how": {
+      "notConfigured": "Set GEMINI_API_KEY (or GOOGLE_CLOUD_PROJECT for Vertex) in .env and restart.",
+      "switchedOff": "Set AI_ENABLED=true in .env and restart.",
+      "budgetZero": "Raise GEMINI_MONTHLY_BUDGET_EUR in .env and restart."
+    },
+    "privacy": "Only category names and amounts would ever be sent. Never a payee, never a transaction."
+  },
   "privacy": {
     "caption_one": "The most recent call to the model.",
     "caption_other": "The {{value}} most recent calls to the model, newest first.",

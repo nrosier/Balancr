@@ -29,6 +29,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
+import { AI_OFF_REASONS } from '../../src/domain/ai/availability.ts'
 import { auditValues, loadAuditTrail, type AuditRow } from '../../src/domain/audit.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { REFRESHABLE, jobsInFlight, type Job } from '../../src/jobs/index.ts'
@@ -37,7 +38,7 @@ import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
-import { requireModelSwitchedOn } from '../../src/server/routes/ai.ts'
+import { requireAiAvailable } from '../../src/server/routes/ai.ts'
 import { requireJobsEnabled } from '../../src/server/routes/refresh.ts'
 import type { Freshness, RefreshAccepted } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
@@ -328,7 +329,7 @@ describe('POST /api/ai/refresh', () => {
   })
 })
 
-describe('the two guards that read configuration', () => {
+describe('the guards that read configuration', () => {
   // Called directly rather than through a request: configuration is frozen at import,
   // so the switched-off branches have no other way to be reached. `jobsCheck` in
   // `routes/api/status.ts` takes its flag as an argument for the same reason.
@@ -339,12 +340,32 @@ describe('the two guards that read configuration', () => {
     expect(() => requireJobsEnabled(true)).not.toThrow()
   })
 
-  it('refuses the AI pass when the budget is zero, and allows it when it is not', () => {
+  it('refuses the paid endpoints for each of the three ways the model can be off', () => {
     // Zero is not an exhausted allowance — that degrades to the cached answer one layer
-    // down — it is a deployment that has switched the model off.
-    expect(() => requireModelSwitchedOn(0)).toThrow(
-      expect.objectContaining({ statusCode: 409 }) as Error,
-    )
-    expect(() => requireModelSwitchedOn(15)).not.toThrow()
+    // down — it is a deployment that has switched the model off. Same for a missing key
+    // and an explicit `AI_ENABLED=false`: all three are the operator's own settings, so
+    // all three answer 409 rather than inviting a retry with 503.
+    for (const reason of AI_OFF_REASONS) {
+      expect(() => {
+        requireAiAvailable({ enabled: false, reason })
+      }).toThrow(expect.objectContaining({ statusCode: 409 }) as Error)
+    }
+    expect(() => {
+      requireAiAvailable({ enabled: true, reason: null })
+    }).not.toThrow()
+  })
+
+  it('names something different for each reason, so the message is worth reading', () => {
+    // A guard that threw the same sentence three times would send whoever is holding
+    // `curl` to the wrong variable two times out of three.
+    const messages = AI_OFF_REASONS.map((reason) => {
+      try {
+        requireAiAvailable({ enabled: false, reason })
+        return ''
+      } catch (err) {
+        return (err as Error).message
+      }
+    })
+    expect(new Set(messages).size).toBe(AI_OFF_REASONS.length)
   })
 })

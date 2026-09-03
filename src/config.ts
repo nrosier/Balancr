@@ -79,6 +79,20 @@ const EnvSchema = z.object({
   GHOSTFOLIO_SECURITY_TOKEN: z.string().min(1),
 
   // Gemini
+  /**
+   * Whether this deployment wants a model at all.
+   *
+   * Default `true`, which does **not** mean the AI layer is on: it means "on if it
+   * is configured". Absent credentials switch it off silently rather than refusing
+   * to boot, because the half of Balancr that can be trusted with a number is the
+   * half that never calls a model — the aggregation, the four overspend signals,
+   * the burn rate, net worth. Someone who has not got a key yet should get all of
+   * that (#165).
+   *
+   * `false` is for the other case: a key that stays in `.env` while spending is
+   * paused, without editing the secret out and back in.
+   */
+  AI_ENABLED: bool('true'),
   GEMINI_PROVIDER: z.enum(['aistudio', 'vertex']).default('vertex'),
   GEMINI_API_KEY: optionalText(),
   GEMINI_MODEL_FAST: z.string().min(1).default('gemini-3.7-flash'),
@@ -155,15 +169,55 @@ const EnvSchema = z.object({
 
 type Env = z.infer<typeof EnvSchema>
 
+/**
+ * The one variable that decides whether Gemini can be reached, per provider.
+ *
+ * One each, which is what makes "AI is off" a single readable question rather than a
+ * matrix: AI Studio needs a key, Vertex needs a project (its credentials come from
+ * the ambient service account, not from `.env`). The other provider's variable is
+ * returned alongside so the cross-field check can tell "nothing configured" from
+ * "configured for the provider you did not pick".
+ */
+function aiCredential(env: Env): {
+  readonly name: string
+  readonly value: string | undefined
+  readonly otherName: string
+  readonly otherValue: string | undefined
+  readonly otherProvider: string
+} {
+  return env.GEMINI_PROVIDER === 'aistudio'
+    ? {
+        name: 'GEMINI_API_KEY',
+        value: env.GEMINI_API_KEY,
+        otherName: 'GOOGLE_CLOUD_PROJECT',
+        otherValue: env.GOOGLE_CLOUD_PROJECT,
+        otherProvider: 'vertex',
+      }
+    : {
+        name: 'GOOGLE_CLOUD_PROJECT',
+        value: env.GOOGLE_CLOUD_PROJECT,
+        otherName: 'GEMINI_API_KEY',
+        otherValue: env.GEMINI_API_KEY,
+        otherProvider: 'aistudio',
+      }
+}
+
 /** Rules that span more than one variable, so they cannot live in the schema. */
 function crossFieldErrors(env: Env): string[] {
   const errors: string[] = []
 
-  if (env.GEMINI_PROVIDER === 'aistudio' && !env.GEMINI_API_KEY) {
-    errors.push('GEMINI_API_KEY is required when GEMINI_PROVIDER=aistudio')
-  }
-  if (env.GEMINI_PROVIDER === 'vertex' && !env.GOOGLE_CLOUD_PROJECT) {
-    errors.push('GOOGLE_CLOUD_PROJECT is required when GEMINI_PROVIDER=vertex')
+  // Not "GEMINI_API_KEY is required": with none of it set the AI layer is simply off
+  // and the rest of the app runs. What is refused is the *contradiction* — the
+  // credential for the provider that was not chosen — because that is someone who
+  // plainly wants a model and would otherwise get a silently AI-less instance with
+  // their key sitting in the file. See `aiCredential`.
+  const gemini = aiCredential(env)
+  if (gemini.value === undefined && gemini.otherValue !== undefined) {
+    errors.push(
+      `GEMINI_PROVIDER=${env.GEMINI_PROVIDER} needs ${gemini.name}, but only ` +
+        `${gemini.otherName} is set — set ${gemini.name}, or switch ` +
+        `GEMINI_PROVIDER to ${gemini.otherProvider}`,
+    )
   }
 
   const oidcParts = {
@@ -230,7 +284,14 @@ function crossFieldErrors(env: Env): string[] {
   return errors
 }
 
-function load(): Readonly<Env> & { readonly oidcEnabled: boolean } {
+/** The derived flags, alongside the parsed environment. See the returns below. */
+interface Derived {
+  readonly oidcEnabled: boolean
+  readonly aiCredentialed: boolean
+  readonly aiConfigured: boolean
+}
+
+function load(): Readonly<Env> & Derived {
   const parsed = EnvSchema.safeParse(process.env)
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => {
@@ -252,6 +313,26 @@ function load(): Readonly<Env> & { readonly oidcEnabled: boolean } {
   return Object.freeze({
     ...parsed.data,
     oidcEnabled: Boolean(parsed.data.AUTH_OIDC_ISSUER),
+    /**
+     * Whether a model can be called at all: wanted, and configured.
+     *
+     * Derived rather than a switch of its own, the same way `oidcEnabled` is. A
+     * separate flag would allow the state nobody wants — a key present and the
+     * features quietly off, with two places to look for why. `AI_ENABLED=false` is
+     * the deliberate override, and it reads as one.
+     *
+     * A monthly budget of zero is *not* part of this. That is a spending decision
+     * about a configured integration, and the layer that reports availability keeps
+     * the two apart so the page can say which one it is — see
+     * `domain/ai/availability.ts`.
+     *
+     * `aiCredentialed` above is the other half, and it exists so that layer can tell
+     * "no key" from "key present, switched off". Collapsed into one boolean, an
+     * instance with `AI_ENABLED=false` and no key would be told to flip the switch
+     * and would still get nothing.
+     */
+    aiCredentialed: aiCredential(parsed.data).value !== undefined,
+    aiConfigured: parsed.data.AI_ENABLED && aiCredential(parsed.data).value !== undefined,
   })
 }
 
@@ -272,7 +353,13 @@ export function configSummary(): Record<string, unknown> {
     ACTUAL_E2E_PASSWORD: secret(config.ACTUAL_E2E_PASSWORD),
     GHOSTFOLIO_URL: config.GHOSTFOLIO_URL,
     GHOSTFOLIO_SECURITY_TOKEN: secret(config.GHOSTFOLIO_SECURITY_TOKEN),
+    AI_ENABLED: config.AI_ENABLED,
+    // Beside `AI_ENABLED` rather than derived silently: the pair is the answer to
+    // "why is there no narrative on the insights page", and a startup log that
+    // printed only the wish and not the outcome would make it a two-step question.
+    aiConfigured: config.aiConfigured,
     GEMINI_PROVIDER: config.GEMINI_PROVIDER,
+    GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT ?? 'unset',
     GEMINI_API_KEY: secret(config.GEMINI_API_KEY),
     GEMINI_MODEL_FAST: config.GEMINI_MODEL_FAST,
     GEMINI_MODEL_DEEP: config.GEMINI_MODEL_DEEP,
