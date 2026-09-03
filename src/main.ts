@@ -9,13 +9,15 @@
  * Startup order is deliberate and each step is a hard failure:
  *  1. `config` validates the environment at import time — a half-configured
  *     advisor that silently skips auth is worse than one that refuses to boot.
- *  2. migrations run before anything serves, so traffic never meets an old schema.
- *  3. the built-in prompts are seeded, so a fresh database has an active,
+ *  2. the egress allowlist is installed before anything can open a socket, since
+ *     it replaces a global and a reference taken before it lands is unguarded.
+ *  3. migrations run before anything serves, so traffic never meets an old schema.
+ *  4. the built-in prompts are seeded, so a fresh database has an active,
  *     inspectable prompt rather than a hidden constant. Idempotent, and it never
  *     touches a prompt someone has edited.
- *  4. i18n initialises before the first render or cron digest, which have no
+ *  5. i18n initialises before the first render or cron digest, which have no
  *     request context to fall back on.
- *  5. the scheduler starts last, once everything it needs is up. It ticks
+ *  6. the scheduler starts last, once everything it needs is up. It ticks
  *     immediately, so starting it before the migrations ran would mean a job
  *     writing to a schema that does not exist yet.
  *
@@ -28,6 +30,8 @@ import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
+import { installEgressGuard } from './egress.ts'
+import { looseEnvFile, looseEnvFileMessage } from './env-file.ts'
 import { initI18n } from './i18n/index.ts'
 import { createScheduler, registry } from './jobs/index.ts'
 import { logger } from './logger.ts'
@@ -53,6 +57,18 @@ async function main(): Promise<void> {
   // too many for the question "is PUBLIC_BASE_URL what I think it is", which is
   // the question behind a rejected OIDC redirect URI (#110).
   log.info(configSummary(), 'configuration')
+
+  // Installed before anything can open a socket. It replaces `globalThis.fetch`
+  // process-wide, and a dependency that captured a reference to the original at
+  // import time would keep using it — so the only safe moment is one where nothing
+  // has fetched yet. `egress.ts` states plainly what this does and does not cover.
+  installEgressGuard()
+
+  // The mode of `.env`, said once per start rather than trusted to stay right. Every
+  // secret this process holds is in that file in plain text, and a `0644` copy of it
+  // looks exactly like a `0600` one from inside the app (#39).
+  const loose = looseEnvFile()
+  if (loose !== undefined) log.warn(loose, looseEnvFileMessage(loose))
 
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')

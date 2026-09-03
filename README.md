@@ -141,6 +141,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
+| **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
 Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
@@ -323,6 +324,67 @@ target is left byte-for-byte unchanged. It has also been performed by hand end t
 a migrated database with a hand-typed category description, backed up, overwritten with
 garbage, restored, and the description read back.
 
+## Hardening
+
+The container runs as `node`, on a read-only root filesystem, with every Linux
+capability dropped and `no-new-privileges` set. Everything writable is the one volume —
+SQLite and Actual's sync cache — plus a 64 MB `tmpfs` for `/tmp`.
+
+None of that is taken on trust, because all of it is configuration until something
+checks it. `scripts/verify-image.sh` starts the built image with exactly the flags
+`compose.yaml` uses and then asks the running container: which uid is this, does `/app`
+really refuse a write, does `/data` really accept one, is `CapEff` all zeroes, do both
+native modules load, and does the image's own `HEALTHCHECK` command actually work — a
+broken one makes Docker restart a perfectly healthy container every interval, forever.
+CI runs it on every image build and records the image size and the time to first
+response in the job summary, so a change that doubles either is something a reviewer
+walks past rather than has to go looking for. By hand:
+
+```sh
+docker build -t balancr:test . && scripts/verify-image.sh balancr:test
+```
+
+### Egress
+
+Balancr refuses to connect to a host nobody configured. The allowlist is derived from
+`.env` — Actual, Ghostfolio, the OIDC issuer and Google's Gemini endpoint — so there is
+no second list to keep in step: moving Ghostfolio to a new hostname needs no edit here.
+
+| | |
+|---|---|
+| `EGRESS_MODE=enforce` | the default: refuse the connection and log the host |
+| `EGRESS_MODE=warn` | allow it and log the host — how to see what a new dependency wants before deciding whether it should have it |
+| `EGRESS_MODE=off` | leave `fetch` alone |
+| `EGRESS_EXTRA_HOSTS` | hostnames to allow beyond the four, for an outbound proxy |
+
+A denial logs the host and never the path or query, because on an exfiltration attempt
+the query string *is* the data being exfiltrated.
+
+What this defends against is a dependency rather than a network. This process holds the
+Actual password, the Ghostfolio token, the Gemini key and a database of your finances,
+and the realistic attack on that is a compromised transitive package posting the lot
+somewhere. It wraps global `fetch`, so it covers the Ghostfolio adapter, the Gemini SDK,
+`openid-client` and anything else using the standard API; it does **not** cover a
+library that reaches for `node:http` directly, a native module, or a child process, and
+it is not a sandbox — code running in this process can put the original `fetch` back.
+So: a real barrier against accidental and casual exfiltration, an audit trail for
+anything unexpected, and no claim to stop an attacker who already runs code here. That
+last one is what the network layer is for, and it is worth having as well: Docker
+networks cannot express "these four hosts", so that version of the rule lives on the
+host firewall or in whatever egress gateway the network already has.
+
+### The `.env` file
+
+It holds the Actual password, the Ghostfolio token, the Gemini key, the session secret
+and the backup passphrase — the whole set, in plain text. `chmod 600 .env`, which the
+quick start does, and which Balancr checks at every start: a group- or world-readable
+file gets one warning naming the mode and the command that fixes it. A warning, not a
+refusal — the mode of a file is not a reason to leave someone without their budget page.
+
+Inside a container there is normally no such file at all: compose reads `.env` on the
+host and passes the values as environment variables, so the check is silent there and
+speaks up for installs running from source.
+
 ## Architecture
 
 ```
@@ -380,8 +442,29 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, six of its seven issues done. `0.6.0` is done too:
-all five views are on screen, in both languages, drawing real figures.
+**Where it is now** — `0.7.0`, all seven issues done; it releases as `0.7.0` next.
+`0.6.0` is done too: all five views are on screen, in both languages, drawing real
+figures.
+
+The deployment is hardened, and — the part that took the work — checked
+([#39](https://github.com/nrosier/Balancr/issues/39)). Non-root, a read-only root
+filesystem and `cap_drop: ALL` were already in the Dockerfile and `compose.yaml`, which
+made them claims: `read_only: true` protects nothing if the app turns out to need a
+writable path outside `/data`, and the wrong moment to find that out is a deployment.
+So CI now starts the built image with exactly those flags and interrogates it from the
+inside — uid, an unwritable `/app`, a writable `/data`, `CapEff` all zeroes, both native
+modules loading, and the image's own healthcheck command answering — then records the
+size and the time to first response where a reviewer sees them. Asking the question
+found something immediately: the runtime prune understood one of the two prebuild
+layouts npm packages use, so every image up to here shipped all eight of
+`better-sqlite3`'s platform binaries, seven of them unloadable on any Linux host. It
+also carried 10 MB of vendored SQLite C source per copy. Seventy megabytes, gone, and
+the pruner now takes the target architecture as an argument instead of assuming amd64 —
+the same mistake in reverse would have deleted the only binary an arm64 build can load.
+Egress is restricted in the process itself, because a Docker network cannot express
+"these four hosts" and the only place that knows what they are is the one reading
+`.env`. And the file holding every secret is checked for its mode at each start, since a
+`0644` copy of it behaves exactly like a `0600` one from the inside.
 
 Gemini is now optional ([#165](https://github.com/nrosier/Balancr/issues/165)). It was
 not: `vertex` is the default provider and needs a Google Cloud project, so a copied
