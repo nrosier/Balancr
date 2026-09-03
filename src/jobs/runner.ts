@@ -29,6 +29,28 @@ const log = logger.child({ module: 'jobs' })
 /** Shared by every job in the process. See the header. */
 const queue = createSerialiser()
 
+/**
+ * The jobs this process has started and not yet finished — queued ones included.
+ *
+ * The `jobs` table cannot answer this question. A row says `running`, but a row can
+ * say `running` because the process was killed mid-job, and it says nothing at all
+ * about a job that is third in the queue and has therefore not written a row yet.
+ * The first case makes a database check refuse a refresh for ever; the second makes
+ * it accept one that will sit behind three others.
+ *
+ * So the authority on "is the pipeline busy" is this set, which is only ever true of
+ * the process asking. It is mutated **synchronously** in `runJob`, before the queue
+ * is touched, because the check and the claim have to be one step: two requests
+ * arriving in the same tick would both read an empty set otherwise, and the second
+ * would be accepted into a queue it was supposed to be refused from.
+ */
+const inFlight = new Set<string>()
+
+/** The jobs running or queued in this process, in the order they were claimed. */
+export function jobsInFlight(): readonly string[] {
+  return [...inFlight]
+}
+
 export interface JobContext {
   /**
    * Passed in rather than imported from `db/index.ts` so a test can run a real
@@ -74,6 +96,9 @@ function upsert(db: Db, name: string, set: Partial<JobRow>): void {
  * action — which is why it does not consult `isDue` itself.
  */
 export function runJob(db: Db, job: Job, now = new Date()): Promise<JobRun> {
+  // Before the queue, and synchronously. See `inFlight`.
+  inFlight.add(job.name)
+
   return queue(async () => {
     const jobLog = log.child({ job: job.name })
     const started = Date.now()
@@ -112,6 +137,11 @@ export function runJob(db: Db, job: Job, now = new Date()): Promise<JobRun> {
       })
       jobLog.error({ err: error, durationMs }, 'job failed')
       return { name: job.name, status: 'error', durationMs, detail: {}, error: message }
+    } finally {
+      // In a `finally` rather than at the end of each branch: both of them return, and
+      // a claim released in one but not the other would refuse every later refresh for
+      // the lifetime of the process.
+      inFlight.delete(job.name)
     }
   })
 }

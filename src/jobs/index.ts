@@ -49,7 +49,17 @@ export {
   type StoredReport,
 } from './probe-state.ts'
 export {
+  DEFAULT_REFRESH,
+  expand,
+  REFRESHABLE,
+  startRefresh,
+  type Refreshable,
+  type RefreshBusy,
+  type RefreshStarted,
+} from './refresh.ts'
+export {
   clearStaleRunning,
+  jobsInFlight,
   loadJobRows,
   runDueJobs,
   runJob,
