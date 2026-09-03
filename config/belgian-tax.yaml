@@ -1,0 +1,257 @@
+# Belgian investment taxes, as dated rules rather than as numbers in code (#42).
+#
+# Balancr reads this file to put a euro amount on a concrete transaction: "€ 13,20
+# beurstaks on this € 1.000 purchase" instead of "Belgian ETFs carry 1.32%". It ships
+# filled in and is used in place, so nothing here needs setting up. Point TAX_RULES_PATH
+# at a copy on your data volume if you want to correct a rate without waiting for a
+# release:
+#
+#   cp config/belgian-tax.yaml data/belgian-tax.yaml    # local
+#   TAX_RULES_PATH=/data/belgian-tax.yaml               # in a container
+#
+# READ THIS BEFORE TRUSTING A FIGURE. Every rule below is marked `status: transcribed`,
+# which means it was written from published guidance and nobody has read it against the
+# law it cites. That is not a formality: it is what makes Balancr add "these rates have
+# not been checked at the source" to every estimate built from them. When you have
+# confirmed a rule — your broker's own TOB table is the practical authority for the
+# beurstaks, and an accountant for the rest — change its `status` to `confirmed` and set
+# `last_verified` to the day you did it. The caveat then disappears by itself.
+#
+# What this file is not: tax advice, a tax return, or complete. It estimates the four
+# taxes that decide what an investment decision costs, for a Belgian private investor
+# holding UCITS funds through a broker. It knows nothing about professional income, tax
+# treaties, foreign withholding, pensioensparen, insurance products (tak 21/23), or the
+# yearly taxes on securities accounts.
+#
+# Structure. `rulesets` are dated: one applies from 2018-01-01, another from 2026-01-01,
+# and a transaction is taxed by whichever was in force on its day — so a sale in December
+# 2025 and the same sale in January 2026 both get the right answer, forever. Beurstaks
+# `tiers` are matched top to bottom, and the loader refuses a file where a general tier
+# sits above a specific one it would hide, or where some kind of instrument has no
+# unconditional tier at all.
+
+version: 1
+jurisdiction: BE
+
+rulesets:
+  # ---------------------------------------------------------------------------
+  #  From 2026: realised capital gains on financial assets became taxable.
+  # ---------------------------------------------------------------------------
+  - effective_from: '2026-01-01'
+
+    beurstaks:
+      tiers:
+        # The tier everybody argues about. A Belgian-registered accumulating fund is
+        # taxed eleven times as heavily per transaction as the otherwise identical
+        # unregistered one — on the way in and again on the way out. Registration is not
+        # visible in the ISIN, so the fund universe carries `fsma_registered` per fund and
+        # Balancr refuses to guess when it is unset.
+        - id: fund_accumulating_registered
+          when:
+            kind: fund
+            distribution: accumulating
+            fsma_registered: true
+          rate_percent: 1.32
+          cap_eur: 4000
+          citation: 'WDRT art. 1262, §1, 3° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+          notes: >-
+            Applies to an accumulating share class registered for public distribution in
+            Belgium. Check the share class, not the fund: two classes of one fund can
+            differ, and it is the class you buy that is taxed.
+
+        - id: fund_accumulating_unregistered
+          when:
+            kind: fund
+            distribution: accumulating
+            fsma_registered: false
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: fund_distributing
+          when:
+            kind: fund
+            distribution: distributing
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+          notes: >-
+            A distributing class avoids the 1.32% but pays roerende voorheffing on every
+            distribution instead. Balancr's fund universe accepts accumulating classes
+            only, so this tier is here for completeness and for holdings you already own.
+
+        # The unconditional tier for funds, and deliberately the low rate: it is only
+        # reached when nothing more specific applies. It cannot be reached by an
+        # accumulating fund whose registration is unknown — that case comes back as a
+        # range across both rates rather than falling through to this one.
+        - id: fund_default
+          when:
+            kind: fund
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: share_default
+          when:
+            kind: share
+          rate_percent: 0.35
+          cap_eur: 1600
+          citation: 'WDRT art. 1262, §1, 2° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: bond_default
+          when:
+            kind: bond
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+          notes: >-
+            Secondary-market purchases and sales. Subscribing to a new issue is not a
+            beursverrichting and is not taxed here.
+
+    roerende_voorheffing:
+      rate_percent: 30
+      citation: 'WIB92 art. 269, §1, 1° — roerende voorheffing'
+      last_verified: '2026-09-03'
+      status: transcribed
+      notes: >-
+        Withheld at source on dividends and interest, and final: it is not settled again
+        on your return. Two things this rate alone does not say. There is an annual
+        exempt tranche of ordinary dividends that you reclaim by declaring it — the
+        ceiling is indexed each year and is deliberately not stated here rather than
+        stated stale. And some interest carries a different rate; a Belgian savings
+        account and a Leterme-style state note are not 30%.
+
+    reynders:
+      rate_percent: 30
+      debt_claims_threshold_percent: 10
+      citation: 'WIB92 art. 19bis — inkomsten uit collectieve beleggingsinstellingen'
+      last_verified: '2026-09-03'
+      status: transcribed
+      notes: >-
+        Charged on the interest component of the sale of a fund holding more than this
+        share of its assets in debt claims — bond and money-market funds, and mixed funds
+        above the threshold. The taxable base is the interest component the fund publishes
+        in its Belgian TIS, which cannot be derived from a price, so Balancr names the
+        figure to look up instead of estimating one from the whole gain.
+
+    meerwaarde:
+      rate_percent: 10
+      annual_exemption_eur: 10000
+      citation: 'Programmawet 2025 — meerwaardebelasting op financiële activa (WIB92 art. 90)'
+      last_verified: '2026-09-03'
+      status: transcribed
+      notes: >-
+        The rule that changed on 2026-01-01: gains realised on financial assets by a
+        private investor are taxed, above a yearly exempt tranche, where they were
+        previously untaxed as normal management of private wealth. This is the rule most
+        worth confirming before you act on a figure — the exact article, the indexation
+        of the exemption, how unused exemption and same-year losses are treated, and the
+        higher rate on a substantial shareholding are all outside what Balancr models. It
+        assumes the whole yearly tranche is still available unless told otherwise, and
+        says so on the estimate.
+
+  # ---------------------------------------------------------------------------
+  #  2018 to 2025: the same transaction taxes, no tax on realised gains.
+  # ---------------------------------------------------------------------------
+  - effective_from: '2018-01-01'
+
+    beurstaks:
+      tiers:
+        - id: fund_accumulating_registered
+          when:
+            kind: fund
+            distribution: accumulating
+            fsma_registered: true
+          rate_percent: 1.32
+          cap_eur: 4000
+          citation: 'WDRT art. 1262, §1, 3° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: fund_accumulating_unregistered
+          when:
+            kind: fund
+            distribution: accumulating
+            fsma_registered: false
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: fund_distributing
+          when:
+            kind: fund
+            distribution: distributing
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: fund_default
+          when:
+            kind: fund
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: share_default
+          when:
+            kind: share
+          rate_percent: 0.35
+          cap_eur: 1600
+          citation: 'WDRT art. 1262, §1, 2° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+        - id: bond_default
+          when:
+            kind: bond
+          rate_percent: 0.12
+          cap_eur: 1300
+          citation: 'WDRT art. 1262, §1, 1° — taks op de beursverrichtingen'
+          last_verified: '2026-09-03'
+          status: transcribed
+
+    roerende_voorheffing:
+      rate_percent: 30
+      citation: 'WIB92 art. 269, §1, 1° — roerende voorheffing'
+      last_verified: '2026-09-03'
+      status: transcribed
+
+    reynders:
+      rate_percent: 30
+      debt_claims_threshold_percent: 10
+      citation: 'WIB92 art. 19bis — inkomsten uit collectieve beleggingsinstellingen'
+      last_verified: '2026-09-03'
+      status: transcribed
+      notes: >-
+        The threshold was raised to this level from 2018; before that a higher share of
+        debt claims was needed for the levy to apply, and this file says nothing about
+        transactions from then.
+
+    meerwaarde:
+      rate_percent: 0
+      annual_exemption_eur: 0
+      citation: 'WIB92 art. 90, 1° — normaal beheer van privévermogen'
+      last_verified: '2026-09-03'
+      status: transcribed
+      notes: >-
+        Zero is the rate, not a missing value: a gain realised in normal management of
+        private wealth was not taxable income. Speculative or professional trading was
+        another matter, and always has been.

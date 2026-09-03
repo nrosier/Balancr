@@ -6,6 +6,69 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **What a trade actually costs, in euros, before it is made**
+  ([#42](https://github.com/nrosier/Balancr/issues/42)). The Belgian taxes on a concrete
+  transaction: beurstaks on the way in and out, roerende voorheffing on a dividend, the
+  Reynders levy on a bond fund's interest component, and the capital-gains tax that arrived
+  in 2026. Every figure is computed in TypeScript from a dated rules file — the model is
+  never asked for a rate and never asked for arithmetic.
+- **Dated rulesets, selected by the transaction's own date**
+  (`config/belgian-tax.yaml`, `src/domain/tax/rules.ts`). A sale in December 2025 is taxed
+  under 2025's rules and one in January 2026 under 2026's, which is the difference between
+  a €0 capital-gains bill and a real one. The shipped file carries both. A transaction
+  before the oldest ruleset is refused rather than estimated, because the alternative is an
+  estimate under rules that were not in force.
+- **A `status` field instead of a disclaimer in a comment**
+  ([#42](https://github.com/nrosier/Balancr/issues/42)). Every rate carries the article it
+  came from (`WDRT art. 1262`, `WIB92 art. 19bis`), the day it was last checked, and
+  `status: confirmed | transcribed`. Everything shipped is `transcribed` — transcribed from
+  published guidance, not verified against the law by anyone — and that field drives a
+  sentence on screen naming the taxes in play, in both languages. A citation was chosen
+  over a URL as the required field because an article number does not rot.
+- **A range where a guess would be cheaper than the truth**
+  (`src/domain/tax/estimate.ts`). Whether an accumulating fund pays 1.32% or 0.12%
+  beurstaks turns on Belgian registration, which nothing in the ISIN, the domicile or the
+  exchange reveals. Left unrecorded, the estimate reads "between € 1,20 and € 13,20" and
+  never either end of it: falling through to the low fallback rate would understate the
+  cost elevenfold, in the one direction that makes a trade look cheap. The same holds for a
+  bond fund's interest component, which only the fund publishes — unknown reads as unknown,
+  with a line saying what to go and find out.
+- **A rules file that cannot answer "no rate found"** (`src/domain/tax/schema.ts`). Two
+  structural refusals at load, each naming the tier and stating the fix: an instrument kind
+  with no unconditional fallback tier, and a tier whose conditions are satisfied by
+  everything below it, which can therefore never apply. Both are the failure mode where an
+  edited file keeps working and starts being quietly wrong.
+- **`fsma_registered` and `debt_claims_percent` on a fund universe entry**
+  (`src/domain/universe/schema.ts`). Both optional, both replacing an inference rather than
+  a default: the first decides the beurstaks tier, and the second replaces guessing a mixed
+  fund's debt-claim share from its asset class — which the estimate records as an assumption
+  on the line when it has to.
+- **`TAX_RULES_PATH`** (default `./config/belgian-tax.yaml`). Unlike the fund universe, the
+  default points at a real file inside the image, because nobody curates their own tax code
+  — and there is deliberately no companion max-age variable: tax staleness is displayed on
+  every line and in the startup log, and never enforced. A rate that changed last month,
+  shown with the date it was last checked, still beats no estimate; CI proves the shipped
+  file loads in the built image.
+- **The glossary finally has a consumer** (`src/domain/tax/describe.ts`). Each line is
+  named with the wording a Belgian broker statement uses — `Beurstaks (TOB)`,
+  `Reynders-taks`, `Roerende voorheffing` — in the English UI too, and the catalogue is
+  asserted to contain no percentage at all: a rate written into a translation is one the
+  next government makes wrong, in the last place anybody looks. `formatBp` grew a
+  `maxFractionDigits` option for the same reason, because 0,12% and 1,32% both round to
+  one decimal and stop being eleven-fold apart.
+
+### Changed
+
+- **The YAML reader and the "not in the future" date are shared** (`src/yaml-file.ts`,
+  `src/domain/verified-date.ts`), extracted from the fund universe rather than copied for
+  the tax rules. The parts worth having twice are the ones that make a message fixable — a
+  YAML error's line and column, the path in every sentence, and an empty file parsing to
+  the value the caller meant rather than to a schema violation about a missing key.
+
 ## [0.7.1] — 2026-09-03
 
 ### Added

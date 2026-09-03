@@ -49,5 +49,34 @@
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
     "value": "Marktwaarde"
   },
+  "tax": {
+    "amount": {
+      "range": "tussen {{low}} en {{high}}"
+    },
+    "assumption": {
+      "debtClaims": "Gaat uit van het aandeel schuldvorderingen op basis van de activaklasse, niet van een gepubliceerd cijfer.",
+      "fullExemption": "Gaat ervan uit dat de vrijgestelde schijf van dit jaar nog volledig beschikbaar is."
+    },
+    "basis": {
+      "capped": "{{rate}} van {{base}}, geplafonneerd op {{cap}}",
+      "rate": "{{rate}} van {{base}}",
+      "rateOnly": "{{rate}} van een bedrag dat nog niet gekend is"
+    },
+    "caveat": {
+      "transcribed": "Deze tarieven zijn overgenomen uit publieke informatie en door niemand tegen de wettekst gecontroleerd: {{rules}}. Bevestig ze voor je op het bedrag afgaat."
+    },
+    "source": "{{citation}} · gecontroleerd op {{date}}",
+    "title": "Belasting op deze verrichting",
+    "todo": {
+      "distribution": "Hangt ervan af of de aandelenklasse uitkeert of kapitaliseert.",
+      "fsmaRegistered": "Hangt ervan af of deze aandelenklasse in België is ingeschreven voor publieke distributie — vul `fsma_registered` in bij dit fonds in het fondsuniversum.",
+      "interestComponent": "Hangt af van het interestgedeelte dat het fonds in zijn Belgische TIS publiceert."
+    },
+    "total": {
+      "atLeast": "Minstens {{amount}} belasting",
+      "known": "{{amount}} belasting",
+      "range": "Tussen {{low}} en {{high}} belasting"
+    }
+  },
   "title": "Portefeuille"
 }

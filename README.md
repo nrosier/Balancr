@@ -141,7 +141,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
-| **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS` |
+| **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS`, `TAX_RULES_PATH` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 
@@ -294,6 +294,64 @@ TER is this year's, or whether the share class is the accumulating one. That is 
 second records when somebody did. **Copying the template is not vetting it** — the app
 cannot tell the difference, and a universe of three funds you understand is worth more than
 eleven you copied.
+
+## Belgian tax
+
+A trade costs more than its price. Balancr puts the Belgian taxes on a concrete
+transaction, in euros, before it is made — the beurstaks on the way in and out, roerende
+voorheffing on a dividend, the Reynders levy on a bond fund's interest component, and the
+capital-gains tax that arrived in 2026.
+
+Every rate lives in a dated file, `config/belgian-tax.yaml`, and none of it lives in code.
+That is the whole design:
+
+```yaml
+rulesets:
+  - effective_from: 2026-01-01
+    beurstaks:
+      tiers:
+        - id: fund_accumulating_registered
+          when: { kind: fund, distribution: accumulating, fsma_registered: true }
+          rate_percent: 1.32
+          cap_eur: 4000
+          citation: 'WDRT art. 1262, 3° — Belgian-registered accumulating funds'
+          last_verified: 2026-09-03
+          status: transcribed
+```
+
+Rulesets carry the date they take effect and are selected by the transaction's own date, so
+a sale in December 2025 is taxed under 2025's rules and one in January 2026 under 2026's —
+including the capital-gains tax that did not exist before it. The file ships with both, and
+a transaction before the oldest ruleset is refused rather than estimated.
+
+Every rate also carries the article it came from, the day somebody last checked it, and a
+`status`. **Everything shipped is `transcribed`, not `confirmed`** — transcribed from
+published guidance, not verified against the law by anyone. That is not a disclaimer in a
+comment: it is a field, it drives a sentence on screen naming the taxes in play, and it is
+what a `confirmed` status is for once you have checked one against its article yourself.
+
+Staleness here is shown and never enforced, which is the opposite of the fund universe. A
+rate that changed last month, displayed with the date it was last checked, is still worth
+more than no estimate; a fund entry nobody has re-read means possibly buying the wrong
+instrument. So every line carries its citation and date, the startup log names the oldest
+check, and nothing stops working.
+
+**The 1.32% question.** Which beurstaks rate an accumulating fund pays turns on whether it
+is registered for public distribution in Belgium — 1.32% if it is, 0.12% if it is not.
+Nothing in the ISIN, the domicile or the exchange says which, so the fund universe has an
+optional `fsma_registered` field and the estimate does not guess. Left unset, the answer
+comes back as a **range** — "between € 1,20 and € 13,20" — and never as either end of it.
+Defaulting to the low rate would understate the cost elevenfold in the direction that makes
+a trade look cheap, which is the one direction that matters. The same applies to a bond
+fund's interest component, which only the fund publishes: unknown reads as unknown, with a
+line saying what to go and find out.
+
+A file that could produce "no rate found" is refused at startup instead: an instrument kind
+with no unconditional fallback tier, or a tier that shadows every tier below it, both fail
+to load with the tier named and the fix stated.
+
+None of this is tax advice, and it is not a filing. It is the arithmetic done in the open,
+with the source of every number one click away.
 
 ## Backups
 
@@ -504,12 +562,27 @@ ends.
 
 **Where it is now** — `0.7.0` is released and `0.8.0` has started: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
-arrives monthly, the container's hardening is checked rather than declared, and advice now
-has a universe of instruments it is allowed to name. The Belgian tax module and the
-risk-bounded advice that uses both are what is left of that milestone; they ship as
-`0.7.2`, `0.7.3`, … until it closes as `0.8.0`.
+arrives monthly, the container's hardening is checked rather than declared, advice has a
+universe of instruments it is allowed to name, and a trade's Belgian taxes are computed in
+euros before it is made. Risk-bounded advice, which is what puts those two together on
+screen, is the last issue in that milestone; it ships as `0.7.3`, `0.7.4`, … until the
+milestone closes as `0.8.0`.
 
-The first slice of investment advice is a list, not a model
+The second slice of investment advice is what the trade actually costs
+([#42](https://github.com/nrosier/Balancr/issues/42)). A 0.12% beurstaks and a 1.32% one
+are the same instrument bought through a different registration, and a bond fund's exit is
+taxed on a number only the fund publishes — so an estimate that quietly picks the cheaper
+reading is worse than none. Every rate lives in a dated file with the article it came from
+and the day somebody last checked it, selected by the transaction's own date, so a sale in
+December 2025 and one in January 2026 are taxed under different rules and the capital-gains
+tax that arrived in 2026 does not travel backwards. What is not known stays not known: an
+unregistered-or-not fund produces the range and never either end of it, and a missing
+interest component produces a line saying what to look up. Everything shipped is marked
+`transcribed` rather than `confirmed`, which is a field rather than a comment: it names the
+taxes in play in a sentence on screen. And a rules file that could ever answer "no rate
+found" — a kind with no fallback tier, a tier shadowing the ones below it — does not load.
+
+The first slice was a list, not a model
 ([#40](https://github.com/nrosier/Balancr/issues/40)). Asked what to buy, a language model
 answers fluently with a ticker it has read somewhere — a US-domiciled ETF no Belgian broker
 can sell, a distributing share class that hands 30% of its dividends to roerende

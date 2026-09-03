@@ -31,6 +31,7 @@
  * checkable in one click, the second says when somebody last did.
  */
 import { z } from 'zod'
+import { verifiedDateSchema } from '../verified-date.ts'
 import { isinProblem, normaliseIsin } from './isin.ts'
 
 /**
@@ -101,33 +102,6 @@ const isin = z
     }
   })
 
-/**
- * The day someone last read this fund's KID and agreed with the row.
- *
- * A future date is refused rather than warned about: it is either a typo or an attempt
- * to make an entry look permanently fresh, and both should be fixed in the file. How
- * old is too old is a setting, not a schema rule — see `FUND_UNIVERSE_MAX_AGE_DAYS`.
- */
-const verifiedDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'is not a yyyy-mm-dd date')
-  .superRefine((value, ctx) => {
-    // Nothing to add when the shape is already wrong: the regex said so, and a second
-    // sentence about the same character helps nobody.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return
-    const day = Date.parse(`${value}T00:00:00Z`)
-    if (Number.isNaN(day)) {
-      ctx.addIssue({ code: 'custom', message: 'is not a real date' })
-      return
-    }
-    if (day > Date.now()) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `is in the future: nobody verified this fund on ${value} yet`,
-      })
-    }
-  })
-
 export const fundSchema = z
   .object({
     isin,
@@ -154,11 +128,42 @@ export const fundSchema = z
     }),
     /** UCITS, because that is what makes a KID and a Belgian listing exist. */
     ucits: z.literal(true, { message: 'must be true: advice proposes UCITS funds only' }),
+    /**
+     * Whether this share class is registered for public distribution in Belgium.
+     *
+     * The one fact about a fund that decides a tax rate and that nothing here can infer
+     * (#42). A registered accumulating share class carries beurstaks at 1.32% per
+     * transaction; an unregistered one carries 0.12% — a factor of eleven, on the way in
+     * and on the way out. It does not follow from the ISIN, the domicile or the exchange:
+     * two Irish accumulating ETFs tracking the same index can differ, which is most of
+     * why Belgian investors argue about which one to hold.
+     *
+     * Optional, and deliberately left unset in the shipped template: the answer is in
+     * your broker's own TOB table, and a guess here is a wrong euro amount on every
+     * proposal. Unset means the tax estimate says it cannot compute the beurstaks and
+     * names this field, which is the honest outcome.
+     */
+    fsma_registered: z.boolean().optional(),
+    /**
+     * Share of the fund's assets in debt claims, as a percentage, when it is published.
+     *
+     * The Reynders levy applies to the interest component of a fund whose debt-claim
+     * share is above a threshold (#42). For a plain equity or bond tracker the asset
+     * class answers it, and the tax module infers it from there. This field is for the
+     * ones where it does not: a mixed fund, or one whose prospectus figure sits near the
+     * threshold and decides the question. Stating it here replaces an inference with a
+     * fact, and the estimate says which of the two it used.
+     */
+    debt_claims_percent: z.number().min(0).max(100).optional(),
     /** Set when the share class hedges its currency exposure, e.g. `EUR`. */
     hedged_to: currency.optional(),
     /** The issuer's page for this share class — where the numbers above came from. */
     source: z.url(),
-    last_verified: verifiedDate,
+    /**
+     * The day someone last read this fund's KID and agreed with the row. How old is too
+     * old is a setting, not a schema rule — see `FUND_UNIVERSE_MAX_AGE_DAYS`.
+     */
+    last_verified: verifiedDateSchema,
     /** Anything the next reader should know. Shown nowhere; read by people. */
     notes: z.string().trim().max(500).optional(),
   })

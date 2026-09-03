@@ -215,12 +215,31 @@ export function withFormattedCount(vars: Vars): Vars {
 //  Percentages — stored as basis points, so no float drift in the database
 // ---------------------------------------------------------------------------
 
-export function formatBp(bp: number, options: { signed?: boolean } = {}): string {
-  const fmt = cached('pct', () =>
+/**
+ * Basis points as a percentage, Belgian-spelled: `1234` → `12,3%`.
+ *
+ * One fraction digit by default, because that is the precision a spend delta or a drift
+ * figure means — `12,34%` above a baseline claims an accuracy the baseline does not have.
+ *
+ * `maxFractionDigits` exists for the one place where the extra digit is the number rather
+ * than noise: Belgian tax rates (#42). The beurstaks on a registered accumulating fund is
+ * 1,32% and on an unregistered one 0,12%, and rounded to one digit those become 1,3% and
+ * 0,1% — which loses the second significant digit of a rate somebody may be checking
+ * against a broker's table, and turns 0,12% into a figure eleven times smaller than the
+ * other rather than the eleventh it is.
+ */
+export function formatBp(
+  bp: number,
+  options: { signed?: boolean; maxFractionDigits?: number } = {},
+): string {
+  const digits = options.maxFractionDigits ?? 1
+  // The cache key carries the precision: two formatters that differ only in this are
+  // still two formatters, and sharing one would silently give whichever call came first.
+  const fmt = cached(`pct:${digits}`, () =>
     new Intl.NumberFormat(formatSettings().formatLocale, {
       style: 'percent',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 1,
+      maximumFractionDigits: digits,
     }),
   ) as Intl.NumberFormat
   const out = fmt.format(bp / 10_000)
