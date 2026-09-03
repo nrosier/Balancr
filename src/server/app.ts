@@ -133,7 +133,7 @@ export async function buildApp({ db, oidc, web }: BuildAppOptions): Promise<Fast
     bundle === null ? notFoundHandler : spaNotFoundHandler(bundle, notFoundHandler),
   )
 
-  registerHealthRoutes(app)
+  registerHealthRoutes(app, db)
   registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
   registerApiRoutes(app, db)

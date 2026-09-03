@@ -78,6 +78,13 @@
       "when": 1788391675860,
       "tag": "0010_shared_prompt_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788400338191,
+      "tag": "0011_shallow_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

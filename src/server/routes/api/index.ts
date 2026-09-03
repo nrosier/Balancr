@@ -28,6 +28,7 @@ import { buildBudget } from './budget.ts'
 import { buildInsights } from './insights.ts'
 import { buildOverview } from './overview.ts'
 import { buildPortfolio } from './portfolio.ts'
+import { buildStatus } from './status.ts'
 
 /**
  * Which language the rendered-text exceptions come back in.
@@ -67,4 +68,9 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/insights', (request: FastifyRequest) =>
     buildInsights(db, resolveLocale(request)),
   )
+
+  // The detailed half of readiness. `/readyz` serves the same computation stripped of
+  // every message, because it answers without a session; this one is behind the guard
+  // and may quote what an upstream said. See `status.ts`.
+  app.get('/api/status', () => buildStatus(db))
 }

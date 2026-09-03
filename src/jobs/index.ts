@@ -13,16 +13,23 @@
  *
  * `ai` is last for a second reason: it is the only job that costs money, so it is
  * the one that should be looking at tonight's data rather than yesterday's.
+ *
+ * `probe` is first and depends on nothing. It is not part of the chain at all — it
+ * writes no fact any other job reads — but when Ghostfolio's contract has changed the
+ * portfolio job fails as well, and a log that states the diagnosis before the symptom
+ * saves the reader from working backwards from a Zod error.
  */
 import { aiJob } from './ai.ts'
 import { backfillJob } from './backfill.ts'
 import { netWorthJob } from './networth.ts'
 import { portfolioJob } from './portfolio.ts'
+import { probeJob } from './probe.ts'
 import { signalsJob } from './signals.ts'
 import { syncJob } from './sync.ts'
 import type { Job } from './runner.ts'
 
 export const registry: readonly Job[] = [
+  probeJob,
   syncJob,
   portfolioJob,
   netWorthJob,
@@ -32,6 +39,15 @@ export const registry: readonly Job[] = [
 ]
 
 export { createScheduler, type Scheduler } from './scheduler.ts'
+export {
+  loadProbe,
+  loadProbes,
+  saveProbe,
+  type ProbeSource,
+  type ProbeState,
+  type StoredProbeStatus,
+  type StoredReport,
+} from './probe-state.ts'
 export {
   clearStaleRunning,
   loadJobRows,
