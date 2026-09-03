@@ -6,6 +6,35 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Fixed
+
+- **`node_modules` is no longer tracked as a symlink into one machine's home
+  directory.** The v0.5.18 release commit committed it as a link whose target is an
+  absolute path on the author's laptop — pointing, as it happens, at itself. Any
+  checkout of that commit replaces a real `node_modules` with a self-referential
+  link, and everything resolved through it then fails with `ELOOP`: `npm run` cannot
+  spawn a script, `node_modules/.bin/tsc` cannot be read, and the whole local gate
+  stops working while reporting nothing but exit code 194. Diagnosing it means
+  reading `~/.npm/_logs`, because no message names the cause.
+
+  `.gitignore` did not stop it: `node_modules/`, with the trailing slash, matches a
+  directory and not a symlink of the same name, so `git add -A` picked it up the
+  moment the link existed. The pattern now has no slash and covers both.
+
+  **The v0.5.18 tag and its published release still carry the symlink** — a tag is
+  a promise about a commit, and re-cutting one that people may already have fetched
+  trades a bounded problem for an unbounded one. A fresh clone at `v0.5.18` needs
+  `unlink node_modules && npm ci` before anything else will run; `v0.5.19` and later
+  are clean. Removing it from the index does not touch a working copy that has a
+  real `node_modules`.
+
+  A new test refuses the whole class rather than this one path: `git ls-tree -r HEAD`
+  must contain no mode-`120000` entry, and nothing named `node_modules` at any depth.
+  The gate could not have caught this on its own, because the thing that broke was
+  the gate.
+
 ## [0.5.18] — 2026-09-03
 
 ### Added
