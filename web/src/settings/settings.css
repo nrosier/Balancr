@@ -285,9 +285,36 @@
 }
 
 .prompt__diff > p,
-.prompt__dryrun > p {
+.prompt__dryrun > p,
+.rerun > p {
   margin: 0;
   font-size: var(--type-sm);
+}
+
+/*
+ * The one control on the settings page that spends money, laid out like the test run
+ * above it — same border, same rhythm — because it is the same kind of act: a priced
+ * button, pressed on purpose, with the price above it rather than in a tooltip.
+ */
+.rerun {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* The two halves of the confirm step, side by side and wrapping on a narrow screen. */
+.rerun__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Both buttons stay the width of their own label: "Spend € 0,0004 and run it" beside a
+   stretched "Not now" would read as one control with a stray edge. */
+.rerun__confirm .button {
+  flex: 0 0 auto;
 }
 
 /* ---------------------------------------------------------------------------
@@ -538,6 +565,22 @@
 
 .status__job .status__name {
   margin-right: var(--space-2);
+}
+
+/*
+ * "Run now", below the row's own detail rather than beside its name.
+ *
+ * A job row is three lines deep already — two badges' worth of state and a grid of
+ * timestamps — and a button pinned to the right of the name would be the widest thing on
+ * a narrow screen for the sake of the least-used control on the page. Small and quiet: it
+ * starts real work against a real upstream, and it should not read as the way to use this
+ * panel.
+ */
+.status__run {
+  margin: var(--space-2) 0 0;
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  font-size: var(--type-xs);
 }
 
 .status__meta {

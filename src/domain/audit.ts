@@ -58,6 +58,19 @@ export const AUDIT_ACTIONS = [
    */
   'settings.params',
   'settings.locale',
+  /**
+   * A job someone started by hand.
+   *
+   * The odd one out, and worth saying why it belongs. Nothing a refresh writes is
+   * judgement — every fact it recomputes can be recomputed again — so by the rule
+   * above it would not qualify. What makes it an entry is that it is the only act in
+   * this application with an effect *outside* it: it reaches into someone else's
+   * Actual and Ghostfolio, and in the `ai` case it spends money at a pre-paid key.
+   * "Who started a sync at 14:03, and did they ask for the AI pass" is a question two
+   * people sharing one instance will eventually have, and the `jobs` table cannot
+   * answer it — it holds one row per job, overwritten by every run.
+   */
+  'jobs.refresh',
   'account.map',
   'prompt.create',
   'prompt.activate',

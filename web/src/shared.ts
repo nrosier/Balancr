@@ -71,6 +71,7 @@ export type {
   PromptSetting,
   PromptVersionSetting,
   ProbeStatus,
+  RefreshAccepted,
   Settings,
   SpendMonthSetting,
   Status,

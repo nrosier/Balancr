@@ -37,9 +37,9 @@ import {
   type Overview as OverviewPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { FreshnessNote } from '../ui/Freshness.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
+import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
 /**
@@ -66,7 +66,12 @@ export function Overview(): ReactNode {
     <>
       <PageHeader title={t('nav.overview')} lede={t('page.overview.lede')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Figures data={data} />}
+        {/*
+          `reload` is threaded down rather than read from a context: this page's figures
+          come from four different jobs, so the refresh control here asks for all of them
+          — which is the request `/api/refresh` answers when it is given no list at all.
+        */}
+        {(data) => <Figures data={data} onRefreshed={resource.reload} />}
       </DataState>
     </>
   )
@@ -75,7 +80,13 @@ export function Overview(): ReactNode {
 /** Whole euro. Cents on a net-worth figure are noise nobody reads. */
 const euro = (cents: number): string => formatMoney(cents, { whole: true })
 
-function Figures({ data }: { data: OverviewPayload }): ReactNode {
+function Figures({
+  data,
+  onRefreshed,
+}: {
+  data: OverviewPayload
+  onRefreshed: () => void
+}): ReactNode {
   const { t, language } = useT()
   const unknown = t('empty.unknown')
 
@@ -109,7 +120,7 @@ function Figures({ data }: { data: OverviewPayload }): ReactNode {
 
   return (
     <>
-      <FreshnessNote freshness={data.freshness} />
+      <FreshnessBar freshness={data.freshness} onRefreshed={onRefreshed} />
 
       <div className="grid-cards">
         <Metric

@@ -1,5 +1,5 @@
 /**
- * The two endpoints that can spend money, and the only ones in the HTTP layer that
+ * The three endpoints that can spend money, and the only ones in the HTTP layer that
  * reach Gemini at all.
  *
  * Everything else Balancr serves comes out of SQLite, written by the nightly job —
@@ -12,7 +12,7 @@
  *
  *  - **Outside `routes/api/`**, whose no-upstream rule is checked against the
  *    directory rather than against anyone's memory.
- *  - **`aiRateLimit()`** on the run, a far stricter bucket than the global one.
+ *  - **`aiRateLimit()`** on both runs, a far stricter bucket than the global one.
  *    Authentik cannot protect a pre-paid key from a loop in a browser tab.
  *  - **Owner only.** A viewer may read the dashboard; spending the month's budget is
  *    not reading.
@@ -20,26 +20,37 @@
  *    `ai_runs` row is written whatever happens, because an editor that did not count
  *    would be a way around the budget rather than a feature inside it.
  *
- * The estimate is free — no call, no row — and is what the button shows *before* it
- * is pressed.
+ * The estimate is free — no call, no row — and is what both buttons show *before* they
+ * are pressed.
+ *
+ * `POST /api/ai/refresh` is the third, and the reason it is here rather than in
+ * `refresh.ts` next to the other five jobs is the whole of the argument above: the
+ * data jobs pull, this one buys. Everything the ordinary refresh gets — the one-at-a-
+ * time claim, the audit entry, the `202` — it gets by going through the same
+ * `startRefresh`, so there is one implementation of "a job someone started by hand"
+ * and two doors to it with different locks.
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
 import { loadPrompt, resolvePrompt } from '../../domain/ai/prompts.ts'
+import { startRefresh, type Job } from '../../jobs/index.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { badRequest, conflict, notFound } from '../errors.ts'
 import { aiRateLimit } from '../rate-limit.ts'
-import { resolveMonth } from './api/budget.ts'
 import { parseBody } from '../validate.ts'
+import { resolveMonth } from './api/budget.ts'
+import { auditRefresh, busyError, requireJobsEnabled } from './refresh.ts'
 import {
   aiDryRunSchema,
   aiEstimateSchema,
   monthKey,
+  refreshAcceptedSchema,
   type AiDryRun,
   type AiEstimate,
+  type RefreshAccepted,
 } from './api/schemas.ts'
 
 const dryRunRequest = z.strictObject({
@@ -106,7 +117,26 @@ function dryRunPrompt(
   return { id: row.id, version: row.version }
 }
 
-export function registerAiRoutes(app: FastifyInstance, db: Db): void {
+/**
+ * A model switched off, as opposed to an allowance spent.
+ *
+ * The two look alike and are not. An exhausted budget is handled inside the run by the
+ * cost guard, which serves the cached answer and a banner — a `202` there is honest,
+ * because something does happen. A budget of *zero* means this deployment has decided
+ * not to call Gemini at all, and starting a job whose only act would be to record that
+ * it did nothing is worse than saying so. `409` rather than `403`: raising the budget
+ * makes the same request work, which is what that status means.
+ *
+ * A number rather than a read of `config`, so the branch is testable. See
+ * `requireJobsEnabled`.
+ */
+export function requireModelSwitchedOn(budgetEur: number): void {
+  if (budgetEur === 0) {
+    throw conflict('The monthly AI budget is zero, so model calls are switched off here.')
+  }
+}
+
+export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonly Job[]): void {
   /**
    * What a run on this month would cost, having spent nothing to find out.
    *
@@ -179,4 +209,47 @@ export function registerAiRoutes(app: FastifyInstance, db: Db): void {
     })
     return response
   })
+
+  /**
+   * Tonight's AI pass, now rather than tonight.
+   *
+   * The same job the scheduler runs, started by hand, through the same `startRefresh`
+   * as every other manual run — so it takes the one-at-a-time claim, writes the same
+   * audit entry, and answers `202` while the work happens behind the request. What is
+   * different is who may press it and how often: owner-only, in the AI bucket.
+   *
+   * **It does not check the budget, and that is deliberate.** The cost guard lives one
+   * layer down, inside the run, where it already turns an exhausted budget into a
+   * `capped` ledger row and the cached answer rather than a failure — which is exactly
+   * what the nightly pass does and what the insights page already draws a banner for.
+   * Refusing here instead would be a second cost rule, in a different place, with a
+   * different answer. The one case that *is* refused is a budget of zero, because that
+   * is not an exhausted allowance but a deployment that has switched the model off:
+   * accepting would start a job whose only act is to log that it did nothing.
+   *
+   * `GET /api/ai/estimate` is what prices it beforehand. Nothing here consults it — an
+   * estimate is a number for a person to look at, not a gate, and treating it as one
+   * would put a guess in charge of the budget instead of the ledger.
+   */
+  app.post(
+    '/api/ai/refresh',
+    { ...aiRateLimit() },
+    (request: FastifyRequest, reply: FastifyReply): RefreshAccepted => {
+      const user = requireOwner(request)
+      requireJobsEnabled(config.JOBS_ENABLED)
+      requireModelSwitchedOn(config.GEMINI_MONTHLY_BUDGET_EUR)
+
+      const outcome = startRefresh(db, registry, ['ai'])
+      if ('busy' in outcome) throw busyError(outcome.busy)
+
+      auditRefresh(db, user.id, outcome)
+
+      reply.code(202)
+      return refreshAcceptedSchema.parse({
+        accepted: outcome.accepted,
+        requested: outcome.requested,
+        startedAt: outcome.startedAt.toISOString(),
+      })
+    },
+  )
 }

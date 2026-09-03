@@ -36,10 +36,19 @@ import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
 import { formatBp, formatMonth, formatMoney, type Budget as BudgetPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { FreshnessNote } from '../ui/Freshness.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
+import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
+
+/**
+ * The one job behind every figure on this page.
+ *
+ * `sync` pulls Actual and re-aggregates; the server adds `networth` and `signals`, which
+ * are computed from what it writes, and the bar says so when it does. Ghostfolio is left
+ * alone, because nothing on this page comes from it.
+ */
+const JOBS = ['sync'] as const
 
 type CategoryFact = BudgetPayload['categories'][number]
 
@@ -75,7 +84,9 @@ export function Budget(): ReactNode {
     <>
       <PageHeader title={t('nav.budget')} lede={t('page.budget.lede')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Figures data={data} onSelect={setMonth} />}
+        {(data) => (
+          <Figures data={data} onSelect={setMonth} onRefreshed={resource.reload} />
+        )}
       </DataState>
     </>
   )
@@ -84,9 +95,10 @@ export function Budget(): ReactNode {
 interface FiguresProps {
   data: BudgetPayload
   onSelect: (month: string) => void
+  onRefreshed: () => void
 }
 
-function Figures({ data, onSelect }: FiguresProps): ReactNode {
+function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
   const { t, language } = useT()
   const { categories, month, months, signals, totals, trendMonths, uncategorised } = data
 
@@ -120,7 +132,7 @@ function Figures({ data, onSelect }: FiguresProps): ReactNode {
 
   return (
     <>
-      <FreshnessNote freshness={data.freshness} />
+      <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
       <div className="toolbar">
         <MonthPicker month={month} months={months} onSelect={onSelect} />

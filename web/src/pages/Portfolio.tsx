@@ -26,13 +26,24 @@ import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { formatBp, formatDate, formatMoney, type Portfolio as PortfolioPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { FreshnessNote } from '../ui/Freshness.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
+import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
 /** Whole euro. Cents on a portfolio total are noise, and the row prices carry them. */
 const euro = (cents: number): string => formatMoney(cents, { whole: true })
+
+/**
+ * The one job behind every figure on this page.
+ *
+ * A refresh here pulls Ghostfolio and nothing else — waiting through a budget download
+ * for a price that moved would make the control feel broken. The server adds `networth`
+ * and `signals` on its own, because both are computed from what this job writes, and
+ * the bar names them when it does. A module constant so the array's identity is stable
+ * across renders.
+ */
+const JOBS = ['portfolio'] as const
 
 /**
  * True when no snapshot has ever been written.
@@ -58,13 +69,19 @@ export function Portfolio(): ReactNode {
     <>
       <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Figures data={data} />}
+        {(data) => <Figures data={data} onRefreshed={resource.reload} />}
       </DataState>
     </>
   )
 }
 
-function Figures({ data }: { data: PortfolioPayload }): ReactNode {
+function Figures({
+  data,
+  onRefreshed,
+}: {
+  data: PortfolioPayload
+  onRefreshed: () => void
+}): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
   const { allocation, cashValueCents, date, history, holdings } = data
@@ -72,7 +89,7 @@ function Figures({ data }: { data: PortfolioPayload }): ReactNode {
 
   return (
     <>
-      <FreshnessNote freshness={data.freshness} />
+      <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
       <div className="grid-cards">
         <Metric

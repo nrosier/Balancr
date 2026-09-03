@@ -34,6 +34,7 @@
  * is read, not set. The build block is last because it exists for a bug report.
  */
 import type { ReactNode } from 'react'
+import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { AccountsPanel } from '../settings/Accounts.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
@@ -42,6 +43,7 @@ import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
 import { useSettings } from '../settings/state.ts'
+import type { AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
@@ -49,6 +51,17 @@ import '../settings/settings.css'
 export function Settings(): ReactNode {
   const { t } = useT()
   const state = useSettings()
+  /*
+   * The price of one analysis, read once for the two panels that offer to spend it.
+   *
+   * Here rather than in either of them because both need it and neither owns it, and
+   * because two reads would be two requests quoting two numbers. It costs nothing to
+   * ask: `estimateAnalysis` counts characters against the pricing table in this
+   * process and calls no upstream, so this is a query against what has already been
+   * aggregated — which is also why a deployment with nothing aggregated answers 409
+   * and both panels say so in their own words.
+   */
+  const estimate = useResource<AiEstimate>('/api/ai/estimate')
 
   return (
     <>
@@ -57,7 +70,7 @@ export function Settings(): ReactNode {
       <DataState resource={state.resource}>
         {(settings) => {
           const owner = settings.profile.role === 'owner'
-          const props = { settings, state, owner }
+          const props = { settings, state, owner, estimate }
 
           return (
             <>

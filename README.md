@@ -280,11 +280,27 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.7.0`, one slice in. `0.6.0` is done: all five views are on
-screen, in both languages, drawing real figures.
+**Where it is now** — `0.7.0`, three of its six issues done. `0.6.0` is done too:
+all five views are on screen, in both languages, drawing real figures.
 
-The last of them is insights ([#32](https://github.com/nrosier/Balancr/issues/32)),
-and it is the one that had to show its own workings. It renders what a model
+The figures can be made current by hand now
+([#122](https://github.com/nrosier/Balancr/issues/122)) — before this, the only ways
+were to wait for the schedule or to restart the container. Every page already said how
+old its numbers were; the control now sits next to that sentence, and starts only the
+jobs whose figures that page shows, so re-reading a category total does not wait
+through a Ghostfolio download. Asking for one job runs what depends on it — a budget
+re-read that left net worth computed from the previous one would make the two halves of
+the overview disagree — and the page names what ran that nobody asked for rather than
+leaving it to be noticed. Progress is read from the job rows, not timed: "Refreshed" is
+said only once every job has run *since* the request, with a row still marked `running`
+and a job with no row yet both counting as unfinished, and after a minute it stops
+waiting and says the job is still going instead of spinning. The analysis is the one
+job not on that button. It spends money, so it has its own control on the panel that
+already shows what the month has cost — priced from a free estimate first, then
+confirmed with the amount in the button's own label.
+
+Before that, insights ([#32](https://github.com/nrosier/Balancr/issues/32)) — the
+view that had to show its own workings. It renders what a model
 concluded about a month, so it renders every call that was made and exactly what went
 out in each one — `capped` and `blocked` attempts included, because those are the
 answers that are *missing* from the page above, and a failed run quotes the upstream

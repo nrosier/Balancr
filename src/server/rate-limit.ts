@@ -1,5 +1,6 @@
 /**
- * Three buckets: one against noise, one against cost, one against guessing.
+ * Four buckets: one against noise, one against cost, one against guessing, one
+ * against a refresh loop.
  *
  * The global bucket is ordinary hygiene — it keeps a loop in a broken client from
  * saturating a single-process server. The bucket in front of `/api/ai/*` is a
@@ -9,7 +10,9 @@
  * small and measured in hours rather than minutes: it is a spend limit expressed
  * as a request limit, sitting in front of the cost guard rather than instead of it.
  * The third sits in front of the break-glass password login, where each attempt
- * costs an argon2 hash and the thing being guessed is six digits long.
+ * costs an argon2 hash and the thing being guessed is six digits long. The fourth
+ * sits in front of the refresh routes, where the cost is not money or CPU but
+ * somebody else's Actual instance.
  *
  * Counters live in SQLite. See `rate_limits` in the schema for why: an hourly
  * money limit that resets on restart is not a limit, and this process restarts on
@@ -69,6 +72,29 @@ export const LOGIN_RATE_LIMIT = {
   max: 10,
   timeWindow: '15 minutes',
 } as const
+
+/**
+ * The bucket in front of a refresh.
+ *
+ * A refresh is already refused while one is running, so this is not about
+ * concurrency — it is about the client that starts one the instant the last finished.
+ * Every accepted refresh reaches out to Actual and Ghostfolio, and those are someone
+ * else's instances on the same host: a loop in a browser tab that cannot overlap
+ * itself can still hold the sync engine busy indefinitely and starve the nightly pass.
+ *
+ * Thirty an hour, fixed rather than configurable. A person watching a page and
+ * pressing refresh after fixing something in Actual does that a handful of times; no
+ * deployment wants this looser, and a knob would only ever be turned the wrong way.
+ */
+export const REFRESH_RATE_LIMIT = {
+  max: 30,
+  timeWindow: '1 hour',
+} as const
+
+/** Spreadable route options for the refresh routes. See `REFRESH_RATE_LIMIT`. */
+export const refreshRateLimit = (): { config: { rateLimit: typeof REFRESH_RATE_LIMIT } } => ({
+  config: { rateLimit: REFRESH_RATE_LIMIT },
+})
 
 /** Spreadable route options for the local login route. See `LOGIN_RATE_LIMIT`. */
 export const loginRateLimit = (): { config: { rateLimit: typeof LOGIN_RATE_LIMIT } } => ({

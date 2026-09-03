@@ -44,6 +44,17 @@
       "ok": "Afgerond."
     },
     "remaining": "Nog over deze maand",
+    "rerun": {
+      "cancel": "Niet nu",
+      "confirm": "{{cost}} besteden en uitvoeren",
+      "lede": "De analyse loopt elke nacht van zichzelf. Hiermee start je er nu een — dat roept het model aan en kost dus wat de schatting zegt.",
+      "noMonth": "Er is nog geen maand samengevat, dus er is niets te analyseren.",
+      "price": "Een analyse van {{month}} kost ongeveer {{cost}}.",
+      "start": "Analyse nu uitvoeren",
+      "started": "De analyse is gestart. De pagina Inzichten toont het resultaat zodra ze klaar is.",
+      "starting": "Starten…",
+      "title": "Handmatig uitvoeren"
+    },
     "runs": "Analyses",
     "spend": "{{spent}} van {{budget}} deze maand",
     "spent": "Uitgegeven",

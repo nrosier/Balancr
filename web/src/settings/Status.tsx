@@ -25,6 +25,12 @@
  * `/readyz` answers the same question for a machine, in less detail and without a
  * session, and `src/server/routes/api/status.ts` explains why the detailed half needs
  * one: a probe error can carry an internal container address.
+ *
+ * It is also the only screen from which `probe` and `backfill` can be started. Neither
+ * has a page of its own — one writes no figures at all and the other fills in months
+ * that are already past — so the panel that reports on the jobs is where "run that one
+ * again" belongs. The four data jobs are startable here too, and from the bar at the top
+ * of the page whose figures they produce.
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -32,7 +38,20 @@ import { useT } from '../i18n.ts'
 import { formatDateTime, formatDecimal } from '../shared.ts'
 import type { JobStatus, ProbeStatus, Status } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { RefreshStatus, useRefresh, type Refresher } from '../ui/Refresh.tsx'
 import { Panel } from './Panel.tsx'
+
+/**
+ * The jobs `POST /api/refresh` will start, mirroring `REFRESHABLE` in
+ * `src/jobs/refresh.ts` — minus `ai`, which that endpoint refuses by name because it is
+ * the one job that spends money. Its control is in the panel above, priced first.
+ *
+ * A copy rather than an import: pulling `src/jobs/refresh.ts` into the browser bundle
+ * would drag the runner, the schema and the configuration in with it. A test in
+ * `test/unit/jobs-refresh.test.ts` reads this file and fails if the copy drifts, which is
+ * the same arrangement `DATA_JOBS` in `ui/Freshness.tsx` has.
+ */
+const REFRESHABLE = ['probe', 'sync', 'portfolio', 'networth', 'backfill', 'signals']
 
 /**
  * Verdict to badge tone, for all three status vocabularies at once — the four check
@@ -87,53 +106,70 @@ export function StatusPanel(): ReactNode {
   return (
     <Panel title={t('settings:status.title')} hint={t('settings:status.lede')}>
       <DataState resource={resource}>
-        {(status) => (
-          <>
-            <p
-              className={
-                status.ready ? 'status__verdict' : 'status__verdict notice notice--error'
-              }
-            >
-              {status.ready ? t('settings:status.serving') : t('settings:status.notServing')}
-              {status.degraded ? ` ${t('settings:status.degraded')}` : ''}
-            </p>
-
-            <ul className="status__checks">
-              {status.checks.map((check) => (
-                <li className="status__check" key={check.name}>
-                  <span className="status__name">{t(`settings:status.check.${check.name}`)}</span>
-                  <Badge status={check.status} />
-                  {check.reason === null ? null : (
-                    <span className="status__reason muted">
-                      {t(`settings:status.reason.${check.reason}`)}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-
-            <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
-            <ul className="status__jobs">
-              {status.jobs.map((job) => (
-                <JobRow job={job} key={job.name} />
-              ))}
-            </ul>
-
-            <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
-            <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
-            {status.probes.length === 0 ? (
-              <p className="muted">{t('settings:status.probe.notRunYet')}</p>
-            ) : (
-              status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
-            )}
-
-            <button type="button" className="button button--quiet" onClick={resource.reload}>
-              {t('action.refresh')}
-            </button>
-          </>
-        )}
+        {(status) => <Report status={status} reload={resource.reload} />}
       </DataState>
     </Panel>
+  )
+}
+
+/**
+ * The panel's body, split out so it can hold the refresh hook.
+ *
+ * `useRefresh` cannot be called in the render callback `DataState` invokes — that is a
+ * function called inside another component's render, not a component of its own, so a
+ * hook there would break the order rules the first time the resource went from loading
+ * to loaded. One hook for the whole list, which is also why only one job can be
+ * outstanding: the server runs one refresh at a time, and a second button would spend
+ * its press on a `409`.
+ */
+function Report({ status, reload }: { status: Status; reload: () => void }): ReactNode {
+  const { t } = useT()
+  const refresher = useRefresh(status.jobs, reload)
+
+  return (
+    <>
+      <p
+        className={status.ready ? 'status__verdict' : 'status__verdict notice notice--error'}
+      >
+        {status.ready ? t('settings:status.serving') : t('settings:status.notServing')}
+        {status.degraded ? ` ${t('settings:status.degraded')}` : ''}
+      </p>
+
+      <ul className="status__checks">
+        {status.checks.map((check) => (
+          <li className="status__check" key={check.name}>
+            <span className="status__name">{t(`settings:status.check.${check.name}`)}</span>
+            <Badge status={check.status} />
+            {check.reason === null ? null : (
+              <span className="status__reason muted">
+                {t(`settings:status.reason.${check.reason}`)}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
+      <RefreshStatus state={refresher.state} />
+      <ul className="status__jobs">
+        {status.jobs.map((job) => (
+          <JobRow job={job} refresher={refresher} key={job.name} />
+        ))}
+      </ul>
+
+      <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
+      <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
+      {status.probes.length === 0 ? (
+        <p className="muted">{t('settings:status.probe.notRunYet')}</p>
+      ) : (
+        status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
+      )}
+
+      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do. */}
+      <button type="button" className="button button--quiet" onClick={reload}>
+        {t('action.refresh')}
+      </button>
+    </>
   )
 }
 
@@ -143,8 +179,13 @@ export function StatusPanel(): ReactNode {
  * Last attempt and last success are separate rows because the difference between them
  * is the whole point: a job that has been failing for a week has a recent attempt and
  * a stale success, and a panel showing only "last run" would read as healthy.
+ *
+ * The button appears only for a job this build knows `/api/refresh` will accept. A row
+ * exists for whatever the database holds — including `ai`, and including a name written
+ * by a later version of Balancr — and offering to start something the server answers
+ * `400` for is worse than offering nothing.
  */
-function JobRow({ job }: { job: JobStatus }): ReactNode {
+function JobRow({ job, refresher }: { job: JobStatus; refresher: Refresher }): ReactNode {
   const { t } = useT()
 
   // i18next answers an unknown key with the key. A `jobs` row is written by whichever
@@ -189,6 +230,18 @@ function JobRow({ job }: { job: JobStatus }): ReactNode {
           <Quoted text={job.error} />
         </p>
       )}
+      {REFRESHABLE.includes(job.name) ? (
+        <button
+          type="button"
+          className="button button--quiet status__run"
+          disabled={refresher.busy}
+          onClick={() => {
+            refresher.start([job.name])
+          }}
+        >
+          {t('refresh.job')}
+        </button>
+      ) : null}
     </li>
   )
 }

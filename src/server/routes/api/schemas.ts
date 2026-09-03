@@ -761,6 +761,31 @@ export const aiDryRunSchema = z.object({
 })
 
 /**
+ * What a refresh answers with.
+ *
+ * Deliberately thin, and the thinness is the design. A refresh starts jobs and does
+ * not wait for them, so there is nothing here about progress or outcome — that lives
+ * in the `freshness` block every read already carries, and inventing a second status
+ * surface would mean two answers to "is it done" that can disagree.
+ *
+ * `accepted` and `requested` differ whenever dependents were added: asking for
+ * `portfolio` accepts `portfolio`, `networth` and `signals`, because a page where the
+ * holdings are current and net worth is not would be *partly* fresh with nothing on
+ * it saying which half. Returning both means the client can say what it actually set
+ * running rather than repeating what it asked for.
+ *
+ * `startedAt` is what the client compares each job's `lastRunAt` against to know its
+ * refresh has been served. Without it a job that finishes between the `202` and the
+ * first poll is indistinguishable from one that never started, and the button spins
+ * for ever on the fastest possible outcome.
+ */
+export const refreshAcceptedSchema = z.object({
+  accepted: z.array(z.string()),
+  requested: z.array(z.string()),
+  startedAt: z.string(),
+})
+
+/**
  * The two shapes that appear inside more than one response, named because the
  * client renders each with one component. Structurally identical to the interfaces
  * in `freshness.ts` and `hygiene.ts`, which is the point: those describe what the
@@ -789,3 +814,4 @@ export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>
+export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>

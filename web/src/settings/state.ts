@@ -23,7 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, apiGet, apiSend } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useResource, useSessionExpiry, type Resource } from '../api/resource.tsx'
-import type { Settings } from '../shared.ts'
+import type { AiEstimate, Settings } from '../shared.ts'
 
 /** The methods this page uses. `DELETE` is deliberately absent: nothing here deletes. */
 export type WriteMethod = 'POST' | 'PATCH'
@@ -176,9 +176,17 @@ export function useSettings(): SettingsState {
  * place that decides what a viewer may do is the page. Only the language control is
  * exempt: it changes what that reader sees and nothing anyone else does, which is why
  * the server lets a viewer make exactly that one write.
+ *
+ * `estimate` is here for the same reason, one level down: two panels offer a button that
+ * spends money — the prompt editor's test run and the analysis on the AI spend panel —
+ * and both have to print the price before it is pressed. Read twice it would be two
+ * requests quoting two numbers that happen to agree; read once by the page it is one
+ * fact, and the two controls cannot disagree about what a run costs.
  */
 export interface SettingsPanelProps {
   settings: Settings
   state: SettingsState
   owner: boolean
+  /** What an analysis of the latest aggregated month would cost. A `409` means none. */
+  estimate: Resource<AiEstimate>
 }

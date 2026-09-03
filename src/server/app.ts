@@ -29,6 +29,7 @@ import Fastify, { LogController } from 'fastify'
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { registry, type Job } from '../jobs/index.ts'
 import { logger } from '../logger.ts'
 import { registerAuth } from './auth/guard.ts'
 import { oidcClientFromConfig, type OidcClient } from './auth/oidc.ts'
@@ -40,6 +41,7 @@ import { registerApiRoutes } from './routes/api/index.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerBootstrapRoute } from './routes/bootstrap.ts'
 import { registerHealthRoutes } from './routes/health.ts'
+import { registerRefreshRoutes } from './routes/refresh.ts'
 import { registerSettingsRoutes } from './routes/settings.ts'
 import { registerSecurityHeaders } from './security.ts'
 import { registerSpa, spaNotFoundHandler, webRoot } from './spa.ts'
@@ -80,9 +82,28 @@ export interface BuildAppOptions {
    * points at a bundle directly, which is how the SPA's own test uses a fixture.
    */
   web?: string | null
+  /**
+   * The jobs a refresh may start.
+   *
+   * Undefined means the real registry, which is what production does. A test passes
+   * fakes: the registry's `sync` dials Actual and `portfolio` dials Ghostfolio, so an
+   * HTTP test of `POST /api/refresh` against the real one would either hang on a
+   * network timeout or assert against whatever a developer happens to have running.
+   * What that test is about is the 202, the 409 and the audit row — not the pulling.
+   *
+   * An empty array is therefore meaningful rather than a mistake, and is left legal:
+   * it is "an instance where no job is registered", where every name resolves to
+   * nothing and the refusal is a warning in the log rather than a 500.
+   */
+  jobs?: readonly Job[]
 }
 
-export async function buildApp({ db, oidc, web }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({
+  db,
+  oidc,
+  web,
+  jobs = registry,
+}: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     // Cast so the instance keeps Fastify's default generic parameters. Passing the
     // pino logger through unwidened specialises `FastifyInstance` on pino's own
@@ -137,10 +158,12 @@ export async function buildApp({ db, oidc, web }: BuildAppOptions): Promise<Fast
   registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
   registerApiRoutes(app, db)
-  // The two route modules that are allowed to write, kept out of `routes/api/` so
-  // that directory's read-only rule stays checkable by a test that scans it.
+  // The three route modules that are allowed to do something other than read, kept
+  // out of `routes/api/` so that directory's read-only rule stays checkable by a test
+  // that scans it. A refresh writes nothing itself, but it starts something that does.
   registerSettingsRoutes(app, db)
-  registerAiRoutes(app, db)
+  registerRefreshRoutes(app, db, jobs)
+  registerAiRoutes(app, db, jobs)
   await registerSpa(app, bundle)
 
   log.debug(
