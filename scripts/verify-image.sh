@@ -30,8 +30,13 @@ set -euo pipefail
 
 IMAGE=${1:?usage: verify-image.sh <image>}
 PORT=${PORT:-3999}
-IMAGE_MAX_MB=${IMAGE_MAX_MB:-750}
-STARTUP_MAX_S=${STARTUP_MAX_S:-20}
+# Both ceilings are calibrated against the amd64 build CI produces — 410 MB and 1s at
+# the time of writing — because that is the artefact people run. A local build on a
+# different daemon reports a different size for the same image (the containerd store
+# reports the compressed size), so a local number under the ceiling proves nothing
+# about CI's, and the ceiling is set with room for both.
+IMAGE_MAX_MB=${IMAGE_MAX_MB:-500}
+STARTUP_MAX_S=${STARTUP_MAX_S:-8}
 
 NAME="balancr-verify-$$"
 VOLUME="balancr-verify-$$"
@@ -194,7 +199,12 @@ done
 check 'docker reports the container healthy' 'healthy' "$health"
 
 # --- wiring that only a real container shows -----------------------------------
-if docker logs "$NAME" 2>&1 | grep -q 'egress allowlist installed'; then
+# The logs are captured before they are searched, not piped into grep: `grep -q` exits
+# on the first match, `docker logs` then dies of SIGPIPE, and under `pipefail` that
+# failing exit status becomes the pipeline's — so the check would report "not installed"
+# for a container that installed it, depending on how fast the writer flushed.
+logs=$(docker logs "$NAME" 2>&1)
+if grep -q 'egress allowlist installed' <<<"$logs"; then
   pass 'the egress allowlist was installed at startup'
 else
   fail 'no egress allowlist in the startup logs'

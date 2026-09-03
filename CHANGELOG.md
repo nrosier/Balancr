@@ -41,9 +41,10 @@ rather than when the feature list ends.
   a refusal. Silent in a container, where compose reads `.env` on the host and there is
   no such file to have a mode.
 - **Image size and startup time recorded in the job summary**
-  ([#39](https://github.com/nrosier/Balancr/issues/39)), with ceilings a little above
-  where they sit today. Not targets — tripwires, so a change that doubles either has to
-  be a deliberate edit rather than something nobody noticed.
+  ([#39](https://github.com/nrosier/Balancr/issues/39)) — 410 MB and one second to the
+  first `/healthz` on amd64 today — with ceilings a little above those. Not targets:
+  tripwires, so a change that doubles either has to be a deliberate edit to the script
+  rather than something nobody noticed.
 
 ### Fixed
 
