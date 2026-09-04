@@ -26,6 +26,13 @@
  * wire and both belong on the settings screen's cost panel, where the question is what
  * this is costing; here the question is what was sent, and six columns is already the
  * most a phone can scroll through.
+ *
+ * **Since #158 the rows are the selected month's, and a sentence says so** — but there is
+ * no seventh column for the period, because every row would print the same value as the
+ * picker above it. The rows that carry no month at all are in here too: a chat turn
+ * answers a question rather than a month, and a run that failed before it knew which
+ * month it was for has none either. Those are precisely the rows this table exists for,
+ * so filtering them out would hide them under every month on the picker.
  */
 import { Fragment, useId, useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -34,6 +41,7 @@ import {
   formatDateTime,
   formatDecimal,
   formatMicroEur,
+  formatMonth,
   type AiRun,
   type AiRunPayload,
 } from '../shared.ts'
@@ -44,10 +52,12 @@ const count = (value: number): string => formatDecimal(value, 0)
 
 export interface LedgerProps {
   runs: readonly AiRun[]
+  /** The month the rows were narrowed to, or null when nothing is aggregated yet. */
+  month: string | null
 }
 
-export function Ledger({ runs }: LedgerProps): ReactNode {
-  const { t } = useT()
+export function Ledger({ runs, month }: LedgerProps): ReactNode {
+  const { t, language } = useT()
   const captionId = useId()
   const [opened, setOpened] = useState<string | null>(null)
 
@@ -55,6 +65,11 @@ export function Ledger({ runs }: LedgerProps): ReactNode {
     <section className="card">
       <h2 className="card__title">{t('ai:privacy.title')}</h2>
       <p className="muted">{t('ai:privacy.hint')}</p>
+      {month === null ? null : (
+        <p className="muted">
+          {t('ai:privacy.month', { month: formatMonth(month, language) })}
+        </p>
+      )}
       {runs.length === 0 ? (
         <p className="muted">{t('ai:privacy.none')}</p>
       ) : (

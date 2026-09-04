@@ -28,17 +28,38 @@
  * can be opened to read the payload it was prepared with, byte for byte. The
  * payloads are not inlined — see `aiRunSchema` — because a page that costs ten
  * times as much to load is a page somebody eventually stops loading.
+ *
+ * Takes `?month=YYYY-MM` since #158, exactly as `/api/budget` does and through the same
+ * `resolveMonth`, so the two pickers cannot disagree about what a month means or which
+ * ones exist. **Three of the six sections narrow with it and two deliberately do not**,
+ * and the split is the one judgement in this file:
+ *
+ *  - `signals`, `narrative` and `runs` are *about* a month. Each is stored under one, and
+ *    reading July's page should show what was found in July, what was written about July
+ *    and what it cost — not August's findings under July's heading, which is what the
+ *    narrative did before this endpoint took a month at all.
+ *  - `questions` and `proposals` are **standing work**, and stay whole. Both are queues of
+ *    things nobody has answered yet, and neither has a month of its own: a proposal
+ *    carries a target and a nullable run, a clarification card carries a category.
+ *    Filtering them through the run that happened to raise them would file an unanswered
+ *    question from July under July — the one month nobody has a reason to open again — and
+ *    it would be gone from every other view with nothing to say it existed. A queue that
+ *    hides its backlog unless you guess the right month is not a queue.
+ *
+ * The page says which is which, because a section that ignores the picker above it has to
+ * explain itself or it reads as a bug.
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { latestStoredMonth } from '../../../domain/aggregate/month-store.ts'
+import { storedMonths } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { aiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
-import { latestNarrative, renderNarrative } from '../../../domain/ai/narrative.ts'
+import { loadNarrative, renderNarrative } from '../../../domain/ai/narrative.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
+import { resolveMonth } from './budget.ts'
 import {
   aiRunPayloadSchema,
   insightsSchema,
@@ -48,15 +69,34 @@ import {
 } from './schemas.ts'
 import { freshness } from './freshness.ts'
 
-export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): Insights {
-  const month = latestStoredMonth(db)
-  const narrative = latestNarrative(db, locale)
+export interface InsightsOptions {
+  /** `?month=`, unvalidated. A malformed value is a 400, as on `/api/budget`. */
+  month?: unknown
+  locale?: string
+  /**
+   * Whether this reader may start a run. Drawn from the session's role by the caller,
+   * because a route knows who is asking and this function does not.
+   */
+  owner?: boolean
+}
+
+export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
+  const locale = options.locale ?? config.DEFAULT_LOCALE
+  const month = resolveMonth(db, options.month)
+  // Per month and per locale, unlike before, when it was the newest narrative in this
+  // language whatever month it described. That was a real hazard rather than a
+  // simplification: on the 3rd of September the page printed August's review with no
+  // period beside it, and there was no way to ask for July's. The cost is that a month
+  // with no narrative now says so — which is the truth, and the button beside it is #158.
+  const narrative = month === null ? null : loadNarrative(db, month, locale)
   const spend = budgetState(db)
 
   return insightsSchema.parse({
     freshness: freshness(db),
     ai: aiAvailability(),
+    owner: options.owner ?? false,
     month,
+    months: storedMonths(db),
     signals: month === null ? [] : loadSignals(db, month),
     narrative:
       narrative === null
@@ -105,7 +145,11 @@ export function buildInsights(db: Db, locale: string = config.DEFAULT_LOCALE): I
     // Twenty rather than the ledger's default fifty: this is the tail of the page,
     // read to answer "what happened last night", and the monthly totals that answer
     // "what has this cost" are on the settings screen.
-    runs: recentRuns(db, 20).map(wireRun),
+    //
+    // Scoped to the month, plus every run that was about no month at all — a chat turn,
+    // or a call that failed before it knew. See `recentRuns`: those rows belong under
+    // whatever is on screen rather than under nothing.
+    runs: (month === null ? recentRuns(db, 20) : recentRuns(db, 20, month)).map(wireRun),
   })
 }
 
@@ -123,6 +167,7 @@ function wireRun(row: AiRunRow): AiRun {
     costMicroEur: row.costMicroEur,
     durationMs: row.durationMs,
     error: row.error,
+    period: row.period,
     createdAt: row.createdAt.toISOString(),
   }
 }

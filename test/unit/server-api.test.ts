@@ -28,7 +28,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
-import { categoryMeta, users } from '../../src/db/schema.ts'
+import { categoryMeta, clarificationQueue, proposals, users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -521,6 +521,100 @@ describe('GET /api/insights', () => {
     await get('/api/insights')
     const after = ctx.db.$client.prepare('select count(*) as n from ai_runs').get() as { n: number }
     expect(after.n).toBe(before.n)
+  })
+
+  it('reports every month there is data for, and who is asking', async () => {
+    const body = (await get('/api/insights')).json()
+
+    expect(body.months).toEqual([MONTH, PREVIOUS_MONTH])
+    expect(body.owner).toBe(true)
+  })
+
+  it('says no when the viewer is not the owner', async () => {
+    const viewer = ctx.db
+      .insert(users)
+      .values({ oidcSub: `sub-${crypto.randomUUID()}`, locale: 'en', role: 'viewer' })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    const body = (await get('/api/insights', token)).json()
+    expect(body.owner).toBe(false)
+  })
+
+  it('filters signals and the narrative to the month asked for (#158)', async () => {
+    // The fixture's signals belong to `MONTH` alone — July has none stored — so
+    // asking for July is the one request that proves the filter runs at all.
+    const july = (await get(`/api/insights?month=${PREVIOUS_MONTH}`)).json()
+    expect(july.month).toBe(PREVIOUS_MONTH)
+    expect(july.signals).toEqual([])
+    expect(july.narrative).toBeNull()
+
+    const august = (await get(`/api/insights?month=${MONTH}`)).json()
+    expect(august.signals[0].code).toBe('above_baseline')
+  })
+
+  it('filters the ledger to the month, plus the calls about no month at all (#158)', async () => {
+    const augustRun = recordRun(ctx.db, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { categories: [] },
+      status: 'ok',
+      period: MONTH,
+    })
+    const julyRun = recordRun(ctx.db, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { categories: [] },
+      status: 'ok',
+      period: PREVIOUS_MONTH,
+    })
+    const chatRun = recordRun(ctx.db, {
+      kind: 'clarify',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { categories: [] },
+      status: 'ok',
+    })
+
+    const august = (await get(`/api/insights?month=${MONTH}`)).json()
+    expect(august.runs.map((run: { id: string }) => run.id).sort()).toEqual(
+      [augustRun, chatRun].sort(),
+    )
+
+    const july = (await get(`/api/insights?month=${PREVIOUS_MONTH}`)).json()
+    expect(july.runs.map((run: { id: string }) => run.id).sort()).toEqual(
+      [julyRun, chatRun].sort(),
+    )
+  })
+
+  it('never filters the clarification or proposal queues by month, since neither is about one (#158)', async () => {
+    // Both are standing work: a question or a proposed change carries a category,
+    // not a month, so switching the month picker must not make either vanish.
+    ctx.db
+      .insert(clarificationQueue)
+      .values({ categoryId: 'cat-groceries', questionCode: 'purpose_unknown', status: 'open' })
+      .run()
+    ctx.db
+      .insert(proposals)
+      .values({ type: 'category_meta.set', targetRef: 'cat-groceries', payloadJson: '{}' })
+      .run()
+
+    const august = (await get(`/api/insights?month=${MONTH}`)).json()
+    const july = (await get(`/api/insights?month=${PREVIOUS_MONTH}`)).json()
+
+    expect(august.questions).toHaveLength(1)
+    expect(august.proposals).toHaveLength(1)
+    expect(july.questions).toEqual(august.questions)
+    expect(july.proposals).toEqual(august.proposals)
   })
 
   it('renders the narrative, rather than shipping the labels the model wrote', async () => {

@@ -35,7 +35,7 @@ import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
-import type { AiDryRun, AiEstimate } from '../../src/server/routes/api/schemas.ts'
+import type { AiDryRun, AiEstimate, AiNarrativeRun } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture, MONTH } from '../helpers/api-fixture.ts'
 
 let ctx: ReturnType<typeof apiFixture>
@@ -110,6 +110,17 @@ function dryRun(body: object = {}, token = owner) {
   })
 }
 
+function narrative(body: object, token = owner) {
+  const csrf = newCsrfToken()
+  return app.inject({
+    method: 'POST',
+    url: '/api/ai/narrative',
+    payload: body,
+    cookies: { [SESSION_COOKIE]: token, [CSRF_COOKIE]: csrf },
+    headers: { [CSRF_HEADER]: csrf },
+  })
+}
+
 const runRows = (db: Db) => db.select().from(aiRuns).all()
 
 beforeAll(async () => {
@@ -168,6 +179,38 @@ describe('GET /api/ai/estimate', () => {
   it('needs a session but not the owner: it spends nothing', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/ai/estimate' })).statusCode).toBe(401)
     expect((await get('/api/ai/estimate', viewer)).statusCode).toBe(200)
+  })
+
+  it('prices the deep model for kind=narrative rather than the analysis price (#158)', async () => {
+    const fake = fakeGemini('{}')
+    const findingsRes = await get(`/api/ai/estimate?month=${MONTH}`)
+    const narrativeRes = await get(`/api/ai/estimate?month=${MONTH}&kind=narrative`)
+
+    expect(narrativeRes.statusCode).toBe(200)
+    const findingsEstimate = findingsRes.json<AiEstimate>()
+    const narrativeEstimate = narrativeRes.json<AiEstimate>()
+    expect(narrativeEstimate.kind).toBe('narrative')
+    expect(narrativeEstimate.allowed).toBe(true)
+    // The deep model over the same payload, not the cheap one — the whole reason the
+    // page needs a second price rather than reusing the findings one (#158).
+    expect(narrativeEstimate.estimateMicroEur).toBeGreaterThan(findingsEstimate.estimateMicroEur)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('refuses a kind it does not know', async () => {
+    const res = await get('/api/ai/estimate?kind=chat')
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('prices a narrative as free once one already exists in that language', async () => {
+    fakeGemini('The month in a sentence.')
+    await narrative({ period: MONTH })
+
+    const res = await get(`/api/ai/estimate?month=${MONTH}&kind=narrative`)
+    const estimate = res.json<AiEstimate>()
+    expect(estimate.allowed).toBe(false)
+    expect(estimate.reason).toBe('cached')
+    expect(estimate.estimateMicroEur).toBe(0)
   })
 
   it('says there is nothing to run against on an empty deployment', async () => {
@@ -333,5 +376,65 @@ describe('POST /api/ai/dry-run', () => {
     // prompt and report success, which is the one answer the button must not give.
     const res = await dryRun({ prompt_id: 'x' })
     expect(res.statusCode).toBe(400)
+  })
+})
+
+describe('POST /api/ai/narrative', () => {
+  it('writes the review for a month that has ended, and bills the deep model (#158)', async () => {
+    const fake = fakeGemini('Groceries ran hot; energy stayed put.')
+    const res = await narrative({ period: MONTH })
+    expect(res.statusCode).toBe(200)
+
+    const outcome = res.json<AiNarrativeRun>()
+    expect(outcome.status).toBe('ok')
+    expect(outcome.period).toBe(MONTH)
+    expect(outcome.costMicroEur).toBeGreaterThan(0)
+    expect(fake.calls).toBe(1)
+
+    const rows = runRows(ctx.db).filter((row) => row.kind === 'narrative')
+    expect(rows).toHaveLength(1)
+  })
+
+  it('answers the cached review for free on a second press, without calling anything', async () => {
+    const fake = fakeGemini('Groceries ran hot; energy stayed put.')
+    await narrative({ period: MONTH })
+    const res = await narrative({ period: MONTH })
+
+    const outcome = res.json<AiNarrativeRun>()
+    expect(outcome.status).toBe('cached')
+    expect(outcome.costMicroEur).toBe(0)
+    expect(fake.calls).toBe(1)
+  })
+
+  it('refuses a month that has not ended, so a partial month is never cached forever', async () => {
+    const fake = fakeGemini('Too early to say.')
+    const res = await narrative({ period: '2099-01' })
+    expect(res.statusCode).toBe(409)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('is refused for a viewer, since writing a review spends the deep model', async () => {
+    const fake = fakeGemini('Groceries ran hot.')
+    const res = await narrative({ period: MONTH }, viewer)
+    expect(res.statusCode).toBe(403)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('needs a period; there is no latest-month default for this one', async () => {
+    const res = await narrative({})
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('caches per locale, so asking in Dutch does not reuse the English review', async () => {
+    fakeGemini('Groceries ran hot; energy stayed put.')
+    await narrative({ period: MONTH })
+    const res = await narrative({ period: MONTH, locale: 'nl' })
+
+    const outcome = res.json<AiNarrativeRun>()
+    expect(outcome.status).toBe('ok')
+    expect(outcome.locale).toBe('nl')
+
+    const rows = runRows(ctx.db).filter((row) => row.kind === 'narrative')
+    expect(rows).toHaveLength(2)
   })
 })

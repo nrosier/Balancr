@@ -21,6 +21,7 @@
     "readOnly": "Deze beantwoorden komt samen met het gesprek met de assistent, in een latere versie. Voorlopig is dit de lijst die hij heeft opgebouwd.",
     "sensitive_unknown": "Moet de naam {{category}} verborgen blijven voor de AI?",
     "share": "{{share}} van de uitgaven deze maand",
+    "standing": "Vast werk, niet gefilterd op de maand hierboven: een vraag blijft hier staan tot ze beantwoord is.",
     "suggestion": "Vermoeden: {{guess}}",
     "title": "Help de assistent begrijpen"
   },
@@ -54,8 +55,20 @@
     "capped": "Maandelijks AI-budget bereikt — dit is de laatste analyse.",
     "generatedAt": "Geschreven op {{when}} door {{model}}",
     "none": "Er is nog geen verhaal geschreven voor deze maand.",
+    "offer": {
+      "cancel": "Annuleren",
+      "confirm": "{{cost}} uitgeven",
+      "lede": "Een verhaal gebruikt het diepe model, dus het kost meer dan de nachtelijke analyse. De prijs staat er voordat er iets wordt uitgegeven.",
+      "notEnded": "{{month}} is nog niet voorbij. Een verhaal wordt geschreven zodra de maand volledig is, zodat het over de hele maand gaat.",
+      "owner": "Alleen de eigenaar kan er een schrijven.",
+      "price": "Een verhaal voor {{month}} kost ongeveer {{cost}}.",
+      "start": "Verhaal schrijven",
+      "starting": "Bezig met schrijven…",
+      "written": "Geschreven, voor {{cost}}. De pagina is opnieuw geladen."
+    },
     "stale": "Gebaseerd op gegevens van {{when}}.",
     "title": "Deze maand in woorden",
+    "titleMonth": "{{month}} in woorden",
     "translate": "Dit in het {{language}} schrijven",
     "unnamedAccount": "een naamloze rekening",
     "unnamedCategory": "een naamloze categorie"
@@ -96,6 +109,7 @@
       "findings": "Analyse",
       "narrative": "Verhaal"
     },
+    "month": "Aanroepen over {{month}}, en aanroepen die over geen enkele maand gingen.",
     "none": "Er zijn nog geen aanvragen verstuurd.",
     "title": "Wat is verzonden",
     "tokens": "{{input}} in / {{output}} uit",
@@ -116,6 +130,7 @@
     "hint": "Er verandert niets tot je het toepast.",
     "none": "Er staat niets te wachten om toegepast te worden.",
     "readOnly": "Een wijziging toepassen komt in een latere versie. Voorlopig kun je precies nalezen wat er zou veranderen.",
+    "standing": "Vast werk, niet gefilterd op de maand hierboven: een voorstel blijft hier staan tot het beoordeeld is.",
     "title": "Voorgestelde wijzigingen",
     "value": {
       "unset": "niet ingesteld"

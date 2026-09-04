@@ -67,7 +67,13 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/portfolio', () => buildPortfolio(db))
 
   app.get('/api/insights', (request: FastifyRequest) =>
-    buildInsights(db, resolveLocale(request)),
+    buildInsights(db, {
+      month: (request.query as { month?: unknown } | undefined)?.month,
+      locale: resolveLocale(request),
+      // Only so the page knows whether to draw the button that spends money.
+      // `POST /api/ai/narrative` gates itself; this is presentation (#158).
+      owner: request.user?.role === 'owner',
+    }),
   )
 
   /**

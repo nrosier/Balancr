@@ -34,8 +34,8 @@ import { aiNarratives } from '../../db/schema.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
-import { prepareMonth } from './analysis.ts'
-import { checkBudget } from './budget.ts'
+import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
+import { checkBudget, spendMonthOf } from './budget.ts'
 import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
 import type { RedactedPayload } from './redact.ts'
 import { recordRun } from './runs.ts'
@@ -328,6 +328,83 @@ const fromRow = (row: NarrativeRow, db: Db, status: NarrativeStatus): NarrativeO
 })
 
 /**
+ * True once `period` is over.
+ *
+ * Judged against `spendMonthOf`, which is the clock the cost guard already runs on, so
+ * the server and the browser agree about which months are finished — the insights page
+ * decides whether to show the offer by comparing the selected month to `spend.month`,
+ * and that is the same figure.
+ *
+ * Load-bearing for the manual narrative (#158). `runNarrative` caches per
+ * `(period, locale)` and regenerating costs the deep model again, so a narrative written
+ * on the 4th of the month would be a permanent review of a month from a tenth of its
+ * facts — with nothing on screen to say the figures behind it were not in yet. The
+ * nightly job avoids this by only ever asking for the previous month; a button has to be
+ * told.
+ */
+export function monthHasEnded(period: string, now = new Date()): boolean {
+  return period < spendMonthOf(now)
+}
+
+/**
+ * What a narrative for this month would cost, without writing one.
+ *
+ * The estimate for the deep model, and the same contract as `estimateAnalysis`: the
+ * price is what a button must show before it is pressed, because the key is pre-paid and
+ * a click is the only thing in this application that spends money.
+ *
+ * Three of the four refusals cost nothing to discover and are worth saying rather than
+ * pricing:
+ *
+ *  - `month_not_ended` — see `monthHasEnded`. Not a budget decision, so it is answered
+ *    before the guard is consulted.
+ *  - `cached` — a narrative already exists in this language, and `runNarrative` would
+ *    return it for free. Offering a price beside a review that is already on the page
+ *    would be charging for the scroll.
+ *  - `no_facts` — nothing was aggregated for the month, which is also when a run would
+ *    have nothing to describe.
+ *
+ * `allowed: false` for all three, because in none of them would pressing the button
+ * produce a new narrative. Only the fourth (over budget) carries a real estimate, and
+ * only that one is a judgement the guard makes.
+ */
+export function estimateNarrative(
+  db: Db,
+  options: { period: string; locale?: string; model?: string; now?: Date },
+): AnalysisEstimate {
+  const locale = options.locale ?? config.DEFAULT_LOCALE
+  const model = options.model ?? config.GEMINI_MODEL_DEEP
+  const now = options.now ?? new Date()
+  const refused = (reason: string): AnalysisEstimate => ({
+    month: options.period,
+    model,
+    payloadChars: null,
+    estimateMicroEur: 0,
+    allowed: false,
+    reason,
+  })
+
+  if (!monthHasEnded(options.period, now)) return refused('month_not_ended')
+  if (loadNarrative(db, options.period, locale) !== null) return refused('cached')
+
+  const prepared = prepareMonth(db, options.period, locale)
+  if (prepared === null) return refused('no_facts')
+
+  const payloadChars = JSON.stringify(prepared.payload).length
+  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const decision = checkBudget(db, estimateMicroEur, now)
+
+  return {
+    month: options.period,
+    model,
+    payloadChars,
+    estimateMicroEur,
+    allowed: decision.allowed,
+    reason: decision.allowed ? null : decision.reason,
+  }
+}
+
+/**
  * Writes the narrative for one month, or explains why it did not.
  *
  * Returns the cached one unless `force` — the expensive model runs once per month
@@ -362,6 +439,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       kind: 'narrative',
       model,
       locale,
+      period,
       payload,
       status: 'capped',
       error: decision.reason,
@@ -390,6 +468,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       kind: 'narrative',
       model,
       locale,
+      period,
       payload,
       status: 'error',
       promptId: prompt.id,
@@ -410,6 +489,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       kind: 'narrative',
       model: result.model,
       locale,
+      period,
       payload,
       status: 'error',
       promptId: prompt.id,
@@ -426,6 +506,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     kind: 'narrative',
     model: result.model,
     locale,
+    period,
     payload,
     status: 'ok',
     promptId: prompt.id,
@@ -502,6 +583,7 @@ export async function translateNarrative(
       kind: 'narrative',
       model,
       locale: to,
+      period,
       payload,
       status: 'capped',
       error: decision.reason,
@@ -528,6 +610,7 @@ export async function translateNarrative(
       kind: 'narrative',
       model,
       locale: to,
+      period,
       payload,
       status: 'error',
       error: message,
@@ -545,6 +628,7 @@ export async function translateNarrative(
       kind: 'narrative',
       model: result.model,
       locale: to,
+      period,
       payload,
       status: 'error',
       usage: result.usage,
@@ -559,6 +643,7 @@ export async function translateNarrative(
     kind: 'narrative',
     model: result.model,
     locale: to,
+    period,
     payload,
     status: 'ok',
     usage: result.usage,
