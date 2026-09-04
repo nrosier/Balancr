@@ -63,6 +63,13 @@
     "spend": "{{spent}} of {{budget}} this month",
     "spent": "Spent",
     "title": "AI usage",
+    "upcomingNote": {
+      "count": "{{count}}/{{max}} characters",
+      "hint": "A running note about what's coming up — a dentist bill, an annual renewal, anything the trailing average couldn't know about. The budget nudge below can read it alongside next month's suggested amounts.",
+      "label": "What's coming up",
+      "placeholder": "e.g. Dentist appointment in October, about €150. Car insurance renews in November.",
+      "title": "Upcoming"
+    },
     "tokens": {
       "cached": "Cached",
       "input": "In",

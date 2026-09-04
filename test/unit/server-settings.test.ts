@@ -29,6 +29,7 @@ import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadHousehold } from '../../src/domain/benchmark/household.ts'
+import { loadUpcomingNote, UPCOMING_NOTE_MAX_CHARS } from '../../src/domain/ai/upcoming-note.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
@@ -353,6 +354,44 @@ describe('PATCH /api/settings/household', () => {
     const res = await send_({ members: [], sharedCostBp: 6_000 }, { token: viewer })
     expect(res.statusCode).toBe(403)
     expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+})
+
+describe('PATCH /api/settings/upcoming-note', () => {
+  const send_ = (body: object, options?: { token?: string }) =>
+    patch('/api/settings/upcoming-note', body, options)
+
+  it('stores the note and answers with it', async () => {
+    const res = await send_({ text: 'Dentist bill in March, about 150 euros.' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().ai.upcomingNote).toBe('Dentist bill in March, about 150 euros.')
+    expect(loadUpcomingNote(ctx.db).text).toBe('Dentist bill in March, about 150 euros.')
+  })
+
+  it('is replaced whole, so an empty text clears it', async () => {
+    await send_({ text: 'Dentist bill in March.' })
+    const res = await send_({ text: '' })
+
+    expect(res.json<Settings>().ai.upcomingNote).toBe('')
+    expect(loadUpcomingNote(ctx.db).text).toBe('')
+  })
+
+  it('refuses text over the length bound', async () => {
+    const res = await send_({ text: 'x'.repeat(UPCOMING_NOTE_MAX_CHARS + 1) })
+    expect(res.statusCode).toBe(400)
+    expect(loadUpcomingNote(ctx.db).text).toBe('')
+  })
+
+  it('refuses an unknown field', async () => {
+    const res = await send_({ text: 'fine', extra: true })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_({ text: 'Dentist bill in March.' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadUpcomingNote(ctx.db).text).toBe('')
   })
 })
 

@@ -11,6 +11,26 @@
     "variable": "Variabele kost",
     "yes": "Ja"
   },
+  "budgetNudge": {
+    "cancel": "Niet nu",
+    "confirm": "{{cost}} uitgeven en de notitie nakijken",
+    "lede": "Leest je notitie “wat er nog aankomt” naast de voorgestelde budgetten voor volgende maand, en kan er één aanpassen voor iets waar het lopend gemiddelde geen weet van kon hebben.",
+    "owner": "Alleen de eigenaar kan dit uitvoeren.",
+    "price": "{{month}} nakijken tegen de notitie zou ongeveer {{cost}} kosten.",
+    "reason": {
+      "bad_response": "Het antwoord van het model kwam niet overeen met het schema, dus er is niets van gebruikt.",
+      "call_failed": "Het model was niet bereikbaar.",
+      "estimate_exceeds_remaining": "Een run zou meer kosten dan er deze maand nog over is.",
+      "month_budget_exceeded": "Het AI-budget van deze maand is al besteed.",
+      "no_candidates": "Er is nog geen voorgesteld budget voor deze maand om aan te passen.",
+      "no_note": "De notitie “wat er nog aankomt” is leeg, dus er is niets om tegen te controleren.",
+      "ok": "Afgerond."
+    },
+    "resultOk": "Klaar. Bekijk de voorgestelde budgetten hieronder voor wat er is aangepast.",
+    "start": "Notitie nakijken",
+    "starting": "Bezig met nakijken…",
+    "title": "Budgetbijstelling"
+  },
   "clarify": {
     "custody_shared_unknown": "Deel je {{category}} met de andere ouder?",
     "frequency_unknown": "Hoe vaak komt {{category}} terug?",

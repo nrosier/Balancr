@@ -529,6 +529,24 @@ export function pendingProposals(db: Db, limit = 50): ProposalRow[] {
     .all()
 }
 
+/**
+ * Every pending `budget_amount.set` proposal for one month — the candidate set #45's
+ * nightly pass already computed and the AI nudge (#217) may adjust.
+ *
+ * `createProposal`'s supersede-on-same-target behaviour is what lets the nudge reuse
+ * this set directly: adjusting one just means creating a new proposal for the same
+ * `(type, targetRef)`, which cleanly expires the row this reads.
+ */
+export function pendingBudgetProposals(db: Db, month: string): ProposalRow[] {
+  return db
+    .select()
+    .from(proposals)
+    .where(and(eq(proposals.status, 'pending'), eq(proposals.type, 'budget_amount.set')))
+    .orderBy(asc(proposals.createdAt), asc(proposals.id))
+    .all()
+    .filter((row) => decodeBudgetTarget(row.targetRef).month === month)
+}
+
 /** Everything that happened to one target, newest first. */
 export function proposalHistory(db: Db, targetRef: string, limit = 50): ProposalRow[] {
   return db

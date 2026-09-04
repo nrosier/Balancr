@@ -82,6 +82,14 @@ export const AUDIT_ACTIONS = [
    */
   'settings.custodyShared',
   /**
+   * The running "what's coming up" note (#217).
+   *
+   * Belongs on this list for the same reason as every other settings write: it is
+   * judgement — what the owner knows is coming — that nothing in Actual or
+   * Ghostfolio can regenerate.
+   */
+  'settings.upcomingNote',
+  /**
    * A job someone started by hand.
    *
    * The odd one out, and worth saying why it belongs. Nothing a refresh writes is

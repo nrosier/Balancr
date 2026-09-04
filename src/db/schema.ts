@@ -732,7 +732,7 @@ export const aiRuns = sqliteTable(
   {
     id: uuid().primaryKey(),
     kind: text({
-      enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess'],
+      enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
     }).notNull(),
     model: text().notNull(),
     promptId: text('prompt_id').references(() => prompts.id, {
@@ -742,13 +742,17 @@ export const aiRuns = sqliteTable(
     /**
      * The month this run was about, `YYYY-MM`, or null for a run about no month.
      *
-     * Denormalised on purpose. The month is recoverable for two of the six kinds — a
+     * Denormalised on purpose. The month is recoverable for two of the seven kinds — a
      * narrative through `ai_narratives.period`, an analysis through `ai_findings.month`
      * — and for neither when the run produced nothing, which is exactly the row the
      * ledger exists to show: a `capped` analysis of August wrote no finding to join
      * back to. Without this column the insights page could filter its ledger to the
      * month on screen only by dropping the refusals, and the refusals are the rows that
      * explain what is *missing* from the page above them (#158).
+     *
+     * `budget_nudge` has no table of its own to join back to at all — an adjusted
+     * proposal is indistinguishable from #45's own suggestion once superseded — so
+     * this column is the *only* place a nudge's month survives (#217).
      *
      * `category_guess` is also null: a guess batch spans whatever transactions the
      * owner selected, which is not necessarily one month.

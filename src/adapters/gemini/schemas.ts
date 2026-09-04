@@ -26,7 +26,12 @@ import { z } from 'zod'
 import { toGeminiSchema } from './json-schema.ts'
 import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from '../../domain/ai/codes.ts'
 import type { ClarificationCode, FindingCode, Severity } from '../../domain/ai/codes.ts'
-import type { RedactedGuessBatch, RedactedPayload, RedactedSignal } from '../../domain/ai/redact.ts'
+import type {
+  RedactedGuessBatch,
+  RedactedNudgeBatch,
+  RedactedPayload,
+  RedactedSignal,
+} from '../../domain/ai/redact.ts'
 
 /**
  * The label a household-level finding carries.
@@ -378,6 +383,119 @@ export function groundGuessResponse(
     }
     seen.add(guess.clientId)
     out.guesses.push(guess)
+  }
+
+  return out
+}
+
+// ---------------------------------------------------------------------------
+//  #217 — a budget-amount nudge: one adjustment per candidate, in whole euros
+// ---------------------------------------------------------------------------
+
+/** How far a nudge may move a candidate from its own suggested amount, either way. */
+export const NUDGE_MAX_RATIO = 3
+
+/** One candidate's adjusted amount, by the opaque label it was sent. */
+export const nudgeSelectionSchema = z.object({
+  label: z.string().min(1).max(16),
+  amountCents: z.number().int(),
+})
+
+export const nudgeResponseSchema = z.object({
+  adjustments: z.array(nudgeSelectionSchema).max(50),
+})
+
+export type NudgeSelection = z.infer<typeof nudgeSelectionSchema>
+export type NudgeResponse = z.infer<typeof nudgeResponseSchema>
+
+/** Same two-layer contract as `guessJsonSchema` — see its own comment. */
+export function nudgeJsonSchema(): unknown {
+  return toGeminiSchema(z.toJSONSchema(nudgeResponseSchema, { target: 'draft-7' }))
+}
+
+/** Model text → a validated nudge response, or an error. Same leniency as `parseGuessResponse`. */
+export function parseNudgeResponse(text: string): NudgeResponse {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+
+  let raw: unknown
+  try {
+    raw = JSON.parse(trimmed)
+  } catch (error) {
+    throw new GeminiResponseError(
+      `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
+      text,
+    )
+  }
+
+  const result = nudgeResponseSchema.safeParse(raw)
+  if (!result.success) {
+    throw new GeminiResponseError(
+      `model response did not match the budget-nudge schema:\n${z.prettifyError(result.error)}`,
+      text,
+    )
+  }
+  return result.data
+}
+
+/** An adjustment that survived grounding: an opaque candidate paired with a bounded amount. */
+export interface GroundedNudge {
+  label: string
+  amountCents: number
+}
+
+/** Why a returned adjustment was thrown away. Recorded, so a hallucinated figure is visible. */
+export interface DroppedNudge {
+  label: string
+  amountCents: number
+  reason: 'duplicate' | 'unknown_label' | 'out_of_range'
+}
+
+export interface GroundedNudgeBatch {
+  adjustments: GroundedNudge[]
+  dropped: DroppedNudge[]
+}
+
+/**
+ * A parsed nudge response → only the adjustments the batch actually supports.
+ *
+ * Two checks `groundGuessResponse` also makes — `label` must be one this batch
+ * offered, and no label twice — plus one it does not need: a magnitude bound.
+ * Unlike a wrong category label, a wrong euro amount is not self-evidently wrong
+ * to the human approving the proposal, so a hallucinated figure is more
+ * dangerous here. An adjustment outside `[suggested/NUDGE_MAX_RATIO,
+ * suggested*NUDGE_MAX_RATIO]` is dropped as `out_of_range` — wide enough for a
+ * genuine annual-bill jump, tight enough to catch an invented number.
+ */
+export function groundNudgeResponse(
+  response: NudgeResponse,
+  payload: RedactedNudgeBatch,
+): GroundedNudgeBatch {
+  const suggestedCentsFor = new Map<string, number>()
+  for (const candidate of payload.candidates) {
+    suggestedCentsFor.set(candidate.label, candidate.suggestedCents)
+  }
+
+  const out: GroundedNudgeBatch = { adjustments: [], dropped: [] }
+  const seen = new Set<string>()
+
+  for (const adjustment of response.adjustments) {
+    if (seen.has(adjustment.label)) {
+      out.dropped.push({ ...adjustment, reason: 'duplicate' })
+      continue
+    }
+    const suggested = suggestedCentsFor.get(adjustment.label)
+    if (suggested === undefined) {
+      out.dropped.push({ ...adjustment, reason: 'unknown_label' })
+      continue
+    }
+    const min = Math.min(suggested, suggested / NUDGE_MAX_RATIO)
+    const max = Math.max(suggested, suggested * NUDGE_MAX_RATIO)
+    if (adjustment.amountCents < min || adjustment.amountCents > max) {
+      out.dropped.push({ ...adjustment, reason: 'out_of_range' })
+      continue
+    }
+    seen.add(adjustment.label)
+    out.adjustments.push(adjustment)
   }
 
   return out
