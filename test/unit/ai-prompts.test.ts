@@ -31,6 +31,8 @@ import {
   PROMPT_KEYS,
   resolvePrompt,
   seedPrompts,
+  SUPERSEDED_PROMPTS,
+  supersededBuiltIn,
   type PromptKey,
 } from '../../src/domain/ai/prompts.ts'
 
@@ -132,6 +134,106 @@ describe('seedPrompts', () => {
     expect(loadActivePrompt(db, 'analysis.system', SHARED_LOCALE)?.body).toBe('Edited by hand.')
   })
 
+  it('upgrades a database still running a built-in that has since been improved', () => {
+    // The failure this exists for: `seedPrompts` used to skip any key that already had a
+    // version, so an improved default reached new installs and nowhere else. Every
+    // instance that had ever started up kept the first text forever, and nothing on any
+    // screen said so — a rule added to the narrative prompt would have been dead code on
+    // the only database that matters (#183).
+    for (const key of PROMPT_KEYS) {
+      const previous = SUPERSEDED_PROMPTS[key][0]
+      if (previous === undefined) continue
+      createPromptVersion(db, { key, locale: SHARED_LOCALE, body: previous, activate: true })
+    }
+
+    const written = seedPrompts(db)
+    expect(written).toBeGreaterThan(0)
+
+    for (const key of PROMPT_KEYS) {
+      if (SUPERSEDED_PROMPTS[key].length === 0) continue
+      expect(loadActivePrompt(db, key, SHARED_LOCALE)?.body).toBe(DEFAULT_PROMPTS[key])
+    }
+  })
+
+  it('adds a version rather than rewriting one, so the old text stays readable', () => {
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: previous,
+      activate: true,
+    })
+
+    seedPrompts(db)
+    const versions = listPromptVersions(db, 'narrative.system', SHARED_LOCALE)
+    expect(versions).toHaveLength(2)
+    // Rollback is flipping `active`, and it can only reach a row that still exists. An
+    // upgrade that rewrote version 1 in place would take the previous text with it and
+    // leave a `prompt_version_id` on every past `ai_run` pointing at text nobody sent.
+    expect(versions.map((row) => row.body)).toContain(previous)
+    // And the note says what happened, because the version list is the audit trail: an
+    // upgrade nobody asked for is exactly the row somebody will need explained.
+    const added = versions.find((row) => row.body === DEFAULT_PROMPTS['narrative.system'])
+    expect(added?.note).toContain('replacing the built-in')
+  })
+
+  it('upgrades once and then stops', () => {
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: previous,
+      activate: true,
+    })
+
+    expect(seedPrompts(db)).toBeGreaterThan(0)
+    // Every startup calls this. A second version of the same text on every boot would
+    // turn the version list into a log.
+    expect(seedPrompts(db)).toBe(0)
+  })
+
+  it('leaves an edit alone even when it is an edit of a superseded built-in', () => {
+    // The one case the byte comparison exists for: somebody took the old default, changed
+    // a line, and activated it. That is theirs, and an upgrade would silently discard it.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
+    const edited = `${previous}\n9. Mention the weather.`
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: edited,
+      activate: true,
+    })
+
+    expect(seedPrompts(db)).toBe(1) // the analysis prompt only
+    expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(edited)
+  })
+
+  it('does not touch a language override when it upgrades the shared row', () => {
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: previous,
+      activate: true,
+    })
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: 'nl',
+      body: 'een eigen versie',
+      activate: true,
+    })
+
+    seedPrompts(db)
+    expect(resolvePrompt(db, 'narrative.system', 'nl').body).toBe('een eigen versie')
+    expect(resolvePrompt(db, 'narrative.system', 'en').body).toBe(
+      DEFAULT_PROMPTS['narrative.system'],
+    )
+  })
+
   it('writes the shared row even when a language already has an override', () => {
     // The state a partly-diverged database is left in by the migration: the
     // override survives, and the shared text it will fall back to gets written.
@@ -145,6 +247,49 @@ describe('seedPrompts', () => {
     expect(seedPrompts(db)).toBe(PROMPT_KEYS.length)
     expect(resolvePrompt(db, 'analysis.system', 'nl').body).toBe('een eigen versie')
     expect(resolvePrompt(db, 'analysis.system', 'en').body).toBe(DEFAULT_PROMPTS['analysis.system'])
+  })
+})
+
+describe('the superseded list', () => {
+  it('never contains the text that is current, so the upgrade terminates', () => {
+    // If a body were on both lists, `seedPrompts` would find the active version
+    // superseded, write the identical text as a new version, and find it superseded again
+    // on the next boot — a version per startup, forever, and `diffAgainstActive` showing
+    // no difference between any two of them.
+    for (const key of PROMPT_KEYS) {
+      expect(supersededBuiltIn(key, DEFAULT_PROMPTS[key])).toBe(false)
+    }
+  })
+
+  it('holds every built-in that has ever been active, so no instance is left behind', () => {
+    // Two keys, one entry each today. The list is append-only by nature: an instance that
+    // last started on any past default has to be recognisable, and the moment an entry is
+    // dropped that instance stops receiving improvements with nothing reporting it.
+    for (const key of PROMPT_KEYS) {
+      expect(SUPERSEDED_PROMPTS[key].length).toBeGreaterThan(0)
+    }
+  })
+
+  it('compares the whole body, not a prefix of it', () => {
+    // A prefix or a "starts with" test would treat a prompt somebody extended as an
+    // untouched built-in and overwrite the addition.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
+    expect(supersededBuiltIn('narrative.system', previous)).toBe(true)
+    expect(supersededBuiltIn('narrative.system', `${previous} and one more thing`)).toBe(false)
+    expect(supersededBuiltIn('narrative.system', previous.slice(0, -20))).toBe(false)
+  })
+
+  it('ignores surrounding whitespace, which no editor preserves reliably', () => {
+    const previous = SUPERSEDED_PROMPTS['analysis.system'][0]
+    if (previous === undefined) throw new Error('no superseded analysis prompt to test with')
+    expect(supersededBuiltIn('analysis.system', `\n  ${previous}\n\n`)).toBe(true)
+  })
+
+  it('does not match the built-in of one key against another key', () => {
+    const narrative = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (narrative === undefined) throw new Error('no superseded narrative prompt to test with')
+    expect(supersededBuiltIn('analysis.system', narrative)).toBe(false)
   })
 })
 

@@ -71,6 +71,7 @@ const PARAMS = {
     recomputationToleranceCents: 0,
   },
   household: { savingsRateTargetBp: 1_500, emergencyFundTargetMonths: 3 },
+  drift: { persistentMonths: 3 },
 }
 
 /**

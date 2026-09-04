@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PARAMS } from '../../src/domain/aggregate/params.ts'
+import type { DriftPersistence } from '../../src/domain/advice/persistence.ts'
 import { computeSignals, type SignalInput } from '../../src/domain/aggregate/signals.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
 
@@ -77,6 +78,7 @@ function input(overrides: Partial<SignalInput> = {}): SignalInput {
     benchmark: { kind: 'unavailable', reason: 'no_file', mappedShareBp: null },
     // Nothing flagged as shared, for the same reason: the split is a caller's input.
     custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
+    drift: null,
     params: DEFAULT_PARAMS,
     ...overrides,
   }
@@ -84,6 +86,34 @@ function input(overrides: Partial<SignalInput> = {}): SignalInput {
 
 const codes = (result: { signals: readonly { code: string }[] }): string[] =>
   result.signals.map((signal) => signal.code)
+
+/**
+ * Equities over their ceiling for three month ends.
+ *
+ * Written out rather than run through `driftPersistence`, so a change in how the count is
+ * derived cannot make this test pass or fail: what is being tested here is that the
+ * producer is called at all.
+ */
+const drifted: DriftPersistence = {
+  profile: 'balanced',
+  isPreset: true,
+  monthsObserved: 3,
+  lines: [
+    {
+      assetClass: 'EQUITY',
+      valueCents: 3_600_000,
+      shareBp: 8_500,
+      minBp: 5_500,
+      targetBp: 6_500,
+      maxBp: 7_500,
+      driftBp: -2_000,
+      state: 'above',
+      outsideBp: 1_000,
+      gapCents: -720_000,
+      monthsOutside: 3,
+    },
+  ],
+}
 
 describe('the window has to match the month', () => {
   it('throws when the history ends somewhere else', () => {
@@ -149,6 +179,21 @@ describe('every producer is wired in', () => {
       'uncategorised',
       'unreconciled',
     ])
+  })
+
+  it('runs the drift producer', () => {
+    const result = computeSignals(input({ drift: drifted }))
+    expect(codes(result)).toContain('drift_above_band')
+  })
+
+  it('says nothing about a portfolio the caller did not pass', () => {
+    // Null is the normal case: a drift belongs to the month the snapshot falls in, and
+    // the pass judges twelve. If this ever started producing a finding on its own it
+    // would mean the orchestrator had gone reading, which is the one thing it must not
+    // do — `benchmark` and `custody` arrive pre-computed for the same reason.
+    const result = computeSignals(input({ drift: null }))
+    expect(codes(result)).not.toContain('drift_above_band')
+    expect(codes(result)).not.toContain('drift_below_band')
   })
 
   it('scores a clean month at full marks', () => {

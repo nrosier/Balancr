@@ -96,8 +96,30 @@ const household = z
   })
   .prefault({})
 
+/**
+ * How long a portfolio class has to sit outside its band before anybody is told (#183).
+ *
+ * Its own group rather than a field under `overspend`, because it judges a portfolio
+ * against a risk profile and not a month against an envelope — and because the settings
+ * page renders one card per group, where "a class has been outside its band for N months"
+ * belongs next to nothing else on the page.
+ */
+const drift = z
+  .object({
+    /**
+     * Consecutive month ends outside the same edge of the band before a finding.
+     *
+     * Three, and the floor is two: at one month the insights page would be repeating
+     * what the portfolio page already shows in more detail, for a share that a fortnight
+     * of markets can move on its own. Three is a household that has decided not to
+     * rebalance, which is the thing worth a sentence.
+     */
+    persistentMonths: z.number().int().min(2).max(24).default(3),
+  })
+  .prefault({})
+
 export const aggregateParamsSchema = z
-  .object({ baseline, overspend, burnRate, hygiene, household })
+  .object({ baseline, overspend, burnRate, hygiene, household, drift })
   .prefault({})
   .refine((p) => p.baseline.winsorLowerPct < p.baseline.winsorUpperPct, {
     message: 'winsorLowerPct must be below winsorUpperPct',

@@ -5,12 +5,18 @@
  * decides what leaves the machine. Both matter, and this one comes first — a
  * field never collected cannot leak, whatever anyone adds downstream later.
  *
- * Reads only the fact tables. No Actual call, no Ghostfolio call, no
- * recomputation: opening the insights page must not download a budget, and a
- * figure the model explains must be the same figure the page shows. That is also
- * why the hygiene score is read rather than recalculated — the signals pass
- * computed it over a specific window, and a second opinion here would be a second
- * authority for the same number.
+ * Reads only the fact tables. No Actual call, no Ghostfolio call, and no
+ * recomputation of anything a job already computed: opening the insights page must not
+ * download a budget, and a figure the model explains must be the same figure the page
+ * shows. That is also why the hygiene score is read rather than recalculated — the
+ * signals pass computed it over a specific window, and a second opinion here would be a
+ * second authority for the same number.
+ *
+ * Drift is the one exception, and it is the same exception `GET /api/portfolio` makes:
+ * nothing stores it, because a comparison against a risk profile the settings page can
+ * change at any moment would be stale within a day of being written. It is computed
+ * through `latestDriftPersistence`, which is the function the page itself goes through —
+ * so this is a second *reading* of one authority rather than a second authority (#183).
  *
  * `collectBundle` returns null rather than an empty bundle when a month has not
  * been judged yet. An analysis of a month whose facts do not exist would be an
@@ -28,8 +34,10 @@ import {
 import { loadLatestNetWorth } from '../aggregate/networth-store.ts'
 import { loadHygiene, loadSignals } from '../aggregate/signals-store.ts'
 import { countSnapshotHoldings, latestSnapshotDate, loadPortfolioMetrics } from '../portfolio/store.ts'
+import { latestAdvice, latestDriftPersistence } from '../advice/latest.ts'
+import { loadParams } from '../aggregate/params.ts'
 import type { MonthlyFact } from '../aggregate/spend.ts'
-import type { AnalysisBundle, BundleCategory, BundlePortfolio } from './redact.ts'
+import type { AnalysisBundle, BundleCategory, BundleDrift, BundlePortfolio } from './redact.ts'
 
 /**
  * A hidden category with nothing in it is dropped.
@@ -54,6 +62,39 @@ export function collectPortfolio(db: Db): BundlePortfolio | null {
   // value in front of the model.
   if (metrics === null) return null
   return { metrics, holdingCount: countSnapshotHoldings(db, date) }
+}
+
+/**
+ * The portfolio against its risk profile, or null when there is nothing to measure.
+ *
+ * The window is `drift.persistentMonths`, the same threshold `driftSignals` fires on,
+ * plus nothing: a run longer than the window reports the window, which understates rather
+ * than invents, and one more month is one more query for a number nobody reads.
+ *
+ * Reduced to counts here rather than in the redactor. A suggestion names an ISIN, a fund
+ * and the position a sale would come out of, and the guarantee worth having is that none
+ * of that is ever in the bundle — see `BundleDrift`.
+ */
+export function collectDrift(db: Db): BundleDrift | null {
+  const params = loadParams(db)
+  const persistence = latestDriftPersistence(db, params.drift.persistentMonths)
+  if (persistence === null) return null
+
+  // `latestDriftPersistence` already computed this, but returning it would put four
+  // fund names and an ISIN into the bundle to reach two integers. Two reads of the same
+  // three settings rows is the cheaper mistake.
+  const advice = latestAdvice(db)
+  if (advice === null) return null
+
+  return {
+    persistence,
+    toleranceBp: advice.toleranceBp,
+    minTradeCents: advice.minTradeCents,
+    suggestionCount: advice.suggestions.length,
+    skippedCount: advice.skipped.length,
+    unmappedCount: advice.drift.unmapped.length,
+    unmappedShareBp: advice.drift.unmapped.reduce((sum, entry) => sum + entry.shareBp, 0),
+  }
 }
 
 /**
@@ -107,6 +148,7 @@ export function collectBundle(
       mismatchCount: loadMismatches(db, [month]).length,
     },
     portfolio: collectPortfolio(db),
+    drift: collectDrift(db),
     accounts: loadAccountMap(db),
     signals: loadSignals(db, month),
   }

@@ -6,6 +6,57 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **How long a class has been outside its band, and a narrative that can say so**
+  ([#183](https://github.com/nrosier/Balancr/issues/183),
+  `src/domain/advice/persistence.ts`). The portfolio page states today's drift: equities are
+  at 85%, the ceiling is 75%, here is the trade that would close it. What no screen stated is
+  that the same sentence was true in August and in July — and that is the difference between
+  a market that moved and a rebalance nobody did. Balancr now reads the month-end metrics it
+  has been storing all along, measures each one against the profile's current bands, and
+  counts back from the newest: `drift_above_band` and `drift_below_band` fire once a class
+  has been outside the same edge for three month ends, which is a setting.
+- **The drift through the redaction boundary** (`src/domain/ai/redact.ts`). The payload gains
+  a `drift` block — the profile, one line per asset class with its share, its band and the
+  count, and the trades reduced to how many there were. No ISIN, no fund name, no position:
+  the suggestions name an instrument to buy and the unmapped list is Ghostfolio's own string
+  for something it could not classify, so both cross as integers. The golden denylist test
+  covers the new fields, and the line is copied field by field rather than spread, so a
+  field added to the portfolio page cannot arrive in a prompt by accident.
+- **A narrative rule about the arithmetic it must not do** (`src/domain/ai/prompts.ts`). A
+  share, a ceiling and a distance are three numbers where two would do, and a model that
+  notices the third is a subtraction will eventually produce its own version of it. Rule 8
+  states what a drift *is*: a decision the household has not acted on, of a length the data
+  can support — and where few months have been observed, that the run is only as long as the
+  history.
+- **Improved built-in prompts now reach databases that already exist**
+  (`SUPERSEDED_PROMPTS`). `seedPrompts` skipped any key that already had a version, so a
+  better default reached new installs and nowhere else: every instance that had ever started
+  up kept the first text forever, with nothing on any screen saying so. It now recognises the
+  built-ins it has shipped before and, where the active version is one of them byte for byte,
+  activates the new text as a *new version* — the old one stays readable, rollback still
+  works, and a prompt anybody has edited is left alone.
+
+### Fixed
+
+- **Findings about a group or an asset class no longer collapse into one**
+  (`src/domain/ai/redact.ts`, `src/domain/ai/analysis.ts`). A signal with no category id was
+  sent to the model with no label at all, and the index the model's answer is resolved
+  through keys on that label — so all ten benchmark-group findings shared one key: nine were
+  unreferenceable and the tenth won at random. Two drifting asset classes would have hit the
+  same wall. A signal that has no id but does have a name now sends the name, because in
+  every such case it is a fixed id from a closed set rather than anything anybody typed.
+
+### Changed
+
+- **`GET /api/portfolio` and the AI bundle read the advice through one function**
+  (`src/domain/advice/latest.ts`). The narrative's figures and the portfolio page's are now
+  the same computation rather than two readings of the same snapshot, which is what makes
+  "the figures match the portfolio page exactly" structural instead of a thing to check.
+
 ## [0.8.3] — 2026-09-04
 
 ### Added

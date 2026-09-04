@@ -302,6 +302,9 @@
         "minMonthProgress": "No projection before this share of the month",
         "toleranceBp": "Tolerated overrun"
       },
+      "drift": {
+        "persistentMonths": "Months outside a band before flagging"
+      },
       "household": {
         "emergencyFundTargetMonths": "Emergency buffer, in months",
         "savingsRateTargetBp": "Savings target"
@@ -322,6 +325,7 @@
     "group": {
       "baseline": "Your own norm",
       "burnRate": "Pace",
+      "drift": "Portfolio drift",
       "household": "Household targets",
       "hygiene": "Data hygiene",
       "overspend": "Overspending"
