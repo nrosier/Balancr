@@ -140,6 +140,7 @@ export function BudgetBullet({ categories, height }: BudgetBulletProps): ReactNo
     <Chart
       option={option}
       summary={summary}
+      blurWhenPrivate
       height={height ?? `${categories.length * ROW_REM + CHROME_REM}rem`}
     />
   )

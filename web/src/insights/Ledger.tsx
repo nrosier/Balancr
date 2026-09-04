@@ -40,12 +40,12 @@ import { useT } from '../i18n.ts'
 import {
   formatDateTime,
   formatDecimal,
-  formatMicroEur,
   formatMonth,
   type AiRun,
   type AiRunPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { MicroEur } from '../ui/Money.tsx'
 
 /** Belgian grouping, no decimals: a token count is a count. */
 const count = (value: number): string => formatDecimal(value, 0)
@@ -112,7 +112,9 @@ export function Ledger({ runs, month }: LedgerProps): ReactNode {
                           output: count(run.outputTokens),
                         })}
                       </td>
-                      <td className="table__cell--number">{formatMicroEur(run.costMicroEur)}</td>
+                      <td className="table__cell--number">
+                        <MicroEur microEur={run.costMicroEur} />
+                      </td>
                       <td>
                         <span className={`badge badge--${run.status}`}>
                           {t(`status.${run.status}`)}
