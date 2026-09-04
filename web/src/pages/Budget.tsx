@@ -44,6 +44,7 @@ import { useT, type TFunction } from '../i18n.ts'
 import { formatBp, formatMonth, formatMoney, type Budget as BudgetPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
+import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -154,7 +155,13 @@ function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
       <div className="toolbar">
-        <MonthPicker month={month} months={months} onSelect={onSelect} />
+        <MonthPicker
+          month={month}
+          months={months}
+          onSelect={onSelect}
+          id="budget-month"
+          label={t('budget:picker.month')}
+        />
       </div>
 
       {uncategorised === null || uncategorised.txnCount === 0 ? null : (
@@ -215,46 +222,6 @@ function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
 /** How much room a bullet row needs: whichever of assigned and spent reaches further. */
 const extent = (category: CategoryFact): number =>
   Math.max(category.spentCents, category.budgetedCents)
-
-interface MonthPickerProps {
-  month: string
-  months: readonly string[]
-  onSelect: (month: string) => void
-}
-
-/**
- * The month being viewed, and every month there is one.
- *
- * The month on screen is prepended when the server did not list it, which happens for
- * exactly one reason: it was asked for and never computed. Without that the select
- * would show a different month's name above that month's empty state.
- */
-function MonthPicker({ month, months, onSelect }: MonthPickerProps): ReactNode {
-  const { t, language } = useT()
-  const options = months.includes(month) ? months : [month, ...months]
-
-  if (options.length < 2) return null
-
-  return (
-    <div className="field field--inline">
-      <label className="field__label" htmlFor="budget-month">
-        {t('budget:picker.month')}
-      </label>
-      <select
-        id="budget-month"
-        className="field__input"
-        value={month}
-        onChange={(event) => onSelect(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {formatMonth(option, language)}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
 
 function Totals({ totals }: { totals: NonNullable<BudgetPayload['totals']> }): ReactNode {
   const { t } = useT()

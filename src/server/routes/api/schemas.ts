@@ -707,6 +707,15 @@ export const aiRunSchema = z.object({
   costMicroEur: microEur(),
   durationMs: z.int().nonnegative().nullable(),
   error: z.string().nullable(),
+  /**
+   * The month the run was about, or null for a run about no month.
+   *
+   * Null is a fact and not a gap: a chat turn answers a question, and a run that
+   * failed before it knew which month it was for never had one. The insights ledger
+   * filters to the selected month *plus* the null rows for that reason — a row nobody
+   * can reach from any month is not an audit (#158).
+   */
+  period: monthKey().nullable(),
   createdAt: z.string(),
 })
 
@@ -730,7 +739,27 @@ export const insightsSchema = z.object({
    * `domain/ai/availability.ts` for what the three of them mean.
    */
   ai: aiAvailabilitySchema,
+  /**
+   * Whether this reader may start a run from the page.
+   *
+   * On the payload for the same reason `profile.role` is on `/api/settings`: the
+   * browser has no session of its own to read a role off, and a button that appears
+   * for everyone and then 403s is worse than one that was never offered. The server
+   * still decides — `POST /api/ai/narrative` is owner-gated on its own — so this is
+   * about what is drawn, never about what is allowed (#158).
+   */
+  owner: z.boolean(),
   month: monthKey().nullable(),
+  /**
+   * Every month with aggregated figures, newest first — the picker's options.
+   *
+   * Every stored month rather than the ones this payload has findings for: the picker
+   * has to keep offering August while July is on screen, and a month whose analysis was
+   * capped is exactly the one worth being able to select (#158). Same field and same
+   * meaning as `/api/budget`, so the two pages' pickers cannot disagree about which
+   * months exist.
+   */
+  months: z.array(monthKey()),
   signals: z.array(signalSchema),
   narrative: z
     .object({
@@ -1235,6 +1264,16 @@ export const promptDiffSchema = z.object({
  * nothing to find out.
  */
 export const aiEstimateSchema = z.object({
+  /**
+   * Which run was priced.
+   *
+   * Echoed back rather than left implicit, because the two prices differ by an order
+   * of magnitude: an analysis is the fast model over a month of aggregates, a narrative
+   * is the deep model with room to think. A page that showed one figure under the other
+   * button would understate a real charge by more than ten times, and it is the sort of
+   * mix-up that only shows up on the invoice (#158).
+   */
+  kind: z.enum(['findings', 'narrative']),
   month: monthKey(),
   model: z.string(),
   /** Null when the month has no facts, which is also when a dry run is pointless. */
@@ -1243,6 +1282,31 @@ export const aiEstimateSchema = z.object({
   allowed: z.boolean(),
   /** A code for the catalogue, never a sentence. Null when allowed. */
   reason: z.string().nullable(),
+})
+
+/**
+ * `POST /api/ai/narrative` — the monthly review, written on request (#158).
+ *
+ * Deliberately thin: `status` and `reason` are the codes the page turns into a sentence,
+ * and `costMicroEur` is what the press actually cost rather than the estimate it was
+ * offered at. The prose itself is not here — the client reloads `/api/insights`, which is
+ * where a narrative is read from on every other visit, so there is one renderer for it
+ * and no second path that could show a review the reload would not.
+ *
+ * `status: 'cached'` at a cost of zero is a normal outcome and not a failure: two people
+ * pressing the button, or one pressing it twice, gets the stored review back. The one
+ * thing this endpoint will not do is write a second narrative for a month that has one —
+ * that would need `force`, which no route exposes, because it is the only way to pay the
+ * deep model twice for the same month.
+ */
+export const aiNarrativeRunSchema = z.object({
+  status: z.enum(['ok', 'cached', 'capped', 'error', 'skipped']),
+  reason: z.string(),
+  runId: z.string().nullable(),
+  period: monthKey(),
+  locale: z.string(),
+  degraded: z.boolean(),
+  costMicroEur: microEur(),
 })
 
 /**
@@ -1373,5 +1437,6 @@ export type CustodyWire = z.infer<typeof custodySplitSchema>
 export type BandsSetting = z.infer<typeof bandsSettingSchema>
 export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
+export type AiNarrativeRun = z.infer<typeof aiNarrativeRunSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>

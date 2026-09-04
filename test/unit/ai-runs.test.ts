@@ -196,6 +196,24 @@ describe('recentRuns', () => {
     recordRun(db, run({ status: 'error' }))
     expect(recentRuns(db)).toHaveLength(2)
   })
+
+  it('scoped to a month, keeps that month and every run about no month at all (#158)', () => {
+    const august = recordRun(db, run({ period: '2026-08' }))
+    const july = recordRun(db, run({ period: '2026-07' }))
+    const chat = recordRun(db, run({ period: null }))
+
+    const rows = recentRuns(db, 50, '2026-08').map((row) => row.id)
+    expect(rows).toContain(august)
+    expect(rows).toContain(chat)
+    expect(rows).not.toContain(july)
+  })
+
+  it('leaves every run in when no period is asked for, the spend page ledger', () => {
+    recordRun(db, run({ period: '2026-08' }))
+    recordRun(db, run({ period: '2026-07' }))
+    recordRun(db, run({ period: null }))
+    expect(recentRuns(db, 50)).toHaveLength(3)
+  })
 })
 
 describe('ai_spend_monthly', () => {

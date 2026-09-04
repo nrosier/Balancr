@@ -33,7 +33,7 @@ import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
 import { Proposals, Questions } from '../src/insights/Pending.tsx'
 import { Insights } from '../src/pages/Insights.tsx'
-import type { AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
+import type { AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
@@ -80,6 +80,7 @@ const RUNS: AiRun[] = [
   {
     id: 'run-findings',
     kind: 'findings',
+    period: '2026-08',
     model: 'gemini-3.7-flash',
     locale: 'en',
     status: 'ok',
@@ -94,6 +95,7 @@ const RUNS: AiRun[] = [
   {
     id: 'run-narrative',
     kind: 'narrative',
+    period: '2026-08',
     model: 'gemini-3.1-pro-preview',
     locale: 'en',
     status: 'capped',
@@ -108,6 +110,7 @@ const RUNS: AiRun[] = [
   {
     id: 'run-clarify',
     kind: 'clarify',
+    period: null,
     model: 'gemini-3.7-flash',
     locale: 'nl',
     status: 'error',
@@ -128,7 +131,9 @@ const AI_ON = { enabled: true, reason: null } as const
 const FULL: InsightsPayload = {
   freshness: FRESH,
   ai: AI_ON,
+  owner: true,
   month: '2026-08',
+  months: ['2026-08', '2026-07'],
   signals: SIGNALS,
   narrative: {
     period: '2026-08',
@@ -207,7 +212,9 @@ const FULL: InsightsPayload = {
 const EMPTY: InsightsPayload = {
   freshness: FRESH,
   ai: AI_ON,
+  owner: true,
   month: null,
+  months: [],
   signals: [],
   narrative: null,
   questions: [],
@@ -276,7 +283,7 @@ describe('the page', () => {
     await screen.findByText('What stands out')
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'What stands out',
-      'This month in words',
+      'August 2026 in words',
       'Help the assistant understand',
       'Proposed changes',
       'What was sent',
@@ -340,7 +347,7 @@ describe('the page', () => {
     })
     renderApp(<Insights />)
 
-    await screen.findByText('This month in words')
+    await screen.findByText('August 2026 in words')
     expect(screen.getByText('The assistant is switched off')).toBeTruthy()
   })
 
@@ -464,9 +471,29 @@ describe('the findings', () => {
   })
 })
 
+/** What `GET /api/ai/estimate?kind=narrative` prices August 2026's review at. */
+const NARRATIVE_ESTIMATE: AiEstimate = {
+  kind: 'narrative',
+  month: '2026-08',
+  model: 'gemini-3.1-pro-preview',
+  payloadChars: 3_100,
+  estimateMicroEur: 2_100,
+  allowed: true,
+  reason: null,
+}
+
+/** Every prop `Narrative` needs besides `narrative`, for a test that renders it in isolation. */
+const NARRATIVE_PROPS = {
+  month: '2026-08',
+  ended: true,
+  owner: true,
+  aiEnabled: true,
+  onWritten: () => {},
+}
+
 describe('the narrative', () => {
   it('inserts the HTML the server sanitised, and names who wrote it and when', () => {
-    renderApp(<Narrative narrative={FULL.narrative} />)
+    renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
 
     // The markup survives, which is the point of rendering it as HTML rather than as
     // text: `util/markdown.ts` escaped the model's words before emitting these tags.
@@ -478,7 +505,7 @@ describe('the narrative', () => {
 
   it('prints the date alone rather than the word null when the run is gone', () => {
     renderApp(
-      <Narrative narrative={{ ...FULL.narrative!, model: null }} />,
+      <Narrative narrative={{ ...FULL.narrative!, model: null }} {...NARRATIVE_PROPS} />,
     )
 
     expect(screen.getByText('Updated 01/09/2026, 06:12')).toBeTruthy()
@@ -486,16 +513,79 @@ describe('the narrative', () => {
   })
 
   it('says none has been written yet rather than showing an empty card', () => {
-    renderApp(<Narrative narrative={null} />)
+    // `month: null` also keeps the offer from mounting, so this stays a render test
+    // rather than one that needs a `/api/ai/estimate` stub.
+    renderApp(
+      <Narrative narrative={null} {...NARRATIVE_PROPS} month={null} />,
+    )
 
     expect(screen.getByText('No narrative has been written for this month yet.')).toBeTruthy()
     expect(document.querySelector('.prose')).toBeNull()
+  })
+
+  it('names the month in the heading rather than saying "this month" (#158)', () => {
+    renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
+
+    expect(screen.getByText('August 2026 in words')).toBeTruthy()
+  })
+
+  it('says a month still in progress has no review yet, without offering one', () => {
+    renderApp(
+      <Narrative narrative={null} {...NARRATIVE_PROPS} ended={false} />,
+    )
+
+    expect(
+      screen.getByText('August 2026 is not over yet. A review is written once a month is ' +
+        'complete, so that it describes all of it.'),
+    ).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('offers no review to a viewer who is not the owner', async () => {
+    serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+    renderApp(<Narrative narrative={null} {...NARRATIVE_PROPS} owner={false} />)
+
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    expect(screen.getByText('Only the owner can write one.')).toBeTruthy()
+    // The button stays on screen rather than vanishing, so the sentence next to it
+    // still makes sense — it is disabled, which is what actually stops the press.
+    expect(
+      (screen.getByRole('button', { name: 'Write the review' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('prices the review, then writes it on a second press', async () => {
+    const fetchMock = serve({
+      '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE),
+      '/api/ai/narrative': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-narrative-2',
+        period: '2026-08',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+      }),
+    })
+    const onWritten = vi.fn()
+
+    renderApp(<Narrative narrative={null} {...NARRATIVE_PROPS} onWritten={onWritten} />)
+
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    fireEvent.click(screen.getByRole('button', { name: 'Write the review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('Written, for € 0,0021. The page has been reloaded.')
+    expect(onWritten).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/ai/narrative', expect.objectContaining({
+      method: 'POST',
+    }))
   })
 })
 
 describe('the clarification queue', () => {
   it('leads with the guess, so confirming is one decision rather than an interview', () => {
-    renderApp(<Questions questions={FULL.questions} />)
+    renderApp(<Questions questions={FULL.questions} scoped={false} />)
 
     expect(
       screen.getByText('Is Therapy a fixed cost, a variable one, or free spending?'),
@@ -505,37 +595,53 @@ describe('the clarification queue', () => {
   })
 
   it('offers no guess line at all when there is no guess', () => {
-    renderApp(<Questions questions={FULL.questions} />)
+    renderApp(<Questions questions={FULL.questions} scoped={false} />)
 
     expect(screen.getByText('What do you use Hobbies for?')).toBeTruthy()
     expect(screen.getAllByText(/^Best guess:/)).toHaveLength(1)
   })
 
   it('shows the share of the month, which is why the card exists at all', () => {
-    renderApp(<Questions questions={FULL.questions} />)
+    renderApp(<Questions questions={FULL.questions} scoped={false} />)
 
     expect(screen.getByText('4,2% of this month’s spending')).toBeTruthy()
     expect(screen.getByText('1,5% of this month’s spending')).toBeTruthy()
   })
 
   it('says answering comes later rather than leaving a queue with no buttons', () => {
-    renderApp(<Questions questions={FULL.questions} />)
+    renderApp(<Questions questions={FULL.questions} scoped={false} />)
 
     expect(screen.getByText(/Answering these comes with the assistant’s chat/)).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('says nothing needs clarifying when the queue is empty', () => {
-    renderApp(<Questions questions={[]} />)
+    renderApp(<Questions questions={[]} scoped={false} />)
 
     expect(screen.getByText('Nothing needs clarifying.')).toBeTruthy()
     expect(screen.queryByText(/Answering these comes/)).toBeNull()
+  })
+
+  it('warns the queue is not filtered once a month picker is on screen (#158)', () => {
+    renderApp(<Questions questions={FULL.questions} scoped={true} />)
+
+    expect(
+      screen.getByText(
+        'Standing work, not filtered to the month above: a question stays here until it is answered.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('says nothing about filtering when there is no month picker to be confused by', () => {
+    renderApp(<Questions questions={FULL.questions} scoped={false} />)
+
+    expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
   })
 })
 
 describe('the proposal queue', () => {
   it('shows what would change, field by field, before and after', () => {
-    renderApp(<Proposals proposals={FULL.proposals} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
 
     expect(screen.getByText('Restaurants')).toBeTruthy()
     expect(screen.getByText('Type of cost')).toBeTruthy()
@@ -545,7 +651,7 @@ describe('the proposal queue', () => {
   })
 
   it('warns where applying would send a name to the model', () => {
-    renderApp(<Proposals proposals={FULL.proposals} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
 
     expect(
       screen.getByText('Applying this starts sending the category name to the AI.'),
@@ -553,7 +659,7 @@ describe('the proposal queue', () => {
   })
 
   it('hides the arrow from a screen reader, which the order already tells', () => {
-    renderApp(<Proposals proposals={FULL.proposals} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
 
     const arrows = [...document.querySelectorAll('.change__arrow')]
     expect(arrows).toHaveLength(2)
@@ -562,7 +668,7 @@ describe('the proposal queue', () => {
 
   it('drops the expiry from the meta line when there is none', () => {
     renderApp(
-      <Proposals proposals={[{ ...FULL.proposals[0]!, expiresAt: null }]} />,
+      <Proposals proposals={[{ ...FULL.proposals[0]!, expiresAt: null }]} scoped={false} />,
     )
 
     expect(screen.getByText('Now / proposed')).toBeTruthy()
@@ -570,23 +676,39 @@ describe('the proposal queue', () => {
   })
 
   it('says applying comes later rather than leaving a diff with no buttons', () => {
-    renderApp(<Proposals proposals={FULL.proposals} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
 
     expect(screen.getByText(/Applying a change comes in a later version/)).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('says nothing is waiting when the queue is empty', () => {
-    renderApp(<Proposals proposals={[]} />)
+    renderApp(<Proposals proposals={[]} scoped={false} />)
 
     expect(screen.getByText('Nothing is waiting to be applied.')).toBeTruthy()
     expect(screen.queryByText(/Applying a change comes/)).toBeNull()
+  })
+
+  it('warns the queue is not filtered once a month picker is on screen (#158)', () => {
+    renderApp(<Proposals proposals={FULL.proposals} scoped={true} />)
+
+    expect(
+      screen.getByText(
+        'Standing work, not filtered to the month above: a proposal stays here until it is reviewed.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('says nothing about filtering when there is no month picker to be confused by', () => {
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+
+    expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
   })
 })
 
 describe('the ledger', () => {
   it('lists every attempt, including the ones that produced nothing', () => {
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     // Three runs plus the header row. A `capped` run is the row that explains why an
     // answer is missing from the page above, so it is not filtered out.
@@ -596,7 +718,7 @@ describe('the ledger', () => {
   })
 
   it('quotes the upstream failure verbatim', () => {
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     // The only text on this page Balancr did not write. A failure that will not say
     // why is indistinguishable from a run that never happened.
@@ -607,7 +729,7 @@ describe('the ledger', () => {
   })
 
   it('writes tokens and cost the Belgian way, down to a fraction of a cent', () => {
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     expect(screen.getByText('3.120 in / 480 out')).toBeTruthy()
     // A model call can cost less than a cent, and rounding it to € 0,00 would hide
@@ -617,7 +739,7 @@ describe('the ledger', () => {
   })
 
   it('counts the calls in the caption', () => {
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     expect(
       screen.getByText('The 3 most recent calls to the model, newest first.'),
@@ -625,7 +747,7 @@ describe('the ledger', () => {
   })
 
   it('uses the singular for one call', () => {
-    renderApp(<Ledger runs={[RUNS[0]!]} />)
+    renderApp(<Ledger runs={[RUNS[0]!]} month={null} />)
 
     expect(screen.getByText('The most recent call to the model.')).toBeTruthy()
   })
@@ -637,7 +759,7 @@ describe('the ledger', () => {
         payload: { month: '2026-08', categories: [{ name: 'Groceries', spentCents: 42_500 }] },
       }),
     })
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     // Twenty redacted bundles on every page load is what this avoids, so nothing is
     // asked for until somebody wants to read one.
@@ -654,7 +776,7 @@ describe('the ledger', () => {
       '/api/insights/runs/run-findings/payload': json({ ...RUNS[0]!, payload: { a: 1 } }),
       '/api/insights/runs/run-narrative/payload': json({ ...RUNS[1]!, payload: { b: 2 } }),
     })
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     const buttons = (): HTMLElement[] => screen.getAllByRole('button')
     fireEvent.click(buttons()[0]!)
@@ -671,7 +793,7 @@ describe('the ledger', () => {
 
   it('closes a payload it had opened', async () => {
     serve({ '/api/insights/runs/run-findings/payload': json({ ...RUNS[0]!, payload: { a: 1 } }) })
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     fireEvent.click(screen.getAllByRole('button')[0]!)
     await screen.findByText(/"a": 1/)
@@ -682,7 +804,7 @@ describe('the ledger', () => {
 
   it('reports an unparseable payload as a finding rather than as an error', async () => {
     serve({ '/api/insights/runs/run-findings/payload': json({ ...RUNS[0]!, payload: null }) })
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     fireEvent.click(screen.getAllByRole('button')[0]!)
     // The row around it is still true, so a red box would be the audit view lying
@@ -693,7 +815,7 @@ describe('the ledger', () => {
 
   it('reports a payload that could not be fetched, without losing the table', async () => {
     serve({ '/api/insights/runs/run-findings/payload': new TypeError('fetch failed') })
-    renderApp(<Ledger runs={RUNS} />)
+    renderApp(<Ledger runs={RUNS} month={null} />)
 
     fireEvent.click(screen.getAllByRole('button')[0]!)
     await waitFor(() => {
@@ -704,7 +826,7 @@ describe('the ledger', () => {
   })
 
   it('says no calls have been made rather than drawing an empty table', () => {
-    renderApp(<Ledger runs={[]} />)
+    renderApp(<Ledger runs={[]} month={null} />)
 
     expect(screen.getByText('No calls have been made yet.')).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
@@ -713,5 +835,19 @@ describe('the ledger', () => {
     expect(
       screen.getByText('Category names and amounts only. No payees, no transactions.'),
     ).toBeTruthy()
+  })
+
+  it('names the selected month, since the ledger is not filtered to it (#158)', () => {
+    renderApp(<Ledger runs={RUNS} month="2026-08" />)
+
+    expect(
+      screen.getByText('Calls about August 2026, and any that were about no month at all.'),
+    ).toBeTruthy()
+  })
+
+  it('says nothing about a month when the page has no picker to name one', () => {
+    renderApp(<Ledger runs={RUNS} month={null} />)
+
+    expect(screen.queryByText(/Calls about/)).toBeNull()
   })
 })

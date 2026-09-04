@@ -684,6 +684,22 @@ export const aiRuns = sqliteTable(
     }),
     locale: text().notNull(),
     /**
+     * The month this run was about, `YYYY-MM`, or null for a run about no month.
+     *
+     * Denormalised on purpose. The month is recoverable for two of the five kinds — a
+     * narrative through `ai_narratives.period`, an analysis through `ai_findings.month`
+     * — and for neither when the run produced nothing, which is exactly the row the
+     * ledger exists to show: a `capped` analysis of August wrote no finding to join
+     * back to. Without this column the insights page could filter its ledger to the
+     * month on screen only by dropping the refusals, and the refusals are the rows that
+     * explain what is *missing* from the page above them (#158).
+     *
+     * Null is a fact rather than a gap: a chat turn is about a question, not a month.
+     * `recentRuns` shows those under whatever month is selected rather than hiding them
+     * from every view, because a ledger row nobody can reach is not an audit.
+     */
+    period: text(),
+    /**
      * The redacted payload verbatim — what was *prepared* for this run. `status`
      * says whether it was actually sent: a `capped` or `blocked` row carries the
      * payload it would have sent, which is what makes the refusal inspectable.
@@ -703,6 +719,8 @@ export const aiRuns = sqliteTable(
   (t) => [
     index('ai_runs_created_idx').on(t.createdAt),
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
+    // The insights ledger's own query: one month, newest first.
+    index('ai_runs_period_idx').on(t.period, t.createdAt),
   ],
 )
 

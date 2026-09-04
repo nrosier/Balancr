@@ -75,6 +75,7 @@ export type {
   AiAvailabilityWire,
   AiDryRun,
   AiEstimate,
+  AiNarrativeRun,
   AiRun,
   AiRunPayload,
   BandsSetting,

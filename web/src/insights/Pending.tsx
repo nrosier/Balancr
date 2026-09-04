@@ -26,6 +26,14 @@
  * Materiality is on the card because it is why the card exists: the queue only asks
  * about categories above a threshold, and seeing the share makes the threshold legible
  * instead of mysterious.
+ *
+ * **Neither queue narrows to the month picked at the top of the page, and both say so
+ * (#158).** The findings, the review and the run ledger do narrow, because each is a
+ * statement about a month. A question and a proposal are not: they are pending work with
+ * no period of their own, they stay open until somebody deals with them, and an
+ * unanswered question about groceries raised in July would otherwise be invisible on
+ * every month of the picker except July. `scoped` is what draws the sentence — there is
+ * no picker on a deployment with nothing aggregated, so there is nothing to disclaim.
  */
 import type { ReactNode } from 'react'
 import { useT } from '../i18n.ts'
@@ -33,15 +41,18 @@ import { formatBp, formatDateTime, type Insights } from '../shared.ts'
 
 export interface QuestionsProps {
   questions: Insights['questions']
+  /** True when a month picker is on screen above, so the list needs the disclaimer. */
+  scoped: boolean
 }
 
-export function Questions({ questions }: QuestionsProps): ReactNode {
+export function Questions({ questions, scoped }: QuestionsProps): ReactNode {
   const { t } = useT()
 
   return (
     <section className="card">
       <h2 className="card__title">{t('ai:clarify.title')}</h2>
       <p className="muted">{t('ai:clarify.hint')}</p>
+      {scoped ? <p className="muted">{t('ai:clarify.standing')}</p> : null}
       {questions.length === 0 ? (
         <p className="muted">{t('ai:clarify.none')}</p>
       ) : (
@@ -71,15 +82,18 @@ export function Questions({ questions }: QuestionsProps): ReactNode {
 
 export interface ProposalsProps {
   proposals: Insights['proposals']
+  /** True when a month picker is on screen above, so the list needs the disclaimer. */
+  scoped: boolean
 }
 
-export function Proposals({ proposals }: ProposalsProps): ReactNode {
+export function Proposals({ proposals, scoped }: ProposalsProps): ReactNode {
   const { t } = useT()
 
   return (
     <section className="card">
       <h2 className="card__title">{t('ai:proposal.title')}</h2>
       <p className="muted">{t('ai:proposal.hint')}</p>
+      {scoped ? <p className="muted">{t('ai:proposal.standing')}</p> : null}
       {proposals.length === 0 ? (
         <p className="muted">{t('ai:proposal.none')}</p>
       ) : (

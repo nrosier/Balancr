@@ -6,6 +6,35 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A month picker on the insights page, the same one the budget page has had since
+  `0.6.0`** ([#158](https://github.com/nrosier/Balancr/issues/158),
+  `src/server/routes/api/insights.ts`, `web/src/pages/Insights.tsx`). Reading what the
+  analysis said about a past month meant whatever the last nightly run happened to cover,
+  with no way to ask for July's after moving on — the two pages could disagree about what
+  a month even meant. `GET /api/insights` now takes the same `?month=` the budget endpoint
+  does, resolved through the same `resolveMonth`. Findings, the narrative and the run
+  ledger narrow to the selected month, since each is stored under one; the clarification
+  queue and the proposal review stay whole, since neither has a month of its own, and the
+  page states as much next to each so a queue that ignores the control above it does not
+  read as a bug.
+- **A month with no review can be given one** (`src/domain/ai/narrative.ts`,
+  `POST /api/ai/narrative`). Until now only the nightly job ever wrote a narrative, and
+  only for the previous month, so a month with a capped or missing review had no way to
+  get one after the fact. The endpoint is owner-only, priced first through
+  `GET /api/ai/estimate?kind=narrative`, refuses a month that has not yet ended so a
+  partial narrative is never cached forever, and answers the cached review for free on a
+  second press.
+- **The run ledger's `recentRuns` takes a `period`** (`src/domain/ai/runs.ts`), narrowing
+  to one month plus every run about no month at all — a chat turn, or a call that failed
+  before it knew which month it was for. Filtering it exposed a latent ordering bug: two
+  runs recorded in the same millisecond broke ties differently depending on which query
+  plan SQLite picked for the new `WHERE` clause. `recentRuns` now orders by `rowid` as a
+  stable second key, so "newest first" no longer depends on an accident of the query plan.
+
 ## [0.8.4] — 2026-09-04
 
 ### Added

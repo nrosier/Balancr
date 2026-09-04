@@ -1,5 +1,5 @@
 /**
- * The three endpoints that can spend money, and the only ones in the HTTP layer that
+ * The four endpoints that can spend money, and the only ones in the HTTP layer that
  * reach Gemini at all.
  *
  * Everything else Balancr serves comes out of SQLite, written by the nightly job —
@@ -23,6 +23,15 @@
  * The estimate is free — no call, no row — and is what both buttons show *before* they
  * are pressed.
  *
+ * `POST /api/ai/narrative` is the fourth, added with #158 so a month that has ended can
+ * be given its review from the insights page instead of only by the nightly job that runs
+ * once. It awaits the call rather than starting a job, like the dry run and unlike the
+ * refresh: the deep model takes as long as it takes, and the answer is one row for one
+ * month, so there is nothing for a job's one-at-a-time claim to protect. Two guards on top
+ * of the shared four — the month must have *ended*, and no narrative may exist for it
+ * already — and both are about not paying the deep model twice for the same month or once
+ * for a third of one.
+ *
  * `POST /api/ai/refresh` is the third, and the reason it is here rather than in
  * `refresh.ts` next to the other five jobs is the whole of the argument above: the
  * data jobs pull, this one buys. Everything the ordinary refresh gets — the one-at-a-
@@ -35,6 +44,7 @@ import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
+import { estimateNarrative, monthHasEnded, runNarrative } from '../../domain/ai/narrative.ts'
 import {
   aiAvailability,
   type AiAvailability,
@@ -51,10 +61,12 @@ import { auditRefresh, busyError, requireJobsEnabled } from './refresh.ts'
 import {
   aiDryRunSchema,
   aiEstimateSchema,
+  aiNarrativeRunSchema,
   monthKey,
   refreshAcceptedSchema,
   type AiDryRun,
   type AiEstimate,
+  type AiNarrativeRun,
   type RefreshAccepted,
 } from './api/schemas.ts'
 
@@ -68,6 +80,25 @@ const dryRunRequest = z.strictObject({
    * worth asking.
    */
   promptId: z.string().min(1).optional(),
+  locale: z
+    .string()
+    .refine((value) => config.SUPPORTED_LOCALES.includes(value), {
+      message: 'unsupported locale',
+    })
+    .optional(),
+})
+
+const narrativeRequest = z.strictObject({
+  /**
+   * The month to review. Required, unlike the dry run's, and there is no default.
+   *
+   * "The latest stored month" is the wrong default for exactly one endpoint, and this is
+   * it: on the 4th of September the latest stored month is September, and a narrative
+   * written then is cached under September forever, describing a tenth of it. Making the
+   * caller name the month means the refusal below can be about the month it asked for
+   * rather than about one it never mentioned.
+   */
+  period: monthKey(),
   locale: z
     .string()
     .refine((value) => config.SUPPORTED_LOCALES.includes(value), {
@@ -180,10 +211,22 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     // arithmetic over the payload — and answering with a number for a run that cannot
     // be started is what puts a priced button on a page that has no model behind it.
     requireAiAvailable(aiAvailability())
-    const query = request.query as { month?: string } | undefined
+    const query = request.query as { month?: string; kind?: string } | undefined
     const month = monthToRun(db, query?.month)
+    // Two priced buttons, two prices, one endpoint. An unknown `kind` is a 400 rather
+    // than a fall-through to the cheaper of the two: quoting the analysis price for a
+    // deep-model run would understate it by more than tenfold (#158).
+    const kind = query?.kind ?? 'findings'
+    if (kind !== 'findings' && kind !== 'narrative') {
+      throw badRequest('kind must be findings or narrative.', { kind })
+    }
 
-    return aiEstimateSchema.parse(estimateAnalysis(db, { month, locale: user.locale }))
+    const estimate =
+      kind === 'narrative'
+        ? estimateNarrative(db, { period: month, locale: user.locale })
+        : estimateAnalysis(db, { month, locale: user.locale })
+
+    return aiEstimateSchema.parse({ ...estimate, kind })
   })
 
   /**
@@ -240,6 +283,55 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
         guess: question.guess,
       })),
       dropped: outcome.dropped,
+    })
+    return response
+  })
+
+  /**
+   * The monthly review for one month that has ended, written on request (#158).
+   *
+   * The insights page can be pointed at any stored month, and until now only one of them
+   * ever had prose against it: the nightly job writes the previous month once and there
+   * was no way to ask for July's in October. This is that ask, and it is the expensive
+   * one on this file — the deep model with room to think, an order of magnitude above an
+   * analysis — so it is priced by `GET /api/ai/estimate?kind=narrative` first and pressed
+   * twice on the page.
+   *
+   * **The month must have ended.** `runNarrative` caches per `(period, locale)` and
+   * nothing this file exposes can force a rewrite, so a review of September bought on the
+   * 4th would be September's review permanently, written from a tenth of the month, with
+   * no marker on the page to say so. A `409`: the request is well formed, the month is
+   * simply not finished, and it will work on the 1st. See `monthHasEnded`.
+   *
+   * Awaited rather than queued, unlike `/api/ai/refresh`. That endpoint starts the whole
+   * nightly pass and belongs behind the one-at-a-time claim; this writes one row for one
+   * month, and the reader pressing the button is the one who wants to know what it cost.
+   *
+   * The budget is not checked here for the same reason the refresh does not check it: the
+   * guard is one layer down, where an exhausted allowance becomes a `capped` ledger row
+   * and a banner instead of a failure. What comes back for a month that already has a
+   * review is `cached` at a cost of zero, which is the answer to a double click.
+   */
+  app.post('/api/ai/narrative', { ...aiRateLimit() }, async (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    requireAiAvailable(aiAvailability())
+    const body = parseBody(narrativeRequest, request.body)
+    const locale = body.locale ?? user.locale
+
+    if (!monthHasEnded(body.period)) {
+      throw conflict(`${body.period} has not ended yet, so there is nothing to review.`)
+    }
+
+    const outcome = await runNarrative(db, { period: body.period, locale, userId: user.id })
+
+    const response: AiNarrativeRun = aiNarrativeRunSchema.parse({
+      status: outcome.status,
+      reason: outcome.reason,
+      runId: outcome.runId,
+      period: outcome.period,
+      locale: outcome.locale,
+      degraded: outcome.degraded,
+      costMicroEur: outcome.costMicroEur,
     })
     return response
   })

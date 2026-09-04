@@ -183,7 +183,10 @@ const EMPTY_READS: Record<string, unknown> = {
   },
   '/api/insights': {
     freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    ai: { enabled: true, reason: null },
+    owner: true,
     month: null,
+    months: [],
     signals: [],
     narrative: null,
     questions: [],

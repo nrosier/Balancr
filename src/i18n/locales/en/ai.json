@@ -21,6 +21,7 @@
     "readOnly": "Answering these comes with the assistant’s chat, in a later version. For now this is the queue it has built.",
     "sensitive_unknown": "Should the name {{category}} be kept from the AI?",
     "share": "{{share}} of this month’s spending",
+    "standing": "Standing work, not filtered to the month above: a question stays here until it is answered.",
     "suggestion": "Best guess: {{guess}}",
     "title": "Help the assistant understand"
   },
@@ -54,8 +55,20 @@
     "capped": "Monthly AI budget reached — showing the last analysis.",
     "generatedAt": "Written {{when}} by {{model}}",
     "none": "No narrative has been written for this month yet.",
+    "offer": {
+      "cancel": "Cancel",
+      "confirm": "Spend {{cost}}",
+      "lede": "A review uses the deep model, so it costs more than the nightly analysis. The price is shown before anything is spent.",
+      "notEnded": "{{month}} is not over yet. A review is written once a month is complete, so that it describes all of it.",
+      "owner": "Only the owner can write one.",
+      "price": "Writing one for {{month}} would cost about {{cost}}.",
+      "start": "Write the review",
+      "starting": "Writing…",
+      "written": "Written, for {{cost}}. The page has been reloaded."
+    },
     "stale": "Based on data from {{when}}.",
     "title": "This month in words",
+    "titleMonth": "{{month}} in words",
     "translate": "Write this in {{language}}",
     "unnamedAccount": "an unnamed account",
     "unnamedCategory": "an unnamed category"
@@ -96,6 +109,7 @@
       "findings": "Analysis",
       "narrative": "Narrative"
     },
+    "month": "Calls about {{month}}, and any that were about no month at all.",
     "none": "No calls have been made yet.",
     "title": "What was sent",
     "tokens": "{{input}} in / {{output}} out",
@@ -116,6 +130,7 @@
     "hint": "Nothing is changed until you apply it.",
     "none": "Nothing is waiting to be applied.",
     "readOnly": "Applying a change comes in a later version. For now you can read exactly what would change.",
+    "standing": "Standing work, not filtered to the month above: a proposal stays here until it is reviewed.",
     "title": "Proposed changes",
     "value": {
       "unset": "not set"
