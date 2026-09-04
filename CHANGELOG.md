@@ -6,6 +6,19 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.3] — 2026-09-04
+
+### Added
+
+- **An approved proposal can now write to Actual** ([#45](https://github.com/nrosier/Balancr/issues/45)).
+  The nightly job proposes a category for an uncategorised transaction, drawn
+  from what its payee has been filed under before, or a new budgeted amount for
+  a category that has run over its trailing average for months running — no
+  model call either way, both entirely deterministic. The owner applies or
+  rejects either straight from the Insights page, one card at a time or as a
+  batch; applying is the first thing Balancr has ever written back to Actual,
+  gated behind ownership, audited, and idempotent so a retried apply is safe.
+
 ## [0.10.2] — 2026-09-04
 
 ### Added
