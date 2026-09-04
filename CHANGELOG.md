@@ -6,6 +6,20 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.6] — 2026-09-05
+
+### Added
+
+- **A running "what's coming up" note the budget-amount proposal can read**
+  ([#217](https://github.com/nrosier/Balancr/issues/217)). One owner-editable,
+  free-text note on the settings page — a dentist bill, an annual renewal,
+  anything the trailing average couldn't know about — plus an optional,
+  owner-priced AI pass that reads it alongside #45's own budget-amount
+  suggestions for the month and nudges only the category the note actually
+  speaks to, bounded to three times the suggested amount either way. An empty
+  note skips the model call entirely, at zero cost, and a nudge supersedes the
+  proposal it adjusts rather than duplicating it.
+
 ## [0.10.5] — 2026-09-04
 
 ### Added
