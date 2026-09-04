@@ -18,13 +18,14 @@
  * `shell.css` differs. There is no viewport measurement in JavaScript anywhere in
  * the shell, so the two layouts cannot disagree about which page is current.
  */
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CsrfConfig } from '../api/client.ts'
 import mark from '../assets/favicon.svg'
 import type { SessionUserResponse } from '../auth/session.ts'
 import { useT } from '../i18n.ts'
 import { Link, useRouter } from '../router.tsx'
 import { Account } from './Account.tsx'
+import { ChangelogDialog } from './ChangelogDialog.tsx'
 import { Nav } from './Nav.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
 import './shell.css'
@@ -49,6 +50,8 @@ export function AppShell({
   const { path } = useRouter()
   const main = useRef<HTMLElement>(null)
   const navigated = useRef(false)
+  const versionButton = useRef<HTMLButtonElement>(null)
+  const [changelogOpen, setChangelogOpen] = useState(false)
 
   useEffect(() => {
     if (!navigated.current) {
@@ -70,14 +73,21 @@ export function AppShell({
           <Link to="/" className="brand">
             <img className="brand__mark" src={mark} alt="" width={20} height={20} />
             <span className="brand__name">{t('app.name')}</span>
-            {version === null ? null : (
-              // The number itself is not translated; the label around it is, which is
-              // what the tooltip and the screen-reader text carry.
-              <span className="brand__version num" title={t('app.version', { version })}>
-                v{version}
-              </span>
-            )}
           </Link>
+          {version === null ? null : (
+            // A button, not a link inside `.brand` — the number itself is not
+            // translated, the label around it is, which is what the tooltip and the
+            // screen-reader text carry.
+            <button
+              type="button"
+              ref={versionButton}
+              className="brand__version num"
+              title={t('app.version', { version })}
+              onClick={() => setChangelogOpen(true)}
+            >
+              v{version}
+            </button>
+          )}
           <p className="brand__tagline">{t('app.tagline')}</p>
         </div>
         <ThemeToggle />
@@ -89,6 +99,14 @@ export function AppShell({
       <main id="main" className="main" ref={main} tabIndex={-1}>
         {children}
       </main>
+
+      {changelogOpen && (
+        <ChangelogDialog
+          version={version}
+          onClose={() => setChangelogOpen(false)}
+          returnFocusTo={versionButton}
+        />
+      )}
     </div>
   )
 }

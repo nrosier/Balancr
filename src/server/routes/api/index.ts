@@ -26,6 +26,7 @@ import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import { notFound } from '../../errors.ts'
 import { buildBudget } from './budget.ts'
+import { buildChangelog } from './changelog.ts'
 import { buildInsights, buildRunPayload } from './insights.ts'
 import { buildOverview } from './overview.ts'
 import { buildPortfolio } from './portfolio.ts'
@@ -99,4 +100,8 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // every message, because it answers without a session; this one is behind the guard
   // and may quote what an upstream said. See `status.ts`.
   app.get('/api/status', () => buildStatus(db))
+
+  // The version number in the header opens a dialog on this. See `changelog.ts` for
+  // why the file is read from next to `dist/` rather than copied into it.
+  app.get('/api/changelog', () => buildChangelog())
 }
