@@ -6,6 +6,21 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.5] — 2026-09-04
+
+### Added
+
+- **A category guess for the transactions the deterministic path leaves behind**
+  ([#216](https://github.com/nrosier/Balancr/issues/216)). Below the payee-history
+  confidence bar #45 already checks, a candidate is now kept in a per-month cache
+  instead of dropped. The owner can select any of them from the Insights page,
+  price a guess before anything is spent, and press it — never the nightly job on
+  its own. The model sees only an opaque label per category a candidate's own
+  history actually offers, never the payee's name or the transaction's id, and a
+  guess outside that set is grounded away rather than trusted. What comes back is
+  an ordinary `transaction_category.set` proposal through the queue and apply path
+  #45 already built, not a new kind of decision.
+
 ## [0.10.4] — 2026-09-04
 
 ### Added
