@@ -53,6 +53,28 @@ export function suggestCategoryForPayee(
   return { categoryId: bestId }
 }
 
+export interface CategoryHistorySample {
+  categoryId: string
+  count: number
+}
+
+/**
+ * Raw history collapsed into per-category counts, dropping uncategorised
+ * samples — the shape #216's candidate cache stores and its redaction step
+ * turns into opaque labels, so a category id only ever appears once,
+ * regardless of how many transactions the AQL query happened to return.
+ */
+export function summariseCategoryHistory(
+  history: readonly PayeeCategorySample[],
+): CategoryHistorySample[] {
+  const counts = new Map<string, number>()
+  for (const { categoryId } of history) {
+    if (categoryId === null) continue
+    counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1)
+  }
+  return [...counts].map(([categoryId, count]) => ({ categoryId, count }))
+}
+
 export interface BudgetSuggestion {
   categoryId: string
   amountCents: number

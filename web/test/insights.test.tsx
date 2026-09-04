@@ -31,7 +31,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Findings } from '../src/insights/Findings.tsx'
 import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
-import { Proposals, Questions } from '../src/insights/Pending.tsx'
+import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.tsx'
 import { Insights } from '../src/pages/Insights.tsx'
 import type { AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
@@ -202,6 +202,15 @@ const FULL: InsightsPayload = {
       expiresAt: '2026-09-08T04:13:00Z',
     },
   ],
+  categoryGuessCandidates: [
+    {
+      transactionId: 'txn-bakery',
+      payeeName: 'Corner Bakery',
+      amountCents: -1_240,
+      date: '2026-08-14',
+      history: [{ categoryId: 'c-groceries', categoryName: 'Groceries', count: 1 }],
+    },
+  ],
   spend: {
     month: '2026-09',
     spentMicroEur: 1_240,
@@ -224,6 +233,7 @@ const EMPTY: InsightsPayload = {
   narrative: null,
   questions: [],
   proposals: [],
+  categoryGuessCandidates: [],
   spend: {
     month: '2026-09',
     spentMicroEur: 0,
@@ -290,6 +300,7 @@ describe('the page', () => {
       'What stands out',
       'August 2026 in words',
       'Help the assistant understand',
+      'Below the confidence bar',
       'Proposed changes',
       'What was sent',
     ])
@@ -306,6 +317,7 @@ describe('the page', () => {
         ai: { enabled: false, reason: 'notConfigured' },
         narrative: null,
         questions: [],
+        categoryGuessCandidates: [],
         proposals: [],
         runs: [],
       } satisfies InsightsPayload),
@@ -663,6 +675,132 @@ describe('the clarification queue', () => {
     renderApp(<Questions questions={FULL.questions} scoped={false} />)
 
     expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
+  })
+})
+
+/** A second candidate, distinct from `FULL.categoryGuessCandidates[0]`, for the bulk-selection test. */
+const TWO_CANDIDATES: InsightsPayload['categoryGuessCandidates'] = [
+  FULL.categoryGuessCandidates[0]!,
+  { ...FULL.categoryGuessCandidates[0]!, transactionId: 'txn-cafe', payeeName: 'Cafe Nero' },
+]
+
+describe('the guess queue', () => {
+  it('shows a payee, its amount, its date, and the history it was cached with', () => {
+    renderApp(
+      <CategoryGuesses candidates={FULL.categoryGuessCandidates} owner={true} onGuessed={vi.fn()} />,
+    )
+
+    expect(screen.getByText(/Corner Bakery/)).toBeTruthy()
+    expect(screen.getByText(/€ -12,40/)).toBeTruthy()
+    expect(screen.getByText('14/08/2026')).toBeTruthy()
+    expect(screen.getByText('Groceries × 1')).toBeTruthy()
+  })
+
+  it('says nothing is waiting when the queue is empty', () => {
+    renderApp(<CategoryGuesses candidates={[]} owner={true} onGuessed={vi.fn()} />)
+
+    expect(screen.getByText('Nothing is waiting on a guess.')).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
+
+  it('says only the owner can ask for a guess, and disables the checkboxes', () => {
+    renderApp(
+      <CategoryGuesses candidates={FULL.categoryGuessCandidates} owner={false} onGuessed={vi.fn()} />,
+    )
+
+    expect(screen.getByText('Only the owner can ask for a guess.')).toBeTruthy()
+    expect((screen.getByRole('checkbox', { name: 'Select all' }) as HTMLInputElement).disabled).toBe(
+      true,
+    )
+  })
+
+  it('prices the selection, then guesses on a second press, with mixed per-id results', async () => {
+    const fetchMock = serve({
+      '/api/ai/category-guess/estimate': json({
+        ids: ['txn-bakery', 'txn-cafe'],
+        model: 'gemini-3.7-flash',
+        payloadChars: 240,
+        estimateMicroEur: 2_100,
+        allowed: true,
+        reason: null,
+      }),
+      '/api/ai/category-guess': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-guess-1',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+        results: [
+          { id: 'txn-bakery', ok: true, reason: null },
+          { id: 'txn-cafe', ok: false, reason: 'not_confident' },
+        ],
+        dropped: [],
+      }),
+    })
+    const onGuessed = vi.fn()
+    renderApp(<CategoryGuesses candidates={TWO_CANDIDATES} owner={true} onGuessed={onGuessed} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Estimate (2 selected)' }))
+
+    await screen.findByText('Guessing 2 would cost about € 0,0021.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/category-guess/estimate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ ids: ['txn-bakery', 'txn-cafe'] }),
+      }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guess' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('Guessed — now waiting for a decision below.')
+    expect(
+      screen.getByText('The model was not confident enough about this one to guess.'),
+    ).toBeTruthy()
+    expect(onGuessed).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/category-guess',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ ids: ['txn-bakery', 'txn-cafe'] }),
+      }),
+    )
+  })
+
+  it('shows a raw, untranslated reason verbatim when it is not one of the known codes', async () => {
+    serve({
+      '/api/ai/category-guess/estimate': json({
+        ids: ['txn-bakery'],
+        model: 'gemini-3.7-flash',
+        payloadChars: 120,
+        estimateMicroEur: 2_100,
+        allowed: true,
+        reason: null,
+      }),
+      '/api/ai/category-guess': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-guess-2',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+        results: [{ id: 'txn-bakery', ok: false, reason: 'This proposal would change nothing.' }],
+        dropped: [],
+      }),
+    })
+    renderApp(
+      <CategoryGuesses candidates={FULL.categoryGuessCandidates} owner={true} onGuessed={vi.fn()} />,
+    )
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Corner Bakery' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Estimate (1 selected)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Guess' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('This proposal would change nothing.')
   })
 })
 

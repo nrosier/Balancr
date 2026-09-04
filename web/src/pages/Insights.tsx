@@ -42,7 +42,7 @@ import { useT } from '../i18n.ts'
 import { Findings } from '../insights/Findings.tsx'
 import { Ledger } from '../insights/Ledger.tsx'
 import { Narrative } from '../insights/Narrative.tsx'
-import { Proposals, Questions } from '../insights/Pending.tsx'
+import { CategoryGuesses, Proposals, Questions } from '../insights/Pending.tsx'
 import {
   formatMicroEur,
   type AiAvailabilityWire,
@@ -83,6 +83,7 @@ function isEmpty(data: InsightsPayload): boolean {
     data.signals.length === 0 &&
     data.narrative === null &&
     data.questions.length === 0 &&
+    data.categoryGuessCandidates.length === 0 &&
     data.proposals.length === 0 &&
     data.runs.length === 0
   )
@@ -185,6 +186,13 @@ function Sections({
       ) : null}
       {data.ai.enabled || data.questions.length > 0 ? (
         <Questions questions={data.questions} scoped={data.month !== null} />
+      ) : null}
+      {data.ai.enabled || data.categoryGuessCandidates.length > 0 ? (
+        <CategoryGuesses
+          candidates={data.categoryGuessCandidates}
+          owner={data.owner}
+          onGuessed={onRefreshed}
+        />
       ) : null}
       {data.ai.enabled || data.proposals.length > 0 ? (
         <Proposals

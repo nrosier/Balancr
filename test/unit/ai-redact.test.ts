@@ -25,12 +25,15 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  GUESS_PAYLOAD_KEYS,
   PAYLOAD_KEYS,
   PURPOSE_MAX_CHARS,
   redact,
+  redactCategoryGuessBatch,
   type AnalysisBundle,
   type BundleCategory,
   type CategoryMetaRow,
+  type GuessCandidateInput,
 } from '../../src/domain/ai/redact.ts'
 import type { AccountMapRow } from '../../src/domain/aggregate/accounts.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
@@ -755,5 +758,102 @@ describe('the month itself', () => {
     expect(hygiene.uncategorisedCount).toBe(31)
     expect(hygiene.uncategorisedCents).toBe(47_500)
     expect(hygiene.mismatchCount).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+//  #216 — redactCategoryGuessBatch, PAYLOAD_KEYS's counterpart for a
+//  below-threshold categorisation batch. Same two checks as above, scoped to
+//  the smaller payload: a denylist for the identifying text a candidate
+//  carries (payee name, transaction id — neither of which `GuessCandidateInput`
+//  even has a field for, which is the point), and a `GUESS_PAYLOAD_KEYS` walk.
+// ---------------------------------------------------------------------------
+
+const GUESS_CATEGORY_META = new Map<string, CategoryMetaRow | null>([
+  ['cat-groceries', meta()],
+  ['cat-therapy', meta({ categoryId: 'cat-therapy', sensitive: true, coicopCode: '06.2', nature: 'fixed' })],
+  ['cat-unknown', null],
+])
+
+const GUESS_CATEGORY_NAME = new Map<string, string>([
+  ['cat-groceries', 'Groceries'],
+  ['cat-therapy', 'Therapy — Dr. A. Vermeulen'],
+])
+
+function guessCandidate(overrides: Partial<GuessCandidateInput> = {}): GuessCandidateInput {
+  return {
+    transactionId: 'txn-secret-123',
+    amountCents: -4_200,
+    history: [
+      { categoryId: 'cat-groceries', count: 3 },
+      { categoryId: 'cat-therapy', count: 1 },
+    ],
+    ...overrides,
+  }
+}
+
+function guessBatch(candidates: readonly GuessCandidateInput[] = [guessCandidate()]) {
+  return redactCategoryGuessBatch(candidates, GUESS_CATEGORY_META, GUESS_CATEGORY_NAME, 'en')
+}
+
+describe('redactCategoryGuessBatch sends only an opaque batch', () => {
+  it('uses only keys on GUESS_PAYLOAD_KEYS', () => {
+    const unexpected = [...new Set(keysIn(guessBatch().payload))].filter(
+      (key) => !GUESS_PAYLOAD_KEYS.includes(key),
+    )
+    expect(unexpected, 'new guess payload field: decide whether it is safe to send').toEqual([])
+  })
+
+  it('never carries the transaction id, only the opaque clientId', () => {
+    const { payload } = guessBatch()
+    expect(payload.candidates[0]?.clientId).toBe('t1')
+    expect(JSON.stringify(payload)).not.toContain('txn-secret-123')
+  })
+
+  it('maps the clientId back to the real transaction id after the call returns', () => {
+    const { transactionIdFor } = guessBatch()
+    expect(transactionIdFor.get('t1')).toBe('txn-secret-123')
+  })
+
+  it('never has a field for a payee name in the first place', () => {
+    // `GuessCandidateInput` has no `payeeName`/`payeeId` field at all — this is
+    // the structural guarantee, not something redaction has to remember to strip.
+    const candidate = guessCandidate()
+    expect(Object.keys(candidate)).toEqual(['transactionId', 'amountCents', 'history'])
+  })
+
+  it('labels a sensitive category with no name, but keeps its coicop and nature', () => {
+    const { payload, categoryIdFor } = guessBatch()
+    const therapy = payload.categories.find((c) => categoryIdFor.get(c.label) === 'cat-therapy')
+    expect(therapy?.name).toBeUndefined()
+    expect(therapy?.coicop).toBe('06.2')
+    expect(therapy?.nature).toBe('fixed')
+    expect(JSON.stringify(payload)).not.toContain('Vermeulen')
+  })
+
+  it('sends the name of a non-sensitive category', () => {
+    const { payload, categoryIdFor } = guessBatch()
+    const groceries = payload.categories.find((c) => categoryIdFor.get(c.label) === 'cat-groceries')
+    expect(groceries?.name).toBe('Groceries')
+  })
+
+  it('gives the same label to a category shared across two candidates', () => {
+    const { payload } = guessBatch([
+      guessCandidate({ transactionId: 'txn-a', history: [{ categoryId: 'cat-groceries', count: 2 }] }),
+      guessCandidate({ transactionId: 'txn-b', history: [{ categoryId: 'cat-groceries', count: 5 }] }),
+    ])
+    const [labelA] = payload.candidates[0]!.history.map((h) => h.label)
+    const [labelB] = payload.candidates[1]!.history.map((h) => h.label)
+    expect(labelA).toBe(labelB)
+  })
+
+  it('falls back to no name or class for a category the sync knows nothing about', () => {
+    const { payload, categoryIdFor } = guessBatch([
+      guessCandidate({ history: [{ categoryId: 'cat-unknown', count: 1 }] }),
+    ])
+    const unknown = payload.categories.find((c) => categoryIdFor.get(c.label) === 'cat-unknown')
+    expect(unknown?.name).toBeUndefined()
+    expect(unknown?.coicop).toBeUndefined()
+    expect(unknown?.nature).toBeUndefined()
   })
 })

@@ -555,6 +555,38 @@ export const monthlySignals = sqliteTable(
   ],
 )
 
+/**
+ * Below-threshold categorisation candidates (#216) — transactions
+ * `suggestCategoryForPayee` skipped because the payee's history wasn't
+ * confident enough for a deterministic proposal, cached here so the Insights
+ * page can list them without a live Actual call (`routes/api/` is read-only
+ * by convention and may not import an adapter).
+ *
+ * Wholesale-replaced per month, same reasoning as `monthlySignals`: the delete
+ * is scoped to `month` because `generateCategoryProposals` runs once per
+ * judged month, and a global replace would drop every other month's rows on
+ * each pass.
+ */
+export const categoryGuessCandidates = sqliteTable(
+  'category_guess_candidates',
+  {
+    month: text().notNull(),
+    transactionId: text('transaction_id').notNull(),
+    payeeId: text('payee_id').notNull(),
+    /** Display only — never sent to Gemini. */
+    payeeName: text('payee_name'),
+    amountCents: integer('amount_cents').notNull(),
+    date: text().notNull(),
+    /** `{categoryId, count}[]` — the payee's history, below the confidence bar. */
+    historyJson: text('history_json').notNull(),
+    computedAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.month, t.transactionId] }),
+    index('category_guess_candidates_month_idx').on(t.month),
+  ],
+)
+
 export const netWorthSnapshots = sqliteTable(
   'net_worth_snapshots',
   {
@@ -700,7 +732,7 @@ export const aiRuns = sqliteTable(
   {
     id: uuid().primaryKey(),
     kind: text({
-      enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun'],
+      enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess'],
     }).notNull(),
     model: text().notNull(),
     promptId: text('prompt_id').references(() => prompts.id, {
@@ -710,13 +742,16 @@ export const aiRuns = sqliteTable(
     /**
      * The month this run was about, `YYYY-MM`, or null for a run about no month.
      *
-     * Denormalised on purpose. The month is recoverable for two of the five kinds — a
+     * Denormalised on purpose. The month is recoverable for two of the six kinds — a
      * narrative through `ai_narratives.period`, an analysis through `ai_findings.month`
      * — and for neither when the run produced nothing, which is exactly the row the
      * ledger exists to show: a `capped` analysis of August wrote no finding to join
      * back to. Without this column the insights page could filter its ledger to the
      * month on screen only by dropping the refusals, and the refusals are the rows that
      * explain what is *missing* from the page above them (#158).
+     *
+     * `category_guess` is also null: a guess batch spans whatever transactions the
+     * owner selected, which is not necessarily one month.
      *
      * Null is a fact rather than a gap: a chat turn is about a question, not a month.
      * `recentRuns` shows those under whatever month is selected rather than hiding them
@@ -1031,6 +1066,7 @@ export const schema = {
   monthlyTotals,
   recomputeMismatches,
   monthlySignals,
+  categoryGuessCandidates,
   monthlyHygiene,
   netWorthSnapshots,
   portfolioSnapshots,
