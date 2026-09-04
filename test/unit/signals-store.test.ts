@@ -73,6 +73,31 @@ describe('persistSignals', () => {
     expect(loadSignals(ctx.db, '2026-03')).toHaveLength(2)
   })
 
+  it('stores two over-threshold benchmark groups as two rows, not one', () => {
+    // `above_benchmark` has no `categoryId` — it's household-level, one row per
+    // Statbel group (#43) — so the group has to be the subject or two groups
+    // over threshold in the same month collide on `(month, code, '')` and the
+    // insert throws, which is exactly what happened in production.
+    const rows = [
+      signal({
+        code: 'above_benchmark',
+        categoryId: null,
+        categoryName: 'transport',
+        severity: 'info',
+        metrics: { deltaBp: 3_500 },
+      }),
+      signal({
+        code: 'above_benchmark',
+        categoryId: null,
+        categoryName: 'recreation',
+        severity: 'info',
+        metrics: { deltaBp: 2_800 },
+      }),
+    ]
+    expect(persistSignals(ctx.db, '2026-03', rows, clean)).toEqual({ signals: 2 })
+    expect(loadSignals(ctx.db, '2026-03')).toHaveLength(2)
+  })
+
   it('replaces the month wholesale on a re-run', () => {
     persistSignals(ctx.db, '2026-03', [signal(), signal({ code: 'over_assigned', severity: 'warn' })], clean)
     persistSignals(ctx.db, '2026-03', [signal()], clean)
