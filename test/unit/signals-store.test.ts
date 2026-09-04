@@ -13,12 +13,15 @@ import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { monthlyHygiene, monthlySignals } from '../../src/db/schema.ts'
+import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import type { HygieneScore } from '../../src/domain/aggregate/hygiene.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
+import type { MonthTotals } from '../../src/domain/aggregate/spend.ts'
 import {
   loadHygiene,
   loadSignals,
   persistSignals,
+  staleMonths,
 } from '../../src/domain/aggregate/signals-store.ts'
 
 let ctx: ReturnType<typeof createTestDb>
@@ -40,6 +43,24 @@ function signal(overrides: Partial<Signal> = {}): Signal {
 }
 
 const clean: HygieneScore = { scoreBp: 10_000, deductions: [] }
+
+function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotals {
+  return {
+    month,
+    incomeCents: 380_000,
+    spentCents: 341_000,
+    budgetedCents: 350_000,
+    toBudgetCents: 9_000,
+    fromLastMonthCents: 12_000,
+    balanceCents: 39_000,
+    savingsRateBp: 1_026,
+    committedCents: 0,
+    committedUnallocatedCents: 0,
+    committedUnallocatedCount: 0,
+    committedApproximate: false,
+    ...overrides,
+  }
+}
 
 describe('persistSignals', () => {
   it('round-trips a signal, metrics included', () => {
@@ -207,5 +228,55 @@ describe('loadHygiene is defensive too', () => {
     expect(loadHygiene(ctx.db, '2026-03')?.deductions).toEqual([
       { reason: 'uncategorised', bp: 2_000 },
     ])
+  })
+})
+
+describe('staleMonths (#162)', () => {
+  it('is empty for no months', () => {
+    expect(staleMonths(ctx.db, [])).toEqual([])
+  })
+
+  it('ignores a month whose judged hash still matches its facts', () => {
+    persistMonthTotals(ctx.db, [totals('2026-03')], [], new Map([['2026-03', 'hash-a']]))
+    persistSignals(ctx.db, '2026-03', [], clean, 'hash-a')
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual([])
+  })
+
+  it('picks up a month whose facts moved since it was judged', () => {
+    persistMonthTotals(ctx.db, [totals('2026-03')], [], new Map([['2026-03', 'hash-a']]))
+    persistSignals(ctx.db, '2026-03', [], clean, 'hash-a')
+    // An edit lands after judgement, so the next sync writes a new hash.
+    persistMonthTotals(ctx.db, [totals('2026-03')], [], new Map([['2026-03', 'hash-b']]))
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual(['2026-03'])
+  })
+
+  it('includes a month with a fact hash but no hygiene row yet', () => {
+    persistMonthTotals(ctx.db, [totals('2026-03')], [], new Map([['2026-03', 'hash-a']]))
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual(['2026-03'])
+  })
+
+  it('leaves out a month with no stored fact hash at all', () => {
+    // No fingerprint passed in — same as a totals row from before this column
+    // existed, or a sync that never computed one. Nothing to compare against.
+    persistMonthTotals(ctx.db, [totals('2026-03')], [])
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual([])
+  })
+
+  it('leaves out a month that has never been synced at all', () => {
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual([])
+  })
+
+  it('only reports the months asked about', () => {
+    persistMonthTotals(
+      ctx.db,
+      [totals('2026-02'), totals('2026-03')],
+      [],
+      new Map([
+        ['2026-02', 'hash-a'],
+        ['2026-03', 'hash-a'],
+      ]),
+    )
+    // Both are equally stale (no hygiene row), but only 2026-03 was asked for.
+    expect(staleMonths(ctx.db, ['2026-03'])).toEqual(['2026-03'])
   })
 })

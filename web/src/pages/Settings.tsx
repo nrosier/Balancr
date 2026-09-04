@@ -57,13 +57,13 @@ import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
 import { useSettings } from '../settings/state.ts'
-import type { AiEstimate } from '../shared.ts'
+import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
 export function Settings(): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const state = useSettings()
   /*
    * The price of one analysis, read once for the two panels that offer to spend it.
@@ -113,6 +113,25 @@ export function Settings(): ReactNode {
               <MappingPanel {...props} />
               <SpendPanel {...props} />
               <StatusPanel />
+
+              <section className="card panel">
+                <h2 className="card__title">{t('settings:history.title')}</h2>
+                <dl className="build">
+                  <dt>{t('settings:history.months')}</dt>
+                  <dd className="num">
+                    {t('settings:history.monthsValue', { months: settings.history.months })}
+                  </dd>
+                  <dt>{t('settings:history.coverage')}</dt>
+                  <dd className="num">
+                    {settings.history.earliest === null || settings.history.latest === null
+                      ? t('settings:history.noneYet')
+                      : t('settings:history.coverageValue', {
+                          earliest: formatMonth(settings.history.earliest, language),
+                          latest: formatMonth(settings.history.latest, language),
+                        })}
+                  </dd>
+                </dl>
+              </section>
 
               <section className="card panel">
                 <h2 className="card__title">{t('settings:build.title')}</h2>
