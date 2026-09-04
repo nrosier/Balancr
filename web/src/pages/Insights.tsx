@@ -7,7 +7,7 @@
  * which is the part that lets a reader check every claim above it against the bytes
  * that produced it. Conclusions, then the reasoning, then the evidence.
  *
- * **Nothing on this page calls Gemini.** `/api/insights` reads what the nightly job
+ * **Reading this page calls nothing.** `/api/insights` serves what the nightly job
  * stored, which is what makes the monthly AI budget a limit rather than a hope — and
  * it is why the two queues have no buttons yet: answering a clarification re-runs an
  * analysis and applying a proposal writes to `category_meta`, so both belong with the
@@ -17,8 +17,26 @@
  * The budget banner is at the top rather than beside the narrative it explains. Once
  * the month's cap is reached, every section below may be last week's answer, not the
  * narrative alone, so it is stated once ahead of all of them.
+ *
+ * **The month is a query parameter, not a route**, exactly as on the budget page and
+ * through the same `MonthPicker`: `?month=` on the endpoint and `useState` here, because
+ * `useResource` refetches on a path change and that is the whole mechanism (#158).
+ *
+ * Three of the sections narrow with the picker and two do not, and the page says which.
+ * The findings, the review and the ledger are *about* a month — each is stored under one,
+ * and reading July should show what was found in July and what the calls cost. The two
+ * queues are standing work with no month of their own: an unanswered question from July
+ * filed under July would be invisible from every month anyone has a reason to open. See
+ * `routes/api/insights.ts`, which is where that decision is enforced.
+ *
+ * **One thing on this page now spends money**, which the header comment above used to be
+ * able to deny outright. A month that has ended and has no review can be given one, and
+ * the control is the narrative card's own: priced before it is pressed, pressed twice,
+ * owner only, and never offered for a month still in progress. It is here rather than on
+ * the settings page for one reason — a review is written for a *particular* month, and
+ * this is the only screen that knows which month is on screen.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { Findings } from '../insights/Findings.tsx'
@@ -31,6 +49,7 @@ import {
   type Insights as InsightsPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../insights/insights.css'
@@ -56,6 +75,10 @@ const JOBS = ['signals'] as const
 function isEmpty(data: InsightsPayload): boolean {
   return (
     data.month === null &&
+    // Not implied by `month === null`: that is the month *asked for*, and a stale
+    // bookmark pointing at a month nobody computed would otherwise empty a page that
+    // has three months in its picker (#158).
+    data.months.length === 0 &&
     data.signals.length === 0 &&
     data.narrative === null &&
     data.questions.length === 0 &&
@@ -66,13 +89,21 @@ function isEmpty(data: InsightsPayload): boolean {
 
 export function Insights(): ReactNode {
   const { t } = useT()
-  const resource = useResource<InsightsPayload>('/api/insights')
+  // Null means "whatever the server calls the latest", which is what a first visit wants
+  // and what a reload after writing a review has to keep — pinning the month here on
+  // mount would freeze the page on a month that had no figures yet.
+  const [month, setMonth] = useState<string | null>(null)
+  const resource = useResource<InsightsPayload>(
+    month === null ? '/api/insights' : `/api/insights?month=${month}`,
+  )
 
   return (
     <>
       <PageHeader title={t('nav.insights')} lede={t('page.insights.lede')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Sections data={data} onRefreshed={resource.reload} />}
+        {(data) => (
+          <Sections data={data} onRefreshed={resource.reload} onSelect={setMonth} />
+        )}
       </DataState>
     </>
   )
@@ -81,15 +112,34 @@ export function Insights(): ReactNode {
 function Sections({
   data,
   onRefreshed,
+  onSelect,
 }: {
   data: InsightsPayload
   onRefreshed: () => void
+  onSelect: (month: string) => void
 }): ReactNode {
   const { t } = useT()
+  // The server's own current month, from the spend guard's clock. Comparing against it
+  // rather than against the browser's `Date` is deliberate: the two can disagree across
+  // a timezone, and the endpoint that writes a review refuses on the server's answer —
+  // so a button drawn from the browser's would appear an evening early and 409.
+  const ended = data.month !== null && data.month < data.spend.month
 
   return (
     <>
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
+
+      {data.month === null ? null : (
+        <div className="toolbar">
+          <MonthPicker
+            month={data.month}
+            months={data.months}
+            onSelect={onSelect}
+            id="insights-month"
+            label={t('budget:picker.month')}
+          />
+        </div>
+      )}
 
       {data.spend.exceeded ? (
         <div className="notice notice--warn" role="status">
@@ -120,15 +170,24 @@ function Sections({
         should not throw away last month's narrative.
       */}
       {data.ai.enabled || data.narrative !== null ? (
-        <Narrative narrative={data.narrative} />
+        <Narrative
+          narrative={data.narrative}
+          month={data.month}
+          ended={ended}
+          owner={data.owner}
+          aiEnabled={data.ai.enabled}
+          onWritten={onRefreshed}
+        />
       ) : null}
       {data.ai.enabled || data.questions.length > 0 ? (
-        <Questions questions={data.questions} />
+        <Questions questions={data.questions} scoped={data.month !== null} />
       ) : null}
       {data.ai.enabled || data.proposals.length > 0 ? (
-        <Proposals proposals={data.proposals} />
+        <Proposals proposals={data.proposals} scoped={data.month !== null} />
       ) : null}
-      {data.ai.enabled || data.runs.length > 0 ? <Ledger runs={data.runs} /> : null}
+      {data.ai.enabled || data.runs.length > 0 ? (
+        <Ledger runs={data.runs} month={data.month} />
+      ) : null}
     </>
   )
 }

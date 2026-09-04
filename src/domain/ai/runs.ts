@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { aiRuns } from '../../db/schema.ts'
 import { costMicroEur, ZERO_USAGE, type TokenUsage } from '../../adapters/gemini/pricing.ts'
@@ -35,6 +35,15 @@ export interface RecordRun {
   status: RunStatus
   /** Null for a run that used the built-in prompt rather than a stored version. */
   promptId?: string | null
+  /**
+   * The month the run was about, `YYYY-MM`, or null for a run about no month.
+   *
+   * Optional so a caller cannot be forced to invent one, but every producer that has
+   * a month passes it: without it the insights ledger can only recover a month by
+   * joining to what the run produced, which is exactly nothing for the `capped` and
+   * `blocked` rows the ledger exists to explain (#158).
+   */
+  period?: string | null
   usage?: TokenUsage
   /**
    * Only pass this to override the computed figure — Google reporting a price we
@@ -67,6 +76,7 @@ export function recordRun(db: Db, run: RecordRun): string {
       model: run.model,
       promptId: run.promptId ?? null,
       locale: run.locale,
+      period: run.period ?? null,
       payloadJson: JSON.stringify(run.payload),
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
@@ -107,9 +117,32 @@ export function latestSuccessfulRun(db: Db, kind: RunKind): AiRunRow | null {
   )
 }
 
-/** Recent runs of every kind, newest first — the spend page's table. */
-export function recentRuns(db: Db, limit = 50): AiRunRow[] {
-  return db.select().from(aiRuns).orderBy(desc(aiRuns.createdAt)).limit(limit).all()
+/**
+ * Recent runs of every kind, newest first — the spend page's table.
+ *
+ * `period` narrows it to one month **plus every run about no month at all**, which is
+ * the insights ledger's query (#158). The `IS NULL` half is not a leak: a chat turn
+ * answers a question rather than a month, and so does a run that failed before it knew
+ * which month it was for. Dropping those would hide them under every month on the
+ * picker, and a ledger row nobody can reach is not an audit. Omit `period` for the
+ * spend page, which is about the money and wants every row.
+ *
+ * Ties on `createdAt` break on `rowid` rather than being left to chance: two runs
+ * recorded synchronously (as tests, and a fast nightly job, both do) can share the
+ * same millisecond, and without a second key the `period` filter's index scan
+ * ordered them differently from the unfiltered scan — same rows, same requested
+ * order, different answer depending on which query plan SQLite picked.
+ */
+export function recentRuns(db: Db, limit = 50, period?: string): AiRunRow[] {
+  const query = db.select().from(aiRuns)
+  const scoped =
+    period === undefined
+      ? query
+      : query.where(or(eq(aiRuns.period, period), isNull(aiRuns.period)))
+  return scoped
+    .orderBy(desc(aiRuns.createdAt), desc(sql`rowid`))
+    .limit(limit)
+    .all()
 }
 
 /**

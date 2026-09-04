@@ -316,6 +316,7 @@ const PAYLOAD: Payload = {
 }
 
 const ESTIMATE: AiEstimate = {
+  kind: 'findings',
   month: '2026-08',
   model: 'gemini-3.7-flash',
   payloadChars: 3_100,

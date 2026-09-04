@@ -868,7 +868,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is under way, and four slices of it are on screen. The monthly
+**Where it is now** — `0.9.0` is under way, and five slices of it are on screen. The insights
+page finally has the same month picker the budget page has had since `0.3.0`: findings, the
+narrative and the run ledger now narrow to whatever month is selected, while the clarification
+queue and the proposal review stay whole on purpose, because neither is about a month and the
+page says so rather than leaving a reader to wonder why one card ignores the control above it.
+A month with no review offers one instead of showing nothing, priced first and pressed twice,
+owner only. The monthly
 narrative can now say how long a class has been outside its band rather than only that it is:
 the month-end metrics Balancr has been storing all along are counted back over, three
 consecutive month ends on the same edge earn a line, and a month nobody snapshotted ends the
@@ -895,9 +901,28 @@ name a fund from a list you vetted yourself, and what acting would cost in Belgi
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
 arrives monthly, and the container's hardening is checked rather than declared. What is left
-in `0.9.0` is a month picker on the insights page and the first proposal handlers that write
-back to Actual; its slices ship as `0.8.1`, `0.8.2`, … until that milestone closes as
-`0.9.0`.
+in `0.9.0` is the first proposal handlers that write back to Actual; its slices ship as
+`0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+
+The insights page finally has the same month picker the budget page has had since `0.6.0`
+([#158](https://github.com/nrosier/Balancr/issues/158)). Reading what the analysis said about
+August meant whatever the last nightly run happened to cover, with no way to ask for July's
+after moving on — the two pages could disagree about what a month even meant. `GET
+/api/insights` now takes the same `?month=` the budget endpoint does, resolved the same way,
+so the two pickers can never point at different months. Three of the six sections narrow with
+it — the findings, the narrative, the run ledger — because each is stored under a month, and
+reading July's page should show what was found in July and what the calls cost, not August's
+findings under July's heading. The clarification queue and the proposal review stay whole on
+purpose: both are standing work with no month of their own, and filing an unanswered question
+under the month that raised it would make it invisible from every other month anyone opens
+afterwards — the page states as much next to each queue rather than leaving a reader to wonder
+why one card ignores the control above it. A month with no review offers one instead of an
+empty card: the deterministic findings exist for every aggregated month whether or not a model
+ever ran, so that half of the page is never empty, and the other half now carries the same
+priced dry run the settings panel's prompt editor got in `0.6.0`
+([#33](https://github.com/nrosier/Balancr/issues/33)) — an estimate at the deep model's
+price, then the amount in the button's own label, owner only, and never offered for a month
+still in progress, so browsing six months of history is never six calls to Gemini.
 
 The monthly narrative can now say how long a class has been outside its band
 ([#183](https://github.com/nrosier/Balancr/issues/183)). The portfolio page states today's
