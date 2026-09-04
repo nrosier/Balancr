@@ -6,6 +6,20 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.1] — 2026-09-04
+
+### Added
+
+- **A privacy mode that blurs money on screen** ([#171](https://github.com/nrosier/Balancr/issues/171)).
+  A header toggle and a Ctrl/Cmd+Shift+E shortcut apply a CSS blur to every money
+  figure and holdings quantity — `<Money>`/`<Private>` mark the ones outside a small,
+  enforced set of exceptions (AI-operational-cost figures, account configuration
+  numbers). Hovering or focusing a figure peeks it; the choice persists across
+  reloads. It is a shoulder-check, not a data boundary: the text underneath is
+  unchanged, still selectable and still what a screen reader announces. Chart axis
+  labels are canvas-drawn and stay outside the filter's reach except on the net worth
+  chart, which blurs wholesale rather than leave its labelled trend line exposed.
+
 ## [0.10.0] — 2026-09-04
 
 ### Fixed
