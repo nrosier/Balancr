@@ -117,9 +117,16 @@
     "viewPayload": "Toon de exacte verzonden gegevens"
   },
   "proposal": {
+    "apply": "Toepassen",
+    "applySelected": "Selectie toepassen ({{count}})",
+    "applying": "Toepassen…",
+    "cancel": "Annuleren",
+    "confirmApply": "{{count}} voorstellen toepassen op Actual?",
     "diff": "Nu / voorstel",
     "expiresAt": "Verloopt op {{when}}",
     "field": {
+      "amount": "Begroot bedrag",
+      "category": "Categorie",
       "coicopCode": "Bestedingsklasse",
       "custodyShared": "Gedeeld met de andere ouder",
       "expectedFrequency": "Hoe vaak",
@@ -129,7 +136,12 @@
     },
     "hint": "Er verandert niets tot je het toepast.",
     "none": "Er staat niets te wachten om toegepast te worden.",
-    "readOnly": "Een wijziging toepassen komt in een latere versie. Voorlopig kun je precies nalezen wat er zou veranderen.",
+    "ownerOnly": "Enkel de eigenaar kan een voorstel toepassen of afwijzen.",
+    "reject": "Afwijzen",
+    "rejectSelected": "Selectie afwijzen ({{count}})",
+    "rejecting": "Afwijzen…",
+    "select": "Selecteer {{target}}",
+    "selectAll": "Alles selecteren",
     "standing": "Vast werk, niet gefilterd op de maand hierboven: een voorstel blijft hier staan tot het beoordeeld is.",
     "title": "Voorgestelde wijzigingen",
     "value": {

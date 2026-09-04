@@ -76,8 +76,14 @@ describe('budget style (#108)', () => {
 
 describe('read-only boundary', () => {
   it('the adapter references no Actual method that mutates the budget', () => {
-    // v1 never writes to Actual. The design enforces it by not re-exporting
-    // write methods, and this asserts the source keeps that promise.
+    // Almost every write stays refused by construction: not re-exported, so
+    // an accidental call is a compile error rather than a code-review catch.
+    // `updateTransaction` and `setBudgetAmount` are the two exceptions (#45)
+    // — both live behind `queries.ts`'s `updateTransactionCategory` and
+    // `setCategoryBudgetAmount`, both reachable only from an approved,
+    // audited proposal's `applyRemote` (`domain/ai/proposals.ts`), so they are
+    // removed from this denylist rather than left in it to fail. Every other
+    // mutating method stays banned.
     // Comments are stripped first: the guarantee is about code, and the files
     // legitimately *name* write methods while explaining why they are absent.
     const stripComments = (code: string): string =>
@@ -91,11 +97,9 @@ describe('read-only boundary', () => {
       .join('\n')
 
     const mutating = [
-      'setBudgetAmount',
       'setBudgetCarryover',
       'addTransactions',
       'importTransactions',
-      'updateTransaction',
       'deleteTransaction',
       'createAccount',
       'updateAccount',

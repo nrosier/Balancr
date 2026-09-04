@@ -12,9 +12,16 @@
  *     and an operator pressing "Sync now" can overlap. Every call goes through
  *     `withActual`, which serialises on a promise queue.
  *
- * **This module exposes reads only.** v1 never writes to Actual, and the way
- * that is enforced is that no write method is re-exported here — so an
- * accidental `setBudgetAmount` is a compile error, not a code-review catch.
+ * **`withActual` itself grants the full `@actual-app/api` surface** — it hands
+ * the callback the whole module, reads and writes alike, because serialising
+ * access is a concurrency concern independent of what the call does. The
+ * read-only boundary lives one level up, in `queries.ts`: until #45, no
+ * function there called a write method, so an accidental `setBudgetAmount`
+ * would have been a code-review catch rather than a compile error. #45 adds
+ * exactly two — `updateTransactionCategory`, `setCategoryBudgetAmount` — and
+ * both are reachable only from an approved, audited proposal
+ * (`domain/ai/proposals.ts`'s `applyRemote`), never from a read path. See
+ * `test/unit/actual-adapter.test.ts`'s denylist for what is still refused.
  */
 import { mkdir } from 'node:fs/promises'
 import * as api from '@actual-app/api'
