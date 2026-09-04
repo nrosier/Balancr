@@ -266,6 +266,28 @@ function Totals({ totals }: { totals: NonNullable<BudgetPayload['totals']> }): R
     { label: t('budget:metric.available'), value: euro(totals.balanceCents) },
   ]
 
+  // Whatever the month total needs saying about itself (#159), joined into the one
+  // note the card has room for. Both sentences are disclosures rather than
+  // decoration: a range counted at its top is not the same claim as an amount, and a
+  // schedule with no category is money the figure includes and the rows below cannot
+  // account for — which is why this total is deliberately not their sum.
+  const committedNotes: string[] = []
+  if (totals.committedApproximate) committedNotes.push(t('budget:committed.approximate'))
+  if (totals.committedUnallocatedCount > 0) {
+    committedNotes.push(
+      t('budget:committed.unallocated', { count: totals.committedUnallocatedCount }),
+    )
+  }
+  const committedRows: MetricRow[] =
+    totals.committedUnallocatedCents > 0
+      ? [
+          {
+            label: t('budget:metric.committedNone'),
+            value: euro(totals.committedUnallocatedCents),
+          },
+        ]
+      : []
+
   return (
     <div className="grid-cards">
       <Metric
@@ -290,6 +312,21 @@ function Totals({ totals }: { totals: NonNullable<BudgetPayload['totals']> }): R
         // rather than a smaller number.
         {...(totals.toBudgetCents < 0 ? { tone: 'negative' as const } : {})}
       />
+      {/*
+        Only when there is something to come. Zero is the correct figure for every
+        past month and for an install that keeps no schedules, and a card reading
+        "Still to come: € 0,00" beside four real ones says nothing while looking
+        like a finding.
+      */}
+      {totals.committedCents === 0 ? null : (
+        <Metric
+          label={t('budget:metric.committed')}
+          value={euro(totals.committedCents)}
+          unknown={unknown}
+          rows={committedRows}
+          {...(committedNotes.length === 0 ? {} : { note: committedNotes.join(' ') })}
+        />
+      )}
       <Metric
         label={t('budget:metric.savingsRate')}
         value={savingsRateBp === null ? null : formatBp(savingsRateBp)}
@@ -441,6 +478,16 @@ function TrendWall({ categories, months, signals }: TrendWallProps): ReactNode {
                 </span>
               )}
             </p>
+            {category.committedCents === 0 ? null : (
+              <p className="trend__note num">
+                {t(
+                  category.committedApproximate
+                    ? 'budget:committed.categoryApprox'
+                    : 'budget:committed.category',
+                  { amount: euro(category.committedCents) },
+                )}
+              </p>
+            )}
             <CategoryTrend
               name={category.categoryName}
               months={months}

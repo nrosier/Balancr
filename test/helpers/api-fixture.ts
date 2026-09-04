@@ -39,6 +39,10 @@ const totals = (month: string, income: number, spent: number): MonthTotals => ({
   fromLastMonthCents: 0,
   balanceCents: income - spent,
   savingsRateBp: income === 0 ? null : Math.round(((income - spent) / income) * 10_000),
+  committedCents: 0,
+  committedUnallocatedCents: 0,
+  committedUnallocatedCount: 0,
+  committedApproximate: false,
 })
 
 const fact = (
@@ -59,6 +63,9 @@ const fact = (
   carryoverEnabled: false,
   txnCount: 4,
   recomputedSpentCents: spent,
+  committedCents: 0,
+  committedToDateCents: 0,
+  committedApproximate: false,
   baseline: null,
   ...overrides,
 })

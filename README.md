@@ -32,13 +32,17 @@ and prioritise what it already knows.
 
 - **Where the money goes** — every category, every month, reconciled against
   Actual's own figures rather than recomputed and hoped for.
-- **Overspending, four ways** — over what you assigned, over what is *available*
-  after carryover, over your own 12-month norm, and over what a comparable Belgian
-  household spends. They are reported separately, because they mean different
-  things — and the last one is context rather than a verdict, which is why it can
-  never read as an alert.
-- **Burn rate** — projected month-end totals from spend so far, so a warning
-  arrives mid-month instead of as a post-mortem.
+- **Overspending, five ways** — over what you assigned, over what is *available*
+  after carryover, over your own 12-month norm, over what a comparable Belgian
+  household spends, and over what is left once the direct debits still to fall this
+  month are counted. They are reported separately, because they mean different
+  things — the Belgian one is context rather than a verdict, which is why it can
+  never read as an alert, and the last one fires while there is still time to move
+  money rather than after the payment has gone.
+- **Burn rate that knows the rent is scheduled** — projected month-end totals from
+  spend so far, so a warning arrives mid-month instead of as a post-mortem, with
+  Actual's schedules read so that one direct debit on the 3rd is not extrapolated
+  into ten and an envelope with a €900 payment still due never looks comfortable.
 - **What a shared cost actually costs you** — flag the categories you split with a
   co-parent and the budget page prints your share of them beside what left your
   account. Actual's figure is never adjusted; the second figure is an addition.
@@ -546,6 +550,78 @@ disclosure printed beside Actual's numbers, which is the same principle
 an extra column rather than a correction.
 
 
+## What the month has already committed
+
+A budget knows what has been spent. Between the 1st and the 28th it does not know what is
+*coming*, and the two together are what "can I still spend this" actually asks. An envelope
+with € 80 assigned, € 0 spent and a € 84,50 direct debit due on the 28th reads as untouched on
+every screen and is already over. Actual holds the answer — the schedules are right there —
+and nothing was reading them.
+
+So the budget page prints a second figure per envelope, **Still to come**, beside what was
+spent. Nothing switches it on: if there are schedules in Actual they are read on the next sync
+pass, and if there are none every figure is zero and nothing appears.
+
+### What it counts
+
+| Decision | Why |
+|---|---|
+| A separate figure, never folded into spend | "Every category total agrees with Actual" is the property the rest of this application rests on. A projection that quietly included next week's rent would break it in a way nobody could see. |
+| Only the current month | A closed month's committed figure is zero by definition: whatever was scheduled either happened, and is spend, or did not, and never will be. A past or future month returns nothing rather than a guess in either direction. |
+| Costs only | A scheduled salary is not a commitment. Netting one against a bill would answer "what is still to come" with two things at once, and would take the weight off an overspend warning with money that has not arrived. |
+| An occurrence due today still counts | On the one day a month a bill falls due it may or may not have posted. Counting it briefly puts a posted schedule in both columns and overstates the day by one bill; not counting it would understate every manual schedule for a whole day. Both are wrong on that day, and only one is wrong in the safe direction. |
+| A range counts at its upper bound | Actual shows an approximate schedule at its average. The panel note says the assumption out loud rather than leaving a figure looking exact, because the direction that cannot produce an unpleasant surprise is the useful one here. |
+| Money no rule attributes is not guessed into an envelope | Actual assigns a schedule a category through the rule it owns, and a schedule whose rule sets none is real money on a real date belonging to nothing. It counts in the month total, which says how many there are — putting it in a row would print a figure Actual will never agree with. |
+
+The month total is therefore **not always the sum of the rows above it**, and it is stored as
+its own figure rather than added up on the way to the screen. A total that disagrees with its
+rows has to be the stored one, or the next person to read the code will "fix" it.
+
+### Actual's recurrence rules, reimplemented
+
+Actual's own expansion lives in `@actual-app/core`, which publishes raw TypeScript with
+internal `#server/…` imports and takes its recurrence engine from a transitive `@rschedule`
+dependency — none of it can be imported at runtime. So the rules are reimplemented, and
+`test/unit/committed.test.ts` is a claim about what Actual would say for every frequency,
+interval, day-of-month and nth-weekday pattern, ending mode and weekend solve direction it
+offers. Two of those are worth knowing about, because each would be a plausible bug the other
+way round:
+
+- **A monthly schedule on the 31st has no occurrence in a 30-day month.** It is not clamped
+  to the 30th. Actual skips the month, and so does this.
+- **29 February in a common year is skipped without consuming a counted occurrence.** A
+  schedule set to run four times from a leap day still runs four times.
+
+A schedule whose weekend solve moves it backwards off a Sunday the 1st is paid in the
+*previous* month, and the expansion scans a few days either side of the window so it lands in
+the right one.
+
+### What it changes
+
+**The burn rate.** The projection was `spent ÷ elapsed fraction`, which gets a scheduled month
+wrong twice: on the 3rd it turns one rent into ten, and on the 20th it reports an envelope as
+comfortable that has a payment still due. It is now what has been spent, plus what is still
+committed, plus only the *unscheduled* part of the spending extrapolated over the days left.
+With no schedules anywhere both committed figures are zero and the arithmetic reduces exactly
+to the old one — asserted across five positions in the month, rather than left to the algebra.
+
+**A fifth overspend signal**, `committed_over_available`: more still scheduled to leave than
+the envelope has left. It is capped at `warn` rather than `alert`, and the distinction is the
+whole point — nothing has gone wrong yet, the money is still there, and this is the one
+finding that can be acted on before it becomes an `over_available` on the 29th. It is reported
+beside the other four and never folded into them, and it holds the same materiality floor:
+a € 4,50 shortfall is true and not worth a line.
+
+### What crosses the boundary
+
+A schedule carries a payee, an account and the rule conditions that matched it — a bank's
+`NETFLIX INTERNATIONAL B.V.` among them. Balancr's shape declares eight fields and none of
+them is any of those, so the strip in `src/adapters/actual/queries.ts` removes them, along
+with any field a future Actual version adds. What reaches the aggregation layer is an id, an
+amount, a category id, a date or a recurrence, and three flags —
+[the same rule](#privacy) every other read from Actual follows.
+
+
 ## Backups
 
 One passphrase switches them on. There is no separate flag:
@@ -746,14 +822,19 @@ ends.
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ✅ |
-| `0.9.0` | Statbel benchmark, clarification flow, proposal handlers | 🔄 `0.8.x` |
-| `0.10.0` | Budget depth: month picker, scheduled spend, analysis reuse | ⬜ |
+| `0.9.0` | Statbel benchmark, shared costs, scheduled spend, proposal handlers | 🔄 `0.8.x` |
+| `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is under way, and two slices of it are on screen. A category
+**Where it is now** — `0.9.0` is under way, and three slices of it are on screen. The
+budget page no longer waits for a direct debit to fall before it counts one: Actual's
+schedules are read, their recurrences expanded over the days left in the month, and what is
+still to come is stated per envelope beside what has already gone — so the burn rate stops
+extrapolating one rent into four, and an envelope that cannot cover a payment still due says
+so while the money can still be moved. A category
 can now be held up against something other than your own past: ten lines of Statbel's
 Household Budget Survey, your envelopes mapped onto them by COICOP division, and an
 equivalence scale that makes a one-adult household comparable to an average one — including
@@ -769,10 +850,24 @@ name a fund from a list you vetted yourself, and what acting would cost in Belgi
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
 arrives monthly, and the container's hardening is checked rather than declared. What is left
-in `0.9.0` is a projection that knows what the month has already committed, the benchmark's
-drift figure in the monthly narrative, a month picker on the insights page, and the first
-proposal handlers that write back to Actual; its slices ship as `0.8.1`, `0.8.2`, … until that
-milestone closes as `0.9.0`.
+in `0.9.0` is the benchmark's drift figure in the monthly narrative, a month picker on the
+insights page, and the first proposal handlers that write back to Actual; its slices ship as
+`0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+
+The month's projection now counts what has not been paid yet
+([#159](https://github.com/nrosier/Balancr/issues/159)). A burn rate built on elapsed time
+alone gets a scheduled month wrong twice over: on the 3rd, one direct debit that has already
+gone becomes ten by month end, and on the 20th an envelope with €80 in it and a €120 standing
+order still to fall reads as comfortable. Balancr now reads Actual's schedules, expands their
+recurrences over the days between today and month end, and puts what is still to come beside
+what was spent — per envelope on the budget page, and as a month total that includes the
+schedules Actual attributes to no category at all. The projection becomes what has been spent,
+plus what is still committed, plus only the part of the spending that was not scheduled
+extrapolated across the rest of the month, so a fully scheduled envelope is projected at
+exactly what it is scheduled for. And the fifth overspend signal fires on the difference: a
+`warn` rather than an `alert`, because the money is still in the envelope and the point of
+saying it on the 3rd is that something can still be done. See
+[What the month has already committed](#what-the-month-has-already-committed).
 
 A cost you share with a co-parent now reports both figures
 ([#44](https://github.com/nrosier/Balancr/issues/44)). Actual records what left your account,

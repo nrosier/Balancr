@@ -49,6 +49,9 @@ function fact(id: string, spentCents: number, overrides: Partial<MonthlyFact> = 
     carryoverEnabled: false,
     txnCount: 1,
     recomputedSpentCents: spentCents,
+    committedCents: 0,
+    committedToDateCents: 0,
+    committedApproximate: false,
     baseline: null,
     ...overrides,
   }

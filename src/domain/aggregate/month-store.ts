@@ -54,6 +54,10 @@ export function persistMonthTotals(
       savingsRateBp: month.savingsRateBp,
       uncategorisedTxnCount: bucket?.txnCount ?? 0,
       uncategorisedCents: bucket?.amountCents ?? 0,
+      committedCents: month.committedCents,
+      committedUnallocatedCents: month.committedUnallocatedCents,
+      committedUnallocatedCount: month.committedUnallocatedCount,
+      committedApproximate: month.committedApproximate,
       computedAt,
     }
   })
@@ -104,6 +108,10 @@ export function loadMonthTotals(db: Db, months: readonly string[]): MonthTotals[
       fromLastMonthCents: row.fromLastMonthCents,
       balanceCents: row.balanceCents,
       savingsRateBp: row.savingsRateBp,
+      committedCents: row.committedCents,
+      committedUnallocatedCents: row.committedUnallocatedCents,
+      committedUnallocatedCount: row.committedUnallocatedCount,
+      committedApproximate: row.committedApproximate,
     }))
 }
 

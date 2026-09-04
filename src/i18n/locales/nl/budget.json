@@ -85,6 +85,13 @@
     "trendTitle": "Uitgaven per categorie",
     "trendWindow": "De laatste {{window}}, oudste eerst."
   },
+  "committed": {
+    "approximate": "Een planning geeft een marge in plaats van een bedrag; die wordt op de bovengrens geteld.",
+    "category": "{{amount}} nog te komen",
+    "categoryApprox": "ongeveer {{amount}} nog te komen",
+    "unallocated_one": "{{value}} planning heeft geen categorie en telt alleen mee in het maandtotaal.",
+    "unallocated_other": "{{value}} planningen hebben geen categorie en tellen alleen mee in het maandtotaal."
+  },
   "custody": {
     "assumption": "Dit gaat ervan uit dat de volledige factuur van jouw rekening ging en dat {{share}} ervan voor jou is. Niets hiervan verandert de cijfers van Actual — wat je betaalde, betaalde je.",
     "basis": {
@@ -135,6 +142,8 @@
     "baseline": "12-maandsgemiddelde",
     "burnRate": "Verbruikstempo",
     "carryover": "Overgedragen",
+    "committed": "Nog te komen",
+    "committedNone": "Zonder categorie",
     "fromLastMonth": "Van vorige maand",
     "income": "Inkomsten",
     "projected": "Prognose einde maand",
