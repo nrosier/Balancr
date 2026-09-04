@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.8.5-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.9.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -861,21 +861,21 @@ ends.
 | `0.6.0` | Web UI: overview, budget, portfolio, insights, settings | ✅ |
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ✅ |
-| `0.9.0` | Statbel benchmark, shared costs, scheduled spend, proposal handlers | 🔄 `0.8.x` |
+| `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ⬜ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is under way, and five slices of it are on screen. The insights
-page finally has the same month picker the budget page has had since `0.6.0`: findings, the
-narrative and the run ledger now narrow to whatever month is selected, while the clarification
-queue and the proposal review stay whole on purpose, because neither is about a month and the
-page says so rather than leaving a reader to wonder why one card ignores the control above it.
-A month with no review offers one instead of showing nothing, priced first and pressed twice,
-owner only. The monthly
-narrative can now say how long a class has been outside its band rather than only that it is:
+**Where it is now** — `0.9.0` is done, on five slices rather than the six the milestone
+opened with. The insights page has the same month picker the budget page has had since
+`0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
+while the clarification queue and the proposal review stay whole on purpose, because neither
+is about a month and the page says so rather than leaving a reader to wonder why one card
+ignores the control above it. A month with no review offers one instead of showing nothing,
+priced first and pressed twice, owner only. The monthly
+narrative can say how long a class has been outside its band rather than only that it is:
 the month-end metrics Balancr has been storing all along are counted back over, three
 consecutive month ends on the same edge earn a line, and a month nobody snapshotted ends the
 count instead of being counted through — with the profile, the bands and the counts crossing
@@ -886,23 +886,29 @@ schedules are read, their recurrences expanded over the days left in the month, 
 still to come is stated per envelope beside what has already gone — so the burn rate stops
 extrapolating one rent into four, and an envelope that cannot cover a payment still due says
 so while the money can still be moved. A category
-can now be held up against something other than your own past: ten lines of Statbel's
+can be held up against something other than your own past: ten lines of Statbel's
 Household Budget Survey, your envelopes mapped onto them by COICOP division, and an
 equivalence scale that makes a one-adult household comparable to an average one — including
 a member who is here half the time, which the published scale has no notion of and which
 every screen printing the figure says out loud. A difference reads as context and can never
 read as an alert: a national average is evidence about the country, not about you. And a cost
-split with a co-parent now says what it actually cost you, beside what left the account and
+split with a co-parent says what it actually cost you, beside what left the account and
 never instead of it — flag the categories, state the share or let the roster imply it, and
-the budget page prints your half of a school bill next to the whole of it. Behind
-that, `0.8.0` is done — what is held is measured against a risk profile you set in numbers,
+the budget page prints your half of a school bill next to the whole of it. The
+milestone's sixth item, Actual-writing proposal handlers, is not among them: its own
+acceptance criteria ask for the read path to have been trusted for a while first, and a
+near-empty milestone is not that. It moves to the backlog rather than to a numbered one —
+[#45](https://github.com/nrosier/Balancr/issues/45) — since there is no fixed amount of
+read-path time that discharges the condition; it is a decision to make deliberately when it
+comes up again, not a deadline to schedule against. Behind
+`0.9.0`, `0.8.0` is done — what is held is measured against a risk profile you set in numbers,
 every class outside its band arrives with the trade that would close it, that trade may only
 name a fund from a list you vetted yourself, and what acting would cost in Belgian tax is
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
-arrives monthly, and the container's hardening is checked rather than declared. What is left
-in `0.9.0` is the first proposal handlers that write back to Actual; its slices ship as
-`0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+arrives monthly, and the container's hardening is checked rather than declared. `0.10.0` is
+next and has not started: re-judging a month whose transactions changed after it was already
+reviewed, and reusing an analysis when nothing that feeds it has changed.
 
 The insights page finally has the same month picker the budget page has had since `0.6.0`
 ([#158](https://github.com/nrosier/Balancr/issues/158)). Reading what the analysis said about
