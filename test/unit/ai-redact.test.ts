@@ -258,6 +258,63 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
       },
       holdingCount: 2,
     },
+    // Fully populated on purpose, and with every state represented: the allowlist walk
+    // only sees a field that is actually present, so a `drift` with everything inside
+    // its band would leave `outsideBp` and `monthsOutside` untested (#183).
+    drift: {
+      persistence: {
+        lines: [
+          {
+            assetClass: 'EQUITY',
+            valueCents: 3_600_000,
+            shareBp: 8_571,
+            minBp: 5_500,
+            targetBp: 6_500,
+            maxBp: 7_500,
+            driftBp: -2_071,
+            state: 'above',
+            outsideBp: 1_071,
+            gapCents: -449_820,
+            monthsOutside: 3,
+          },
+          {
+            assetClass: 'FIXED_INCOME',
+            valueCents: 600_000,
+            shareBp: 1_429,
+            minBp: 2_000,
+            targetBp: 3_000,
+            maxBp: 4_000,
+            driftBp: 1_571,
+            state: 'below',
+            outsideBp: 571,
+            gapCents: 659_820,
+            monthsOutside: 3,
+          },
+          {
+            assetClass: 'REAL_ESTATE',
+            valueCents: 0,
+            shareBp: 0,
+            minBp: 0,
+            targetBp: 500,
+            maxBp: 1_500,
+            driftBp: 500,
+            state: 'inside',
+            outsideBp: 0,
+            gapCents: 210_000,
+            monthsOutside: 0,
+          },
+        ],
+        profile: 'balanced',
+        isPreset: true,
+        monthsObserved: 4,
+      },
+      toleranceBp: 100,
+      minTradeCents: 50_000,
+      suggestionCount: 1,
+      skippedCount: 1,
+      unmappedCount: 1,
+      unmappedShareBp: 300,
+    },
     accounts: [
       account(),
       account({
@@ -573,6 +630,77 @@ describe('the portfolio crosses as a shape, not as holdings', () => {
 
   it('is null when there is no snapshot, rather than a zeroed portfolio', () => {
     expect(redact(bundle({ portfolio: null })).payload.portfolio).toBeNull()
+  })
+})
+
+describe('the drift crosses as bands and counts, not as trades', () => {
+  it('sends the profile, so the narrative can say what the bands are', () => {
+    const sent = redact(bundle()).payload.drift
+    expect(sent?.profile).toBe('balanced')
+    expect(sent?.isPreset).toBe(true)
+    expect(sent?.monthsObserved).toBe(4)
+    expect(sent?.toleranceBp).toBe(100)
+    expect(sent?.minTradeCents).toBe(50_000)
+  })
+
+  it('sends one line per class, with how long it has been outside its band', () => {
+    const sent = redact(bundle()).payload.drift
+    expect(sent?.lines.map((line) => line.assetClass)).toEqual([
+      'EQUITY',
+      'FIXED_INCOME',
+      'REAL_ESTATE',
+    ])
+    const equity = sent?.lines[0]
+    expect(equity?.state).toBe('above')
+    expect(equity?.shareBp).toBe(8_571)
+    expect(equity?.maxBp).toBe(7_500)
+    // The count is the only figure here the portfolio page does not already show, and
+    // the whole reason the block exists: it is what separates a market that moved from
+    // a rebalance nobody did (#183).
+    expect(equity?.monthsOutside).toBe(3)
+  })
+
+  it('carries no field on a line nobody decided to send', () => {
+    // A `DriftLine` is copied field by field rather than spread, so a field added to it
+    // downstream reaches Gemini only if somebody puts it here. The instruments the drift
+    // was computed from — the suggestions especially, which name a fund to buy — are the
+    // reason: they hang off the same advice object one layer up.
+    //
+    // Two of the line's own fields are out on top of that, and not by omission: the
+    // class's `valueCents` is already in the `portfolio` block, and `driftBp` is the
+    // distance from *target* where `outsideBp` is the distance past the edge. Sending
+    // both invites a sentence about whichever is larger.
+    const sent = redact(bundle()).payload.drift
+    for (const line of sent?.lines ?? []) {
+      expect(Object.keys(line).sort()).toEqual([
+        'assetClass',
+        'gapCents',
+        'maxBp',
+        'minBp',
+        'monthsOutside',
+        'outsideBp',
+        'shareBp',
+        'state',
+        'targetBp',
+      ])
+    }
+  })
+
+  it('reduces the trades to counts, naming no instrument to buy or sell', () => {
+    // `buildAdvice` produces suggestions with a symbol, a name and a quantity, and a
+    // skipped list saying which fund was below the minimum trade. Both are real content
+    // about a holding, so what crosses is how many there were.
+    const sent = redact(bundle()).payload.drift
+    expect(sent?.suggestionCount).toBe(1)
+    expect(sent?.skippedCount).toBe(1)
+    // Unmapped positions are worse still: the entry *is* Ghostfolio's own string for an
+    // instrument it could not classify. A count and a share is all of it that survives.
+    expect(sent?.unmappedCount).toBe(1)
+    expect(sent?.unmappedShareBp).toBe(300)
+  })
+
+  it('is null when there is no portfolio to measure against a profile', () => {
+    expect(redact(bundle({ drift: null })).payload.drift).toBeNull()
   })
 })
 

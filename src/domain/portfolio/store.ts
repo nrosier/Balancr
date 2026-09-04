@@ -291,3 +291,36 @@ export function loadPortfolioValueHistory(db: Db): { date: string; totalCents: n
     .orderBy(portfolioMetrics.date)
     .all()
 }
+
+/**
+ * The last metrics row of each of the most recent `months` calendar months, ascending.
+ *
+ * One row per month rather than every snapshot, because the question it answers is "has
+ * this class been outside its band for three months" (#183) and a portfolio that is
+ * snapshotted daily would otherwise answer it in days. The last row of a month is the
+ * one that agrees with the portfolio page for the current month — `latestSnapshotDate`
+ * returns the same date — so the newest point of the series and the figure on screen are
+ * the same figure rather than two readings a day apart.
+ *
+ * Months with no row at all are simply absent, and the caller has to notice: a gap is
+ * not a month in which nothing drifted, it is a month nobody looked at, and treating the
+ * two alike is how a run of three becomes a run of three with a hole in it.
+ */
+export function monthEndMetrics(db: Db, months: number): PortfolioMetricsResult[] {
+  if (months <= 0) return []
+  const dates = db
+    .select({ date: sql<string>`max(${portfolioMetrics.date})` })
+    .from(portfolioMetrics)
+    .groupBy(sql`substr(${portfolioMetrics.date}, 1, 7)`)
+    .orderBy(sql`substr(${portfolioMetrics.date}, 1, 7) desc`)
+    .limit(months)
+    .all()
+
+  const loaded: PortfolioMetricsResult[] = []
+  // Ascending, oldest first, like every other history in this codebase.
+  for (const row of [...dates].reverse()) {
+    const metrics = loadPortfolioMetrics(db, row.date)
+    if (metrics !== null) loaded.push(metrics)
+  }
+  return loaded
+}

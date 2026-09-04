@@ -67,6 +67,10 @@ const ALL_METRICS: Record<string, number> = {
   paidCents: 52_000,
   borneCents: 26_000,
   shareBp: 5_000,
+  // drift (#183): a class outside its band, and how long for
+  monthsOutside: 3,
+  minBp: 2_000,
+  maxBp: 7_500,
   // hygiene
   count: 1_312,
   differenceCents: -1_450,
@@ -76,13 +80,21 @@ const ALL_METRICS: Record<string, number> = {
   limitDays: 30,
 }
 
+/** Codes whose `categoryName` is a closed-set id, and the id to test each one with. */
+const NAMES_AN_ID: Partial<Record<FindingCode, string>> = {
+  above_benchmark: 'housing',
+  drift_above_band: 'EQUITY',
+  drift_below_band: 'FIXED_INCOME',
+}
+
 const signal = (code: FindingCode, overrides: Partial<Signal> = {}): Signal => ({
   code,
   categoryId: 'cat-1',
-  // `above_benchmark` is the one code whose name field is not a name: it carries one of
-  // the ten benchmark group ids, which is *translated* rather than printed (#43). A
-  // category name in there is a missing translation, which is exactly what it should be.
-  categoryName: code === 'above_benchmark' ? 'housing' : 'Groceries',
+  // Three codes carry an id in the name field rather than a name, and every one of them
+  // is *translated* rather than printed: `above_benchmark` one of the ten benchmark group
+  // ids (#43), the two drift codes one of the four asset classes (#183). A category name
+  // in there is a missing translation, which is exactly what it should be.
+  categoryName: NAMES_AN_ID[code] ?? 'Groceries',
   severity: 'warn',
   metrics: ALL_METRICS,
   ...overrides,

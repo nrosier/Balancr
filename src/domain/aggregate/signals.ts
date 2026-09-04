@@ -11,6 +11,7 @@
  * Pure: the clock arrives as `today` and `monthProgress`, the data as arrays. The
  * job in `jobs/signals.ts` does the reading and the writing.
  */
+import { driftSignals, type DriftPersistence } from '../advice/persistence.ts'
 import type { BenchmarkComparison } from '../benchmark/compare.ts'
 import { assertDenseMonths } from '../../util/month.ts'
 import type { MonthValue } from './baseline.ts'
@@ -61,6 +62,18 @@ export interface SignalInput {
    * reads the category flags and a settings row, and this module is pure.
    */
   custody: CustodySplit
+  /**
+   * How long each portfolio class has been outside its band, or null (#183).
+   *
+   * Null for every month but one, and deliberately: a drift is a fact about the latest
+   * snapshot, not about the month being judged, so attaching today's reading to each of
+   * the twelve months in the pass would claim the portfolio looked like this in every one
+   * of them. The caller passes it for the month the snapshot falls in and nowhere else.
+   *
+   * Pre-computed by the caller for the same reason `benchmark` and `custody` are: it reads
+   * the risk profile and a series of snapshots, and this module is pure.
+   */
+  drift: DriftPersistence | null
   params: AggregateParams
 }
 
@@ -118,6 +131,7 @@ export function computeSignals(input: SignalInput): SignalResult {
     }),
     ...benchmarkSignals(input.benchmark, input.params),
     ...custodySignals(input.custody, input.params),
+    ...driftSignals(input.drift, input.params),
     ...hygiene.signals,
   ]
 
