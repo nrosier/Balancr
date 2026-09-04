@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.9.0] — 2026-09-04
+
+### Changed
+
+- **Milestone `v0.9.0` closes without Actual-writing proposal handlers**
+  ([#45](https://github.com/nrosier/Balancr/issues/45)). The rest of the milestone —
+  the Statbel benchmark, the shared-cost split, the schedule-aware spend projection, and
+  the insights page's month picker — is done and on screen. #45 is a different kind of
+  change from those four: every one of Balancr's writes so far has been to its own SQLite,
+  and #45 is the first that would touch Actual's budget itself. Its own acceptance
+  criteria ask for the read path to have "been trusted for a while" first, which a
+  near-empty milestone is not a reason to shorten. It moves to the backlog rather than to
+  a numbered milestone, since there is no fixed amount of read-path time that discharges
+  the condition — it is a decision to make deliberately when it comes up again, not a
+  deadline to schedule against.
+
 ## [0.8.5] — 2026-09-04
 
 ### Added
