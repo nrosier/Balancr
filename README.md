@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.10.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.10.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -913,7 +913,13 @@ never a silent re-run, only a stale banner the owner can price and press. And th
 pass stopped paying three times for the same answer: it now checks, before the budget
 gate, whether an identical call — same month, same redacted payload, same prompt version,
 same model — was already answered, and serves that stored answer for free rather than
-asking Gemini again. Behind
+asking Gemini again. Riding
+between milestones rather than inside one,
+[#171](https://github.com/nrosier/Balancr/issues/171) landed from the backlog: a
+header toggle and a Ctrl/Cmd+Shift+E shortcut blur every money figure and holdings
+quantity on screen, for a shoulder glance rather than a threat model — the text
+underneath is unchanged, still selectable, still what a screen reader announces.
+[Privacy mode](#privacy-mode) says exactly what it does and does not cover. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
