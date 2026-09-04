@@ -41,6 +41,7 @@ const LANGUAGES = ['en', 'nl'] as const
 /** Every value of the union, enforced by the compiler rather than by a comment. */
 const REASONS: Record<AnalysisReason, true> = {
   ok: true,
+  reused: true,
   no_facts: true,
   month_budget_exceeded: true,
   estimate_exceeds_remaining: true,

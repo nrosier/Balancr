@@ -82,7 +82,7 @@ export function narrativePeriod(now: Date): string {
   return addMonths(spendMonthOf(now), -1)
 }
 
-async function run({ db, now, log }: JobContext): Promise<JobDetail> {
+async function run({ db, now, log, force }: JobContext): Promise<JobDetail> {
   // First, because it is free and correct even on a night with no network.
   const expired = expireProposals(db, now)
 
@@ -113,7 +113,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
 
   const analyses: AnalysisOutcome[] = []
   for (const month of monthsToAnalyse(latest, now, config.TZ)) {
-    analyses.push(await runAnalysis(db, { month, now, userId: null }))
+    analyses.push(await runAnalysis(db, { month, now, userId: null, force: force ?? false }))
   }
 
   // The narrative comes after the analysis on purpose: it reads the same month's
@@ -123,6 +123,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     period: narrativePeriod(now),
     now,
     userId: null,
+    force: force ?? false,
   })
 
   // The latest month is the one a page is about, so its status is the one the ops

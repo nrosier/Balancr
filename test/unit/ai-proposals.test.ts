@@ -59,6 +59,7 @@ beforeEach(() => {
     model: 'gemini-3.7-flash',
     locale: 'en',
     payload: {},
+    payloadHash: 'unrelated-hash',
     status: 'ok',
   })
   seedMonth(db, MONTH, {

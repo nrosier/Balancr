@@ -21,6 +21,7 @@
  * returns the deterministic list, so the page degrades to real findings in a
  * defensible order instead of showing an error.
  */
+import { eq } from 'drizzle-orm'
 import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
 import {
@@ -43,10 +44,11 @@ import type { ClarificationCode } from './codes.ts'
 import { collectBundle } from './bundle.ts'
 import { enqueueClarifications } from './clarify.ts'
 import { DEFAULT_CAPS, rankSignals, type RankCaps } from './findings.ts'
+import { hashPayload } from './payload-hash.ts'
 import { composeSystemPrompt, loadPrompt, resolvePrompt, type ResolvedPrompt } from './prompts.ts'
 import { redact, type AnalysisBundle, type RedactedPayload } from './redact.ts'
 import { renderSignals, type RenderedFinding } from './render.ts'
-import { recordRun } from './runs.ts'
+import { findReusableRun, recordRun } from './runs.ts'
 
 const log = logger.child({ module: 'ai.analysis' })
 
@@ -84,6 +86,7 @@ export type AnalysisStatus = 'ok' | 'capped' | 'error' | 'skipped'
 
 export type AnalysisReason =
   | 'ok'
+  | 'reused'
   | 'no_facts'
   | 'month_budget_exceeded'
   | 'estimate_exceeds_remaining'
@@ -135,6 +138,12 @@ export interface AnalysisOptions {
    * run that silently tested something else is worse than an error message.
    */
   promptId?: string
+  /**
+   * Skips the reuse lookup and always calls the model — the plain meaning of
+   * a button labelled "run again anyway", not a silent hash comparison that
+   * might still hand back the old text (#160).
+   */
+  force?: boolean
   /**
    * `false` runs everything and stores nothing but the ledger row.
    *
@@ -297,6 +306,38 @@ function renderGrounded(
 const renderDeterministic = (signals: readonly Signal[], locale: string): AnalysisFinding[] =>
   renderSignals(signals, locale).map((finding) => ({ ...finding, confidence: null }))
 
+const findingKey = (categoryId: string | null, code: string): string => `${categoryId ?? ''}:${code}`
+
+/**
+ * A past run's findings, re-rendered for this call instead of asked for again (#160).
+ *
+ * There is no model response to ground against on a reuse — the stored finding
+ * *is* the ground truth — so this keys the stored `(categoryId, code)` pairs
+ * back into this month's own signals (which a matching payload hash guarantees
+ * are the same signals the source run saw) and renders from those, the model's
+ * severity and confidence carried over from the stored row.
+ */
+function reconstructFindings(
+  db: Db,
+  sourceRunId: string,
+  signals: readonly Signal[],
+  locale: string,
+): AnalysisFinding[] {
+  const byKey = new Map<string, Signal>()
+  for (const signal of signals) byKey.set(findingKey(signal.categoryId, signal.code), signal)
+
+  const rows = db.select().from(aiFindings).where(eq(aiFindings.runId, sourceRunId)).all()
+  const out: AnalysisFinding[] = []
+  for (const row of rows) {
+    const source = byKey.get(findingKey(row.categoryId, row.code))
+    if (source === undefined) continue
+    const [rendered] = renderSignals([{ ...source, severity: row.severity }], locale)
+    if (rendered === undefined) continue
+    out.push({ ...rendered, confidence: row.confidence })
+  }
+  return out
+}
+
 /**
  * A model clarification → a question about a real category.
  *
@@ -374,6 +415,19 @@ export function estimateAnalysis(
   }
 
   const payloadChars = JSON.stringify(prepared.payload).length
+  const prompt = resolvePromptFor(db, locale, undefined)
+  const reused = findReusableRun(db, {
+    kind: 'findings',
+    period: options.month,
+    locale,
+    payloadHash: hashPayload(prepared.payload),
+    promptId: prompt.id,
+    model,
+  })
+  if (reused !== null) {
+    return { month: options.month, model, payloadChars, estimateMicroEur: 0, allowed: true, reason: 'reused' }
+  }
+
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, estimateMicroEur, options.now ?? new Date())
 
@@ -441,6 +495,46 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   }
 
   const { ranked, payload, sources, categoryIdFor, nameFor } = prepared
+  const payloadHash = hashPayload(payload)
+  // Resolved before the budget check, not after: the prompt version is part of
+  // the reuse key, and the reuse check has to run before a free answer could be
+  // wrongly refused for being "over budget" (#160).
+  const prompt = resolvePromptFor(db, locale, options.promptId)
+
+  if (options.force !== true) {
+    const reused = findReusableRun(db, {
+      kind,
+      period: month,
+      locale,
+      payloadHash,
+      promptId: prompt.id,
+      model,
+    })
+    if (reused !== null) {
+      const runId = recordRun(db, {
+        kind,
+        model,
+        locale,
+        period: month,
+        payload,
+        payloadHash,
+        promptId: prompt.id,
+        status: 'reused',
+        reusedFromRunId: reused.id,
+        userId: options.userId ?? null,
+      })
+      log.info({ month, reusedFromRunId: reused.id }, 'analysis served from a matching past run')
+      return {
+        ...base,
+        status: 'ok',
+        reason: 'reused',
+        runId,
+        degraded: false,
+        findings: reconstructFindings(db, reused.id, ranked, locale),
+        costMicroEur: 0,
+      }
+    }
+  }
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, estimate, now)
@@ -453,6 +547,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
       locale,
       period: month,
       payload,
+      payloadHash,
       status: 'capped',
       error: decision.reason,
       userId: options.userId ?? null,
@@ -468,8 +563,6 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
       costMicroEur: 0,
     }
   }
-
-  const prompt = resolvePromptFor(db, locale, options.promptId)
 
   let result
   try {
@@ -489,6 +582,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
       locale,
       period: month,
       payload,
+      payloadHash,
       status: 'error',
       promptId: prompt.id,
       error: message,
@@ -519,6 +613,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
       locale,
       period: month,
       payload,
+      payloadHash,
       status: 'error',
       promptId: prompt.id,
       usage: result.usage,
@@ -547,6 +642,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
     locale,
     period: month,
     payload,
+    payloadHash,
     status: 'ok',
     promptId: prompt.id,
     usage: result.usage,

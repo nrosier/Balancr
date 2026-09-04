@@ -41,7 +41,8 @@
       "estimate_exceeds_remaining": "A run would cost more than this month has left.",
       "month_budget_exceeded": "This month's budget is already spent.",
       "no_facts": "That month has no aggregated figures to analyse.",
-      "ok": "Completed."
+      "ok": "Completed.",
+      "reused": "Answered from a past run with nothing new to check — no charge."
     },
     "remaining": "Left this month",
     "rerun": {

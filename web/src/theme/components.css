@@ -625,7 +625,8 @@
   color: var(--positive);
 }
 
-.badge--info {
+.badge--info,
+.badge--reused {
   background: var(--info-soft);
   color: var(--info);
 }

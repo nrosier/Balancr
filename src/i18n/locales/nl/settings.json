@@ -41,7 +41,8 @@
       "estimate_exceeds_remaining": "Een analyse zou meer kosten dan er deze maand nog over is.",
       "month_budget_exceeded": "Het budget van deze maand is al opgebruikt.",
       "no_facts": "Voor die maand zijn er geen samengevatte cijfers om te analyseren.",
-      "ok": "Afgerond."
+      "ok": "Afgerond.",
+      "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten."
     },
     "remaining": "Nog over deze maand",
     "rerun": {

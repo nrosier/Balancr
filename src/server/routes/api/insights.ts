@@ -170,6 +170,7 @@ function wireRun(row: AiRunRow): AiRun {
     durationMs: row.durationMs,
     error: row.error,
     period: row.period,
+    reusedFromRunId: row.reusedFromRunId,
     createdAt: row.createdAt.toISOString(),
   }
 }

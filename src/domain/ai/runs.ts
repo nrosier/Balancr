@@ -32,7 +32,15 @@ export interface RecordRun {
   locale: string
   /** The redacted payload. Serialised here, so no caller can store a summary. */
   payload: unknown
+  /**
+   * Hash of `payload`, computed by the caller once per attempt and reused
+   * across every `recordRun` call in it — a `capped`/`error` row carries it
+   * too, so a later attempt with the same inputs can find it (#160).
+   */
+  payloadHash: string
   status: RunStatus
+  /** The `ok` run this one served for free instead of calling the model. */
+  reusedFromRunId?: string | null
   /** Null for a run that used the built-in prompt rather than a stored version. */
   promptId?: string | null
   /**
@@ -78,6 +86,8 @@ export function recordRun(db: Db, run: RecordRun): string {
       locale: run.locale,
       period: run.period ?? null,
       payloadJson: JSON.stringify(run.payload),
+      payloadHash: run.payloadHash,
+      reusedFromRunId: run.reusedFromRunId ?? null,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       cachedTokens: usage.cachedTokens,
@@ -115,6 +125,54 @@ export function latestSuccessfulRun(db: Db, kind: RunKind): AiRunRow | null {
       .limit(1)
       .get() ?? null
   )
+}
+
+export interface ReuseKey {
+  kind: RunKind
+  period: string
+  locale: string
+  payloadHash: string
+  promptId: string | null
+  model: string
+}
+
+/**
+ * A past call that answered exactly this question, so this one does not have
+ * to (#160).
+ *
+ * `status = 'ok'` only, on purpose: a `reused` row never chains to another —
+ * every reuse traces back to exactly one real call — and a `capped`/`error`
+ * row has nothing to serve. Newest first, so a prompt rolled back to an old
+ * version still finds the most recent matching answer rather than the first
+ * one ever recorded.
+ *
+ * `model` is matched by prefix rather than equality: a stored row's `model` is
+ * *the model that answered* (`result.model` — Google's exact snapshot, e.g.
+ * `gemini-3.7-flash-002`), while `key.model` is *the model about to be asked
+ * for* (the configured alias, e.g. `gemini-3.7-flash`) — the same alias every
+ * time, since we cannot know which snapshot would answer without already
+ * having called it. An equality check would never match anything the alias
+ * ever produced. This mirrors `priceFor`'s own family-match convention, which
+ * already treats the two as the same model for billing.
+ */
+export function findReusableRun(db: Db, key: ReuseKey): AiRunRow | null {
+  const candidates = db
+    .select()
+    .from(aiRuns)
+    .where(
+      and(
+        eq(aiRuns.kind, key.kind),
+        eq(aiRuns.period, key.period),
+        eq(aiRuns.locale, key.locale),
+        eq(aiRuns.payloadHash, key.payloadHash),
+        key.promptId === null ? isNull(aiRuns.promptId) : eq(aiRuns.promptId, key.promptId),
+        eq(aiRuns.status, 'ok'),
+      ),
+    )
+    .orderBy(desc(aiRuns.createdAt))
+    .all()
+
+  return candidates.find((row) => row.model.startsWith(key.model)) ?? null
 }
 
 /**

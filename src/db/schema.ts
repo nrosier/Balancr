@@ -20,6 +20,7 @@ import {
   sqliteView,
   text,
   uniqueIndex,
+  type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core'
 
 const uuid = () => text().$defaultFn(() => crypto.randomUUID())
@@ -728,12 +729,23 @@ export const aiRuns = sqliteTable(
      * payload it would have sent, which is what makes the refusal inspectable.
      */
     payloadJson: text('payload_json').notNull(),
+    /**
+     * Hash of the exact bytes sent (or that would have been sent), null for
+     * runs recorded before this column existed. Every attempt gets one,
+     * whatever its status, because a `capped` run's hash still tells a later
+     * attempt with the same inputs that nothing has changed (#160).
+     */
+    payloadHash: text('payload_hash'),
+    /** The `ok` run this one served for free instead of calling the model. */
+    reusedFromRunId: text('reused_from_run_id').references((): AnySQLiteColumn => aiRuns.id, {
+      onDelete: 'set null',
+    }),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
     cachedTokens: integer('cached_tokens').notNull().default(0),
     /** Micro-euros: cents are too coarse for a single Flash call. */
     costMicroEur: integer('cost_micro_eur').notNull().default(0),
-    status: text({ enum: ['ok', 'error', 'blocked', 'capped'] }).notNull(),
+    status: text({ enum: ['ok', 'error', 'blocked', 'capped', 'reused'] }).notNull(),
     error: text(),
     durationMs: integer('duration_ms'),
     createdAt: createdAt(),
@@ -744,6 +756,9 @@ export const aiRuns = sqliteTable(
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
     // The insights ledger's own query: one month, newest first.
     index('ai_runs_period_idx').on(t.period, t.createdAt),
+    // `findReusableRun`'s own lookup: the two most selective columns, narrowed
+    // further from there by the equality checks on kind/locale/promptId/model.
+    index('ai_runs_reuse_idx').on(t.period, t.payloadHash),
   ],
 )
 
