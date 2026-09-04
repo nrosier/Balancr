@@ -39,6 +39,7 @@ import {
 import { FREQUENCY_WINDOW } from '../domain/aggregate/baseline.ts'
 import { committedForMonth, emptyCommitted } from '../domain/aggregate/committed.ts'
 import { loadFrequencies, persistFacts, syncCategoryMeta } from '../domain/aggregate/facts.ts'
+import { monthFingerprint } from '../domain/aggregate/fingerprint.ts'
 import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { aggregateSpend } from '../domain/aggregate/spend.ts'
@@ -278,7 +279,22 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
   // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
   // baseline are dropped: there is no month row to hang them on, and a to-do list
   // reaching further back than any page shows is not a to-do list.
-  const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised)
+  const factsByMonth = new Map<string, typeof aggregate.facts>()
+  for (const fact of aggregate.facts) {
+    const bucket = factsByMonth.get(fact.month)
+    if (bucket === undefined) factsByMonth.set(fact.month, [fact])
+    else bucket.push(fact)
+  }
+  // A per-month fingerprint of the facts a judgement depends on (#162), so
+  // `signals.ts` can tell a month whose figures actually moved from one that
+  // was merely rewritten with the same numbers.
+  const fingerprints = new Map(
+    aggregate.totals.map((total) => [
+      total.month,
+      monthFingerprint(factsByMonth.get(total.month) ?? [], total),
+    ]),
+  )
+  const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised, fingerprints)
   const drift = persistMismatches(db, aggregate.mismatches, targets)
   const accounts = await syncAccounts(db, log)
 

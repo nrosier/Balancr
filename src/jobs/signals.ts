@@ -26,6 +26,7 @@ import {
   loadMismatches,
   loadTrailingTotals,
   loadUncategorised,
+  storedMonths,
 } from '../domain/aggregate/month-store.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
@@ -34,19 +35,24 @@ import type { DriftPersistence } from '../domain/advice/persistence.ts'
 import { custodyContext, splitMonth } from '../domain/aggregate/custody-context.ts'
 import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
-import { persistSignals } from '../domain/aggregate/signals-store.ts'
+import { persistSignals, staleMonths } from '../domain/aggregate/signals-store.ts'
 import { latestSnapshotDate } from '../domain/portfolio/store.ts'
 import { addMonths, dateIn, isDate, monthProgress } from '../util/month.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
 /**
- * How many months this pass rejudges, counting back from the latest stored one.
+ * How many months this pass rejudges every night, regardless of whether anything
+ * changed, counting back from the latest stored one.
  *
  * Two, not one. The month being judged is normally the current one, but on the
  * first night of a new month the month that just ended has never been seen in its
  * final state — its last few days of spend arrived after the previous run — and
  * nothing else would ever revisit it. Two months is also what makes a mid-month
  * correction to `category_meta` show up on last month's page.
+ *
+ * This floor stands independently of `staleMonths` (#162): a month can need
+ * rejudging because its own facts just changed, or because it is one of these
+ * two, and the two reasons don't overlap in general.
  */
 const MONTHS_JUDGED = 2
 
@@ -155,7 +161,10 @@ export function judgeMonth(
     params: shared.params,
   })
 
-  const stored = persistSignals(db, month, result.signals, result.hygiene)
+  // The fingerprint that was true for this exact run (#162), so a later pass
+  // can tell whether the month needs rejudging without recomputing anything.
+  const factsHash = totalsHistory.find((totals) => totals.month === month)?.factsHash ?? null
+  const stored = persistSignals(db, month, result.signals, result.hygiene, factsHash)
   return { signals: stored.signals, scoreBp: result.hygiene.scoreBp }
 }
 
@@ -184,13 +193,19 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     driftMonth: latestSnapshot === null ? null : latestSnapshot.slice(0, 7),
   }
 
+  // The floor (always judged) union'd with every month whose fact fingerprint
+  // has moved since it was last judged (#162) — an edit landed in a month
+  // outside the floor, and nothing else would ever revisit it.
+  const floor: string[] = []
+  for (let back = MONTHS_JUDGED - 1; back >= 0; back -= 1) floor.push(addMonths(latest, -back))
+  const judgedMonths = [...new Set([...floor, ...staleMonths(db, storedMonths(db))])].sort()
+
   let months = 0
   let signals = 0
   let scoreBp: number | null = null
   // Ascending, so `scoreBp` in the detail ends up being the latest month's — the
   // one an operator reading the ops table is asking about.
-  for (let back = MONTHS_JUDGED - 1; back >= 0; back -= 1) {
-    const month = addMonths(latest, -back)
+  for (const month of judgedMonths) {
     const judged = judgeMonth(db, month, monthProgress(month, now, config.TZ), shared)
     if (judged === null) continue
     months += 1

@@ -11,9 +11,9 @@
  * throwing. Removing a code should not make an old month unopenable, and the next
  * pass clears the row anyway.
  */
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
-import { monthlyHygiene, monthlySignals } from '../../db/schema.ts'
+import { monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
 import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
 import type { Signal } from './overspend.ts'
@@ -34,11 +34,18 @@ export interface SignalPersistResult {
   signals: number
 }
 
+/**
+ * `factsHash` (#162) is the fingerprint that was true when this judgement ran —
+ * stored so a later pass can tell whether the month needs rejudging without
+ * recomputing anything. Null for a month whose totals row has no fingerprint
+ * yet (pre-migration, or never synced).
+ */
 export function persistSignals(
   db: Db,
   month: string,
   signals: readonly Signal[],
   hygiene: HygieneScore,
+  factsHash: string | null = null,
 ): SignalPersistResult {
   const computedAt = new Date()
   const rows = signals.map((signal) => ({
@@ -59,10 +66,16 @@ export function persistSignals(
     if (rows.length > 0) tx.insert(monthlySignals).values(rows).run()
 
     tx.insert(monthlyHygiene)
-      .values({ month, scoreBp: hygiene.scoreBp, deductionsJson, computedAt })
+      .values({
+        month,
+        scoreBp: hygiene.scoreBp,
+        deductionsJson,
+        judgedFactsHash: factsHash,
+        computedAt,
+      })
       .onConflictDoUpdate({
         target: monthlyHygiene.month,
-        set: { scoreBp: hygiene.scoreBp, deductionsJson, computedAt },
+        set: { scoreBp: hygiene.scoreBp, deductionsJson, judgedFactsHash: factsHash, computedAt },
       })
       .run()
   })
@@ -116,6 +129,32 @@ export function loadSignals(db: Db, month: string): Signal[] {
     })
   }
   return signals
+}
+
+/**
+ * Which of `months` have a fact fingerprint that has moved since they were
+ * last judged (#162) — an edit landed in a month that is not one of the
+ * ones `signals.ts` rejudges every night regardless.
+ *
+ * A month with no stored fingerprint yet (`factsHash` null — never synced,
+ * or synced before this column existed) is left out: there is nothing to
+ * compare against, and it will get one on its next sync.
+ */
+export function staleMonths(db: Db, months: readonly string[]): string[] {
+  if (months.length === 0) return []
+
+  return db
+    .select({
+      month: monthlyTotals.month,
+      factsHash: monthlyTotals.factsHash,
+      judgedFactsHash: monthlyHygiene.judgedFactsHash,
+    })
+    .from(monthlyTotals)
+    .leftJoin(monthlyHygiene, eq(monthlyHygiene.month, monthlyTotals.month))
+    .where(inArray(monthlyTotals.month, [...months]))
+    .all()
+    .filter((row) => row.factsHash !== null && row.factsHash !== row.judgedFactsHash)
+    .map((row) => row.month)
 }
 
 /** Null before the month has ever been judged, which is not the same as 10 000. */

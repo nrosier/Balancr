@@ -145,6 +145,14 @@
     "title": "Deze installatie",
     "version": "Versie"
   },
+  "history": {
+    "coverage": "Dekking",
+    "coverageValue": "{{earliest}} – {{latest}}",
+    "months": "Historisch venster",
+    "monthsValue": "{{months}} maanden",
+    "noneYet": "Nog niets geaggregeerd",
+    "title": "Gegevensvenster"
+  },
   "language": {
     "en": "Engels",
     "hint": "Bedragen en datums blijven in elke taal in Belgisch formaat.",

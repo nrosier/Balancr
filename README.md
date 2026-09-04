@@ -163,6 +163,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Benchmark** | `BENCHMARK_PATH` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
+| **Jobs** | `JOBS_ENABLED`, `JOBS_SYNC_INTERVAL_MINUTES`, `JOBS_NIGHTLY_HOUR`, `JOBS_HISTORY_MONTHS` |
 
 Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
 `FORMAT_LOCALE` decides how money and dates are written. They are separate
@@ -180,6 +181,11 @@ is a typo rather than a decision.
 `TRUSTED_PROXY_CIDRS` is the one to get right. Authentik's identity headers are
 honoured only from peers inside that range; without it, anyone who reaches the
 container directly authenticates as you by setting a header.
+
+`JOBS_HISTORY_MONTHS` is a horizon, not just a lookback: an edit in Actual to a
+month older than it covers is never picked up, however recently it was made.
+Settings → Data window shows how many months that is and which ones the sync
+pass has actually reached so far.
 
 `AUTH_OIDC_ISSUER` must be `https://` in production, and the app refuses to start
 otherwise. OpenID Connect lets a client skip verifying the ID token's signature

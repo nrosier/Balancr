@@ -49,7 +49,7 @@ import {
   updateAccountMap,
   type AccountMapRow,
 } from '../../domain/aggregate/accounts.ts'
-import { latestStoredMonth } from '../../domain/aggregate/month-store.ts'
+import { earliestStoredMonth, latestStoredMonth } from '../../domain/aggregate/month-store.ts'
 import { loadLatestAccountBalances } from '../../domain/aggregate/networth-store.ts'
 import {
   DEFAULT_PARAMS,
@@ -421,6 +421,11 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
 
   return settingsSchema.parse({
     build: { version: APP_VERSION, revision: APP_REVISION },
+    history: {
+      months: config.JOBS_HISTORY_MONTHS,
+      earliest: earliestStoredMonth(db),
+      latest: latestStoredMonth(db),
+    },
     profile: {
       email: user.email,
       displayName: user.displayName,
