@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.9.1] — 2026-09-04
+
+### Fixed
+
+- **The nightly signals job no longer crashes when two Statbel benchmark groups are
+  over threshold in the same month** ([#198](https://github.com/nrosier/Balancr/issues/198)).
+  `above_benchmark` signals are household-level — one row per benchmark group (#43),
+  with no category of their own — and the storage key collapsed every one of them onto
+  the same row. A month with, say, both `transport` and `recreation` running hot at
+  once violated the table's primary key and left that month unjudged.
+
 ## [0.9.0] — 2026-09-04
 
 ### Changed
