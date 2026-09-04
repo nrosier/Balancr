@@ -666,9 +666,15 @@ describe('the clarification queue', () => {
   })
 })
 
+/** A second proposal, distinct from `FULL.proposals[0]`, for the bulk-selection tests. */
+const TWO_PROPOSALS: InsightsPayload['proposals'] = [
+  FULL.proposals[0]!,
+  { ...FULL.proposals[0]!, id: 'p-groceries', targetRef: 'c-groceries', targetName: 'Groceries' },
+]
+
 describe('the proposal queue', () => {
   it('shows what would change, field by field, before and after', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.getByText('Restaurants')).toBeTruthy()
     expect(screen.getByText('Type of cost')).toBeTruthy()
@@ -678,7 +684,7 @@ describe('the proposal queue', () => {
   })
 
   it('warns where applying would send a name to the model', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     expect(
       screen.getByText('Applying this starts sending the category name to the AI.'),
@@ -686,7 +692,7 @@ describe('the proposal queue', () => {
   })
 
   it('hides the arrow from a screen reader, which the order already tells', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     const arrows = [...document.querySelectorAll('.change__arrow')]
     expect(arrows).toHaveLength(2)
@@ -695,29 +701,170 @@ describe('the proposal queue', () => {
 
   it('drops the expiry from the meta line when there is none', () => {
     renderApp(
-      <Proposals proposals={[{ ...FULL.proposals[0]!, expiresAt: null }]} scoped={false} />,
+      <Proposals
+        proposals={[{ ...FULL.proposals[0]!, expiresAt: null }]}
+        scoped={false}
+        owner={true}
+        onDecided={vi.fn()}
+      />,
     )
 
     expect(screen.getByText('Now / proposed')).toBeTruthy()
     expect(screen.queryByText(/Expires/)).toBeNull()
   })
 
-  it('says applying comes later rather than leaving a diff with no buttons', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+  it('offers apply and reject for every proposal, with no confirmation step for either', () => {
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
-    expect(screen.getByText(/Applying a change comes in a later version/)).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeTruthy()
+  })
+
+  it('applies one proposal on a single press, then reloads the queue', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-restaurants/apply': json({ id: 'p-restaurants', status: 'applied' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-restaurants/apply',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('rejects one proposal on a single press, without touching Actual', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-restaurants/reject': json({ id: 'p-restaurants', status: 'rejected' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-restaurants/reject',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('shows a press that failed inline on its own row, without disturbing the rest', async () => {
+    serve({
+      '/api/proposals/p-restaurants/apply': json(
+        { error: { code: 'conflict', message: 'This proposal has expired.' } },
+        409,
+      ),
+    })
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await screen.findByText('This proposal has expired.')
+    expect(screen.getByText('Restaurants')).toBeTruthy()
+  })
+
+  it('disables every control for a viewer, and says why', () => {
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={false} onDecided={vi.fn()} />)
+
+    expect((screen.getByRole('checkbox', { name: 'Select Restaurants' }) as HTMLInputElement).disabled).toBe(
+      true,
+    )
+    expect((screen.getByRole('checkbox', { name: 'Select all' }) as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Apply' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Reject' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('Only the owner can apply or reject a proposal.')).toBeTruthy()
+  })
+
+  it('selects all, then applies the selection only after a confirming second press', async () => {
+    const fetchMock = serve({
+      '/api/proposals/apply-batch': json({
+        results: [
+          { id: 'p-restaurants', ok: true, reason: null },
+          { id: 'p-groceries', ok: true, reason: null },
+        ],
+      }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply selected (2)' }))
+    // Not applied yet — the bulk action is the one press this queue still confirms.
+    expect(onDecided).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply 2 to Actual?' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/apply-batch',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ ids: ['p-restaurants', 'p-groceries'] }),
+      }),
+    )
+  })
+
+  it('reports a stale id from the batch inline, rather than losing the rest of it', async () => {
+    serve({
+      '/api/proposals/apply-batch': json({
+        results: [
+          { id: 'p-restaurants', ok: true, reason: null },
+          { id: 'p-groceries', ok: false, reason: 'This proposal has expired.' },
+        ],
+      }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply selected (2)' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply 2 to Actual?' }))
+
+    await screen.findByText('This proposal has expired.')
+    expect(onDecided).toHaveBeenCalledTimes(1)
+    // The failed one stays checked; the one that went through does not.
+    expect(
+      (screen.getByRole('checkbox', { name: 'Select Groceries' }) as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(
+      (screen.getByRole('checkbox', { name: 'Select Restaurants' }) as HTMLInputElement).checked,
+    ).toBe(false)
+  })
+
+  it('rejects the selection on a single press, with no confirm step', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-restaurants/reject': json({ id: 'p-restaurants', status: 'rejected' }),
+      '/api/proposals/p-groceries/reject': json({ id: 'p-groceries', status: 'rejected' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject selected (2)' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-restaurants/reject',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-groceries/reject',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('says nothing is waiting when the queue is empty', () => {
-    renderApp(<Proposals proposals={[]} scoped={false} />)
+    renderApp(<Proposals proposals={[]} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.getByText('Nothing is waiting to be applied.')).toBeTruthy()
-    expect(screen.queryByText(/Applying a change comes/)).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('warns the queue is not filtered once a month picker is on screen (#158)', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={true} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={true} owner={true} onDecided={vi.fn()} />)
 
     expect(
       screen.getByText(
@@ -727,7 +874,7 @@ describe('the proposal queue', () => {
   })
 
   it('says nothing about filtering when there is no month picker to be confused by', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} />)
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
   })

@@ -36,6 +36,7 @@ import { custodyContext, splitMonth } from '../domain/aggregate/custody-context.
 import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
 import { persistSignals, staleMonths } from '../domain/aggregate/signals-store.ts'
+import { generateBudgetProposals, generateCategoryProposals } from '../domain/ai/proposal-generators.ts'
 import { latestSnapshotDate } from '../domain/portfolio/store.ts'
 import { addMonths, dateIn, isDate, monthProgress } from '../util/month.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
@@ -129,12 +130,12 @@ interface Shared {
  * behind *that* month. A backlog cleared in September must not still be
  * deducted from August's score, and September's must not be charged to August.
  */
-export function judgeMonth(
+export async function judgeMonth(
   db: Db,
   month: string,
   monthElapsed: number,
   shared: Shared,
-): { signals: number; scoreBp: number } | null {
+): Promise<{ signals: number; scoreBp: number } | null> {
   const totalsHistory = loadTrailingTotals(db, month, config.JOBS_HISTORY_MONTHS)
   if (totalsHistory.length === 0) return null
 
@@ -165,6 +166,14 @@ export function judgeMonth(
   // can tell whether the month needs rejudging without recomputing anything.
   const factsHash = totalsHistory.find((totals) => totals.month === month)?.factsHash ?? null
   const stored = persistSignals(db, month, result.signals, result.hygiene, factsHash)
+
+  // Deterministic proposal generation (#45) — no AI call, so this runs on every
+  // pass rather than being gated behind a budget. `createProposal` supersedes
+  // any pending proposal for the same target, so a re-judged month naturally
+  // keeps one live suggestion per transaction/category instead of piling up.
+  await generateCategoryProposals(db, month)
+  await generateBudgetProposals(db, month, result.signals, facts)
+
   return { signals: stored.signals, scoreBp: result.hygiene.scoreBp }
 }
 
@@ -206,7 +215,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
   // Ascending, so `scoreBp` in the detail ends up being the latest month's — the
   // one an operator reading the ops table is asking about.
   for (const month of judgedMonths) {
-    const judged = judgeMonth(db, month, monthProgress(month, now, config.TZ), shared)
+    const judged = await judgeMonth(db, month, monthProgress(month, now, config.TZ), shared)
     if (judged === null) continue
     months += 1
     signals += judged.signals

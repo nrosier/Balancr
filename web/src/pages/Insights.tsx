@@ -187,7 +187,12 @@ function Sections({
         <Questions questions={data.questions} scoped={data.month !== null} />
       ) : null}
       {data.ai.enabled || data.proposals.length > 0 ? (
-        <Proposals proposals={data.proposals} scoped={data.month !== null} />
+        <Proposals
+          proposals={data.proposals}
+          scoped={data.month !== null}
+          owner={data.owner}
+          onDecided={onRefreshed}
+        />
       ) : null}
       {data.ai.enabled || data.runs.length > 0 ? (
         <Ledger runs={data.runs} month={data.month} />

@@ -1,7 +1,8 @@
 /**
- * Reads from Actual. Everything here is validated before it is believed.
+ * Reads from Actual, plus the two writes #45 introduces. Everything read here
+ * is validated before it is believed.
  *
- * Two rules earn their keep:
+ * Three rules earn their keep:
  *
  * **1. Actual's own numbers win.** `getBudgetMonth` returns the budgeted,
  * spent and available figures straight out of Actual's budget spreadsheet, so
@@ -14,6 +15,13 @@
  * `unknown` and the budget-month categories as loose records, so every shape is
  * parsed with Zod. A schema failure names the query, because "cannot read
  * property of undefined" three layers up costs an afternoon.
+ *
+ * **3. A write only ever runs from an approved proposal.** `updateTransactionCategory`
+ * and `setCategoryBudgetAmount`, in the transactions section below, are called
+ * from nowhere but a `ProposalHandler`'s `applyRemote`
+ * (`src/domain/ai/proposals.ts`) — never from generation, never from a route
+ * directly. Every other write `@actual-app/api` offers stays named in
+ * `test/unit/actual-adapter.test.ts`'s denylist.
  */
 import { z } from 'zod'
 import type { Query } from '@actual-app/core/shared/query'
@@ -355,14 +363,136 @@ export async function fetchTransactionDateRange(): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+//  Transactions — reads for proposal generation and review, writes gated
+//  behind an approved, audited proposal (#45)
+// ---------------------------------------------------------------------------
+
+const transactionRow = z.object({
+  id: z.string(),
+  category: z.string().nullable(),
+  payee: z.string().nullable(),
+})
+
+export interface ActualTransaction {
+  id: string
+  categoryId: string | null
+  payeeId: string | null
+}
+
+/** One transaction's current category and payee, for a `transaction_category.set` proposal's diff. */
+export async function fetchTransaction(id: string): Promise<ActualTransaction | null> {
+  const rows = await runAql(
+    'transaction',
+    (q) => q('transactions').filter({ id }).select(['id', 'category', 'payee']).limit(1),
+    transactionRow,
+  )
+  const row = rows[0]
+  if (row === undefined) return null
+  return { id: row.id, categoryId: row.category, payeeId: row.payee }
+}
+
+const payeeCategoryRow = z.object({ category: z.string().nullable() })
+
+/**
+ * A payee's past categorisation, most recent first — the category-assignment
+ * generator's confidence check. Includes uncategorised rows rather than
+ * excluding them with an AQL `$ne` against `null`, which is not reliable
+ * across Actual's query engines; the generator filters them out in plain JS
+ * instead, where it is easy to verify.
+ */
+export function fetchPayeeCategoryHistory(
+  payeeId: string,
+  limit = 20,
+): Promise<{ categoryId: string | null }[]> {
+  return runAql(
+    'payee-category-history',
+    (q) =>
+      q('transactions')
+        .filter({ payee: payeeId, transfer_id: null, starting_balance_flag: false })
+        .orderBy({ date: 'desc' })
+        .select(['category'])
+        .limit(limit),
+    payeeCategoryRow,
+  ).then((rows) => rows.map((row) => ({ categoryId: row.category })))
+}
+
+const uncategorisedTransactionRow = z.object({
+  id: z.string(),
+  payee: z.string().nullable(),
+  payeeName: z.string().nullable(),
+})
+
+export interface UncategorisedTransaction {
+  id: string
+  payeeId: string | null
+  /** For the review card — snapshotted here rather than looked up again at apply time. */
+  payeeName: string | null
+}
+
+/**
+ * Uncategorised, on-budget transactions in a date range — same filter as
+ * `fetchRecomputedSpend`'s null-category bucket, narrowed to individual rows
+ * so the category-assignment generator has a payee to match against.
+ * `'payee.name'` is the same joined-field select `'account.offbudget'` above
+ * already relies on, resolved through Actual's own AQL schema rather than a
+ * second query per row.
+ */
+export function fetchUncategorisedTransactions(
+  from: string,
+  to: string,
+): Promise<UncategorisedTransaction[]> {
+  return runAql(
+    'uncategorised-transactions',
+    (q) =>
+      q('transactions')
+        .filter({
+          date: { $gte: from, $lte: to },
+          category: null,
+          transfer_id: null,
+          starting_balance_flag: false,
+          'account.offbudget': false,
+        })
+        .select(['id', 'payee', { payeeName: 'payee.name' }]),
+    uncategorisedTransactionRow,
+  ).then((rows) => rows.map((row) => ({ id: row.id, payeeId: row.payee, payeeName: row.payeeName })))
+}
+
+/**
+ * Sets a transaction's category. Only ever called from an approved proposal's
+ * `applyRemote` (`src/domain/ai/proposals.ts`) — see the read-only boundary
+ * test's denylist comment for why this is the one write that method allows.
+ * Idempotent: setting the same category twice ends at the same state, so a
+ * crash after this call but before the local commit is safe to recover from
+ * by re-applying.
+ */
+export function updateTransactionCategory(id: string, categoryId: string): Promise<void> {
+  return withActual(async (actual) => {
+    await actual.updateTransaction(id, { category: categoryId })
+  })
+}
+
+/**
+ * Sets a category's budgeted amount for a month. Same gating and idempotency
+ * note as `updateTransactionCategory` above.
+ */
+export function setCategoryBudgetAmount(
+  month: string,
+  categoryId: string,
+  amountCents: number,
+): Promise<void> {
+  return withActual((actual) => actual.setBudgetAmount(month, categoryId, amountCents))
+}
+
+// ---------------------------------------------------------------------------
 //  Schedules — what is still to come (#159)
 // ---------------------------------------------------------------------------
 
 /**
- * Reads, like everything else here. The three writers `@actual-app/api` offers for
- * schedules — `createSchedule`, `updateSchedule`, `deleteSchedule` — are named in the
- * denylist in `test/unit/actual-adapter.test.ts`, which scans this file's source, so
- * "v1 never writes to Actual" stays enforced rather than intended.
+ * Reads only, unlike the transactions section above. The three writers
+ * `@actual-app/api` offers for schedules — `createSchedule`, `updateSchedule`,
+ * `deleteSchedule` — are named in the denylist in
+ * `test/unit/actual-adapter.test.ts`, which scans this file's source, so
+ * "schedules are never written to" stays enforced rather than intended.
  *
  * Three decisions worth knowing about:
  *

@@ -131,6 +131,47 @@
   border-radius: var(--radius-md);
 }
 
+/*
+ * A proposal's checkbox sits beside the card rather than inside `.queue__body`, so the
+ * click target for "select this one" never overlaps the click target for "apply this
+ * one" a few lines below it.
+ */
+.queue__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.queue__row input[type='checkbox'] {
+  margin-top: var(--space-1);
+}
+
+.queue__body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.queue__selectAll {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+}
+
+.queue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.queue__actions .button {
+  flex: 0 0 auto;
+}
+
 .queue__lead {
   margin: 0;
   font-size: var(--type-base);

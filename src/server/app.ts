@@ -41,6 +41,7 @@ import { registerApiRoutes } from './routes/api/index.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerBootstrapRoute } from './routes/bootstrap.ts'
 import { registerHealthRoutes } from './routes/health.ts'
+import { registerProposalRoutes } from './routes/proposals.ts'
 import { registerRefreshRoutes } from './routes/refresh.ts'
 import { registerSettingsRoutes } from './routes/settings.ts'
 import { registerSecurityHeaders } from './security.ts'
@@ -158,12 +159,13 @@ export async function buildApp({
   registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
   registerApiRoutes(app, db)
-  // The three route modules that are allowed to do something other than read, kept
+  // The four route modules that are allowed to do something other than read, kept
   // out of `routes/api/` so that directory's read-only rule stays checkable by a test
   // that scans it. A refresh writes nothing itself, but it starts something that does.
   registerSettingsRoutes(app, db)
   registerRefreshRoutes(app, db, jobs)
   registerAiRoutes(app, db, jobs)
+  registerProposalRoutes(app, db)
   await registerSpa(app, bundle)
 
   log.debug(

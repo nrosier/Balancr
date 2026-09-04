@@ -935,7 +935,20 @@ not personal spending. Settings itself was the other rider:
 long-scrolling page into a horizontal tab strip — General, Prompts, Risk,
 Thresholds, Accounts, Benchmark, AI usage — each its own route under
 `/settings/*`, so a bookmark or a reload lands back on the section it left, not
-at the top of everything. Behind
+at the top of everything. A third rider changed what Balancr is allowed to
+touch: [#45](https://github.com/nrosier/Balancr/issues/45) has the nightly job
+propose a category for an uncategorised transaction, drawn from what its payee
+has been filed under before, or a new budgeted amount for a category that has
+run over its trailing average for months running — no model call either way,
+both entirely deterministic. The owner can apply or reject either straight from
+the Insights page, one card at a time or as a batch, and applying is the first
+thing Balancr has ever written back to Actual. A single press is enough per
+proposal, since the diff was already on screen before the click; the one
+confirming second press left is on a bulk apply, because that can touch as many
+transactions or budgets as are checked at once. Reversing one is Actual's own
+job, not a new one Balancr had to build: every apply is an audit-logged row, and
+undoing it is whatever Actual already offers for undoing a category or budget
+change. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,

@@ -22,6 +22,11 @@ import { logger } from '../../src/logger.ts'
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
   fetchAccounts: () => Promise.resolve([]),
+  // The two new reads behind #45's deterministic generators — no fixture here
+  // populates a transaction, so an empty list is exactly what a real budget
+  // with nothing uncategorised would also return.
+  fetchUncategorisedTransactions: () => Promise.resolve([]),
+  fetchPayeeCategoryHistory: () => Promise.resolve([]),
 }))
 
 let ctx: ReturnType<typeof createTestDb>
