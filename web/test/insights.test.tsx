@@ -28,12 +28,13 @@
  */
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { BudgetNudge } from '../src/insights/BudgetNudge.tsx'
 import { Findings } from '../src/insights/Findings.tsx'
 import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
 import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.tsx'
 import { Insights } from '../src/pages/Insights.tsx'
-import type { AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
+import type { AiBudgetNudgeRun, AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
@@ -301,6 +302,7 @@ describe('the page', () => {
       'August 2026 in words',
       'Help the assistant understand',
       'Below the confidence bar',
+      'Budget nudge',
       'Proposed changes',
       'What was sent',
     ])
@@ -619,6 +621,74 @@ describe('the narrative', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/ai/narrative', expect.objectContaining({
       method: 'POST',
     }))
+  })
+})
+
+const NUDGE_ESTIMATE: AiEstimate = {
+  kind: 'budget_nudge',
+  month: '2026-08',
+  model: 'gemini-3.7-flash',
+  payloadChars: 400,
+  estimateMicroEur: 2_500,
+  allowed: true,
+  reason: null,
+}
+
+describe('the budget nudge', () => {
+  it('shows the price once it has loaded, and lets the owner arm then confirm it', async () => {
+    const fetchMock = serve({
+      '/api/ai/estimate?kind=budget_nudge&month=2026-08': json(NUDGE_ESTIMATE),
+      '/api/ai/budget-nudge': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-nudge-1',
+        month: '2026-08',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_500,
+      } satisfies AiBudgetNudgeRun),
+    })
+    const onAdjusted = vi.fn()
+
+    renderApp(<BudgetNudge month="2026-08" owner={true} onAdjusted={onAdjusted} />)
+
+    await screen.findByText(/Checking August 2026 against the note would cost about €.?0,0025\./)
+    fireEvent.click(screen.getByRole('button', { name: 'Check the note' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Spend €.?0,0025 and check the note/ }))
+
+    await screen.findByText('Done. Check the suggested budgets below for what changed.')
+    expect(onAdjusted).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/ai/budget-nudge', expect.objectContaining({
+      method: 'POST',
+    }))
+  })
+
+  it('names the reason it cannot run, such as an empty note, beside the price', async () => {
+    serve({
+      '/api/ai/estimate?kind=budget_nudge&month=2026-08': json({
+        ...NUDGE_ESTIMATE,
+        allowed: false,
+        reason: 'no_note',
+        estimateMicroEur: 0,
+      }),
+    })
+
+    renderApp(<BudgetNudge month="2026-08" owner={true} onAdjusted={() => {}} />)
+
+    await screen.findByText(
+      "The “what's coming up” note is empty, so there is nothing to check it against.",
+    )
+  })
+
+  it('is disabled for a viewer, who is told only the owner can run it', async () => {
+    serve({ '/api/ai/estimate?kind=budget_nudge&month=2026-08': json(NUDGE_ESTIMATE) })
+
+    renderApp(<BudgetNudge month="2026-08" owner={false} onAdjusted={() => {}} />)
+
+    await screen.findByText('Only the owner can run this.')
+    expect(
+      (screen.getByRole('button', { name: 'Check the note' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 })
 
