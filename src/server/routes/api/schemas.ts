@@ -1460,6 +1460,39 @@ export const changelogSchema = z.object({
 })
 
 /**
+ * `POST /api/proposals/:id/apply` and `.../reject` (#45).
+ *
+ * Deliberately thin, like `refreshAcceptedSchema`: the client already reloads
+ * `/api/insights` on success, which is the one place a proposal's card and the
+ * data it changed both live, so this only needs to confirm which decision was
+ * recorded rather than re-describe the diff.
+ */
+export const proposalDecisionSchema = z.object({
+  id: z.string(),
+  status: z.enum(['applied', 'rejected']),
+})
+
+/**
+ * `POST /api/proposals/apply-batch` — one result per id asked for, in request
+ * order, whether or not it succeeded (#45).
+ *
+ * A per-id shape rather than an all-or-nothing status, because the request
+ * that motivates the endpoint — "apply everything I've selected" — is exactly
+ * the one where a stale id in the middle of the list must not silently take
+ * the rest down with it.
+ */
+export const proposalBatchApplySchema = z.object({
+  results: z.array(
+    z.object({
+      id: z.string(),
+      ok: z.boolean(),
+      /** A sentence safe to show inline next to the row, null on success. */
+      reason: z.string().nullable(),
+    }),
+  ),
+})
+
+/**
  * The two shapes that appear inside more than one response, named because the
  * client renders each with one component. Structurally identical to the interfaces
  * in `freshness.ts` and `hygiene.ts`, which is the point: those describe what the
@@ -1502,3 +1535,5 @@ export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>
 export type ChangelogEntry = z.infer<typeof changelogEntrySchema>
 export type Changelog = z.infer<typeof changelogSchema>
+export type ProposalDecision = z.infer<typeof proposalDecisionSchema>
+export type ProposalBatchApply = z.infer<typeof proposalBatchApplySchema>

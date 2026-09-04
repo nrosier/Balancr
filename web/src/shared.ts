@@ -98,6 +98,8 @@ export type {
   PromptSetting,
   PromptVersionSetting,
   ProbeStatus,
+  ProposalBatchApply,
+  ProposalDecision,
   RefreshAccepted,
   RiskProfileSetting,
   Settings,

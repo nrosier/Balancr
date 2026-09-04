@@ -117,9 +117,16 @@
     "viewPayload": "Show the exact payload"
   },
   "proposal": {
+    "apply": "Apply",
+    "applySelected": "Apply selected ({{count}})",
+    "applying": "Applying…",
+    "cancel": "Cancel",
+    "confirmApply": "Apply {{count}} to Actual?",
     "diff": "Now / proposed",
     "expiresAt": "Expires {{when}}",
     "field": {
+      "amount": "Budgeted amount",
+      "category": "Category",
       "coicopCode": "Spending class",
       "custodyShared": "Shared with your co-parent",
       "expectedFrequency": "How often",
@@ -129,7 +136,12 @@
     },
     "hint": "Nothing is changed until you apply it.",
     "none": "Nothing is waiting to be applied.",
-    "readOnly": "Applying a change comes in a later version. For now you can read exactly what would change.",
+    "ownerOnly": "Only the owner can apply or reject a proposal.",
+    "reject": "Reject",
+    "rejectSelected": "Reject selected ({{count}})",
+    "rejecting": "Rejecting…",
+    "select": "Select {{target}}",
+    "selectAll": "Select all",
     "standing": "Standing work, not filtered to the month above: a proposal stays here until it is reviewed.",
     "title": "Proposed changes",
     "value": {

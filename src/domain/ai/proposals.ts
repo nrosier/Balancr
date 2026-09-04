@@ -12,9 +12,11 @@
  *
  *  - **A closed handler map.** `PROPOSAL_HANDLERS` is the only thing that can
  *    change data, keyed by type. A row whose type has no handler is unappliable
- *    by construction, which is what makes it safe to add
- *    Actual-mutating types later without auditing every call site: v1 registers
- *    exactly one handler, and it writes to Balancr's own table.
+ *    by construction. `category_meta.set` writes to Balancr's own table;
+ *    `transaction_category.set` and `budget_amount.set` (#45) write to Actual
+ *    instead, through a handler's optional `applyRemote` — see its doc comment
+ *    for why that write runs outside the local transaction, and why it must be
+ *    idempotent.
  *  - **The payload is validated twice**, once when the proposal is created and
  *    again when it is applied. The gap between the two is a version upgrade, a
  *    hand-edited database, or months of elapsed time — all of which can make a
@@ -29,9 +31,15 @@
  */
 import { and, asc, desc, eq, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
+import {
+  fetchTransaction,
+  setCategoryBudgetAmount,
+  updateTransactionCategory,
+} from '../../adapters/actual/queries.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
-import { categoryMeta, proposals } from '../../db/schema.ts'
+import { categoryMeta, monthlyCategoryFacts, proposals } from '../../db/schema.ts'
+import { formatMoney } from '../../i18n/format.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { recordAudit, type AuditWriter } from '../audit.ts'
@@ -51,12 +59,16 @@ export class ProposalError extends Error {
 /**
  * The types that exist.
  *
- * One, in v1, and it writes to `category_meta`. The plan defers every handler
- * that would write back to Actual until the read path is proven against real
- * data, and a closed list is how that deferral is enforced rather than merely
- * intended.
+ * `category_meta.set` writes to Balancr's own `category_meta` table.
+ * `transaction_category.set` and `budget_amount.set` (#45) are the first
+ * writes back to Actual — both gated the same way as the first: a closed
+ * handler map, applied only from an approved, audited proposal.
  */
-export const PROPOSAL_TYPES = ['category_meta.set'] as const
+export const PROPOSAL_TYPES = [
+  'category_meta.set',
+  'transaction_category.set',
+  'budget_amount.set',
+] as const
 export type ProposalType = (typeof PROPOSAL_TYPES)[number]
 
 /** How long a suggestion stays actionable. */
@@ -131,11 +143,38 @@ interface ProposalHandler {
   readonly entity: string
   /** Throws unless the payload is valid for this type. Returns the clean form. */
   readonly parse: (payload: unknown) => unknown
-  /** What would change, against the row as it stands right now. */
-  readonly diff: (writer: AuditWriter, targetRef: string, payload: unknown) => DiffField[]
+  /**
+   * What would change, against the row as it stands right now.
+   *
+   * Async because the two Actual-writing handlers need a value Actual holds
+   * (a transaction's current category) that no local table mirrors —
+   * `category_meta.set`'s implementation just wraps its synchronous body in
+   * an immediately-resolved value. Both `createProposal` and `applyProposal`
+   * `await` this *before* opening their local `db.transaction`, since
+   * better-sqlite3's transaction callback runs synchronously.
+   */
+  readonly diff: (
+    writer: AuditWriter,
+    targetRef: string,
+    payload: unknown,
+  ) => DiffField[] | Promise<DiffField[]>
+  /** Local bookkeeping only, inside the transaction. No-op for a handler with no local mirror to update. */
   readonly apply: (writer: AuditWriter, targetRef: string, payload: unknown, now: Date) => void
-  /** A human-readable name for the target, for the review card. */
-  readonly targetName: (writer: AuditWriter, targetRef: string) => string | null
+  /**
+   * A human-readable name for the target, for the review card. `payload` is
+   * passed for handlers (`transaction_category.set`) that snapshot a display
+   * name at generation time rather than have this call Actual.
+   */
+  readonly targetName: (writer: AuditWriter, targetRef: string, payload?: unknown) => string | null
+  /**
+   * The write to Actual, if this type makes one. Runs *outside and before*
+   * any local `db.transaction` — see `applyProposal`. Must be idempotent:
+   * setting a category or a budget amount to a specific value ends at the
+   * same state no matter how many times it runs, which is what makes it safe
+   * to re-apply by hand after a crash between this call succeeding and the
+   * local commit that follows it.
+   */
+  readonly applyRemote?: (targetRef: string, payload: unknown) => Promise<void>
 }
 
 const loadMeta = (
@@ -214,8 +253,171 @@ const categoryMetaSetHandler: ProposalHandler = {
   targetName: (writer, targetRef) => loadMeta(writer, targetRef)?.nameSnapshot ?? null,
 }
 
+/**
+ * What a `transaction_category.set` proposal may say. `targetRef` is the
+ * Actual transaction id.
+ *
+ * `payeeName` is snapshotted at generation time rather than looked up from
+ * `targetName`, so the review card never needs an Actual call just to render
+ * — the payload already carries everything the card shows besides the diff
+ * itself.
+ */
+const transactionCategorySetSchema = z
+  .object({
+    categoryId: z.string().min(1),
+    payeeName: z.string().nullable(),
+  })
+  .strict()
+
+export type TransactionCategorySet = z.infer<typeof transactionCategorySetSchema>
+
+/**
+ * What a `budget_amount.set` proposal may say. `targetRef` is a composite
+ * `categoryId:month` — see `encodeBudgetTarget`/`decodeBudgetTarget` below.
+ */
+const budgetAmountSetSchema = z
+  .object({
+    amountCents: z.number().int(),
+  })
+  .strict()
+
+export type BudgetAmountSet = z.infer<typeof budgetAmountSetSchema>
+
+/**
+ * `proposals.targetRef` and `auditLog.entityRef` are single text columns
+ * (`schema.ts`), so a budget-amount proposal's category and month live in one
+ * string rather than a new column. `lastIndexOf` rather than `split` because
+ * a category id could in principle contain a colon; a month (`YYYY-MM`) never
+ * does, so splitting from the right is unambiguous.
+ */
+export function encodeBudgetTarget(categoryId: string, month: string): string {
+  return `${categoryId}:${month}`
+}
+
+export function decodeBudgetTarget(targetRef: string): { categoryId: string; month: string } {
+  const at = targetRef.lastIndexOf(':')
+  if (at < 0) throw new ProposalError(`malformed budget target ref: ${targetRef}`)
+  return { categoryId: targetRef.slice(0, at), month: targetRef.slice(at + 1) }
+}
+
+const transactionCategorySetHandler: ProposalHandler = {
+  type: 'transaction_category.set',
+  entity: 'actual_transaction',
+
+  parse: (payload) => {
+    const result = transactionCategorySetSchema.safeParse(payload)
+    if (!result.success) {
+      throw new ProposalError(
+        `invalid transaction_category.set payload:\n${z.prettifyError(result.error)}`,
+      )
+    }
+    return result.data
+  },
+
+  diff: async (writer, targetRef, payload) => {
+    const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
+    const current = await fetchTransaction(targetRef)
+    if (current === null) throw new ProposalError(`transaction ${targetRef} no longer exists`)
+    if (current.categoryId === clean.categoryId) return []
+
+    // Names, not raw Actual ids — resolved locally against `category_meta`
+    // (kept in step by every sync), so the review card reads like the rest
+    // of the app rather than showing a category id.
+    const before =
+      current.categoryId === null
+        ? null
+        : loadMeta(writer, current.categoryId)?.nameSnapshot ?? current.categoryId
+    const after = loadMeta(writer, clean.categoryId)?.nameSnapshot ?? clean.categoryId
+
+    return [{ field: 'category', before, after }]
+  },
+
+  // No local mirror of a transaction's category exists — `applyRemote` is the
+  // whole of the write, and the audit row `applyProposal` records is what
+  // makes this durable.
+  apply: () => {},
+
+  targetName: (_writer, _targetRef, payload) => {
+    const clean = transactionCategorySetSchema.safeParse(payload)
+    return clean.success ? clean.data.payeeName : null
+  },
+
+  applyRemote: async (targetRef, payload) => {
+    const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
+    await updateTransactionCategory(targetRef, clean.categoryId)
+  },
+}
+
+const loadBudgetedCents = (writer: AuditWriter, categoryId: string, month: string): number | null => {
+  const row = (writer as Db)
+    .select({ budgetedCents: monthlyCategoryFacts.budgetedCents })
+    .from(monthlyCategoryFacts)
+    .where(and(eq(monthlyCategoryFacts.categoryId, categoryId), eq(monthlyCategoryFacts.month, month)))
+    .get()
+  return row?.budgetedCents ?? null
+}
+
+const budgetAmountSetHandler: ProposalHandler = {
+  type: 'budget_amount.set',
+  entity: 'actual_budget',
+
+  parse: (payload) => {
+    const result = budgetAmountSetSchema.safeParse(payload)
+    if (!result.success) {
+      throw new ProposalError(`invalid budget_amount.set payload:\n${z.prettifyError(result.error)}`)
+    }
+    return result.data
+  },
+
+  // Synchronous, unlike the handler above: the current amount is Actual's own
+  // figure for this month, already mirrored locally by the sync job
+  // (`monthlyCategoryFacts.budgetedCents`), so no Actual call is needed here.
+  // Pre-formatted into Belgian numerals at diff time — a fixed rendering
+  // locale, not a UI-language translation, so this does not create the
+  // English/Dutch consistency problem the file header describes for values
+  // that are shown as words.
+  diff: (writer, targetRef, payload) => {
+    const clean = budgetAmountSetHandler.parse(payload) as BudgetAmountSet
+    const { categoryId, month } = decodeBudgetTarget(targetRef)
+    const currentCents = loadBudgetedCents(writer, categoryId, month)
+    if (currentCents === null) {
+      throw new ProposalError(`no budget facts for category ${categoryId} in ${month}`)
+    }
+    if (currentCents === clean.amountCents) return []
+
+    return [
+      {
+        field: 'amount',
+        before: formatMoney(currentCents),
+        after: formatMoney(clean.amountCents),
+      },
+    ]
+  },
+
+  // Same reasoning as the handler above: nothing local to update, the audit
+  // row is the record. Deliberately not patching `monthlyCategoryFacts`
+  // eagerly — that would be a second source of truth for a number the next
+  // sync already refreshes correctly, an accepted, temporary staleness window
+  // rather than something to engineer around.
+  apply: () => {},
+
+  targetName: (writer, targetRef) => {
+    const { categoryId, month } = decodeBudgetTarget(targetRef)
+    const name = loadMeta(writer, categoryId)?.nameSnapshot ?? categoryId
+    return `${name} (${month})`
+  },
+
+  applyRemote: async (targetRef, payload) => {
+    const clean = budgetAmountSetHandler.parse(payload) as BudgetAmountSet
+    const { categoryId, month } = decodeBudgetTarget(targetRef)
+    await setCategoryBudgetAmount(month, categoryId, clean.amountCents)
+  },
+}
+
 export const PROPOSAL_HANDLERS: Record<ProposalType, ProposalHandler> = {
   'category_meta.set': categoryMetaSetHandler,
+  'transaction_category.set': transactionCategorySetHandler,
+  'budget_amount.set': budgetAmountSetHandler,
 }
 
 const handlerFor = (type: string): ProposalHandler => {
@@ -251,19 +453,21 @@ export interface CreateProposalOptions {
  * is computed from newer data. Superseding is not an audit event: nothing the
  * user approved changed.
  */
-export function createProposal(db: Db, options: CreateProposalOptions): ProposalRow {
+export async function createProposal(db: Db, options: CreateProposalOptions): Promise<ProposalRow> {
   const handler = handlerFor(options.type)
   const now = options.now ?? new Date()
   const payload = handler.parse(options.payload)
 
-  return db.transaction((tx) => {
-    const fields = handler.diff(tx, options.targetRef, payload)
-    if (fields.length === 0) {
-      throw new ProposalError(
-        `proposal ${options.type} for ${options.targetRef} would change nothing`,
-      )
-    }
+  // Computed before the transaction opens: better-sqlite3's `db.transaction`
+  // callback runs synchronously, and a couple of handlers need an `await` to
+  // reach a value (a transaction's current category) that no local table
+  // mirrors.
+  const fields = await handler.diff(db, options.targetRef, payload)
+  if (fields.length === 0) {
+    throw new ProposalError(`proposal ${options.type} for ${options.targetRef} would change nothing`)
+  }
 
+  return db.transaction((tx) => {
     const superseded = tx
       .update(proposals)
       .set({ status: 'expired' })
@@ -400,10 +604,17 @@ export function renderProposal(
   locale: string = config.DEFAULT_LOCALE,
 ): ProposalCard {
   const diff = storedDiff(row)
+  let payload: unknown
+  try {
+    payload = JSON.parse(row.payloadJson)
+  } catch {
+    payload = undefined
+  }
   const name =
     (PROPOSAL_HANDLERS as Record<string, ProposalHandler | undefined>)[row.type]?.targetName(
       db,
       row.targetRef,
+      payload,
     ) ?? null
 
   return {
@@ -453,14 +664,62 @@ const after = (fields: readonly DiffField[]): Record<string, unknown> =>
 /**
  * Applies one proposal, and records what it changed.
  *
- * The payload is re-validated and the diff recomputed inside the transaction, so
+ * The payload is re-validated and the diff recomputed against the live row, so
  * what lands in the audit trail is what this write actually did rather than what
  * the card predicted weeks ago. A proposal whose fields have since been set to the
  * proposed values by hand applies as a no-op, and is still marked applied: the
  * user's decision was made, and re-presenting the card would be a bug.
+ *
+ * Two phases, not one, because a handler's Actual write (`applyRemote`) is
+ * async and better-sqlite3's `db.transaction` callback cannot be:
+ *
+ *  1. Check the row is `pending` and unexpired, recompute the diff, and — for
+ *     the two handlers that have one — `await handler.applyRemote`, all
+ *     outside any local transaction.
+ *  2. Only once that succeeds, open `db.transaction` and re-check the row's
+ *     status from inside it before doing the (synchronous) local bookkeeping
+ *     and recording the audit row.
+ *
+ * Step 2's re-check guards the one window step 1 opens: the row could have
+ * been applied or rejected by someone else while `applyRemote` was in
+ * flight. If `applyRemote` throws, this function throws before either phase
+ * touches local state — the proposal stays `pending`, nothing is recorded,
+ * and the actual write did not happen. A crash *after* `applyRemote`
+ * succeeds but before step 2 commits is not guarded against and is not
+ * meant to be: both remote writes are idempotent (see `ProposalHandler.applyRemote`),
+ * so recovering from it is a manual re-apply, not a double-apply.
  */
-export function applyProposal(db: Db, options: DecideOptions): ApplyResult {
+export async function applyProposal(db: Db, options: DecideOptions): Promise<ApplyResult> {
   const now = options.now ?? new Date()
+
+  const initial = db.select().from(proposals).where(eq(proposals.id, options.id)).get()
+  if (initial === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
+  if (initial.status !== 'pending') {
+    throw new ProposalError(`proposal ${options.id} is already ${initial.status}`)
+  }
+  if (initial.expiresAt !== null && initial.expiresAt.getTime() <= now.getTime()) {
+    // Left pending rather than flipped to expired here: `expireProposals` owns
+    // that transition, and doing it in the same breath as refusing the apply
+    // would hide the refusal behind a state change.
+    throw new ProposalError(`proposal ${options.id} expired on ${initial.expiresAt.toISOString()}`)
+  }
+
+  const handler = handlerFor(initial.type)
+  let payload: unknown
+  try {
+    payload = handler.parse(JSON.parse(initial.payloadJson))
+  } catch (error) {
+    throw new ProposalError(
+      `proposal ${options.id} can no longer be applied: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  const fields = await handler.diff(db, initial.targetRef, payload)
+
+  if (handler.applyRemote !== undefined) {
+    await handler.applyRemote(initial.targetRef, payload)
+  }
 
   return db.transaction((tx) => {
     const row = tx.select().from(proposals).where(eq(proposals.id, options.id)).get()
@@ -468,25 +727,7 @@ export function applyProposal(db: Db, options: DecideOptions): ApplyResult {
     if (row.status !== 'pending') {
       throw new ProposalError(`proposal ${options.id} is already ${row.status}`)
     }
-    if (row.expiresAt !== null && row.expiresAt.getTime() <= now.getTime()) {
-      // Left pending rather than flipped to expired here: `expireProposals` owns
-      // that transition, and doing it in the same breath as refusing the apply
-      // would hide the refusal behind a state change.
-      throw new ProposalError(`proposal ${options.id} expired on ${row.expiresAt.toISOString()}`)
-    }
 
-    const handler = handlerFor(row.type)
-    let payload: unknown
-    try {
-      payload = handler.parse(JSON.parse(row.payloadJson))
-    } catch (error) {
-      throw new ProposalError(
-        `proposal ${options.id} can no longer be applied: ` +
-          `${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-
-    const fields = handler.diff(tx, row.targetRef, payload)
     handler.apply(tx, row.targetRef, payload, now)
 
     tx.update(proposals)
