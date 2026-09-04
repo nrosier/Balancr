@@ -185,7 +185,13 @@ function sourceIndex(
 ): Map<string, Signal> {
   const index = new Map<string, Signal>()
   for (const signal of signals) {
-    const label = signal.categoryId === null ? null : (labelFor.get(signal.categoryId) ?? null)
+    // The same three cases `toSignal` distinguishes, and it has to be the same rule: this
+    // index is what a model finding is resolved back through, so a key computed
+    // differently from the label that was sent is a finding silently dropped.
+    const label =
+      signal.categoryId === null
+        ? signal.categoryName
+        : (labelFor.get(signal.categoryId) ?? null)
     index.set(signalKey(signal.code, label), signal)
   }
   return index

@@ -51,6 +51,34 @@ export interface PortfolioMetricsResult {
 }
 
 /**
+ * The invested/cash split, or two nulls when this date does not have one.
+ *
+ * Here rather than beside the one route that used to hold it, because three callers now
+ * need the same condition and it is a fact about a metrics row: the two halves are known
+ * together or not at all, and one present with the other missing would be a third state
+ * for every one of them to get wrong. `loadPortfolioMetrics` reads an absent split back
+ * as zero, which is the honest reading of "nothing recorded" and also indistinguishable
+ * from a portfolio that really holds no cash — the halves adding up to the total is what
+ * separates the two.
+ *
+ * It matters beyond the wire, because band shares are shares of the *invested* value: a
+ * date with no denominator measured against the total puts every class below its floor
+ * on any instance whose Ghostfolio syncs a bank balance, and produces four confident
+ * suggestions to buy.
+ */
+export function knownSplit(
+  metrics: PortfolioMetricsResult | null,
+): { investedValueCents: number | null; cashValueCents: number | null } {
+  if (metrics === null) return { investedValueCents: null, cashValueCents: null }
+  const known = metrics.investedValueCents + metrics.cashValueCents === metrics.totalValueCents
+  if (!known) return { investedValueCents: null, cashValueCents: null }
+  return {
+    investedValueCents: metrics.investedValueCents,
+    cashValueCents: metrics.cashValueCents,
+  }
+}
+
+/**
  * Asset classes that are cash rather than an investment.
  *
  * Ghostfolio labels a cash position `LIQUIDITY`; `CASH` is accepted too because the

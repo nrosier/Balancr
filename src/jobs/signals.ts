@@ -29,6 +29,8 @@ import {
 } from '../domain/aggregate/month-store.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
+import { latestDriftPersistence } from '../domain/advice/latest.ts'
+import type { DriftPersistence } from '../domain/advice/persistence.ts'
 import { custodyContext, splitMonth } from '../domain/aggregate/custody-context.ts'
 import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
@@ -98,6 +100,19 @@ interface Shared {
    * Shared for the same reason: neither is a fact about a particular month.
    */
   custody: ReturnType<typeof custodyContext>
+  /**
+   * How long each portfolio class has been outside its band (#183), and the month it is
+   * a statement about — the one the latest snapshot falls in.
+   *
+   * Both are needed, because they are two different facts: `persistence` is today's
+   * reading, and `month` is where it belongs. A pass over twelve months would otherwise
+   * have to guess, and the two obvious guesses are both wrong — attaching it to every
+   * month claims the portfolio looked like this in each of them, and attaching it to the
+   * newest month with *budget* facts puts a portfolio reading in September because Actual
+   * has September transactions, while Ghostfolio last synced in July.
+   */
+  drift: DriftPersistence | null
+  driftMonth: string | null
 }
 
 /**
@@ -136,6 +151,7 @@ export function judgeMonth(
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
     benchmark: compareMonth(shared.benchmark, month, facts),
     custody: splitMonth(shared.custody, month, facts),
+    drift: month === shared.driftMonth ? shared.drift : null,
     params: shared.params,
   })
 
@@ -152,15 +168,20 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     return { months: 0, signals: 0 }
   }
 
+  const params = loadParams(db)
+  const latestSnapshot = latestSnapshotDate(db)
   const shared: Shared = {
     today: dateIn(now, config.TZ),
     accounts: await collectReconciliations(config.TZ),
     netWorth: loadLatestNetWorth(db),
     netWorthHistory: loadNetWorthHistory(db),
-    latestPortfolioSnapshot: latestSnapshotDate(db),
-    params: loadParams(db),
+    latestPortfolioSnapshot: latestSnapshot,
+    params,
     benchmark: benchmarkContext(db),
     custody: custodyContext(db),
+    drift: latestDriftPersistence(db, params.drift.persistentMonths),
+    // The snapshot's own month, not the newest month of budget facts: see `Shared`.
+    driftMonth: latestSnapshot === null ? null : latestSnapshot.slice(0, 7),
   }
 
   let months = 0

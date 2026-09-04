@@ -32,6 +32,8 @@ import type { AccountMapRow } from '../aggregate/accounts.ts'
 import type { NetWorthSummary } from '../aggregate/networth.ts'
 import type { Signal } from '../aggregate/overspend.ts'
 import type { MonthlyFact, MonthTotals } from '../aggregate/spend.ts'
+import type { DriftState } from '../advice/drift.ts'
+import type { DriftPersistence } from '../advice/persistence.ts'
 import type { PortfolioMetricsResult } from '../portfolio/metrics.ts'
 import type { Severity } from './codes.ts'
 
@@ -60,6 +62,11 @@ export interface AnalysisBundle {
   netWorth: NetWorthSummary | null
   hygiene: BundleHygiene
   portfolio: BundlePortfolio | null
+  /**
+   * The portfolio against its risk profile, or null when there is nothing to measure
+   * (#183). Reduced to numbers by the collector, like `holdingCount` — see `BundleDrift`.
+   */
+  drift: BundleDrift | null
   accounts: readonly AccountMapRow[]
   /** Deterministic findings, already computed. The model prioritises, not detects. */
   signals: readonly Signal[]
@@ -87,6 +94,32 @@ export interface BundlePortfolio {
    * the count is all any statement about the shape of a portfolio needs.
    */
   holdingCount: number
+}
+
+/**
+ * How far the portfolio is from its profile, already reduced to what may be sent.
+ *
+ * Counts rather than lists, for the same reason `BundlePortfolio` holds a `holdingCount`
+ * and not a holding: a suggestion names an ISIN and a fund, and the position it would come
+ * out of, all of which is the most identifying data in the set. Reducing it in the
+ * collector rather than in the redactor means there is no instrument name in the bundle at
+ * all, so no future field can carry one out by accident.
+ *
+ * `unmapped` gets the same treatment for a different reason: those are Ghostfolio's own
+ * asset-class strings rather than our four-value enum, so they are effectively free text
+ * from a system nobody here controls. A count and a total share say everything a narrative
+ * can honestly use — "8% of the portfolio is in classes your profile has no band for".
+ */
+export interface BundleDrift {
+  persistence: DriftPersistence
+  toleranceBp: number
+  minTradeCents: number
+  /** How many trades would close the drift, and how many were not worth making. */
+  suggestionCount: number
+  skippedCount: number
+  /** Classes with no band, as a count and a share. Never their labels. */
+  unmappedCount: number
+  unmappedShareBp: number
 }
 
 // ---------------------------------------------------------------------------
@@ -159,9 +192,63 @@ export interface RedactedPortfolio {
   allocation: RedactedAllocation[]
 }
 
+export interface RedactedDriftLine {
+  /** One of four fixed ids. Never a fund, never a position. */
+  assetClass: string
+  shareBp: number
+  minBp: number
+  targetBp: number
+  maxBp: number
+  state: DriftState
+  /** Distance past the edge it is outside, zero when inside. */
+  outsideBp: number
+  /** Signed as `drift.ts` defines it: positive means short of target. */
+  gapCents: number
+  /** Consecutive month ends on this side of the band, ending now. 0 when inside. */
+  monthsOutside: number
+}
+
+/**
+ * The drift block: figures to explain, not to recompute.
+ *
+ * Every number here was computed by `buildAdvice` and `driftPersistence` from the same
+ * snapshot the portfolio page reads, through the same function — which is what makes
+ * "the narrative's figures match the page exactly" a property of the code rather than a
+ * test somebody has to keep writing. The band edges travel with the share because a
+ * model told only "76%" would have to be told the ceiling in prose to say anything, and
+ * prose is where a number gets rounded.
+ */
+export interface RedactedDrift {
+  /** One of four fixed profile ids, `custom` included. Not a name anybody typed. */
+  profile: string
+  isPreset: boolean
+  toleranceBp: number
+  minTradeCents: number
+  /**
+   * Usable month-end observations behind `monthsOutside`, so the model can tell "one
+   * month outside" from "one month of history". Without it a fresh install reads as
+   * reassuring.
+   */
+  monthsObserved: number
+  lines: RedactedDriftLine[]
+  suggestionCount: number
+  skippedCount: number
+  unmappedCount: number
+  unmappedShareBp: number
+}
+
 export interface RedactedSignal {
   code: Signal['code']
-  /** The category or account label, or null for a household-level signal. */
+  /**
+   * What the signal is about: an opaque `c7`/`a2` label, a fixed id, or null.
+   *
+   * Null means household level, which is what the prompt calls "household". A fixed id
+   * — a benchmark group, an asset class — is sent as itself, because it is one of a
+   * closed set of published or built-in strings and nothing anybody typed. Sending it is
+   * what lets the model rank two of them: `sourceIndex` keys on `(code, label)`, so ten
+   * `above_benchmark` signals labelled "household" were nine signals the model could not
+   * refer to and one it could, at random (#183).
+   */
   label: string | null
   severity: Severity
   metrics: Record<string, number>
@@ -195,6 +282,7 @@ export interface RedactedPayload {
   categories: RedactedCategory[]
   accounts: RedactedAccount[]
   portfolio: RedactedPortfolio | null
+  drift: RedactedDrift | null
   signals: RedactedSignal[]
 }
 
@@ -305,6 +393,34 @@ function toPortfolio(portfolio: BundlePortfolio): RedactedPortfolio {
   }
 }
 
+function toDrift(drift: BundleDrift): RedactedDrift {
+  const { persistence } = drift
+  return {
+    profile: persistence.profile,
+    isPreset: persistence.isPreset,
+    toleranceBp: drift.toleranceBp,
+    minTradeCents: drift.minTradeCents,
+    monthsObserved: persistence.monthsObserved,
+    // Copied field by field rather than spread, so a field added to `PersistentLine`
+    // for the portfolio page does not silently become a field in the payload.
+    lines: persistence.lines.map((line) => ({
+      assetClass: line.assetClass,
+      shareBp: line.shareBp,
+      minBp: line.minBp,
+      targetBp: line.targetBp,
+      maxBp: line.maxBp,
+      state: line.state,
+      outsideBp: line.outsideBp,
+      gapCents: line.gapCents,
+      monthsOutside: line.monthsOutside,
+    })),
+    suggestionCount: drift.suggestionCount,
+    skippedCount: drift.skippedCount,
+    unmappedCount: drift.unmappedCount,
+    unmappedShareBp: drift.unmappedShareBp,
+  }
+}
+
 function toSignal(signal: Signal, labelFor: ReadonlyMap<string, string>): RedactedSignal {
   // Metrics are copied key by key rather than passed through, so the object in
   // the payload cannot alias a live one and a non-numeric value cannot slip in
@@ -315,9 +431,18 @@ function toSignal(signal: Signal, labelFor: ReadonlyMap<string, string>): Redact
   }
   return {
     code: signal.code,
-    // A signal about something not in the bundle gets no label rather than its
-    // name: an unlabelled signal is a bug to find, a leaked name is not.
-    label: signal.categoryId === null ? null : labelFor.get(signal.categoryId) ?? null,
+    // Three cases, and the middle one is the interesting one. A signal with a category or
+    // account behind it is labelled opaquely, and one about something not in the bundle
+    // gets no label rather than its name — an unlabelled signal is a bug to find, a
+    // leaked name is not. A signal with no id but a name is neither: it is about a
+    // benchmark group or an asset class, whose "name" is a fixed id from a closed set
+    // rather than user text, so it travels as itself and the model can tell two of them
+    // apart. `categoryId === null && categoryName === null` is household level, which is
+    // the only thing null has ever meant here.
+    label:
+      signal.categoryId === null
+        ? signal.categoryName
+        : labelFor.get(signal.categoryId) ?? null,
     severity: signal.severity,
     metrics,
   }
@@ -373,6 +498,7 @@ export function redact(bundle: AnalysisBundle): Redaction {
       categories: redactedCategories,
       accounts: redactedAccounts,
       portfolio: bundle.portfolio === null ? null : toPortfolio(bundle.portfolio),
+      drift: bundle.drift === null ? null : toDrift(bundle.drift),
       signals: bundle.signals.map((signal) => toSignal(signal, labelFor)),
     },
     labelFor,
@@ -405,6 +531,7 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'categories',
   'accounts',
   'portfolio',
+  'drift',
   'signals',
   // totals & history
   'incomeCents',
@@ -451,6 +578,24 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'assetClass',
   'valueCents',
   'shareBp',
+  // drift
+  'profile',
+  'isPreset',
+  'toleranceBp',
+  'minTradeCents',
+  'monthsObserved',
+  'lines',
+  'minBp',
+  'targetBp',
+  'maxBp',
+  'state',
+  'outsideBp',
+  'gapCents',
+  'monthsOutside',
+  'suggestionCount',
+  'skippedCount',
+  'unmappedCount',
+  'unmappedShareBp',
   // signals
   'code',
   'severity',

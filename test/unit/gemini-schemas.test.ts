@@ -75,6 +75,7 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
     ],
     accounts: [{ label: 'a1', source: 'actual', kind: 'checking', inNetWorth: true }],
     portfolio: null,
+    drift: null,
     signals: [signal('over_available', 'c1'), signal('savings_rate_low', null, 'warn')],
     ...overrides,
   }

@@ -92,9 +92,9 @@ const monthsFromBp = (bp: number | undefined, translate: Translate): string | un
 /**
  * How each code's numbers read.
  *
- * `category`, `account` and `group` are deliberately absent: all three come from
- * the signal's single name field, which keeps one rule for them rather than
- * seventeen.
+ * `category`, `account`, `group` and `class` are deliberately absent: all four come
+ * from the signal's single name field, which keeps one rule for them rather than
+ * twenty-one.
  *
  * One code has no producer yet — `no_spend_streak` waits on the streak detector —
  * so the keys named here are the contract that producer will emit against.
@@ -145,6 +145,25 @@ const NUMERIC_VARS: {
       share: percent(m.shareBp),
     }),
 
+  // --- the portfolio against the profile ---
+  // `share` and the edge are both plain percentages and both printed, because the
+  // sentence is only a fact with both: "over its ceiling" is a judgement, "at 76%
+  // against a ceiling of 65%" is the reading behind it. The distance itself
+  // (`outsideBp`) is deliberately not in the sentence — it is the subtraction of two
+  // numbers already on the line, and printing it invites the model to check the sum.
+  drift_above_band: (m, translate) =>
+    present({
+      months: months(m.monthsOutside, translate),
+      share: percent(m.shareBp),
+      max: percent(m.maxBp),
+    }),
+  drift_below_band: (m, translate) =>
+    present({
+      months: months(m.monthsOutside, translate),
+      share: percent(m.shareBp),
+      min: percent(m.minBp),
+    }),
+
   // --- data hygiene ---
   // A count arrives pre-formatted, unlike a duration: these sentences have no
   // plural forms of their own, so there is nothing for a numeric `count` to
@@ -171,16 +190,21 @@ export function findingVars(signal: SignalFacts, translate: Translate): Vars {
       ? 'category'
       : spec.vars.includes('group')
         ? 'group'
-        : null
+        : spec.vars.includes('class')
+          ? 'class'
+          : null
   if (nameVar === null || signal.categoryName === null) return vars
   // A category and an account are named by whoever keeps the budget and travel as
-  // text; a benchmark group is one of ten fixed ids and is *translated*, because
-  // `housing` is a key and not a word anybody wants to read on a Dutch page. Same
-  // field, because a group is still the one thing the signal is about (#43).
+  // text; a benchmark group is one of ten fixed ids and an asset class one of four,
+  // and both are *translated*, because `housing` and `FIXED_INCOME` are keys and not
+  // words anybody wants to read on a Dutch page. Same field either way, because it is
+  // still the one thing the signal is about (#43, #183).
   vars[nameVar] =
     nameVar === 'group'
       ? translate(`budget:benchmark.group.${signal.categoryName}`, {})
-      : signal.categoryName
+      : nameVar === 'class'
+        ? translate(`portfolio:assetClass.${signal.categoryName}`, {})
+        : signal.categoryName
   return vars
 }
 

@@ -302,6 +302,9 @@
         "minMonthProgress": "Geen projectie voor dit deel van de maand",
         "toleranceBp": "Toegelaten overschrijding"
       },
+      "drift": {
+        "persistentMonths": "Maanden buiten een bandbreedte voor een melding"
+      },
       "household": {
         "emergencyFundTargetMonths": "Noodbuffer, in maanden",
         "savingsRateTargetBp": "Spaardoel"
@@ -322,6 +325,7 @@
     "group": {
       "baseline": "Je eigen norm",
       "burnRate": "Tempo",
+      "drift": "Portefeuilledrift",
       "household": "Doelen van het huishouden",
       "hygiene": "Datakwaliteit",
       "overspend": "Overbesteding"

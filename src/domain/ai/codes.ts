@@ -73,6 +73,18 @@ export const FINDING_SPECS = {
   // context about an arrangement, not a judgement (#44).
   custody_offset: { vars: ['amount', 'paid', 'share'], maxSeverity: 'info', negative: false },
 
+  // --- the portfolio against the profile ---
+  // Two codes and not one `drift_persistent` carrying a direction: "bonds have been
+  // under their floor of 20%" and "equities have been over their ceiling of 65%" name
+  // different edges and suggest opposite actions, and a single code would either have to
+  // say "outside its band" — dropping the only part a reader can act on — or hide a
+  // second sentence behind a variable, which costs a special case in both renderers.
+  // Warn, not alert: no money has been lost, but unlike `above_benchmark` the reference
+  // is a number this household set, so months spent outside it is a drift from a stated
+  // intention rather than context about the country (#183).
+  drift_above_band: { vars: ['class', 'months', 'share', 'max'], maxSeverity: 'warn', negative: true },
+  drift_below_band: { vars: ['class', 'months', 'share', 'min'], maxSeverity: 'warn', negative: true },
+
   // --- data hygiene: surfaced first, because the rest is worthless without it ---
   uncategorised_backlog: { vars: ['count'], maxSeverity: 'warn', negative: true },
   recompute_mismatch: { vars: ['category', 'difference'], maxSeverity: 'alert', negative: true },

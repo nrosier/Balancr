@@ -31,6 +31,8 @@
     "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned.",
     "committed_over_available": "{{category}} still has {{committed}} scheduled to go out, with {{available}} left in the envelope.",
     "custody_offset": "You paid {{paid}} on shared costs; at a {{share}} share, {{amount}} of that is the co-parent's.",
+    "drift_above_band": "{{class}} has sat above its ceiling of {{max}} for {{months}}, at {{share}} of the invested value.",
+    "drift_below_band": "{{class}} has sat below its floor of {{min}} for {{months}}, at {{share}} of the invested value.",
     "emergency_fund_short": "Your buffer covers {{months}}, short of the {{target}} you aim for.",
     "income_change": "Income is {{delta}} off your usual {{baseline}}.",
     "irregular_expense": "An unusual expense of {{amount}} in {{category}}.",

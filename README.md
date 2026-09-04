@@ -431,6 +431,45 @@ And nothing is executed: Balancr never places a trade, and both upstream tools s
 read-only.
 
 
+### How long it has been like that
+
+The rows above are about today. The fact worth reading is that the same row was there in
+August and in July, because that is what separates a market that moved from a rebalance
+nobody did — and it is the one thing on this page a language model is better at than a
+threshold. Balancr therefore counts back over the month-end metrics it has been storing all
+along: **Settings → Thresholds → Portfolio drift** sets how many consecutive month ends a
+class must sit outside the same edge before it is worth a line, three by default, and never
+one — a fortnight of markets can move a share on its own, and a single month outside a band
+would repeat, less precisely, what the portfolio page already shows.
+
+Four things the count deliberately does *not* do:
+
+- **It does not measure against the bands you had at the time.** The profile is not
+  versioned, so there is no honest way to say what it said in June. The claim is "given the
+  profile you have now, this class has been outside it for three months" — which means
+  widening a band this morning resets the run, and that is correct: you have just said that
+  share is acceptable.
+- **It does not count through a month nobody looked at.** A month with no metrics row, or one
+  from before the invested/cash split was recorded, is not a month in which nothing drifted.
+  Both end the count, because measuring shares against a missing denominator puts every class
+  at 0% and below its floor — and counting through the hole would turn a run of one into a run
+  of four on an instance whose history was backfilled.
+- **It does not count an overshoot as persistence.** Below its floor in July and above its
+  ceiling in September is not three months of one problem; the run has to be on the same side.
+- **It does not imply a trend the history cannot carry.** How many month ends could be read at
+  all is reported beside the count, and the narrative is instructed to say so where they are
+  few.
+
+What crosses to the model is the profile's name, one line per class with its share, its band
+and its count, and the trades as *how many there were* — no ISIN, no fund name, no position.
+The suggestions name an instrument to buy and Ghostfolio's unmapped entries are its own
+strings for something it could not classify, so both are reduced to integers before anything
+leaves the machine; the [golden denylist test](#privacy) covers the new fields. The narrative
+may explain a drift of that length and may not do arithmetic on it: not the distance restated,
+not the share turned into an amount, not a guess at what a rebalance would cost. A run
+returning a figure that disagrees with the computed one changes nothing on any screen.
+
+
 ## Comparing with Belgian households
 
 Your own twelve-month norm answers "is this month unusual for me". It cannot answer "is
@@ -829,7 +868,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is under way, and three slices of it are on screen. The
+**Where it is now** — `0.9.0` is under way, and four slices of it are on screen. The monthly
+narrative can now say how long a class has been outside its band rather than only that it is:
+the month-end metrics Balancr has been storing all along are counted back over, three
+consecutive month ends on the same edge earn a line, and a month nobody snapshotted ends the
+count instead of being counted through — with the profile, the bands and the counts crossing
+to the model while the trades cross as how many there were, because a suggestion names a fund
+to buy. The
 budget page no longer waits for a direct debit to fall before it counts one: Actual's
 schedules are read, their recurrences expanded over the days left in the month, and what is
 still to come is stated per envelope beside what has already gone — so the burn rate stops
@@ -850,9 +895,23 @@ name a fund from a list you vetted yourself, and what acting would cost in Belgi
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
 arrives monthly, and the container's hardening is checked rather than declared. What is left
-in `0.9.0` is the benchmark's drift figure in the monthly narrative, a month picker on the
-insights page, and the first proposal handlers that write back to Actual; its slices ship as
-`0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+in `0.9.0` is a month picker on the insights page and the first proposal handlers that write
+back to Actual; its slices ship as `0.8.1`, `0.8.2`, … until that milestone closes as
+`0.9.0`.
+
+The monthly narrative can now say how long a class has been outside its band
+([#183](https://github.com/nrosier/Balancr/issues/183)). The portfolio page states today's
+drift and the trade that would close it; what no screen stated is that the same sentence was
+true last month and the month before, which is the difference between a market that moved and
+a rebalance nobody did. Balancr counts back over the month-end metrics it has been storing all
+along, measures each against the bands currently in force, and reports a class that has sat
+outside the same edge for three month ends — a setting, and never one month, because a
+fortnight of markets can move a share on its own. A month nobody snapshotted ends the count
+rather than being counted through, an overshoot from one edge to the other is not persistence,
+and how far back the reading goes is stated beside it so a run can never imply a trend the
+history cannot carry. What reaches the model is the profile, the bands and the counts, with
+the trades reduced to how many there were — the suggestions name a fund to buy, so they cross
+as integers or not at all. See [How long it has been like that](#how-long-it-has-been-like-that).
 
 The month's projection now counts what has not been paid yet
 ([#159](https://github.com/nrosier/Balancr/issues/159)). A burn rate built on elapsed time
@@ -1296,10 +1355,10 @@ there would be recomputed by morning anyway; what would not is the part you type
 is the reason any of this exists. See [Backups](#backups).
 
 That closed the operational milestone, and `0.8.0` closed the advice one above it. `0.9.0`
-is the outside numbers, and the Statbel benchmark at the top of this section is its first
-slice; what remains in it is a custody-aware split of what a child costs, the benchmark's
-drift figure in the monthly narrative, and the first proposal handlers allowed to write back
-to Actual.
+is the outside numbers and the sentences drawn from them: the Statbel benchmark, the custody
+split, the month's committed spend and the drift the narrative can now put a length on are
+its four slices, and what remains in it is a month picker on the insights page and the first
+proposal handlers allowed to write back to Actual.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues),
 grouped by milestone. `CHANGELOG.md` records what each version changed.

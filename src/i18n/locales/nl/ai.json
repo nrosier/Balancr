@@ -31,6 +31,8 @@
     "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen.",
     "committed_over_available": "In {{category}} staat nog {{committed}} gepland, terwijl er {{available}} in de envelop overblijft.",
     "custody_offset": "Je betaalde {{paid}} aan gedeelde kosten; bij een aandeel van {{share}} is {{amount}} daarvan voor de co-ouder.",
+    "drift_above_band": "{{class}} zit al {{months}} boven het plafond van {{max}}, op {{share}} van de belegde waarde.",
+    "drift_below_band": "{{class}} zit al {{months}} onder de ondergrens van {{min}}, op {{share}} van de belegde waarde.",
     "emergency_fund_short": "Je buffer dekt {{months}}, minder dan de {{target}} die je nastreeft.",
     "income_change": "Je inkomen wijkt {{delta}} af van je gebruikelijke {{baseline}}.",
     "irregular_expense": "Een ongebruikelijke uitgave van {{amount}} in {{category}}.",
