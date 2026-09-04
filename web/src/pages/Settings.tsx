@@ -19,40 +19,46 @@
  *    by anything on it, so each panel says when its change lands instead of pretending
  *    to show a result.
  *
- * The status panel is the exception to the first rule and says so in its own header:
+ * **Sections (#200).** What used to be one long scroll of nine panels is now one
+ * section at a time, chosen by `../settings/sections.ts`'s `sectionFor` from the real
+ * URL (`routes.ts` marks `/settings` `nested`, so every `/settings/*` path still lands
+ * on this component) and rendered under `SettingsNav`'s tab strip. `useSettings()` is
+ * still called exactly once here regardless of section — the payload behind every
+ * panel is one request, not one per tab.
+ *
+ * The status panel is the exception to the payload rule and says so in its own header:
  * it reads `/api/status`, not the settings payload, because readiness decays while the
  * page is open and because it has to be able to be the thing that failed while the
  * rest of the page loaded. The build block below it stays separate for the same reason
  * in reverse — the version and revision come from the settings payload, so they are
  * still on screen when `/api/status` is what is broken, which is when a bug report
- * needs them most.
+ * needs them most. Both live on General together with the language control and the
+ * data window, which is the section for "how this instance is doing" rather than any
+ * one setting.
  *
- * Panel order is the order someone arrives with a reason to be here: the language
- * control first because it is the one thing everyone changes and the only thing a
- * viewer can; then the prompt editor, which is the point of the page; then thresholds,
- * account mapping and the two benchmark panels, which are set once and revisited
- * rarely; then AI spend, which is read, not set. The build block is last because it
- * exists for a bug report.
+ * The risk profile has its own section ahead of thresholds in the tab order for the
+ * reason it used to sit above them on the single page: it is the only section whose
+ * numbers produce a suggestion to move money, and somebody arriving because the
+ * portfolio page proposed a trade is looking for these twelve boxes rather than for
+ * the EWMA half-life.
  *
- * The risk profile sits above the thresholds for a reason: it is the only panel here
- * whose numbers produce a suggestion to move money, and somebody arriving because the
- * portfolio page proposed a trade is looking for these twelve boxes rather than for the
- * EWMA half-life.
- *
- * The household and the COICOP mapping sit together below the account mapping because
- * all three are the same kind of work — saying which of Balancr's own vocabularies an
- * external thing belongs to — and because the household is meaningless without the
- * mapping: an equivalence scale divides a reference that nothing is compared against
- * until at least most of the month has a division (#43).
+ * The household and the COICOP mapping share a Benchmark section because both are the
+ * same kind of work — saying which of Balancr's own vocabularies an external thing
+ * belongs to — and because the household is meaningless without the mapping: an
+ * equivalence scale divides a reference that nothing is compared against until at
+ * least most of the month has a division (#43).
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
+import { useRouter } from '../router.tsx'
 import { AccountsPanel } from '../settings/Accounts.tsx'
 import { HouseholdPanel, MappingPanel } from '../settings/Benchmark.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
+import { sectionFor } from '../settings/sections.ts'
+import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
@@ -65,6 +71,8 @@ import '../settings/settings.css'
 export function Settings(): ReactNode {
   const { t, language } = useT()
   const state = useSettings()
+  const { path } = useRouter()
+  const section = sectionFor(path)
   /*
    * The price of one analysis, read once for the two panels that offer to spend it.
    *
@@ -80,6 +88,7 @@ export function Settings(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.settings')} lede={t('page.settings.lede')} />
+      <SettingsNav />
 
       <DataState resource={state.resource}>
         {(settings) => {
@@ -104,44 +113,56 @@ export function Settings(): ReactNode {
                 </div>
               )}
 
-              <LanguagePanel {...props} />
-              <PromptsPanel {...props} />
-              <RiskPanel {...props} />
-              <ThresholdsPanel {...props} />
-              <AccountsPanel {...props} />
-              <HouseholdPanel {...props} />
-              <MappingPanel {...props} />
-              <SpendPanel {...props} />
-              <StatusPanel />
+              {section === 'general' && (
+                <>
+                  <LanguagePanel {...props} />
 
-              <section className="card panel">
-                <h2 className="card__title">{t('settings:history.title')}</h2>
-                <dl className="build">
-                  <dt>{t('settings:history.months')}</dt>
-                  <dd className="num">
-                    {t('settings:history.monthsValue', { months: settings.history.months })}
-                  </dd>
-                  <dt>{t('settings:history.coverage')}</dt>
-                  <dd className="num">
-                    {settings.history.earliest === null || settings.history.latest === null
-                      ? t('settings:history.noneYet')
-                      : t('settings:history.coverageValue', {
-                          earliest: formatMonth(settings.history.earliest, language),
-                          latest: formatMonth(settings.history.latest, language),
-                        })}
-                  </dd>
-                </dl>
-              </section>
+                  <section className="card panel">
+                    <h2 className="card__title">{t('settings:history.title')}</h2>
+                    <dl className="build">
+                      <dt>{t('settings:history.months')}</dt>
+                      <dd className="num">
+                        {t('settings:history.monthsValue', { months: settings.history.months })}
+                      </dd>
+                      <dt>{t('settings:history.coverage')}</dt>
+                      <dd className="num">
+                        {settings.history.earliest === null || settings.history.latest === null
+                          ? t('settings:history.noneYet')
+                          : t('settings:history.coverageValue', {
+                              earliest: formatMonth(settings.history.earliest, language),
+                              latest: formatMonth(settings.history.latest, language),
+                            })}
+                      </dd>
+                    </dl>
+                  </section>
 
-              <section className="card panel">
-                <h2 className="card__title">{t('settings:build.title')}</h2>
-                <dl className="build">
-                  <dt>{t('settings:build.version')}</dt>
-                  <dd className="num">{settings.build.version ?? t('empty.unknown')}</dd>
-                  <dt>{t('settings:build.revision')}</dt>
-                  <dd className="num">{settings.build.revision ?? t('empty.unknown')}</dd>
-                </dl>
-              </section>
+                  <section className="card panel">
+                    <h2 className="card__title">{t('settings:build.title')}</h2>
+                    <dl className="build">
+                      <dt>{t('settings:build.version')}</dt>
+                      <dd className="num">{settings.build.version ?? t('empty.unknown')}</dd>
+                      <dt>{t('settings:build.revision')}</dt>
+                      <dd className="num">{settings.build.revision ?? t('empty.unknown')}</dd>
+                    </dl>
+                  </section>
+
+                  <StatusPanel />
+                </>
+              )}
+
+              {section === 'prompts' && <PromptsPanel {...props} />}
+              {section === 'risk' && <RiskPanel {...props} />}
+              {section === 'thresholds' && <ThresholdsPanel {...props} />}
+              {section === 'accounts' && <AccountsPanel {...props} />}
+
+              {section === 'benchmark' && (
+                <>
+                  <HouseholdPanel {...props} />
+                  <MappingPanel {...props} />
+                </>
+              )}
+
+              {section === 'spend' && <SpendPanel {...props} />}
             </>
           )
         }}

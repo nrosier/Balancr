@@ -127,5 +127,5 @@ export function CategoryTrend({
             baseline: money(baselineCents),
           })
 
-  return <Chart option={option} summary={summary} height={height ?? '6rem'} />
+  return <Chart option={option} summary={summary} blurWhenPrivate height={height ?? '6rem'} />
 }

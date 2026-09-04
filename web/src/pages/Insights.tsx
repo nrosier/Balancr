@@ -50,6 +50,7 @@ import {
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { MonthPicker } from '../ui/MonthPicker.tsx'
+import { Private } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../insights/insights.css'
@@ -150,10 +151,12 @@ function Sections({
             same sentence is what the settings screen's cost panel prints.
           */}
           <p className="notice__meta">
-            {t('settings:ai.spend', {
-              spent: formatMicroEur(data.spend.spentMicroEur),
-              budget: formatMicroEur(data.spend.budgetMicroEur),
-            })}
+            <Private>
+              {t('settings:ai.spend', {
+                spent: formatMicroEur(data.spend.spentMicroEur),
+                budget: formatMicroEur(data.spend.budgetMicroEur),
+              })}
+            </Private>
           </p>
         </div>
       ) : null}

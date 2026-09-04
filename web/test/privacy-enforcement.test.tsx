@@ -11,15 +11,27 @@
  * is a category #171 deliberately excludes, stated where it is decided:
  *
  *  - `ui/Money.tsx` — the wrapper itself.
- *  - The five ECharts files — `filter` cannot reach canvas-drawn axis labels/geometry,
- *    only DOM. Tooltip formatters already wrap their money substrings in
- *    `privateText` (`charts/tooltip.ts`); axis labels stay visible, a documented,
- *    accepted limitation. Their `summary`/aria-label strings (built by each file's own
- *    `money` helper) are screen-reader-only text nothing ever renders visually, so
- *    blurring is meaningless there — same reasoning as the `Budget.tsx` entry below.
- *  - AI-operational-cost figures — the price of a Gemini call, not personal spending —
- *    in `insights/Narrative.tsx`, `insights/Ledger.tsx`, `settings/Spend.tsx`,
- *    `settings/Prompts.tsx`, `pages/Insights.tsx`.
+ *  - The five ECharts files — `Chart` renders with the SVG renderer, so a chart flagged
+ *    `blurWhenPrivate` (`NetWorthChart`, `BudgetBullet`, `CategoryTrend` — an axis whose
+ *    labels are money) does blur its labels along with the rest of the drawing; the
+ *    other two (`AllocationChart`, `SpendSankey`) have no money-labelled axis to leak in
+ *    the first place, only a tooltip, and the tooltip's money substrings already go
+ *    through `privateText` (`charts/tooltip.ts`). Every file's remaining call builds
+ *    either a tooltip string or a `summary`/aria-label string (screen-reader-only text
+ *    nothing renders visually), neither of which `<Money>` can wrap — same reasoning as
+ *    the `Budget.tsx` entry below.
+ *  - `insights/Narrative.tsx` and `pages/Insights.tsx` — both call the formatter only to
+ *    build a `{{cost}}`/`{{spent}}`/`{{budget}}` value for a translated sentence, which
+ *    `t()` returns as a plain string i18next has already assembled — there is no
+ *    sub-string DOM node left to wrap. Both wrap the *whole rendered sentence* in
+ *    `<Private>` at the call site instead (verified by reading each site, not by this
+ *    scan), which blurs the figure along with the words around it. `Narrative.tsx`'s
+ *    confirm-button label is the one call left genuinely unwrapped: it repeats a cost
+ *    already blurred one line above it, moments before the reader presses the button
+ *    that spends it, and a nested focusable span inside a `<button>` would double the
+ *    tab stop.
+ *  - AI-operational-cost figures elsewhere — the price of a Gemini call, not personal
+ *    spending — in `settings/Spend.tsx`, `settings/Prompts.tsx`.
  *  - Settings/configuration numbers — thresholds and trading minimums the account
  *    configures, not spending — in `settings/Thresholds.tsx`, `settings/Risk.tsx`.
  *  - `pages/Budget.tsx`'s `pace.summary` — an aria-label on `PaceBar`, never rendered
@@ -42,7 +54,6 @@ const ALLOWED = new Set(
     'charts/SpendSankey.tsx',
     'charts/CategoryTrend.tsx',
     'insights/Narrative.tsx',
-    'insights/Ledger.tsx',
     'settings/Spend.tsx',
     'settings/Prompts.tsx',
     'pages/Insights.tsx',

@@ -423,13 +423,40 @@ function serve(replies: Record<string, Response | Error | (Response | Error)[]>)
   return calls
 }
 
-/** The page, once its payload has landed. */
-async function open(replies: Record<string, Response | Error | (Response | Error)[]>): Promise<Call[]> {
+type Replies = Record<string, Response | Error | (Response | Error)[]>
+
+/**
+ * The heading each section's own panel puts up first, once its data has landed
+ * (#200). `open()` below waits for one of these rather than for the payload itself,
+ * because a settings page split into tabs shows only the active tab's panels — the
+ * other sections' headings never render at all on a given path.
+ */
+const SECTION_HEADING: Record<string, string> = {
+  '/settings': 'Account',
+  '/settings/prompts': 'Assistant instructions',
+  '/settings/risk': 'Risk profile',
+  '/settings/thresholds': 'Thresholds',
+  '/settings/accounts': 'Accounts',
+  '/settings/benchmark': 'Household',
+  '/settings/spend': 'AI usage',
+}
+
+/**
+ * The page, on whichever section's path is given, once its payload has landed.
+ *
+ * Most describe blocks below shadow this with their own `open` bound to one section's
+ * path (#200) — `openPage` is the name that shadow calls through, kept exported at
+ * this scope so a block that needs more than one section (a viewer's, the page's own
+ * shape) can still reach every tab from one helper.
+ */
+async function openPage(replies: Replies, path = '/settings'): Promise<Call[]> {
   const calls = serve(replies)
-  renderApp(<Settings />, { path: '/settings' })
-  await screen.findByRole('heading', { level: 2, name: 'Thresholds' })
+  renderApp(<Settings />, { path })
+  await screen.findByRole('heading', { level: 2, name: SECTION_HEADING[path] ?? 'Account' })
   return calls
 }
+
+const open = openPage
 
 /**
  * The status panel's own endpoint, which is not part of the settings payload.
@@ -513,26 +540,52 @@ describe('the shape of the page', () => {
     renderApp(<Settings />, { path: '/settings' })
 
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings')
-    expect(screen.queryByRole('heading', { level: 2, name: 'Thresholds' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
   })
 
-  it('shows every panel, and the build the answer came from', async () => {
+  it('opens on General, and only General, with the build the answer came from', async () => {
     await open(READS)
 
-    for (const title of [
-      'Account',
-      'Assistant instructions',
-      'Thresholds',
-      'Accounts',
-      'Household',
-      'Categories',
-      'AI usage',
-      'Status of this instance',
-    ]) {
+    for (const title of ['Account', 'Data window', 'This instance', 'Status of this instance']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
     }
     expect(screen.getByText('abc1234')).toBeTruthy()
     expect(screen.getByText('0.5.6')).toBeTruthy()
+
+    // Every other section's panel stays off the page until its own tab is open.
+    for (const title of ['Assistant instructions', 'Thresholds', 'Accounts', 'Household', 'AI usage']) {
+      expect(screen.queryByRole('heading', { level: 2, name: title })).toBeNull()
+    }
+  })
+
+  it.each([
+    ['/settings/prompts', 'Assistant instructions'],
+    ['/settings/thresholds', 'Thresholds'],
+    ['/settings/accounts', 'Accounts'],
+    ['/settings/spend', 'AI usage'],
+  ] as const)('shows only %s’s panel on its own tab, not General’s', async (path, title) => {
+    await open(READS, path)
+
+    expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Status of this instance' })).toBeNull()
+  })
+
+  it('shows the household and the category mapping together on Benchmark', async () => {
+    await open(READS, '/settings/benchmark')
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Household' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Categories' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
+  })
+
+  it('marks the open tab current, and lands on General for a path it does not recognise', async () => {
+    await open(READS, '/settings/risk')
+    expect(screen.getByRole('link', { name: 'Risk' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'General' }).getAttribute('aria-current')).toBeNull()
+
+    await open(READS, '/settings/nonsense')
+    expect(screen.getByRole('heading', { level: 2, name: 'Account' })).toBeTruthy()
   })
 
   it('shows the data window, and what the sync pass has actually covered (#162)', async () => {
@@ -552,18 +605,27 @@ describe('the shape of the page', () => {
     expect(screen.getByText('Nothing aggregated yet')).toBeTruthy()
   })
 
-  it('asks for the payload once, and for the two things the panels fetch themselves', async () => {
+  it('asks for the payload once, and for the price a run would cost, on every tab', async () => {
     const calls = await open(READS)
-    await screen.findByRole('button', { name: /^Test on/ })
+    // `/api/status` is General's own panel and separate from the payload on purpose —
+    // `Settings.tsx` says why — so it is a third request here rather than a sixth field.
+    await screen.findByText('This instance is serving pages.')
 
-    // In mount order, and each exactly once. `/api/status` is separate from the payload
-    // on purpose — `Settings.tsx` says why — so it is a third request rather than a
-    // sixth field, and it must not be asked for again on every render.
     expect(calls.map((call) => call.path)).toEqual([
       '/api/settings',
       '/api/ai/estimate',
       '/api/status',
     ])
+  })
+
+  it('does not fetch the running instance status on a tab that does not show it', async () => {
+    const calls = await open(READS, '/settings/prompts')
+    await screen.findByRole('button', { name: /^Test on/ })
+
+    // `/api/ai/estimate` is asked for regardless of tab — both Prompts' test run and
+    // Spend's by-hand run price against it — but `/api/status` is never asked for here:
+    // only General mounts the panel that reads it.
+    expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
   })
 })
 
@@ -579,12 +641,19 @@ describe('language', () => {
 
     fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'nl' } })
 
-    await screen.findByRole('heading', { level: 2, name: 'Drempels' })
+    // "Eigenaar" rather than a heading: the panel that just wrote is the only one
+    // General still shows once Thresholds moved to its own tab (#200). A regex, not a
+    // plain string: the role text shares a <p> with the "signed in as" line, so no
+    // element's own text is the bare word alone.
+    await screen.findByText(/Eigenaar/)
     expect(writes(calls)).toEqual([
       { path: '/api/settings/profile', method: 'PATCH', body: { locale: 'nl' } },
     ])
-    // Belgian formatting is not a language setting: the euro sign and the comma stay.
-    expect(screen.getByText('€ 2,50')).toBeTruthy()
+
+    // Belgian formatting is not a language setting: the euro sign and the comma stay,
+    // on a tab that has a euro figure to check it against.
+    fireEvent.click(screen.getByRole('link', { name: 'AI-gebruik' }))
+    expect(await screen.findByText('€ 2,50')).toBeTruthy()
   })
 
   it('sends nothing when the language chosen is the one already set', async () => {
@@ -595,6 +664,9 @@ describe('language', () => {
 })
 
 describe('thresholds', () => {
+  /** Thresholds moved to its own tab (#200); every case here means that tab. */
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/thresholds')
+
   it('sends only the fields that changed, in their groups', async () => {
     const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
 
@@ -685,6 +757,8 @@ describe('thresholds', () => {
 })
 
 describe('the risk profile', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/risk')
+
   it('prints what each preset means, so the word is not a black box', async () => {
     await open(READS)
 
@@ -868,6 +942,8 @@ describe('the risk profile', () => {
 })
 
 describe('accounts', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/accounts')
+
   it('names the pair that may be counted twice and lets either side win', async () => {
     const calls = await open({ ...READS, '/api/settings/accounts/group': json(PAYLOAD) })
 
@@ -972,6 +1048,8 @@ describe('accounts', () => {
 })
 
 describe('the household', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/benchmark')
+
   const household = (): HTMLElement => form('household')
 
   const saveHousehold = (): HTMLButtonElement =>
@@ -1173,6 +1251,8 @@ describe('the household', () => {
 })
 
 describe('the category table', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/benchmark')
+
   const picker = (name: string): HTMLSelectElement =>
     screen.getByLabelText(`COICOP division for ${name}`) as HTMLSelectElement
 
@@ -1337,6 +1417,8 @@ describe('the category table', () => {
 })
 
 describe('prompts', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+
   /** One Dutch version, deliberately written and active: the diverged state. */
   const DUTCH = {
     key: 'analysis.system',
@@ -1558,6 +1640,8 @@ describe('prompts', () => {
 })
 
 describe('the test run', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+
   /**
    * The button, once the estimate has landed.
    *
@@ -1633,8 +1717,10 @@ describe('the test run', () => {
 
     await screen.findByRole('heading', { name: 'Test run' })
     expect(screen.queryByRole('button', { name: /^Test on/ })).toBeNull()
-    // The variable to set, in both places that would have offered to spend money.
-    expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(2)
+    // The variable to set, in the one place that would have offered to spend money —
+    // once flat, this and the Spend panel's own reason both rendered on the same page
+    // and this asserted two; the tab split (#200) means only Prompts is mounted here.
+    expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(1)
   })
 
   it('is not offered for the narrative prompt, which the server will not run', async () => {
@@ -1649,6 +1735,8 @@ describe('the test run', () => {
 })
 
 describe('AI spend', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/spend')
+
   it('prints the month to date and the months behind it from the server’s figures', async () => {
     await open(READS)
 
@@ -1675,9 +1763,10 @@ describe('AI spend', () => {
 
     await screen.findByRole('heading', { name: 'Run by hand' })
     expect(screen.queryByRole('button', { name: 'Run the analysis now' })).toBeNull()
-    // Twice: this panel and the prompt editor's test run, from the same key, because
-    // two catalogues explaining the same state in different words is how one goes wrong.
-    expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(2)
+    // Once: this panel's own reason, from the same key the prompt editor's test run
+    // would show on its own tab (#200) — before the split both rendered on one page
+    // and this asserted two.
+    expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(1)
     // No price on a run that cannot start.
     expect(screen.queryByText(/would cost about/)).toBeNull()
     expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
@@ -1691,7 +1780,10 @@ describe('a viewer', () => {
   }
 
   it('can read every threshold and change none of them', async () => {
-    await open({ '/api/settings': json(VIEWER), '/api/ai/estimate': json(ESTIMATE) })
+    await openPage(
+      { '/api/settings': json(VIEWER), '/api/ai/estimate': json(ESTIMATE) },
+      '/settings/thresholds',
+    )
 
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
     expect(field('Warn above the norm').value).toBe('2000')

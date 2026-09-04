@@ -42,6 +42,7 @@ import {
   type AiNarrativeRun,
   type Insights,
 } from '../shared.ts'
+import { Private } from '../ui/Money.tsx'
 
 export interface NarrativeProps {
   narrative: Insights['narrative']
@@ -216,9 +217,11 @@ function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
   if (done !== null) {
     return (
       <p className="muted" role="status">
-        {done.status === 'ok' || done.status === 'cached'
-          ? t('ai:narrative.offer.written', { cost: formatMicroEur(done.costMicroEur) })
-          : t(`settings:ai.reason.${done.reason}`)}
+        {done.status === 'ok' || done.status === 'cached' ? (
+          <Private>{t('ai:narrative.offer.written', { cost: formatMicroEur(done.costMicroEur) })}</Private>
+        ) : (
+          t(`settings:ai.reason.${done.reason}`)
+        )}
       </p>
     )
   }
@@ -236,10 +239,12 @@ function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
       {priced === null ? null : (
         <>
           <p className="muted">
-            {t('ai:narrative.offer.price', {
-              month: formatMonth(priced.month, language),
-              cost: formatMicroEur(priced.estimateMicroEur),
-            })}
+            <Private>
+              {t('ai:narrative.offer.price', {
+                month: formatMonth(priced.month, language),
+                cost: formatMicroEur(priced.estimateMicroEur),
+              })}
+            </Private>
           </p>
           {priced.allowed || priced.reason === null ? null : (
             <p className="notice notice--warn" role="status">
