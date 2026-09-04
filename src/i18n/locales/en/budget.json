@@ -85,6 +85,13 @@
     "trendTitle": "Spending per category",
     "trendWindow": "The last {{window}}, oldest first."
   },
+  "committed": {
+    "approximate": "A schedule states a range rather than an amount; it is counted at its upper bound.",
+    "category": "{{amount}} still to come",
+    "categoryApprox": "about {{amount}} still to come",
+    "unallocated_one": "{{value}} schedule has no category, so it counts in the month total only.",
+    "unallocated_other": "{{value}} schedules have no category, so they count in the month total only."
+  },
   "custody": {
     "assumption": "This assumes the whole invoice left your account and that {{share}} of it is yours. Nothing here changes Actual's figures — what you paid is what you paid.",
     "basis": {
@@ -135,6 +142,8 @@
     "baseline": "12-month norm",
     "burnRate": "Burn rate",
     "carryover": "Carried over",
+    "committed": "Still to come",
+    "committedNone": "Unassigned",
     "fromLastMonth": "From last month",
     "income": "Income",
     "projected": "Projected month end",

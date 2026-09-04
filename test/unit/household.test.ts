@@ -26,6 +26,10 @@ function totals(overrides: Partial<MonthTotals> = {}): MonthTotals {
       overrides.savingsRateBp === undefined
         ? Math.round(((incomeCents - spentCents) / incomeCents) * 10_000)
         : overrides.savingsRateBp,
+    committedCents: overrides.committedCents ?? 0,
+    committedUnallocatedCents: overrides.committedUnallocatedCents ?? 0,
+    committedUnallocatedCount: overrides.committedUnallocatedCount ?? 0,
+    committedApproximate: overrides.committedApproximate ?? false,
   }
 }
 

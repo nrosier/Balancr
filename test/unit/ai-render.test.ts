@@ -38,6 +38,8 @@ const ALL_METRICS: Record<string, number> = {
   excessCents: 8_100,
   savedCents: 8_100,
   benchmarkCents: 41_000,
+  committedCents: 41_250,
+  committedShortfallCents: 1_250,
   deltaBp: 1_800,
   windowMonths: 12,
   // trajectory

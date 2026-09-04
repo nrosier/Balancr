@@ -46,6 +46,10 @@ function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotal
     fromLastMonthCents: 12_000,
     balanceCents: 39_000,
     savingsRateBp: 1_026,
+    committedCents: 0,
+    committedUnallocatedCents: 0,
+    committedUnallocatedCount: 0,
+    committedApproximate: false,
     ...overrides,
   }
 }

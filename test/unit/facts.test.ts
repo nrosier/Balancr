@@ -38,6 +38,9 @@ function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): 
     carryoverEnabled: false,
     txnCount: 3,
     recomputedSpentCents: 10_000,
+    committedCents: 0,
+    committedToDateCents: 0,
+    committedApproximate: false,
     baseline: null,
     ...overrides,
   }

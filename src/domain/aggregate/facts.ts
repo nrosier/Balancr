@@ -65,6 +65,9 @@ export function persistFacts(
             carryoverEnabled: fact.carryoverEnabled,
             txnCount: fact.txnCount,
             recomputedSpentCents: fact.recomputedSpentCents,
+            committedCents: fact.committedCents,
+            committedToDateCents: fact.committedToDateCents,
+            committedApproximate: fact.committedApproximate,
             ewmaBaselineCents: fact.baseline?.baselineCents ?? null,
             baselineDeltaBp: fact.baseline?.deltaBp ?? null,
             baselineCurrentCents: fact.baseline?.currentCents ?? null,
@@ -83,6 +86,9 @@ export function persistFacts(
             carryoverEnabled: sql`excluded.carryover_enabled`,
             txnCount: sql`excluded.txn_count`,
             recomputedSpentCents: sql`excluded.recomputed_spent_cents`,
+            committedCents: sql`excluded.committed_cents`,
+            committedToDateCents: sql`excluded.committed_to_date_cents`,
+            committedApproximate: sql`excluded.committed_approximate`,
             ewmaBaselineCents: sql`excluded.ewma_baseline_cents`,
             baselineDeltaBp: sql`excluded.baseline_delta_bp`,
             baselineCurrentCents: sql`excluded.baseline_current_cents`,
@@ -221,6 +227,9 @@ export function loadFacts(db: Db, month: string): MonthlyFact[] {
     carryoverEnabled: fact.carryoverEnabled,
     txnCount: fact.txnCount,
     recomputedSpentCents: fact.recomputedSpentCents,
+    committedCents: fact.committedCents,
+    committedToDateCents: fact.committedToDateCents,
+    committedApproximate: fact.committedApproximate,
     // All four companion columns are written with `ewma_baseline_cents` or not at
     // all, so this one null check settles the whole object. `?? 0` never fires;
     // it is there because the columns are nullable in the type.

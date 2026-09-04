@@ -32,7 +32,7 @@ export interface FindingSpec {
 }
 
 export const FINDING_SPECS = {
-  // --- the four overspend signals, reported separately and never merged ---
+  // --- the five overspend signals, reported separately and never merged ---
   over_assigned: { vars: ['category', 'spent', 'assigned'], maxSeverity: 'warn', negative: true },
   over_available: { vars: ['category', 'overspend'], maxSeverity: 'alert', negative: true },
   // Alert, unlike over_assigned: a carried-over balance routinely covers an
@@ -44,6 +44,14 @@ export const FINDING_SPECS = {
   // budget survey, so the only thing comparable to it is spending aggregated the
   // same way. An envelope has no counterpart in the source (#43).
   above_benchmark: { vars: ['group', 'delta', 'benchmark'], maxSeverity: 'info', negative: true },
+  // Warn, not alert, and the distinction is the point: nothing has gone wrong yet.
+  // The money is still in the envelope and the bill has not been taken — this is the
+  // one finding that can be acted on before it becomes an `over_available` (#159).
+  committed_over_available: {
+    vars: ['category', 'committed', 'available'],
+    maxSeverity: 'warn',
+    negative: true,
+  },
 
   // --- trajectory ---
   burn_rate_over: { vars: ['category', 'projected', 'assigned'], maxSeverity: 'warn', negative: true },

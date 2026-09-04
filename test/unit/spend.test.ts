@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { RecomputedSpend } from '../../src/adapters/actual/queries.ts'
+import { emptyCommitted, type CommittedMonth } from '../../src/domain/aggregate/committed.ts'
 import { DEFAULT_PARAMS } from '../../src/domain/aggregate/params.ts'
-import { aggregateSpend } from '../../src/domain/aggregate/spend.ts'
+import { aggregateSpend, type MonthlyFact } from '../../src/domain/aggregate/spend.ts'
 import { budgetMonth, history } from '../fixtures/budget.ts'
 
 const NO_FREQUENCIES = new Map<string, never>()
@@ -271,6 +272,12 @@ describe('aggregateSpend baselines and totals', () => {
       fromLastMonthCents: 9_000,
       balanceCents: -5_000,
       savingsRateBp: 8_000,
+      // No `committed` passed, so every committed figure is zero — which is what
+      // makes an install without schedules behave exactly as it did before (#159).
+      committedCents: 0,
+      committedUnallocatedCents: 0,
+      committedUnallocatedCount: 0,
+      committedApproximate: false,
     })
     // A month whose salary lands on the 1st of the next one has no savings rate,
     // rather than an infinitely negative one.
@@ -297,5 +304,103 @@ describe('aggregateSpend baselines and totals', () => {
       '2026-02/apple',
       '2026-02/zebra',
     ])
+  })
+})
+
+describe('aggregateSpend and what is still to come (#159)', () => {
+  const MONTHS = [
+    budgetMonth('2026-01', [
+      { id: 'salary', spent: 300_000, isIncome: true },
+      { id: 'rent', spent: 90_000, budgeted: 90_000 },
+      { id: 'food', spent: 40_000, budgeted: 55_000 },
+    ]),
+    budgetMonth('2026-02', [{ id: 'food', spent: 10_000, budgeted: 55_000 }]),
+  ]
+
+  /** What `committedForMonth` produces for January, with one loose end in it. */
+  const january = (): CommittedMonth => ({
+    month: '2026-01',
+    categories: new Map([
+      ['food', { remainingCents: 12_000, toDateCents: 4_000, occurrences: 2, approximate: true }],
+      // An income category, which `committedForMonth` never produces — asserted below
+      // because the guard against it lives here rather than there.
+      ['salary', { remainingCents: 250_000, toDateCents: 0, occurrences: 1, approximate: false }],
+    ]),
+    unallocatedCents: 3_000,
+    unallocatedCount: 1,
+    totalCents: 15_000,
+    approximate: true,
+  })
+
+  const run = (committed: CommittedMonth | null) =>
+    aggregateSpend({
+      history: MONTHS,
+      recomputed: [],
+      frequencies: NO_FREQUENCIES,
+      targetMonths: ['2026-01', '2026-02'],
+      params: DEFAULT_PARAMS,
+      committed,
+    })
+
+  const factFor = (facts: readonly MonthlyFact[], month: string, categoryId: string) =>
+    facts.find((fact) => fact.month === month && fact.categoryId === categoryId)
+
+  it('puts a category figure on the fact, beside spend rather than inside it', () => {
+    // `spentCents` staying byte-identical to Actual's own figure is the property that
+    // makes every other number here believable.
+    const fact = factFor(run(january()).facts, '2026-01', 'food')
+    expect(fact?.spentCents).toBe(40_000)
+    expect(fact?.committedCents).toBe(12_000)
+    expect(fact?.committedToDateCents).toBe(4_000)
+    expect(fact?.committedApproximate).toBe(true)
+  })
+
+  it('leaves a category nothing is scheduled against at zero', () => {
+    const fact = factFor(run(january()).facts, '2026-01', 'rent')
+    expect(fact?.committedCents).toBe(0)
+    expect(fact?.committedToDateCents).toBe(0)
+    expect(fact?.committedApproximate).toBe(false)
+  })
+
+  it('never attributes a commitment to income', () => {
+    // Money arriving is not a commitment, and the burn-rate projection would read it
+    // backwards: an envelope cannot be short of being paid.
+    const fact = factFor(run(january()).facts, '2026-01', 'salary')
+    expect(fact?.committedCents).toBe(0)
+  })
+
+  it('states the month total separately, unallocated money included', () => {
+    // Deliberately not the sum of the category figures above: a schedule no rule
+    // assigns a category to is counted here and nowhere else, which is what the
+    // unallocated line on screen exists to explain.
+    const { totals } = run(january())
+    expect(totals[0]).toMatchObject({
+      month: '2026-01',
+      committedCents: 15_000,
+      committedUnallocatedCents: 3_000,
+      committedUnallocatedCount: 1,
+      committedApproximate: true,
+    })
+  })
+
+  it('ignores a committed month that is not the month being aggregated', () => {
+    // The figure is a function of today, so it belongs to exactly one month. February
+    // gets zeros rather than January's schedules a second time.
+    const { facts, totals } = run(january())
+    expect(factFor(facts, '2026-02', 'food')?.committedCents).toBe(0)
+    expect(totals[1]).toMatchObject({
+      committedCents: 0,
+      committedUnallocatedCents: 0,
+      committedUnallocatedCount: 0,
+      committedApproximate: false,
+    })
+  })
+
+  it('reads no schedules at all as zero everywhere', () => {
+    for (const committed of [null, emptyCommitted('2026-01')]) {
+      const { facts, totals } = run(committed)
+      expect(facts.every((fact) => fact.committedCents === 0)).toBe(true)
+      expect(totals.every((month) => month.committedCents === 0)).toBe(true)
+    }
   })
 })
