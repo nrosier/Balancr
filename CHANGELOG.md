@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.4] — 2026-09-04
+
+### Added
+
+- **The first person on the scale can now have a name** ([#215](https://github.com/nrosier/Balancr/issues/215)).
+  The household's "You" sentence reads with whatever the owner types into a
+  plain text box beside the roster instead of a fixed placeholder. It stays
+  outside the roster on purpose — no birth year, no custody share — and the
+  equivalence scale keeps adding that person's weight unconditionally whether
+  or not a name is set.
+
 ## [0.10.3] — 2026-09-04
 
 ### Added
