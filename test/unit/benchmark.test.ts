@@ -51,7 +51,10 @@ import { MAX_HOUSEHOLD_MEMBERS } from '../../src/domain/benchmark/vocabulary.ts'
 /** The file Balancr ships, read from disk. Every realistic case below compares to this. */
 const SHIPPED = loadBenchmark('config/statbel-benchmark.yaml')
 
-const HOUSEHOLD = (members: Household['members'] = []): Household => ({ members })
+const HOUSEHOLD = (members: Household['members'] = []): Household => ({
+  members,
+  sharedCostBp: null,
+})
 
 /** One category's month. Consumption unless a test says otherwise. */
 function row(overrides: Partial<SpendRow> & { categoryId: string }): SpendRow {
@@ -495,13 +498,17 @@ describe('equivalentAdults', () => {
 
 describe('householdSchema', () => {
   it('defaults to one person, which cannot be wrong about anybody', () => {
-    expect(DEFAULT_HOUSEHOLD).toEqual({ members: [] })
-    expect(householdSchema.parse(undefined)).toEqual({ members: [] })
+    // And to a null shared-cost share, which is not zero: null means "work it out from
+    // the roster", and zero would be a stated claim that none of a shared cost is yours
+    // (#44).
+    expect(DEFAULT_HOUSEHOLD).toEqual({ members: [], sharedCostBp: null })
+    expect(householdSchema.parse(undefined)).toEqual({ members: [], sharedCostBp: null })
   })
 
   it('treats a member as full time unless told otherwise', () => {
     expect(householdSchema.parse({ members: [{ birthYear: 2013 }] })).toEqual({
       members: [{ birthYear: 2013, custodyBp: 10_000 }],
+      sharedCostBp: null,
     })
   })
 
@@ -544,10 +551,14 @@ describe('the stored household', () => {
     expect(loadHousehold(ctx.db)).toEqual(DEFAULT_HOUSEHOLD)
   })
 
-  it('round-trips a roster', () => {
-    saveHousehold(ctx.db, { members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }] })
+  it('round-trips a roster and the share that travels with it', () => {
+    saveHousehold(ctx.db, {
+      members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+      sharedCostBp: 6_000,
+    })
     expect(loadHousehold(ctx.db)).toEqual({
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+      sharedCostBp: 6_000,
     })
   })
 

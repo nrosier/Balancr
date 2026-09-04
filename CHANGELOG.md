@@ -6,6 +6,70 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **What a cost shared with a co-parent actually costs you**
+  ([#44](https://github.com/nrosier/Balancr/issues/44),
+  `src/domain/aggregate/custody.ts`). Paying the whole school bill in September is a 200%
+  overrun against your own norm and roughly half of it was never economically yours. The
+  budget page gained a card that says so: a row per flagged category with spending that
+  month, largest first, carrying what you paid and your share of it, with a total that is
+  the sum of the rows above it. Actual's figure is never adjusted — not in the table, not in
+  the totals, not in the baseline a category is measured against — because what left the
+  account is the only number that reconciles. Your share is an addition beside it, which is
+  the same principle the benchmark card follows.
+- **A shared-cost share, stated or derived from the roster**
+  (`src/domain/benchmark/household.ts`, Settings → Household). Leave the box empty and the
+  share is the average share of the time the part-time members of the household are here;
+  full-time members are excluded, or a partner who lives here would pull it towards 100% and
+  quietly make the feature do nothing. Type a number and that is used instead. `basis`
+  travels with every split and every screen prints which of the two it was: who pays for the
+  winter coat is negotiated separately from who has the children on Wednesday, so a derived
+  share is Balancr guessing at an arrangement it has never seen. Empty is a value rather than
+  an absence in the panel too — clearing the box is how a stated split is undone.
+- **`custody_offset`, one finding for the household and never one per envelope**
+  (`src/domain/ai/codes.ts`). Five flagged categories paid in one month would say the same
+  thing five times, and the figure worth reading is the total, because it is what that
+  month's overruns should be read against. Capped at `info` for the reason `above_benchmark`
+  is — nobody has done anything wrong by paying a bill that gets split, and a `warn` would
+  put a joint-custody household at the top of the insights page every month for the shape of
+  its family — declared as good news, since it takes weight off an overrun rather than adding
+  any, and silent under the same materiality floor as every other relative signal.
+- **The split travels on the wire as a discriminated union, reasons included**
+  (`GET /api/budget`). Three unavailabilities rather than a zero: no spending in the month,
+  nothing flagged as shared, and nothing to derive a share from. The first two draw nothing
+  at all — the flag is opt-in, and an empty month already has a notice of its own — while
+  the third is the one worth a box, because the flags say somebody meant this to work. It
+  carries the unsplit total so that box can name a figure.
+- **A checkbox for `custody_shared`, so the split works with no Gemini key at all**
+  (`PATCH /api/settings/categories/:id/custody-shared`, Settings → Categories). The flag had
+  two writers before this and both needed a key: an approved `category_meta.set` proposal, or
+  an answered `custody_shared_unknown` clarification. That made the split the one thing on
+  the budget page an installation without AI could never switch on, and "AI is optional" is a
+  requirement rather than a preference. It sits in the category table beside the COICOP
+  picker because it is the same question asked of the same fifty rows, closed for income and
+  hidden envelopes because the split skips both, and audited as `settings.custodyShared`
+  against `category_meta` so a category's history reads as one list whether the flag came
+  from a proposal or from a person.
+
+### Changed
+
+- **`computeSignals` takes the split as an input too**
+  (`src/domain/aggregate/signals.ts`). Same arrangement as the benchmark comparison and for
+  the same reason: the module is pure, and the split reads the category flags and a settings
+  row. `jobs/signals.ts` loads both once per pass and hands the result in.
+- **The benchmark mapping panel is now the category table**
+  (Settings → Categories). Retitled because it no longer holds only the COICOP mapping, and a
+  panel called "Benchmark mapping" with a co-parent checkbox in it is a panel whose name is
+  one release out of date.
+- **The household row now carries the cost share as well as the roster**
+  (`PATCH /api/settings/household`). Written wholesale, like `members` — a patch that omits
+  the share leaves a derived one behind rather than preserving a stated one, which is the
+  safe direction of the two: a stated share silently surviving a roster edit is how somebody
+  ends up reading a split they thought they had removed.
+
 ## [0.8.1] — 2026-09-04
 
 ### Added

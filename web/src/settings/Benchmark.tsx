@@ -16,6 +16,13 @@
  *    the only two gestures on a list are "here is the new one" and "remove a row" — a
  *    merge cannot express the second. That is also why every other control on this page
  *    writes immediately and these do not.
+ *  - **The category table carries the co-parent flag too, and is titled for the list
+ *    rather than for the benchmark (#44).** `custody_shared` decides which envelopes the
+ *    shared-cost split counts, and until it had a control here its only writers needed a
+ *    Gemini key — a feature unreachable without AI, which is the one thing the
+ *    requirements say a feature may not be. It belongs in this table because it is the
+ *    same question asked of the same fifty rows, and somebody going through them should
+ *    do it once.
  *  - **Basis points typed as plain integers, as everywhere else on this page.** `5.000` in
  *    a basis-points box means 50% to a Belgian and 5% to a parser; the honest fix is to
  *    never render the separator that creates the ambiguity, and to print what the number
@@ -36,6 +43,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import {
   COICOP_DIVISIONS,
+  custodyShare,
   divisionOf,
   formatBp,
   formatDate,
@@ -91,6 +99,20 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   const rows = drafts ?? benchmark.household.members.map(draftOf)
   const locked = !owner || state.busy
 
+  /**
+   * The stated shared-cost share as typed, or null for "whatever is stored" (#44).
+   *
+   * Empty text is a value here rather than an absence: clearing the box means "derive it
+   * from the roster again", which is a change somebody has to be able to make. So the
+   * draft is `string | null` — the outer null is "untouched", the inner empty string is
+   * "deliberately nothing".
+   */
+  const [sharedDraft, setSharedDraft] = useState<string | null>(null)
+  const stored = benchmark.household.sharedCostBp
+  const sharedText = sharedDraft ?? (stored === null ? '' : String(stored))
+  const sharedBp = sharedText.trim() === '' ? null : parseBp(sharedText)
+  const sharedInvalid = sharedText.trim() !== '' && sharedBp === null
+
   const { members, invalid } = useMemo(() => {
     const bad = new Set<number>()
     const parsed: { birthYear: number; custodyBp: number; label?: string }[] = []
@@ -107,16 +129,38 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
     return { members: parsed, invalid: bad }
   }, [rows])
 
+  /**
+   * What the box above currently means, in the smallest type on the panel.
+   *
+   * Four states, and the third is the one worth having: an empty box is not "no share",
+   * it is the roster's own mean, and printing that figure here is what stops the settings
+   * screen from promising a split the budget card does not apply. `custodyShare` is the
+   * same function the split uses, imported rather than reimplemented for that reason.
+   */
+  const derived = custodyShare({ members, sharedCostBp: null })
+  const sharedReads = sharedInvalid
+    ? t('settings:benchmark.household.sharedCostNotANumber')
+    : sharedBp !== null
+      ? t('settings:benchmark.household.sharedCostReads', { share: formatBp(sharedBp) })
+      : derived === null
+        ? t('settings:benchmark.household.sharedCostNone')
+        : t('settings:benchmark.household.sharedCostDerived', {
+            count: derived.members,
+            share: formatBp(derived.shareBp),
+          })
+
   const edit = (index: number, field: keyof Draft, value: string): void => {
     setDrafts(rows.map((row, at) => (at === index ? { ...row, [field]: value } : row)))
   }
 
   const submit = (): void => {
-    state.save('household', 'PATCH', '/api/settings/household', { members }, () => {
+    const body = { members, sharedCostBp: sharedBp }
+    state.save('household', 'PATCH', '/api/settings/household', body, () => {
       // Back to "whatever is stored", which the answer has just replaced. Keeping the
       // drafts would leave the form showing text that happens to agree with the server
       // until it silently stops agreeing.
       setDrafts(null)
+      setSharedDraft(null)
     })
   }
 
@@ -256,7 +300,34 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
           </ul>
         )}
 
+        {/*
+          The share, under the roster it is derived from. One number for the household
+          rather than one per category, because the arrangement people actually have is
+          one split applied to the things that are shared — the flag on a category says
+          which things, and this says how much (#44).
+        */}
+        <div className="field">
+          <label className="field__label" htmlFor="shared-cost">
+            {t('settings:benchmark.household.sharedCost')}
+          </label>
+          <input
+            id="shared-cost"
+            className="field__input num"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={sharedText}
+            disabled={locked}
+            onChange={(event) => setSharedDraft(event.target.value)}
+          />
+          <p className="member__reads muted">{sharedReads}</p>
+          <p className="panel__meta muted">
+            {t('settings:benchmark.household.sharedCostHint')}
+          </p>
+        </div>
+
         <Issue message={state.issue('members')} />
+        <Issue message={state.issue('sharedCostBp')} />
 
         <div className="members__actions">
           <button
@@ -274,7 +345,9 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
           <button
             type="submit"
             className="button button--primary"
-            disabled={locked || drafts === null || invalid.size > 0}
+            disabled={
+              locked || (drafts === null && sharedDraft === null) || invalid.size > 0 || sharedInvalid
+            }
           >
             {state.pending === 'household' ? t('shell.loading') : t('action.save')}
           </button>
@@ -395,6 +468,13 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
               total: String(categories.length),
             })}
           </p>
+          {/*
+            What ticking the box does, said next to the boxes. The one thing it has to
+            get across is that nothing is adjusted: the split adds a second figure beside
+            Actual's, and a person who reads it as an edit to their budget would be right
+            to be alarmed (#44).
+          */}
+          <p className="panel__meta muted">{t('settings:benchmark.mapping.sharedNote')}</p>
 
           <div className="table-scroll">
             <table className="table">
@@ -409,6 +489,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                   </th>
                   <th scope="col">{t('settings:benchmark.mapping.column.division')}</th>
                   <th scope="col">{t('settings:benchmark.mapping.column.line')}</th>
+                  <th scope="col">{t('settings:benchmark.mapping.column.shared')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -477,6 +558,31 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                           : line === null
                             ? t('settings:benchmark.mapping.notCompared')
                             : t(`budget:benchmark.group.${line}`)}
+                      </td>
+                      {/*
+                        Disabled for income and hidden categories because `splitCustody`
+                        excludes both, so a tick there would store a flag with no effect
+                        and read as one that had one. The badge in the first column
+                        already says which kind of row this is, which is why the box needs
+                        no explanation of its own.
+                      */}
+                      <td className="mapping__shared">
+                        <input
+                          type="checkbox"
+                          aria-label={t('settings:benchmark.mapping.sharedLabel', {
+                            name: category.categoryName,
+                          })}
+                          checked={category.custodyShared}
+                          disabled={locked || category.isIncome || category.hidden}
+                          onChange={(event) => {
+                            state.save(
+                              `custodyShared:${category.categoryId}`,
+                              'PATCH',
+                              `/api/settings/categories/${category.categoryId}/custody-shared`,
+                              { custodyShared: event.target.checked },
+                            )
+                          }}
+                        />
                       </td>
                     </tr>
                   )

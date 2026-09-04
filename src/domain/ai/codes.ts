@@ -57,6 +57,13 @@ export const FINDING_SPECS = {
   savings_rate_up: { vars: ['rate', 'delta'], maxSeverity: 'info', negative: false },
   emergency_fund_short: { vars: ['months', 'target'], maxSeverity: 'alert', negative: true },
   net_worth_high: { vars: ['amount'], maxSeverity: 'info', negative: false },
+  // Household level and one per month, not one per shared envelope: the figure worth
+  // reading is the total, because it is what the month's overruns should be read
+  // against. `negative: false` although it is about spending — it takes weight off an
+  // overrun rather than adding any, and nobody has done anything wrong by paying a bill
+  // that gets split. Capped at `info` for the same reason `above_benchmark` is: this is
+  // context about an arrangement, not a judgement (#44).
+  custody_offset: { vars: ['amount', 'paid', 'share'], maxSeverity: 'info', negative: false },
 
   // --- data hygiene: surfaced first, because the rest is worthless without it ---
   uncategorised_backlog: { vars: ['count'], maxSeverity: 'warn', negative: true },

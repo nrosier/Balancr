@@ -157,6 +157,9 @@ const BENCHMARK: Payload['benchmark'] = {
   },
   household: {
     members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+    // Null, so the panel prints the share it derives from the roster above rather than
+    // a stated one — the default, and the state worth having in the fixture (#44).
+    sharedCostBp: null,
   },
   outsideCode: '00',
   categories: [
@@ -166,6 +169,7 @@ const BENCHMARK: Payload['benchmark'] = {
       isIncome: false,
       hidden: false,
       coicop: null,
+      custodyShared: false,
       spentCents: 8_000,
     },
     {
@@ -174,6 +178,7 @@ const BENCHMARK: Payload['benchmark'] = {
       isIncome: false,
       hidden: false,
       coicop: '04.5.1',
+      custodyShared: false,
       spentCents: 120_000,
     },
     {
@@ -182,6 +187,7 @@ const BENCHMARK: Payload['benchmark'] = {
       isIncome: false,
       hidden: false,
       coicop: '00',
+      custodyShared: false,
       spentCents: 1_500,
     },
     {
@@ -190,6 +196,18 @@ const BENCHMARK: Payload['benchmark'] = {
       isIncome: true,
       hidden: false,
       coicop: null,
+      custodyShared: false,
+      spentCents: 0,
+    },
+    // Hidden, so the co-parent box is closed for the second of the two reasons it can
+    // be: `splitCustody` skips hidden envelopes exactly as it skips income (#44).
+    {
+      categoryId: 'cat-old',
+      categoryName: 'Old subscription',
+      isIncome: false,
+      hidden: true,
+      coicop: null,
+      custodyShared: false,
       spentCents: 0,
     },
   ],
@@ -504,7 +522,7 @@ describe('the shape of the page', () => {
       'Thresholds',
       'Accounts',
       'Household',
-      'Benchmark mapping',
+      'Categories',
       'AI usage',
       'Status of this instance',
     ]) {
@@ -942,6 +960,9 @@ describe('the household', () => {
   const memberField = (label: string, at = 0): HTMLInputElement =>
     (screen.getAllByLabelText(label)[at] ?? document.createElement('input')) as HTMLInputElement
 
+  const sharedCost = (): HTMLInputElement =>
+    screen.getByLabelText('Your share of shared costs') as HTMLInputElement
+
   it('says what each row reads as on the scale, and as of when', async () => {
     // Only `Date` is faked, so the testing library's own waiting still uses real timers.
     // The year has to be pinned at all: the panel classifies a member by their age *now*,
@@ -985,6 +1006,10 @@ describe('the household', () => {
               { birthYear: 2013, custodyBp: 5_000, label: 'Teenager' },
               { birthYear: 1998, custodyBp: 10_000, label: 'Lodger' },
             ],
+            // The share travels with the roster for the same reason: the household is one
+            // row written wholesale, so a patch that omitted it would drop a stated share
+            // on every roster edit without saying so (#44).
+            sharedCostBp: null,
           },
         },
       ])
@@ -1009,6 +1034,91 @@ describe('the household', () => {
     fireEvent.change(memberField('Time here'), { target: { value: '5.000' } })
 
     expect(saveHousehold().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('prints the share the roster implies while the box is empty (#44)', async () => {
+    await open(READS)
+
+    // The fixture states nothing, so the box is empty — and an empty box is not "no
+    // share": it is the roster's own mean, and printing it here is what stops this screen
+    // from promising a split the budget card does not apply. One member at 50%.
+    expect(sharedCost().value).toBe('')
+    expect(
+      within(household()).getByText(
+        /Empty, so it is derived from the 1 member who is here part of the time: 50\s?%\./,
+      ),
+    ).toBeTruthy()
+  })
+
+  it('reads back a typed share, and sends it with the roster', async () => {
+    const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
+
+    // 50% of the time, 60% of the costs: the two are separate facts, which is the whole
+    // reason this field exists rather than being derived from the row above it.
+    fireEvent.change(sharedCost(), { target: { value: '6000' } })
+    expect(within(household()).getByText('60% of every shared cost counts as yours.')).toBeTruthy()
+
+    fireEvent.click(saveHousehold())
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+            sharedCostBp: 6_000,
+          },
+        },
+      ])
+    })
+  })
+
+  it('sends null when the box is cleared, which is how a split is undone', async () => {
+    const stated = {
+      ...PAYLOAD,
+      benchmark: {
+        ...PAYLOAD.benchmark,
+        household: { ...PAYLOAD.benchmark.household, sharedCostBp: 6_000 },
+      },
+    }
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stated),
+      '/api/settings/household': json(stated),
+    })
+
+    expect(sharedCost().value).toBe('6000')
+    fireEvent.change(sharedCost(), { target: { value: '' } })
+    fireEvent.click(saveHousehold())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+            sharedCostBp: null,
+          },
+        },
+      ])
+    })
+  })
+
+  it('refuses a share it cannot read rather than sending it', async () => {
+    const calls = await open(READS)
+
+    // Over 100%, and `5.000` for the same reason the custody column refuses it: it is 50%
+    // in every other reading on this site and `Number('5.000')` is five basis points.
+    for (const typed of ['12000', '5.000', '60%']) {
+      fireEvent.change(sharedCost(), { target: { value: typed } })
+      expect(saveHousehold().disabled, typed).toBe(true)
+      expect(
+        within(household()).getByText(/A whole number of basis points up to 10000/),
+        typed,
+      ).toBeTruthy()
+    }
     expect(writes(calls)).toEqual([])
   })
 
@@ -1042,9 +1152,23 @@ describe('the household', () => {
   })
 })
 
-describe('the benchmark mapping', () => {
+describe('the category table', () => {
   const picker = (name: string): HTMLSelectElement =>
     screen.getByLabelText(`COICOP division for ${name}`) as HTMLSelectElement
+
+  const shared = (name: string): HTMLInputElement =>
+    screen.getByLabelText(`Shared with a co-parent: ${name}`) as HTMLInputElement
+
+  /** The payload with one envelope already flagged, for the checked state (#44). */
+  const withFlagged = (categoryId: string): Payload => ({
+    ...PAYLOAD,
+    benchmark: {
+      ...BENCHMARK,
+      categories: BENCHMARK.categories.map((category) =>
+        category.categoryId === categoryId ? { ...category, custodyShared: true } : category,
+      ),
+    },
+  })
 
   it('shows a deeper stored code as the division it counts as', async () => {
     await open(READS)
@@ -1066,10 +1190,10 @@ describe('the benchmark mapping', () => {
   it('counts only what a comparison would call unmapped', async () => {
     await open(READS)
 
-    // Four categories, but income is not compared and two are mapped: only `Coffee` is
-    // missing a division, and a count that included `Salary` would send somebody
-    // looking for a mapping that changes nothing.
-    expect(screen.getByText('1 of 4 categories has no division yet.')).toBeTruthy()
+    // Five categories, but income and hidden ones are not compared and two are mapped:
+    // only `Coffee` is missing a division, and a count that included `Salary` would send
+    // somebody looking for a mapping that changes nothing.
+    expect(screen.getByText('1 of 5 categories has no division yet.')).toBeTruthy()
   })
 
   it('writes one division as soon as it is picked', async () => {
@@ -1121,13 +1245,74 @@ describe('the benchmark mapping', () => {
     ])
   })
 
-  it('leaves the mapping read-only for a viewer', async () => {
+  it('flags a category as shared the moment the box is ticked (#44)', async () => {
+    // The whole reason this control exists: `custody_shared` was settable only by
+    // approving a proposal or answering a clarification, both of which need a key, so a
+    // deployment with no AI configured could not switch the split on at all.
+    const calls = await open({
+      ...READS,
+      '/api/settings/categories/cat-coffee/custody-shared': json(PAYLOAD),
+    })
+
+    expect(shared('Coffee').checked).toBe(false)
+    fireEvent.click(shared('Coffee'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-coffee/custody-shared',
+          method: 'PATCH',
+          body: { custodyShared: true },
+        },
+      ])
+    })
+  })
+
+  it('sends false to take the flag back off a category', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(withFlagged('cat-rent')),
+      '/api/settings/categories/cat-rent/custody-shared': json(PAYLOAD),
+    })
+
+    expect(shared('Rent').checked).toBe(true)
+    fireEvent.click(shared('Rent'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-rent/custody-shared',
+          method: 'PATCH',
+          body: { custodyShared: false },
+        },
+      ])
+    })
+  })
+
+  it('closes the box for income and hidden categories, which the split skips', async () => {
+    await open(READS)
+
+    expect(shared('Coffee').disabled).toBe(false)
+    expect(shared('Salary').disabled).toBe(true)
+    expect(shared('Old subscription').disabled).toBe(true)
+  })
+
+  it('says beside the boxes that no budget figure is adjusted', async () => {
+    // The one thing this column has to get across. A person who read a tick as an edit
+    // to their budget would be right to be alarmed, and wrong about what happens.
+    await open(READS)
+
+    expect(screen.getByText(/the amount Actual holds is never adjusted/)).toBeTruthy()
+  })
+
+  it('leaves the mapping and the flag read-only for a viewer', async () => {
     await open({
       ...READS,
       '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
     })
 
     expect(picker('Coffee').disabled).toBe(true)
+    expect(shared('Coffee').disabled).toBe(true)
   })
 })
 

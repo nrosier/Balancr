@@ -72,6 +72,16 @@ export const AUDIT_ACTIONS = [
   'settings.household',
   'settings.coicop',
   /**
+   * A category flagged as shared with a co-parent, or unflagged (#44).
+   *
+   * Its own action rather than folded into `settings.coicop`, though both write one
+   * column of `category_meta` from the same table on the same screen: the trail is read
+   * to answer "why does this month's split look like that", and an entry whose name says
+   * `coicop` while its payload says `custodyShared` is an entry somebody has to open to
+   * know whether it is relevant.
+   */
+  'settings.custodyShared',
+  /**
    * A job someone started by hand.
    *
    * The odd one out, and worth saying why it belongs. Nothing a refresh writes is

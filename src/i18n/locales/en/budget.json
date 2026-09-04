@@ -85,6 +85,28 @@
     "trendTitle": "Spending per category",
     "trendWindow": "The last {{window}}, oldest first."
   },
+  "custody": {
+    "assumption": "This assumes the whole invoice left your account and that {{share}} of it is yours. Nothing here changes Actual's figures — what you paid is what you paid.",
+    "basis": {
+      "roster_one": "No split has been stated, so this uses the share of the time {{value}} member is here: {{share}}.",
+      "roster_other": "No split has been stated, so this uses the average share of the time {{value}} members are here: {{share}}.",
+      "stated": "The {{share}} share is the one you stated under Settings, Household."
+    },
+    "caption": "What you paid on shared costs and your share of it, largest first",
+    "column": {
+      "borne": "Yours",
+      "category": "Category",
+      "paid": "You paid"
+    },
+    "lede": "In {{month}} you paid {{paid}} on costs shared with a co-parent. {{borne}} of that is economically yours; {{offset}} is the other household's share.",
+    "share": "Shared costs are {{share}} of what you spent this month.",
+    "title": "Costs shared with a co-parent",
+    "total": "Total",
+    "unavailable": {
+      "hint": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
+      "no_basis": "Categories worth {{amount}} this month are flagged as shared with a co-parent, but nothing says what share of them is yours."
+    }
+  },
   "empty": {
     "categories": "No category has any spending in this month.",
     "month": "Nothing has been computed for {{month}} yet.",

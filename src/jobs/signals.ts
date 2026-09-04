@@ -29,6 +29,7 @@ import {
 } from '../domain/aggregate/month-store.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
+import { custodyContext, splitMonth } from '../domain/aggregate/custody-context.ts'
 import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
 import { persistSignals } from '../domain/aggregate/signals-store.ts'
@@ -92,6 +93,11 @@ interface Shared {
    * list is: none of the three is a fact about a particular month.
    */
   benchmark: ReturnType<typeof benchmarkContext>
+  /**
+   * Which categories are shared with a co-parent, and the share that is yours (#44).
+   * Shared for the same reason: neither is a fact about a particular month.
+   */
+  custody: ReturnType<typeof custodyContext>
 }
 
 /**
@@ -129,6 +135,7 @@ export function judgeMonth(
     accounts: shared.accounts,
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
     benchmark: compareMonth(shared.benchmark, month, facts),
+    custody: splitMonth(shared.custody, month, facts),
     params: shared.params,
   })
 
@@ -153,6 +160,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     latestPortfolioSnapshot: latestSnapshotDate(db),
     params: loadParams(db),
     benchmark: benchmarkContext(db),
+    custody: custodyContext(db),
   }
 
   let months = 0

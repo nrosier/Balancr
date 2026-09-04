@@ -28,6 +28,8 @@ import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
+import { loadHousehold } from '../../src/domain/benchmark/household.ts'
+import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
@@ -287,6 +289,121 @@ describe('PATCH /api/settings/params', () => {
     })
     expect(res.statusCode).toBe(403)
     expect(loadParams(ctx.db)).toEqual(DEFAULT_PARAMS)
+  })
+})
+
+describe('PATCH /api/settings/household', () => {
+  const send_ = (body: object, options?: { token?: string }) =>
+    patch('/api/settings/household', body, options)
+
+  it('stores a stated share and answers with it', async () => {
+    // 50% of the time, 60% of the costs: the two are separate facts, and this endpoint is
+    // the only place the second one can be said (#44).
+    const res = await send_({
+      members: [{ birthYear: 2013, custodyBp: 5_000 }],
+      sharedCostBp: 6_000,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().benchmark.household.sharedCostBp).toBe(6_000)
+    expect(loadHousehold(ctx.db).sharedCostBp).toBe(6_000)
+  })
+
+  it('takes null as "derive it from the roster again"', async () => {
+    await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], sharedCostBp: 6_000 })
+    const res = await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], sharedCostBp: null })
+
+    expect(res.json<Settings>().benchmark.household.sharedCostBp).toBeNull()
+    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+
+  it('drops a stated share when the patch omits it, like the roster it travels with', async () => {
+    // The household is one row written wholesale. The safe direction: a stated share
+    // surviving a roster edit invisibly is how somebody reads a split they had removed.
+    await send_({ members: [], sharedCostBp: 6_000 })
+    await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+
+  it('refuses a share outside 0–100%, naming the field', async () => {
+    const res = await send_({ members: [], sharedCostBp: 12_000 })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual([
+      'sharedCostBp',
+    ])
+    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_({ members: [], sharedCostBp: 6_000 }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+})
+
+describe('PATCH /api/settings/categories/:id/custody-shared', () => {
+  const send_ = (id: string, body: object, options?: { token?: string }) =>
+    patch(`/api/settings/categories/${id}/custody-shared`, body, options)
+
+  const flagOf = (id: string): boolean | undefined =>
+    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.custodyShared
+
+  it('flags a category as shared, and answers with the list saying so (#44)', async () => {
+    // The point of the route: before it, this column had no writer a person could reach
+    // without a Gemini key, which made the shared-cost split the one thing on the budget
+    // page that an installation with no AI could never switch on.
+    const res = await send_('cat-groceries', { custodyShared: true })
+
+    expect(res.statusCode).toBe(200)
+    const row = res
+      .json<Settings>()
+      .benchmark.categories.find((category) => category.categoryId === 'cat-groceries')
+    expect(row?.custodyShared).toBe(true)
+    expect(flagOf('cat-groceries')).toBe(true)
+  })
+
+  it('takes the flag back, which is the correction people actually make', async () => {
+    await send_('cat-groceries', { custodyShared: true })
+    const res = await send_('cat-groceries', { custodyShared: false })
+
+    expect(res.statusCode).toBe(200)
+    expect(flagOf('cat-groceries')).toBe(false)
+  })
+
+  it('records the change against the category, not against settings', async () => {
+    // `category_meta` is the table the row lands in and the AI path already writes there
+    // through `proposal.apply`, so a category's history reads as one list whether the flag
+    // came from an approved proposal or from a checkbox.
+    await send_('cat-groceries', { custodyShared: true })
+    expect(auditActions(ctx.db)).toContain('settings.custodyShared')
+  })
+
+  it('accepts the flag on an income category rather than refusing it', async () => {
+    // The split ignores income and hidden categories, so this stores something inert —
+    // deliberately. A route that refused would also refuse to let a flag be *removed*
+    // from a category hidden after it was set. The form closes the box instead.
+    const res = await send_('cat-salary', { custodyShared: true })
+    expect(res.statusCode).toBe(200)
+    expect(flagOf('cat-salary')).toBe(true)
+  })
+
+  it('refuses a body that is not a boolean, and one that is empty', async () => {
+    expect((await send_('cat-groceries', { custodyShared: 'yes' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', {})).statusCode).toBe(400)
+    expect(flagOf('cat-groceries')).toBe(false)
+  })
+
+  it('answers 404 for a category Balancr has never seen', async () => {
+    // Never an insert: `category_meta` rows come from what Actual actually has, and a row
+    // conjured here would be a category that exists only in Balancr.
+    const res = await send_('cat-invented', { custodyShared: true })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_('cat-groceries', { custodyShared: true }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(flagOf('cat-groceries')).toBe(false)
   })
 })
 
