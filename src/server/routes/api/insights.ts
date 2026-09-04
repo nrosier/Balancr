@@ -51,7 +51,7 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { storedMonths } from '../../../domain/aggregate/month-store.ts'
+import { loadMonthTotals, storedMonths } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { aiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
@@ -90,12 +90,14 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
   // with no narrative now says so — which is the truth, and the button beside it is #158.
   const narrative = month === null ? null : loadNarrative(db, month, locale)
   const spend = budgetState(db)
+  const factsChangedAt = month === null ? null : loadMonthTotals(db, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
     freshness: freshness(db),
     ai: aiAvailability(),
     owner: options.owner ?? false,
     month,
+    factsChangedAt: factsChangedAt?.toISOString() ?? null,
     months: storedMonths(db),
     signals: month === null ? [] : loadSignals(db, month),
     narrative:

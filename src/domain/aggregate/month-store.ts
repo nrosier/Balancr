@@ -24,25 +24,60 @@ export interface MonthPersistResult {
   mismatches: number
 }
 
+/** `MonthTotals` as read back from storage, with the fingerprint columns (#162). */
+export interface StoredMonthTotals extends MonthTotals {
+  /** This month's current fact fingerprint, or null if never computed. */
+  factsHash: string | null
+  /** When `factsHash` last actually changed, or null if never computed. */
+  factsChangedAt: Date | null
+}
+
 /**
  * Writes one row per month in `totals`, with its uncategorised counters.
  *
  * The buckets are matched by month rather than zipped: `aggregateSpend` only
  * emits a bucket for a month that actually had uncategorised transactions, and a
  * month without one is a real zero, not a missing row.
+ *
+ * `fingerprints` (#162) is a `month -> hash` map from `monthFingerprint`. A
+ * month's stored `factsChangedAt` carries forward from the prior row when its
+ * hash is unchanged, and moves to `computedAt` otherwise — including for a
+ * month with no fingerprint supplied, which is treated as changed rather than
+ * silently keeping a stale timestamp. Callers that don't care about
+ * fingerprinting (fixtures, most existing tests) can omit it.
  */
 export function persistMonthTotals(
   db: Db,
   totals: readonly MonthTotals[],
   uncategorised: readonly UncategorisedBucket[],
+  fingerprints: ReadonlyMap<string, string> = new Map(),
 ): number {
   if (totals.length === 0) return 0
 
   const buckets = new Map(uncategorised.map((bucket) => [bucket.month, bucket]))
   const computedAt = new Date()
+  const months = totals.map((month) => month.month)
+
+  const prior = new Map(
+    db
+      .select({
+        month: monthlyTotals.month,
+        factsHash: monthlyTotals.factsHash,
+        factsChangedAt: monthlyTotals.factsChangedAt,
+      })
+      .from(monthlyTotals)
+      .where(inArray(monthlyTotals.month, months))
+      .all()
+      .map((row) => [row.month, row] as const),
+  )
 
   const rows = totals.map((month) => {
     const bucket = buckets.get(month.month)
+    const factsHash = fingerprints.get(month.month) ?? null
+    const priorRow = prior.get(month.month)
+    const unchanged =
+      factsHash !== null && priorRow !== undefined && priorRow.factsHash === factsHash
+    const factsChangedAt = unchanged ? priorRow.factsChangedAt ?? computedAt : computedAt
     return {
       month: month.month,
       incomeCents: month.incomeCents,
@@ -58,6 +93,8 @@ export function persistMonthTotals(
       committedUnallocatedCents: month.committedUnallocatedCents,
       committedUnallocatedCount: month.committedUnallocatedCount,
       committedApproximate: month.committedApproximate,
+      factsHash,
+      factsChangedAt,
       computedAt,
     }
   })
@@ -90,7 +127,7 @@ export function earliestStoredMonth(db: Db): string | null {
 }
 
 /** The stored months, ascending, skipping any that has never been computed. */
-export function loadMonthTotals(db: Db, months: readonly string[]): MonthTotals[] {
+export function loadMonthTotals(db: Db, months: readonly string[]): StoredMonthTotals[] {
   if (months.length === 0) return []
 
   return db
@@ -112,6 +149,8 @@ export function loadMonthTotals(db: Db, months: readonly string[]): MonthTotals[
       committedUnallocatedCents: row.committedUnallocatedCents,
       committedUnallocatedCount: row.committedUnallocatedCount,
       committedApproximate: row.committedApproximate,
+      factsHash: row.factsHash,
+      factsChangedAt: row.factsChangedAt,
     }))
 }
 
@@ -132,7 +171,7 @@ export function loadTrailingTotals(
   db: Db,
   month: string,
   count: number,
-): MonthTotals[] {
+): StoredMonthTotals[] {
   if (count <= 0) return []
 
   const stored = loadMonthTotals(db, [...monthsBefore(month, count - 1), month])

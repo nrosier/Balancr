@@ -442,6 +442,22 @@ export const monthlyTotals = sqliteTable(
     committedApproximate: integer('committed_approximate', { mode: 'boolean' })
       .notNull()
       .default(false),
+    /**
+     * SHA-256 of the facts a judgement depends on for this month (#162):
+     * per-category spent/budgeted/available/carryover/txnCount plus the totals
+     * above (excluding the committed-* and baseline figures, which are
+     * functions of today or of a trailing window rather than facts about this
+     * month). See `domain/aggregate/fingerprint.ts`. Null for a row written
+     * before this column existed.
+     */
+    factsHash: text('facts_hash'),
+    /**
+     * When `factsHash` last actually moved, as opposed to `computedAt`, which
+     * moves on every sync whether or not anything changed. This is what lets
+     * `signals.ts` tell "recomputed" from "changed" and rejudge a month years
+     * after it closed without rejudging all of them every night.
+     */
+    factsChangedAt: integer('facts_changed_at', { mode: 'timestamp_ms' }),
     computedAt: createdAt(),
   },
 )
@@ -494,6 +510,13 @@ export const monthlyHygiene = sqliteTable('monthly_hygiene', {
   scoreBp: integer('score_bp').notNull(),
   /** `[{reason, bp}]` — what was taken off and why. */
   deductionsJson: text('deductions_json').notNull(),
+  /**
+   * `monthly_totals.facts_hash` as it was the last time this month was judged
+   * (#162). Compared against the current hash to decide whether a month
+   * outside the two-month floor needs rejudging; null before this column
+   * existed or before the month was ever judged.
+   */
+  judgedFactsHash: text('judged_facts_hash'),
   computedAt: createdAt(),
 })
 

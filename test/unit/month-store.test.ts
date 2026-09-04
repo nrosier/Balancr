@@ -10,7 +10,7 @@
  *    reads a rolling series off `loadTrailingTotals`, and a gap silently averages
  *    across the hole rather than failing.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import {
@@ -68,7 +68,10 @@ function mismatch(month: string, id: string, difference = 1_000): RecomputeMisma
 describe('persistMonthTotals', () => {
   it('round-trips a month exactly, savings rate included', () => {
     expect(persistMonthTotals(ctx.db, [totals('2026-01')], [])).toBe(1)
-    expect(loadMonthTotals(ctx.db, ['2026-01'])).toEqual([totals('2026-01')])
+    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    expect(stored).toMatchObject(totals('2026-01'))
+    // No fingerprint was passed in, so there is nothing to compare against (#162).
+    expect(stored?.factsHash).toBeNull()
   })
 
   it('keeps a null savings rate null rather than storing a zero', () => {
@@ -115,6 +118,68 @@ describe('persistMonthTotals', () => {
   it('skips a month that has never been computed rather than inventing a zero', () => {
     persistMonthTotals(ctx.db, [totals('2026-01')], [])
     expect(loadMonthTotals(ctx.db, ['2025-12', '2026-01']).map((m) => m.month)).toEqual(['2026-01'])
+  })
+})
+
+describe('persistMonthTotals fingerprints (#162)', () => {
+  // `computedAt` is `new Date()` at call time, so two calls in the same test
+  // need the clock moved between them or "changed" and "unchanged" become
+  // indistinguishable by coincidence rather than by the logic being tested.
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-15T00:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('sets factsChangedAt fresh for a brand-new month', () => {
+    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    expect(stored?.factsHash).toBe('hash-a')
+    expect(stored?.factsChangedAt).toBeInstanceOf(Date)
+  })
+
+  it('carries factsChangedAt forward across a re-run whose hash is unchanged', () => {
+    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const first = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+
+    vi.setSystemTime(new Date('2026-01-16T00:00:00Z'))
+    // A later run, same hash — nothing about the month's facts actually moved.
+    persistMonthTotals(
+      ctx.db,
+      [totals('2026-01', { spentCents: 341_000 })],
+      [],
+      new Map([['2026-01', 'hash-a']]),
+    )
+    const second = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+
+    expect(second).toEqual(first)
+  })
+
+  it('bumps factsChangedAt when the hash differs from what was stored', () => {
+    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const before = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+
+    vi.setSystemTime(new Date('2026-01-16T00:00:00Z'))
+    persistMonthTotals(
+      ctx.db,
+      [totals('2026-01', { spentCents: 12_000 })],
+      [],
+      new Map([['2026-01', 'hash-b']]),
+    )
+    const stored = loadMonthTotals(ctx.db, ['2026-01'])[0]
+    expect(stored?.factsHash).toBe('hash-b')
+    expect(stored?.factsChangedAt).not.toEqual(before)
+  })
+
+  it('bumps factsChangedAt for a month with no fingerprint passed in at all', () => {
+    // No entry in the map — same as a sync pass that never computed one.
+    persistMonthTotals(ctx.db, [totals('2026-01')], [])
+    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    expect(stored?.factsHash).toBeNull()
+    expect(stored?.factsChangedAt).toBeInstanceOf(Date)
   })
 })
 

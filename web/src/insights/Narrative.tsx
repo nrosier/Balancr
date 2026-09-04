@@ -53,6 +53,12 @@ export interface NarrativeProps {
   owner: boolean
   /** Whether a model can be called here at all. */
   aiEnabled: boolean
+  /**
+   * When `month`'s facts last actually changed (#162), or null if never
+   * computed. Compared against `narrative.generatedAt` to tell a review that
+   * is still current from one an edit has since walked past.
+   */
+  factsChangedAt: string | null
   /** Re-read `/api/insights` once a review has been written. */
   onWritten: () => void
 }
@@ -63,9 +69,14 @@ export function Narrative({
   ended,
   owner,
   aiEnabled,
+  factsChangedAt,
   onWritten,
 }: NarrativeProps): ReactNode {
   const { t, language } = useT()
+  // ISO timestamps from the same server clock, both in `Z` form, so this is a
+  // correct ordering and not just a string comparison that happens to work.
+  const stale =
+    narrative !== null && factsChangedAt !== null && factsChangedAt > narrative.generatedAt
 
   return (
     <section className="card">
@@ -102,6 +113,19 @@ export function Narrative({
                   model: narrative.model,
                 })}
           </p>
+          {/*
+            An edit landed in this month after this review was written (#162). The
+            review itself is still shown above — it is not wrong, just about facts
+            that have since moved — and the offer beneath it is the same two-press,
+            owner-gated control as the "no narrative yet" case, mounted fresh so its
+            own estimate call is for a rewrite, not the first write.
+          */}
+          {stale && month !== null && aiEnabled && ended ? (
+            <>
+              <p className="muted">{t('ai:narrative.stale', { when: formatDateTime(factsChangedAt!) })}</p>
+              <Offer month={month} owner={owner} onWritten={onWritten} />
+            </>
+          ) : null}
         </>
       )}
     </section>

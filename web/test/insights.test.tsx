@@ -133,6 +133,7 @@ const FULL: InsightsPayload = {
   ai: AI_ON,
   owner: true,
   month: '2026-08',
+  factsChangedAt: null,
   months: ['2026-08', '2026-07'],
   signals: SIGNALS,
   narrative: {
@@ -214,6 +215,7 @@ const EMPTY: InsightsPayload = {
   ai: AI_ON,
   owner: true,
   month: null,
+  factsChangedAt: null,
   months: [],
   signals: [],
   narrative: null,
@@ -488,6 +490,7 @@ const NARRATIVE_PROPS = {
   ended: true,
   owner: true,
   aiEnabled: true,
+  factsChangedAt: null,
   onWritten: () => {},
 }
 
@@ -527,6 +530,27 @@ describe('the narrative', () => {
     renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
 
     expect(screen.getByText('August 2026 in words')).toBeTruthy()
+  })
+
+  it('says nothing about staleness when the facts have not moved since the review', () => {
+    renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
+
+    expect(screen.queryByText(/Based on data from/)).toBeNull()
+  })
+
+  it('offers a re-run once the facts move past the review that already ran (#162)', async () => {
+    serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+    renderApp(
+      <Narrative
+        narrative={FULL.narrative}
+        {...NARRATIVE_PROPS}
+        factsChangedAt="2026-09-02T00:00:00Z"
+      />,
+    )
+
+    expect(screen.getByText('Based on data from 02/09/2026, 02:00.')).toBeTruthy()
+    // Same offer as the "no narrative yet" case — priced, and mounted for a rewrite.
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
   })
 
   it('says a month still in progress has no review yet, without offering one', () => {

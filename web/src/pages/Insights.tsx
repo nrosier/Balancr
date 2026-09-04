@@ -176,6 +176,7 @@ function Sections({
           ended={ended}
           owner={data.owner}
           aiEnabled={data.ai.enabled}
+          factsChangedAt={data.factsChangedAt}
           onWritten={onRefreshed}
         />
       ) : null}

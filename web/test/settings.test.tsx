@@ -216,6 +216,7 @@ const BENCHMARK: Payload['benchmark'] = {
 
 const PAYLOAD: Payload = {
   build: { version: '0.5.6', revision: 'abc1234' },
+  history: { months: 24, earliest: '2024-09', latest: '2026-08' },
   profile: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
   locales: { supported: ['en', 'nl'], default: 'en' },
   params: PARAMS,
@@ -532,6 +533,23 @@ describe('the shape of the page', () => {
     }
     expect(screen.getByText('abc1234')).toBeTruthy()
     expect(screen.getByText('0.5.6')).toBeTruthy()
+  })
+
+  it('shows the data window, and what the sync pass has actually covered (#162)', async () => {
+    await open(READS)
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Data window' })).toBeTruthy()
+    expect(screen.getByText('24 months')).toBeTruthy()
+    expect(screen.getByText('September 2024 – August 2026')).toBeTruthy()
+  })
+
+  it('says nothing has been aggregated yet rather than a range of nothing', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, history: { months: 24, earliest: null, latest: null } }),
+    })
+
+    expect(screen.getByText('Nothing aggregated yet')).toBeTruthy()
   })
 
   it('asks for the payload once, and for the two things the panels fetch themselves', async () => {

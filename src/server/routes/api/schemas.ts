@@ -751,6 +751,14 @@ export const insightsSchema = z.object({
   owner: z.boolean(),
   month: monthKey().nullable(),
   /**
+   * When the selected month's fact fingerprint last actually changed (#162),
+   * or null if it was never computed. Compared against `narrative.generatedAt`
+   * to decide whether a stale-analysis notice belongs on the page — the
+   * server does not make that comparison itself, since deciding whether an
+   * answer can still be reused is #160's job, built on top of this signal.
+   */
+  factsChangedAt: z.string().nullable(),
+  /**
    * Every month with aggregated figures, newest first — the picker's options.
    *
    * Every stored month rather than the ones this payload has findings for: the picker
@@ -1163,6 +1171,20 @@ export const settingsSchema = z.object({
    * settings.
    */
   build: z.object({ version: z.string().nullable(), revision: z.string().nullable() }),
+  /**
+   * How far back this instance looks, and how far back it actually has figures.
+   *
+   * `months` is `JOBS_HISTORY_MONTHS` itself — the setting, not a fact about the data.
+   * `earliest`/`latest` are what the sync pass has actually covered so far, which lags
+   * the setting on a deployment younger than its own window and is nullable for the
+   * same reason `months` on `/api/insights` is: nothing aggregated yet. An edit outside
+   * this range is never picked up (#162), and this is where that boundary is visible.
+   */
+  history: z.object({
+    months: z.number().int(),
+    earliest: monthKey().nullable(),
+    latest: monthKey().nullable(),
+  }),
   profile: z.object({
     email: z.string().nullable(),
     displayName: z.string().nullable(),

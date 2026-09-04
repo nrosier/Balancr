@@ -145,6 +145,14 @@
     "title": "This instance",
     "version": "Version"
   },
+  "history": {
+    "coverage": "Coverage",
+    "coverageValue": "{{earliest}} – {{latest}}",
+    "months": "History window",
+    "monthsValue": "{{months}} months",
+    "noneYet": "Nothing aggregated yet",
+    "title": "Data window"
+  },
   "language": {
     "en": "English",
     "hint": "Amounts and dates stay in Belgian format in every language.",
