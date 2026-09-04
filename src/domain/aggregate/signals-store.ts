@@ -18,8 +18,15 @@ import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
 import type { Signal } from './overspend.ts'
 
-/** `''` for a household signal — SQLite treats NULLs as distinct in a key. */
-const subjectKey = (signal: Signal): string => signal.categoryId ?? ''
+/**
+ * `''` for a household signal with no finer subject — SQLite treats NULLs as
+ * distinct in a key, so this can't be `null` itself. Falls back to
+ * `categoryName` for a code that can fire more than once per month at
+ * household level: `above_benchmark` has no `categoryId` but is one row per
+ * Statbel group (#43), and without this two over-threshold groups in the same
+ * month collide on `(month, code, '')` and the insert throws.
+ */
+const subjectKey = (signal: Signal): string => signal.categoryId ?? signal.categoryName ?? ''
 
 const KNOWN: ReadonlySet<string> = new Set(FINDING_CODES)
 
