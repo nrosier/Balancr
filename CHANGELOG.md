@@ -6,6 +6,42 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.0] — 2026-09-04
+
+### Fixed
+
+- **A sync run failed wholesale when a schedule's rule held a non-`set` action**
+  ([#203](https://github.com/nrosier/Balancr/issues/203)). Actual sends `field: null`
+  for rule actions where a field genuinely does not apply — `link-schedule` and the
+  like — rather than omitting the key, and `ruleShape`'s `field` was `.optional()`,
+  which tolerates a missing key but not an explicit `null`. Every `getRules()` response
+  with even one such action failed to parse, taking the whole sync job down with it.
+  `field` is now `.nullable()` too, and `scheduleCategories` treats a null the same as
+  an absent one.
+
+### Added
+
+- **A month's facts can change after it closes without the rest of the app quietly
+  disagreeing with itself** ([#162](https://github.com/nrosier/Balancr/issues/162)).
+  `persistFacts` overwrote every month in the sync window unconditionally, but nothing
+  recorded whether a pass actually changed anything — so the signals job, which only
+  re-judges the last two months, and the AI analysis, which only re-runs for the same
+  reason, had no way to notice a recategorisation from further back. A fingerprint over
+  the facts a judgement actually depends on, stored per month as `facts_changed_at`,
+  lets the signals pass re-judge exactly the months that moved instead of a fixed
+  floor — for free, since the pass reads nothing but SQLite. The AI analysis stays
+  opt-in: a changed past month is never re-run on its own, only marked stale for the
+  owner to price and press.
+- **The nightly AI pass no longer pays three times for an answer that cannot have
+  moved** ([#160](https://github.com/nrosier/Balancr/issues/160)). `CATCHUP_NIGHTS`
+  re-runs the analysis for the same just-closed month on each of the first few nights
+  of a new one, and every one of those calls used to cost the same as the first.
+  `findReusableRun` now checks, before the budget gate, whether an identical call —
+  same month, same redacted payload, same prompt version, same model — was already
+  answered, and serves that stored answer for free as its own `reused` ledger row
+  rather than asking Gemini again. A `force` flag on `POST /api/ai/refresh`, off by
+  default so the nightly pass can never set it, calls anyway.
+
 ## [0.9.1] — 2026-09-04
 
 ### Fixed

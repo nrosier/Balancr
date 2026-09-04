@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.9.1-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.10.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -868,13 +868,27 @@ ends.
 | `0.7.0` | Backups, monthly digest, operational hardening | ✅ |
 | `0.8.0` | Portfolio advice, curated fund universe, Belgian tax module | ✅ |
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
-| `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ⬜ |
+| `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is done, on five slices rather than the six the milestone
+**Where it is now** — `0.10.0` is done, on three fixes to how the app agrees with itself
+from one month to the next rather than a screen anyone opens. A sync run no longer fails
+wholesale because one rule action set a field to `null` instead of leaving it out — the
+parse was stricter than Actual's own API, and any budget with a `link-schedule` action in
+its rules was one sync away from breaking. A month's facts can move after it closes — a
+recategorisation, a split corrected weeks later — without the rest of the app quietly
+disagreeing with itself: a fingerprint over what a judgement actually depends on now
+tells the signals pass exactly which months moved, so it re-judges those instead of a
+fixed two-month floor, for free. The AI analysis stays opt-in on a changed past month —
+never a silent re-run, only a stale banner the owner can price and press. And the nightly
+pass stopped paying three times for the same answer: it now checks, before the budget
+gate, whether an identical call — same month, same redacted payload, same prompt version,
+same model — was already answered, and serves that stored answer for free rather than
+asking Gemini again. Behind
+`0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
 while the clarification queue and the proposal review stay whole on purpose, because neither
@@ -912,9 +926,9 @@ every class outside its band arrives with the trade that would close it, that tr
 name a fund from a list you vetted yourself, and what acting would cost in Belgian tax is
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
-arrives monthly, and the container's hardening is checked rather than declared. `0.10.0` is
-next and has not started: re-judging a month whose transactions changed after it was already
-reviewed, and reusing an analysis when nothing that feeds it has changed.
+arrives monthly, and the container's hardening is checked rather than declared. `1.0.0-rc.N`
+is next and has not started: a documentation pass, a security verification checklist, and
+a reconciliation acceptance test.
 
 The insights page finally has the same month picker the budget page has had since `0.6.0`
 ([#158](https://github.com/nrosier/Balancr/issues/158)). Reading what the analysis said about
