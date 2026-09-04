@@ -506,6 +506,135 @@ export function redact(bundle: AnalysisBundle): Redaction {
   }
 }
 
+// ---------------------------------------------------------------------------
+//  #216 — a below-threshold categorisation candidate, redacted for a guess
+// ---------------------------------------------------------------------------
+
+/** One candidate's own history, before anything is taken away. */
+export interface GuessCandidateInput {
+  /** Not sent — used only to build `transactionIdFor` after the call returns. */
+  transactionId: string
+  amountCents: number
+  history: readonly { categoryId: string; count: number }[]
+}
+
+export interface RedactedGuessCategory {
+  /** `c1`…`cN`, scoped to this one batch — never the same namespace as a `redact()` call. */
+  label: string
+  /** Omitted entirely when the category is sensitive. */
+  name?: string
+  coicop?: string
+  nature?: CategoryMetaRow['nature']
+}
+
+export interface RedactedGuessHistoryEntry {
+  label: string
+  count: number
+}
+
+export interface RedactedGuessCandidate {
+  /** `t1`…`tN`. The only handle the model ever has on a candidate. */
+  clientId: string
+  amountCents: number
+  history: RedactedGuessHistoryEntry[]
+}
+
+/** Exactly what is sent for a category-guess batch. Stored verbatim in `ai_runs.payload_json`. */
+export interface RedactedGuessBatch {
+  locale: string
+  categories: RedactedGuessCategory[]
+  candidates: RedactedGuessCandidate[]
+}
+
+export interface GuessRedaction {
+  payload: RedactedGuessBatch
+  /** `t1`…`tN` → the real transaction id, for mapping a grounded guess back to a proposal. */
+  transactionIdFor: ReadonlyMap<string, string>
+  /** `c1`…`cN` → the real category id, scoped to this one batch. */
+  categoryIdFor: ReadonlyMap<string, string>
+}
+
+/**
+ * A batch of below-threshold candidates → exactly what may be sent for a
+ * category guess (#216). Same two rules as `redact`: every field written out
+ * by hand, and every category addressed only by an opaque label — no payee
+ * name, no memo, and no transaction id ever crosses (only the opaque
+ * `clientId` does; `transactionIdFor` maps it back once the response returns).
+ *
+ * Categories are collected across every candidate in the batch and labelled
+ * once, in id order, so a category shared by two candidates is the same label
+ * in both rather than two unrelated ones.
+ */
+export function redactCategoryGuessBatch(
+  candidates: readonly GuessCandidateInput[],
+  categoryMetaById: ReadonlyMap<string, CategoryMetaRow | null>,
+  categoryNameById: ReadonlyMap<string, string>,
+  locale: string,
+): GuessRedaction {
+  const categoryIds = new Set<string>()
+  for (const candidate of candidates) {
+    for (const sample of candidate.history) categoryIds.add(sample.categoryId)
+  }
+  const sortedCategoryIds = [...categoryIds].sort()
+
+  const labelForCategory = new Map<string, string>()
+  const categoryIdFor = new Map<string, string>()
+  const redactedCategories: RedactedGuessCategory[] = sortedCategoryIds.map((categoryId, index) => {
+    const label = `c${index + 1}`
+    labelForCategory.set(categoryId, label)
+    categoryIdFor.set(label, categoryId)
+
+    const meta = categoryMetaById.get(categoryId) ?? null
+    const sensitive = meta?.sensitive === true
+
+    const out: RedactedGuessCategory = { label }
+    if (!sensitive) {
+      const name = categoryNameById.get(categoryId)
+      if (name !== undefined) out.name = name
+    }
+    if (meta !== null) {
+      if (meta.coicopCode !== null) out.coicop = meta.coicopCode
+      if (meta.nature !== null) out.nature = meta.nature
+    }
+    return out
+  })
+
+  const transactionIdFor = new Map<string, string>()
+  const redactedCandidates: RedactedGuessCandidate[] = candidates.map((candidate, index) => {
+    const clientId = `t${index + 1}`
+    transactionIdFor.set(clientId, candidate.transactionId)
+    return {
+      clientId,
+      amountCents: candidate.amountCents,
+      history: candidate.history.map((sample) => ({
+        label: labelForCategory.get(sample.categoryId) ?? sample.categoryId,
+        count: sample.count,
+      })),
+    }
+  })
+
+  return {
+    payload: { locale, categories: redactedCategories, candidates: redactedCandidates },
+    transactionIdFor,
+    categoryIdFor,
+  }
+}
+
+/** `PAYLOAD_KEYS`'s counterpart for a `RedactedGuessBatch` — same discipline, own allow-list. */
+export const GUESS_PAYLOAD_KEYS: readonly string[] = [
+  'locale',
+  'categories',
+  'candidates',
+  'label',
+  'name',
+  'coicop',
+  'nature',
+  'clientId',
+  'amountCents',
+  'history',
+  'count',
+]
+
 /**
  * The complete set of keys a payload may contain, at any depth.
  *

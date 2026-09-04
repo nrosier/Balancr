@@ -194,6 +194,7 @@ const EMPTY_READS: Record<string, unknown> = {
     signals: [],
     narrative: null,
     questions: [],
+    categoryGuessCandidates: [],
     proposals: [],
     // The one object on this payload that is never null: the cap comes from the
     // environment, so a deployment that has spent nothing still has a budget. The page

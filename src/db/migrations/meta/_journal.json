@@ -120,6 +120,13 @@
       "when": 1788519963789,
       "tag": "0016_stale_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788546862044,
+      "tag": "0017_cuddly_tombstone",
+      "breakpoints": true
     }
   ]
 }

@@ -40,7 +40,10 @@
       "call_failed": "Het model was niet bereikbaar.",
       "estimate_exceeds_remaining": "Een analyse zou meer kosten dan er deze maand nog over is.",
       "month_budget_exceeded": "Het budget van deze maand is al opgebruikt.",
+      "no_candidate": "Deze verrichting stond niet als kandidaat in de cache.",
+      "no_candidates": "Geen van de geselecteerde verrichtingen staat als kandidaat in de cache.",
       "no_facts": "Voor die maand zijn er geen samengevatte cijfers om te analyseren.",
+      "not_confident": "Het model was hier niet zeker genoeg van om te raden.",
       "ok": "Afgerond.",
       "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten."
     },

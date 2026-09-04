@@ -48,7 +48,17 @@ import { ApiError, apiSend } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useSessionExpiry } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
-import { formatBp, formatDateTime, type Insights, type ProposalBatchApply } from '../shared.ts'
+import {
+  formatBp,
+  formatDate,
+  formatDateTime,
+  formatMicroEur,
+  type CategoryGuessEstimateWire,
+  type CategoryGuessRunWire,
+  type Insights,
+  type ProposalBatchApply,
+} from '../shared.ts'
+import { Money, Private } from '../ui/Money.tsx'
 
 export interface QuestionsProps {
   questions: Insights['questions']
@@ -367,6 +377,272 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
                     : t('ai:proposal.rejectSelected', { count: selectedIds.length })}
                 </button>
               </div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+export interface CategoryGuessesProps {
+  candidates: Insights['categoryGuessCandidates']
+  /** Whether this reader may spend — presentation only; the endpoint gates itself. */
+  owner: boolean
+  /** Re-read `/api/insights` once a guess has turned into a proposal. */
+  onGuessed: () => void
+}
+
+/**
+ * A per-item reason short enough to be a code rather than a sentence.
+ *
+ * `runCategoryGuess`'s per-id `reason` is two different things wearing the same
+ * field: a short code for "never had a chance" (`no_candidate`, `not_confident`,
+ * the budget/call-failure codes) and, for a stale or already-categorised
+ * candidate, `ProposalError`'s own message — already an English sentence, the
+ * same one `POST /api/proposals/apply-batch` shows verbatim. Only the codes have
+ * a translation; the sentence is shown as it came.
+ */
+const KNOWN_GUESS_REASONS = new Set([
+  'no_candidate',
+  'not_confident',
+  'call_failed',
+  'bad_response',
+  'month_budget_exceeded',
+  'estimate_exceeds_remaining',
+])
+
+/**
+ * The below-threshold candidates `generateCategoryProposals` cached instead of
+ * dropping (#216) — a payee match too thin for its own confidence bar. Selecting
+ * some and pressing through the price is the only way one becomes a real
+ * `transaction_category.set` proposal; once it does, it shows up in the
+ * `Proposals` queue above with no further wiring, since that queue already
+ * renders any proposal of that type generically.
+ *
+ * Priced by selection rather than by month, so — unlike `Narrative`'s
+ * `Offer` — the estimate cannot be fetched on mount: it is a `POST` of whatever
+ * is checked, made on demand, and any change to the selection invalidates a
+ * price already shown rather than letting a stale one be spent.
+ *
+ * The candidate cache is not pruned once a guess succeeds — the next nightly
+ * signals pass rewrites the whole month's rows, not this button — so a
+ * candidate stays listed after it is guessed. Guessing it again is harmless:
+ * `createProposal` either supersedes the same proposal or, once applied,
+ * refuses the now-empty diff as a no-op, exactly like the deterministic
+ * generator's own re-runs.
+ */
+export function CategoryGuesses({ candidates, owner, onGuessed }: CategoryGuessesProps): ReactNode {
+  const { t } = useT()
+  const csrf = useCsrf()
+  const expired = useSessionExpiry()
+
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [priced, setPriced] = useState<{ ids: string[]; estimate: CategoryGuessEstimateWire } | null>(
+    null,
+  )
+  const [estimating, setEstimating] = useState(false)
+  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<ApiError | null>(null)
+  const [results, setResults] = useState<Readonly<Record<string, { ok: boolean; reason: string | null }>>>(
+    {},
+  )
+
+  const ids = candidates.map((candidate) => candidate.transactionId)
+  const selectedIds = ids.filter((id) => selected.has(id))
+  const allSelected = ids.length > 0 && selectedIds.length === ids.length
+
+  // A price is for the selection it was fetched for. Letting it survive a
+  // changed selection would offer to spend on ids nobody asked to price.
+  function unprice(): void {
+    setPriced(null)
+    setArmed(false)
+  }
+
+  function toggle(id: string): void {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    unprice()
+  }
+
+  function toggleAll(): void {
+    setSelected(allSelected ? new Set() : new Set(ids))
+    unprice()
+  }
+
+  function estimate(): void {
+    setEstimating(true)
+    setFailure(null)
+    void apiSend<CategoryGuessEstimateWire>(
+      'POST',
+      '/api/ai/category-guess/estimate',
+      { ids: selectedIds },
+      csrf,
+    )
+      .then((outcome) => {
+        setEstimating(false)
+        setPriced({ ids: selectedIds, estimate: outcome })
+      })
+      .catch((cause: unknown) => {
+        setEstimating(false)
+        const error = decisionFailure(cause)
+        if (error.code === 'unauthenticated') expired()
+        else setFailure(error)
+      })
+  }
+
+  function guess(): void {
+    if (priced === null) return
+    setBusy(true)
+    setFailure(null)
+    void apiSend<CategoryGuessRunWire>('POST', '/api/ai/category-guess', { ids: priced.ids }, csrf)
+      .then((outcome) => {
+        setBusy(false)
+        setSelected(new Set())
+        unprice()
+        const byId: Record<string, { ok: boolean; reason: string | null }> = {}
+        for (const row of outcome.results) byId[row.id] = { ok: row.ok, reason: row.reason }
+        setResults(byId)
+        onGuessed()
+      })
+      .catch((cause: unknown) => {
+        setBusy(false)
+        setArmed(false)
+        const error = decisionFailure(cause)
+        if (error.code === 'unauthenticated') expired()
+        else setFailure(error)
+      })
+  }
+
+  return (
+    <section className="card">
+      <h2 className="card__title">{t('ai:guess.title')}</h2>
+      <p className="muted">{t('ai:guess.hint')}</p>
+      {candidates.length === 0 ? (
+        <p className="muted">{t('ai:guess.none')}</p>
+      ) : (
+        <>
+          <label className="queue__selectAll">
+            <input type="checkbox" checked={allSelected} disabled={!owner} onChange={toggleAll} />
+            {t('ai:guess.selectAll')}
+          </label>
+
+          <ul className="queue">
+            {candidates.map((candidate) => {
+              const payee = candidate.payeeName ?? t('ai:guess.unnamedPayee')
+              const result = results[candidate.transactionId]
+              return (
+                <li className="queue__item" key={candidate.transactionId}>
+                  <div className="queue__row">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(candidate.transactionId)}
+                      disabled={!owner}
+                      onChange={() => toggle(candidate.transactionId)}
+                      aria-label={t('ai:guess.select', { target: payee })}
+                    />
+                    <div className="queue__body">
+                      <p className="queue__lead">
+                        {payee} · <Money cents={candidate.amountCents} />
+                      </p>
+                      <p className="queue__meta">{formatDate(candidate.date)}</p>
+                      <p className="queue__meta">
+                        {candidate.history
+                          .map((sample) =>
+                            t('ai:guess.historyEntry', { category: sample.categoryName, count: sample.count }),
+                          )
+                          .join(' · ')}
+                      </p>
+                      {result === undefined ? null : result.ok ? (
+                        <p className="queue__meta">{t('ai:guess.resultOk')}</p>
+                      ) : (
+                        <p className="notice notice--warn" role="status">
+                          {result.reason !== null && KNOWN_GUESS_REASONS.has(result.reason)
+                            ? t(`settings:ai.reason.${result.reason}`)
+                            : result.reason ?? ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {owner ? null : <p className="muted">{t('ai:guess.ownerOnly')}</p>}
+
+          {failure === null ? null : (
+            <p className="notice notice--warn" role="status">
+              {failure.message}
+            </p>
+          )}
+
+          <div className="rerun">
+            {priced === null ? (
+              <button
+                type="button"
+                className="button button--quiet"
+                disabled={!owner || selectedIds.length === 0 || estimating}
+                onClick={estimate}
+              >
+                {estimating
+                  ? t('ai:guess.estimating')
+                  : t('ai:guess.estimate', { count: selectedIds.length })}
+              </button>
+            ) : (
+              <>
+                <p className="muted">
+                  <Private>
+                    {t('ai:guess.price', {
+                      count: priced.ids.length,
+                      cost: formatMicroEur(priced.estimate.estimateMicroEur),
+                    })}
+                  </Private>
+                </p>
+                {priced.estimate.allowed || priced.estimate.reason === null ? null : (
+                  <p className="notice notice--warn" role="status">
+                    {t(`settings:ai.reason.${priced.estimate.reason}`)}
+                  </p>
+                )}
+                {armed ? (
+                  <div className="rerun__confirm">
+                    <button type="button" className="button" disabled={!owner || busy} onClick={guess}>
+                      {busy
+                        ? t('ai:guess.guessing')
+                        : t('ai:guess.confirm', {
+                            cost: formatMicroEur(priced.estimate.estimateMicroEur),
+                          })}
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      disabled={busy}
+                      onClick={() => setArmed(false)}
+                    >
+                      {t('ai:guess.cancel')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rerun__confirm">
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      disabled={!owner}
+                      onClick={() => setArmed(true)}
+                    >
+                      {t('ai:guess.start')}
+                    </button>
+                    <button type="button" className="button button--quiet" onClick={unprice}>
+                      {t('ai:guess.cancel')}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </>

@@ -127,6 +127,36 @@ export const hygieneSchema = z.object({
   deductions: z.array(z.object({ reason: z.string(), bp: basisPoints() })),
 })
 
+/**
+ * A below-threshold categorisation candidate (#216): a payee match too thin
+ * for `generateCategoryProposals`'s own confidence bar (`suggestCategoryForPayee`),
+ * cached rather than dropped so the owner can ask a model to guess instead of
+ * leaving the transaction uncategorised.
+ *
+ * `payeeName` is display only. It is on this wire so the row can say who the
+ * candidate is, but it is never part of what `category-guess.ts` sends to
+ * Gemini — the model sees only an opaque candidate and its own category
+ * history, never a name.
+ */
+export const categoryGuessCandidateSchema = z.object({
+  transactionId: z.string(),
+  payeeName: z.string().nullable(),
+  amountCents: cents(),
+  date: dateKey(),
+  /**
+   * This payee's own category history — the only evidence a guess may use.
+   * `categoryName` is resolved locally from the category cache; the model
+   * itself never sees it, only the opaque label built from `categoryId`.
+   */
+  history: z.array(
+    z.object({
+      categoryId: z.string(),
+      categoryName: z.string(),
+      count: z.int().nonnegative(),
+    }),
+  ),
+})
+
 // ---------------------------------------------------------------------------
 //  Overview
 // ---------------------------------------------------------------------------
@@ -697,7 +727,7 @@ export const portfolioSchema = z.object({
  */
 export const aiRunSchema = z.object({
   id: z.string(),
-  kind: z.enum(['findings', 'narrative', 'clarify', 'chat', 'dryrun']),
+  kind: z.enum(['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess']),
   model: z.string(),
   locale: z.string(),
   status: z.enum(['ok', 'error', 'blocked', 'capped', 'reused']),
@@ -771,6 +801,12 @@ export const insightsSchema = z.object({
    */
   months: z.array(monthKey()),
   signals: z.array(signalSchema),
+  /**
+   * This month's below-threshold candidates, scoped the same way `signals`
+   * is: sourced per month like `monthlySignals`, unlike the genuinely
+   * unscoped `questions`/`proposals` below (#216).
+   */
+  categoryGuessCandidates: z.array(categoryGuessCandidateSchema),
   narrative: z
     .object({
       period: z.string(),
@@ -1495,6 +1531,57 @@ export const proposalBatchApplySchema = z.object({
 })
 
 /**
+ * `POST /api/ai/category-guess/estimate` — what a guess batch on this
+ * selection would cost, having spent nothing to find out (#216).
+ *
+ * Same shape as `aiEstimateSchema` minus `month`/`kind`: a guess batch is
+ * priced by the selection, not by a month, and there is only the one kind of
+ * call this button can make.
+ */
+export const categoryGuessEstimateSchema = z.object({
+  ids: z.array(z.string()),
+  model: z.string(),
+  /** Null when none of `ids` has a cached candidate. */
+  payloadChars: z.int().nonnegative().nullable(),
+  estimateMicroEur: microEur(),
+  allowed: z.boolean(),
+  reason: z.string().nullable(),
+})
+
+/**
+ * `POST /api/ai/category-guess` — however many selected candidates became a
+ * real proposal, or why not (#216).
+ *
+ * `results` follows `proposalBatchApplySchema`'s own contract: one entry per
+ * id asked for, in request order, whether or not it succeeded — an id with no
+ * cached candidate, one the model was not confident about, and one that
+ * became a proposal are told apart by `reason`, not by being left out.
+ */
+export const categoryGuessRunSchema = z.object({
+  status: z.enum(['ok', 'capped', 'error', 'skipped']),
+  reason: z.string(),
+  runId: z.string().nullable(),
+  locale: z.string(),
+  degraded: z.boolean(),
+  costMicroEur: microEur(),
+  results: z.array(
+    z.object({
+      id: z.string(),
+      ok: z.boolean(),
+      reason: z.string().nullable(),
+    }),
+  ),
+  /** What the model returned and grounding threw away. Recorded, not hidden. */
+  dropped: z.array(
+    z.object({
+      clientId: z.string(),
+      categoryLabel: z.string(),
+      reason: z.enum(['duplicate', 'unknown_client', 'not_offered']),
+    }),
+  ),
+})
+
+/**
  * The two shapes that appear inside more than one response, named because the
  * client renders each with one component. Structurally identical to the interfaces
  * in `freshness.ts` and `hygiene.ts`, which is the point: those describe what the
@@ -1537,5 +1624,8 @@ export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>
 export type ChangelogEntry = z.infer<typeof changelogEntrySchema>
 export type Changelog = z.infer<typeof changelogSchema>
+export type CategoryGuessEstimateWire = z.infer<typeof categoryGuessEstimateSchema>
+export type CategoryGuessRunWire = z.infer<typeof categoryGuessRunSchema>
+export type CategoryGuessCandidateWire = z.infer<typeof categoryGuessCandidateSchema>
 export type ProposalDecision = z.infer<typeof proposalDecisionSchema>
 export type ProposalBatchApply = z.infer<typeof proposalBatchApplySchema>

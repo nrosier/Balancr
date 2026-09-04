@@ -954,7 +954,19 @@ in that sentence with whatever the owner types into a plain text box beside
 the roster, capped at the same forty characters as any other member's label —
 but it stays outside the roster on purpose, never gaining a birth year or a
 custody share, and the equivalence scale keeps adding that person's weight
-unconditionally whether or not a name was ever set. Behind
+unconditionally whether or not a name was ever set. A fifth rider closed the gap
+the deterministic path deliberately left open: [#216](https://github.com/nrosier/Balancr/issues/216)
+lets the owner ask a model to guess a category for a transaction whose payee's
+history was too thin or too mixed for #45 to file on its own — those candidates
+are kept rather than dropped, one card per transaction with the history it was
+judged against, priced before anything is spent and pressed only by the owner,
+never by the nightly job. The model sees only an opaque label per category it
+has actually seen for that payee, never the payee's name or the transaction's
+own id, and a guess outside that specific set is grounded away rather than
+trusted because the schema happened to allow it. What comes back is not a new
+kind of decision: it is the same `transaction_category.set` proposal #45
+already built a queue and an apply path for, so accepting one looks exactly
+like accepting a deterministic guess. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
