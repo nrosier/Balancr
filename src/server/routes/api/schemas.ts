@@ -26,6 +26,7 @@ import {
   UNAVAILABLE_REASONS,
 } from '../../../domain/advice/suggest.ts'
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
+import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { BENCHMARK_BASES, BENCHMARK_UNAVAILABLE } from '../../../domain/benchmark/compare.ts'
 import {
   BENCHMARK_BLOCKS,
@@ -278,6 +279,47 @@ export const benchmarkComparisonSchema = z.discriminatedUnion('kind', [
   }),
 ])
 
+/**
+ * What a month's shared costs cost you, or why there is no split (#44).
+ *
+ * A union for the same reason the benchmark's is: "no split" has three causes and two of
+ * them draw nothing at all. `basis` is on the wire because a derived share is Balancr's
+ * guess at somebody's arrangement and a stated one is not, and the card has to say which —
+ * a borne figure whose provenance is missing is a number nobody can check.
+ *
+ * `paidCents` is Actual's own figure and is never adjusted anywhere: the split is an extra
+ * column beside it, not a correction to it.
+ */
+export const custodySplitSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('ok'),
+    month: monthKey(),
+    basis: z.enum(CUSTODY_BASES),
+    shareBp: basisPoints(),
+    /** Part-time members the derived share averaged. Zero when the share was stated. */
+    members: z.int().nonnegative(),
+    lines: z.array(
+      z.object({
+        categoryId: z.string(),
+        categoryName: z.string(),
+        paidCents: cents(),
+        borneCents: cents(),
+      }),
+    ),
+    paidCents: cents(),
+    borneCents: cents(),
+    /** `paidCents − borneCents`: the co-parent's share of what you paid. */
+    offsetCents: cents(),
+    shareOfSpendBp: basisPoints(),
+  }),
+  z.object({
+    kind: z.literal('unavailable'),
+    reason: z.enum(CUSTODY_UNAVAILABLE),
+    /** Set for `no_basis`: what was flagged and went unsplit. */
+    paidCents: cents().nullable(),
+  }),
+])
+
 export const budgetSchema = z.object({
   freshness: freshnessSchema,
   month: monthKey(),
@@ -316,6 +358,7 @@ export const budgetSchema = z.object({
    * of which are edited two clicks away in settings.
    */
   benchmark: benchmarkComparisonSchema,
+  custody: custodySplitSchema,
   uncategorised: z
     .object({ txnCount: z.int().nonnegative(), amountCents: cents() })
     .nullable(),
@@ -1022,6 +1065,12 @@ export const benchmarkSettingSchema = z.object({
         label: z.string().optional(),
       }),
     ),
+    /**
+     * The stated share of a shared cost that is yours, or null to derive it from the
+     * roster (#44). Null is a value the form has to be able to show and to send back:
+     * clearing the box means "go back to deriving it", which absent could not express.
+     */
+    sharedCostBp: basisPoints().nullable(),
   }),
   /** The code that means "not household consumption", for the picker's own entry. */
   outsideCode: z.literal(OUTSIDE_CONSUMPTION),
@@ -1040,6 +1089,16 @@ export const benchmarkSettingSchema = z.object({
       isIncome: z.boolean(),
       hidden: z.boolean(),
       coicop: z.string().nullable(),
+      /**
+       * Whether this category's cost is split with a co-parent (#44).
+       *
+       * In the same list as the mapping because it is the same table and the same
+       * screen, and because until this field was on the wire the flag had no control
+       * anywhere: it could only be set by approving a proposal or answering a
+       * clarification, both of which need a Gemini key. The split is the one feature
+       * that would otherwise have been unreachable without AI.
+       */
+      custodyShared: z.boolean(),
       spentCents: cents(),
     }),
   ),
@@ -1290,6 +1349,7 @@ export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>
 export type BenchmarkGroupLine = z.infer<typeof benchmarkGroupSchema>
+export type CustodyWire = z.infer<typeof custodySplitSchema>
 export type BandsSetting = z.infer<typeof bandsSettingSchema>
 export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>

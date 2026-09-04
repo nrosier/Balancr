@@ -28,7 +28,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
-import { users } from '../../src/db/schema.ts'
+import { categoryMeta, users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -38,6 +38,7 @@ import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.t
 import { initI18n } from '../../src/i18n/index.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
+import { saveHousehold } from '../../src/domain/benchmark/household.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
 const ENDPOINTS = ['/api/overview', '/api/budget', '/api/portfolio', '/api/insights'] as const
@@ -251,6 +252,46 @@ describe('GET /api/budget', () => {
     expect(res.json().categories).toEqual([])
     // And still offers the months that do exist, or the reader is stranded there.
     expect(res.json().months).toEqual([MONTH, PREVIOUS_MONTH])
+  })
+
+  it('splits the shared categories, and leaves what was paid alone (#44)', async () => {
+    // Flagged and split in one gesture on the settings screen, so the card appears on
+    // the next reload: the split is recomputed per request rather than stored, and this
+    // is the assertion that proves it — nothing here re-runs the nightly pass.
+    ctx.db
+      .update(categoryMeta)
+      .set({ custodyShared: true })
+      .where(sql`category_id = 'cat-groceries'`)
+      .run()
+    saveHousehold(ctx.db, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+
+    const body = (await get('/api/budget')).json()
+    expect(body.custody.kind).toBe('ok')
+    expect(body.custody.basis).toBe('roster')
+    expect(body.custody.shareBp).toBe(5_000)
+    // Actual's own figure, unchanged, and the borne figure beside it.
+    expect(body.custody.paidCents).toBe(72_000)
+    expect(body.custody.borneCents).toBe(36_000)
+    expect(body.custody.offsetCents).toBe(36_000)
+    expect(body.custody.lines).toEqual([
+      {
+        categoryId: 'cat-groceries',
+        categoryName: 'Groceries',
+        paidCents: 72_000,
+        borneCents: 36_000,
+      },
+    ])
+    // And the category itself still reports what left the account, or the two halves of
+    // the page would disagree about the same envelope.
+    const groceries = body.categories.find(
+      (row: { categoryId: string }) => row.categoryId === 'cat-groceries',
+    )
+    expect(groceries.spentCents).toBe(72_000)
+  })
+
+  it('reports no split when nothing is flagged as shared', async () => {
+    const body = (await get('/api/budget')).json()
+    expect(body.custody).toEqual({ kind: 'unavailable', reason: 'no_shared', paidCents: null })
   })
 
   it('refuses a month that is not a month', async () => {

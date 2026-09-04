@@ -29,6 +29,7 @@
     "above_benchmark": "{{group}} is {{delta}} above the Belgian reference of {{benchmark}} for that group.",
     "below_baseline": "{{category}} is {{delta}} below your usual level.",
     "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned.",
+    "custody_offset": "You paid {{paid}} on shared costs; at a {{share}} share, {{amount}} of that is the co-parent's.",
     "emergency_fund_short": "Your buffer covers {{months}}, short of the {{target}} you aim for.",
     "income_change": "Income is {{delta}} off your usual {{baseline}}.",
     "irregular_expense": "An unusual expense of {{amount}} in {{category}}.",

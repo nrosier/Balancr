@@ -29,6 +29,7 @@
     "above_benchmark": "{{group}} ligt {{delta}} boven de Belgische referentie van {{benchmark}} voor die groep.",
     "below_baseline": "{{category}} ligt {{delta}} onder je gebruikelijke niveau.",
     "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen.",
+    "custody_offset": "Je betaalde {{paid}} aan gedeelde kosten; bij een aandeel van {{share}} is {{amount}} daarvan voor de co-ouder.",
     "emergency_fund_short": "Je buffer dekt {{months}}, minder dan de {{target}} die je nastreeft.",
     "income_change": "Je inkomen wijkt {{delta}} af van je gebruikelijke {{baseline}}.",
     "irregular_expense": "Een ongebruikelijke uitgave van {{amount}} in {{category}}.",

@@ -22,6 +22,7 @@ import {
   storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import { custodyContext, splitMonth } from '../../../domain/aggregate/custody-context.ts'
 import { benchmarkContext, compareMonth } from '../../../domain/benchmark/context.ts'
 import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
@@ -122,6 +123,7 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
     })),
     signals: loadSignals(db, resolved),
     benchmark: compareMonth(benchmarkContext(db), resolved, facts),
+    custody: splitMonth(custodyContext(db), resolved, facts),
     uncategorised:
       uncategorised === null
         ? null

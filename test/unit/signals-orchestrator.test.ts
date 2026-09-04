@@ -68,6 +68,8 @@ function input(overrides: Partial<SignalInput> = {}): SignalInput {
     // precisely because it reads a YAML and a settings row, neither of which this
     // orchestrator should have to have on disk to be tested.
     benchmark: { kind: 'unavailable', reason: 'no_file', mappedShareBp: null },
+    // Nothing flagged as shared, for the same reason: the split is a caller's input.
+    custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
     params: DEFAULT_PARAMS,
     ...overrides,
   }

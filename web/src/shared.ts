@@ -30,6 +30,10 @@
  *    loader for this import: the mapping form draws a picker over the twelve COICOP
  *    divisions plus the reserved `00`, and the benchmark card names the two thresholds the
  *    comparison applied. Everything else in `domain/benchmark/` reads a YAML file off disk.
+ *  - **The custody share.** `domain/aggregate/custody.ts` is pure for this one import:
+ *    the household panel has to print what the roster currently implies before anybody
+ *    states an override, and a second implementation of that mean is how the settings
+ *    screen comes to promise a share the budget card does not apply (#44).
  *  - **The shared-prompt sentinel.** `domain/ai/prompt-locale.ts` is its own module for
  *    this import: the prompt editor has to know which value means "not a language's own
  *    text", and a literal `'*'` on this side is how the picker's first entry comes to
@@ -78,6 +82,7 @@ export type {
   BenchmarkSetting,
   BenchmarkWire,
   Budget,
+  CustodyWire,
   DriftLine,
   Freshness,
   Hygiene,
@@ -112,6 +117,9 @@ export type { SignalFacts, Translate } from '../../src/domain/ai/vars.ts'
 
 export { describeTaxEstimate } from '../../src/domain/tax/describe.ts'
 export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe.ts'
+
+export { custodyShare } from '../../src/domain/aggregate/custody.ts'
+export type { CustodyBasis } from '../../src/domain/aggregate/custody.ts'
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'

@@ -28,7 +28,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Budget } from '../src/pages/Budget.tsx'
-import type { Budget as BudgetPayload, Freshness } from '../src/shared.ts'
+import type { Budget as BudgetPayload, CustodyWire, Freshness } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
@@ -205,6 +205,9 @@ const FULL: BudgetPayload = {
     },
   ],
   benchmark: BENCHMARK,
+  // Nothing flagged as shared: the card draws nothing at all in that case, so the
+  // fixture every other test spreads stays free of a table it is not about (#44).
+  custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
   uncategorised: { txnCount: 3, amountCents: 12_500 },
 }
 
@@ -222,6 +225,8 @@ const EMPTY: BudgetPayload = {
   // all for this reason rather than a box saying so, because the empty month already has
   // its own sentence above.
   benchmark: { kind: 'unavailable', reason: 'no_month', mappedShareBp: null },
+  // Same reason, one step earlier: nothing was spent, so there is nothing to split.
+  custody: { kind: 'unavailable', reason: 'no_month', paidCents: null },
   uncategorised: null,
 }
 
@@ -546,6 +551,126 @@ describe('the Belgian comparison', () => {
     // classes, because the empty month has a notice of its own two lines up.
     expect(screen.queryByText('Compared with Belgian households')).toBeNull()
     expect(screen.queryByText(/Map your categories to a COICOP division/)).toBeNull()
+  })
+})
+
+/**
+ * The custody card (#44), which makes a claim Actual does not: that half of what you paid
+ * was never yours.
+ *
+ * The two things worth failing over are the ones a plausible-looking card gets wrong. The
+ * paid column must stay Actual's own figure, on every row and in the total, so the card
+ * never disagrees with the envelope table above it; and the assumption behind the borne
+ * column has to be on screen, because nothing in the data can tell a school fee you paid
+ * in full from a bill the co-parent invoiced you for.
+ */
+describe('the shared-cost split', () => {
+  const SPLIT: CustodyWire = {
+    kind: 'ok',
+    month: '2026-08',
+    basis: 'roster',
+    shareBp: 5_000,
+    members: 1,
+    lines: [
+      { categoryId: 'cat-school', categoryName: 'School', paidCents: 40_000, borneCents: 20_000 },
+      { categoryId: 'cat-kit', categoryName: 'Clothing', paidCents: 12_000, borneCents: 6_000 },
+    ],
+    paidCents: 52_000,
+    borneCents: 26_000,
+    offsetCents: 26_000,
+    shareOfSpendBp: 1_677,
+  }
+
+  const withSplit = (custody: CustodyWire): BudgetPayload => ({ ...FULL, custody })
+
+  it('prints Actual\u2019s figure beside your share, and says what it assumed', async () => {
+    serve(json(withSplit(SPLIT)))
+    renderApp(<Budget />)
+
+    expect(await screen.findByText('Costs shared with a co-parent')).toBeTruthy()
+    expect(
+      screen.getByText(
+        /In August 2026 you paid € 520 on costs shared with a co-parent\. € 260 of that is/,
+      ),
+    ).toBeTruthy()
+
+    // Actual first, yours second — in that order, because the first column is the one
+    // that reconciles with the bank.
+    const card = screen.getByText('Costs shared with a co-parent').closest('section')
+    const headers = [...(card?.querySelectorAll('thead th') ?? [])].map((th) => th.textContent)
+    expect(headers).toEqual(['Category', 'You paid', 'Yours'])
+
+    // Largest paid first, both figures per row, and no arithmetic in the browser.
+    const cells = (tr: Element): (string | null)[] =>
+      [...tr.children].map((cell) => (cell.textContent ?? '').replaceAll('\u00a0', ' '))
+    const rows = [...(card?.querySelectorAll('tbody tr') ?? [])].map(cells)
+    expect(rows).toEqual([
+      ['School', '€ 400', '€ 200'],
+      ['Clothing', '€ 120', '€ 60'],
+    ])
+
+    // The totals are a footer, and they are the sums of the rows above them: the server
+    // rounds per line precisely so this holds.
+    const foot = [...(card?.querySelectorAll('tfoot tr') ?? [])].map(cells)
+    expect(foot).toEqual([['Total', '€ 520', '€ 260']])
+
+    // The three sentences that qualify the figure: where the share came from, how much of
+    // the month it covers, and the assumption the whole column rests on.
+    expect(
+      screen.getByText(
+        'No split has been stated, so this uses the share of the time 1 member is here: 50%.',
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText('Shared costs are 16,8% of what you spent this month.')).toBeTruthy()
+    expect(screen.getByText(/This assumes the whole invoice left your account/)).toBeTruthy()
+  })
+
+  it('says a stated share was stated, rather than implying it was derived', async () => {
+    // The distinction #44 asks to be reported: one is somebody's arrangement, the other
+    // is Balancr guessing at an arrangement it has never seen.
+    serve(json(withSplit({ ...SPLIT, basis: 'stated', shareBp: 6_000, members: 0 })))
+    renderApp(<Budget />)
+
+    expect(
+      await screen.findByText('The 60% share is the one you stated under Settings, Household.'),
+    ).toBeTruthy()
+    expect(screen.queryByText(/No split has been stated/)).toBeNull()
+  })
+
+  it('never raises a split above information', async () => {
+    serve(json(withSplit(SPLIT)))
+    renderApp(<Budget />)
+    await screen.findByText('Costs shared with a co-parent')
+
+    // Nobody has done anything wrong by paying a bill that gets split, and a red cell is
+    // an alert whatever the payload calls it. The matching finding is capped at `info`.
+    const card = screen.getByText('Costs shared with a co-parent').closest('section')
+    expect(card?.querySelectorAll('.notice--warn, .notice--error, [role="alert"]')).toHaveLength(0)
+  })
+
+  it('asks for a share when categories are flagged and nothing implies one', async () => {
+    // The one unavailable reason worth a box: the flags say somebody meant this to work.
+    serve(json(withSplit({ kind: 'unavailable', reason: 'no_basis', paidCents: 52_000 })))
+    renderApp(<Budget />)
+
+    expect(
+      await screen.findByText(
+        /Categories worth € 520 this month are flagged as shared with a co-parent/,
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText(/Add whoever is here part of the time under Settings, Household/))
+      .toBeTruthy()
+    expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
+  })
+
+  it('draws nothing when nothing is flagged, and nothing for an empty month', async () => {
+    // The ordinary state of most budgets. A card explaining an absence nobody asked about
+    // is noise, and the empty month already has a notice of its own.
+    serve(json(FULL))
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+    expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
+    expect(screen.queryByText(/are flagged as shared with a co-parent/)).toBeNull()
   })
 })
 

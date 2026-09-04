@@ -1,0 +1,47 @@
+/*
+ * The shared-cost card (#44).
+ *
+ * Two rules and a footer, because the card is a `.table` and a `.notice` like the
+ * benchmark one: three columns of money is not a new shape. What the shared stylesheet
+ * has no name for is the sentence above the table and the qualifications below it.
+ *
+ * **No colour carries meaning here either.** A joint-custody household has not done
+ * anything wrong by paying a bill that gets split, and the matching finding is capped at
+ * `info` for that reason — a tinted cell would contradict it.
+ */
+
+/* What the month came to and what of it is yours. Same shape as `.benchmark__lede`. */
+.custody__lede {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  color: var(--text-muted);
+}
+
+/*
+ * Where the share came from, what the flagged categories are of the month, and the
+ * assumption the second column rests on. A list because each line is independently true.
+ */
+.custody__meta {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  color: var(--text-muted);
+}
+
+/*
+ * The totals row, separated from the categories above it. The shared table has no
+ * `tfoot` rule because this is the first table with one — a summary of a column only
+ * makes sense where the column is a sum, which four of the five other tables are not.
+ */
+.custody__table tfoot th,
+.custody__table tfoot td {
+  border-top: 1px solid var(--border-strong);
+  border-bottom: none;
+  font-weight: var(--weight-semibold);
+}

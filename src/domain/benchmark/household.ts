@@ -80,6 +80,20 @@ export const householdSchema = z
      * nothing and produces a comparison against infinity.
      */
     members: z.array(memberSchema).max(MAX_HOUSEHOLD_MEMBERS).default([]),
+    /**
+     * The share of a cost flagged `custody_shared` that is economically yours, in basis
+     * points, or null to derive it from the roster (#44).
+     *
+     * Null rather than a number as the default, because the two are different claims: a
+     * number is the split in somebody's arrangement, and null means "work it out from the
+     * shares of time above". Both produce a figure, and every screen that prints one says
+     * which — a derived share is Balancr guessing at an agreement it has never seen.
+     *
+     * Separate from `custodyBp` and not derivable from it in general: who pays for the
+     * winter coat is negotiated separately from who has the children on Wednesday, and
+     * plenty of agreements split costs down the middle on an unequal week.
+     */
+    sharedCostBp: z.int().min(0).max(10_000).nullable().default(null),
   })
   .strict()
   .prefault({})

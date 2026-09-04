@@ -39,6 +39,9 @@ and prioritise what it already knows.
   never read as an alert.
 - **Burn rate** — projected month-end totals from spend so far, so a warning
   arrives mid-month instead of as a post-mortem.
+- **What a shared cost actually costs you** — flag the categories you split with a
+  co-parent and the budget page prints your share of them beside what left your
+  account. Actual's figure is never adjusted; the second figure is an addition.
 - **Portfolio** — allocation, returns and holdings from Ghostfolio, deduplicated
   against Actual so an investment account is never counted twice.
 - **What to do about it** — a risk profile written in numbers, every asset class
@@ -83,9 +86,12 @@ half-English, and costs a fraction of what shipping raw transactions would.
   served from the container, so the UI works on a locked-down network and leaks
   nothing to a third party by loading a page.
 - **Who lives here stays here.** The household roster behind
-  [the benchmark](#comparing-with-belgian-households) — a year of birth, a share of the
-  time, an optional name — is never part of a payload. What the model may see about that
-  comparison is a survey line, a share and a euro figure.
+  [the benchmark](#comparing-with-belgian-households) and
+  [the shared-cost split](#costs-shared-with-a-co-parent) — a year of birth, a share of the
+  time, an optional name, the share of a shared cost you state — is never part of a payload.
+  What the model may see about that comparison is a survey line, a share and a euro figure;
+  about a split, the total you paid on shared costs, the share applied to it and the euros
+  that leaves with the other household.
 
 ## Quick start
 
@@ -487,6 +493,59 @@ the file was last checked, and lists the blocks nobody has yet confirmed against
 including, at the moment, the shares themselves.
 
 
+## Costs shared with a co-parent
+
+Paying the whole school bill in September is a 200% overrun against your own norm, and
+roughly half of it was never economically yours. Actual is right either way — what left the
+account is what left the account — but "did I overspend" is a different question from "what
+did that cost me", and one number cannot answer both.
+
+So the budget page prints a second figure beside the first, and never instead of it. Two
+things switch it on:
+
+- **Which categories are shared** — Settings → Categories, the *Shared* column. Opt-in per
+  category, because the assumption behind the split is that the whole invoice left your
+  account. A cost the co-parent invoices you for is already your share in Actual, and
+  flagging it would halve a figure that was never doubled. The box is closed for income and
+  hidden envelopes, which the split skips. Answering the assistant's `custody_shared_unknown`
+  card sets the same flag — a checkbox exists so the feature is reachable without a Gemini
+  key at all.
+- **What share of them is yours** — Settings → Household. Leave it empty and Balancr derives
+  it from the roster: the average share of the time the part-time members are here. Type a
+  number and that is used instead.
+
+The derived share and a stated one are **different claims, and the card says which**. Who
+pays for the winter coat is negotiated separately from who has the children on Wednesday,
+and plenty of agreements split costs down the middle on an unequal week — so a derived share
+is Balancr guessing at an arrangement it has never seen, and a screen that printed the two
+identically would be presenting a guess as a fact. Full-time members are left out of the
+average: a partner who lives here does not halve the school fees, and averaging them in would
+pull the share towards 100% and quietly make the whole feature do nothing.
+
+What the card shows is a row per flagged category with spending that month, largest first:
+what you paid, and your share of it. The paid column is Actual's own figure on every row and
+in the total, so the card can never disagree with the envelope table above it. Under the
+table sit the three sentences that qualify the figure — where the share came from, what the
+shared categories are of the month's whole spend, and the assumption the second column rests
+on. Nothing in the browser computes any of it; the offset is a subtraction the server did.
+
+The monthly findings gain one line for it, `custody_offset`, and it is worth being clear
+about its shape:
+
+| Decision | Why |
+|---|---|
+| One finding for the household, not one per envelope | Five flagged categories paid in one month would say the same thing five times, and the useful figure is the total — it is what that month's overruns should be read against. |
+| Capped at `info`, like the benchmark | Nobody has done anything wrong by paying a bill that gets split. A `warn` would put a joint-custody household at the top of the insights page every month for the shape of its family. |
+| Counted as good news, though it is about spending | It takes weight off an overrun rather than adding any. The insights page styles it apart from a problem for that reason. |
+| Silent under the shared materiality floor | A €20 offset on a shared subscription is true and not worth a line. |
+
+**No budget figure is adjusted anywhere.** Not the envelope table, not the totals, not the
+baseline a category is measured against, not the benchmark comparison. The split is
+disclosure printed beside Actual's numbers, which is the same principle
+[the benchmark card](#comparing-with-belgian-households) follows and the reason your share is
+an extra column rather than a correction.
+
+
 ## Backups
 
 One passphrase switches them on. There is no separate flag:
@@ -694,22 +753,45 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.9.0` is under way, and its first slice is on screen: a category
-can now be held up against something other than your own past. Ten lines of Statbel's
+**Where it is now** — `0.9.0` is under way, and two slices of it are on screen. A category
+can now be held up against something other than your own past: ten lines of Statbel's
 Household Budget Survey, your envelopes mapped onto them by COICOP division, and an
 equivalence scale that makes a one-adult household comparable to an average one — including
 a member who is here half the time, which the published scale has no notion of and which
 every screen printing the figure says out loud. A difference reads as context and can never
-read as an alert: a national average is evidence about the country, not about you. Behind
+read as an alert: a national average is evidence about the country, not about you. And a cost
+split with a co-parent now says what it actually cost you, beside what left the account and
+never instead of it — flag the categories, state the share or let the roster imply it, and
+the budget page prints your half of a school bill next to the whole of it. Behind
 that, `0.8.0` is done — what is held is measured against a risk profile you set in numbers,
 every class outside its band arrives with the trade that would close it, that trade may only
 name a fund from a list you vetted yourself, and what acting would cost in Belgian tax is
 computed in euros first — and `0.7.0`'s operational half is in place: the data refreshes on
 a schedule and on demand, the database is backed up and the restore is proven, the digest
 arrives monthly, and the container's hardening is checked rather than declared. What is left
-in `0.9.0` is a custody-aware split of what a child costs, the benchmark's drift figure in
-the monthly narrative, and the first proposal handlers that write back to Actual; its slices
-ship as `0.8.1`, `0.8.2`, … until that milestone closes as `0.9.0`.
+in `0.9.0` is a projection that knows what the month has already committed, the benchmark's
+drift figure in the monthly narrative, a month picker on the insights page, and the first
+proposal handlers that write back to Actual; its slices ship as `0.8.1`, `0.8.2`, … until that
+milestone closes as `0.9.0`.
+
+A cost you share with a co-parent now reports both figures
+([#44](https://github.com/nrosier/Balancr/issues/44)). Actual records what left your account,
+which is the only figure that reconciles and is therefore never adjusted anywhere in this
+app — but paying the whole school bill in September is a 200% overrun against your own norm
+and roughly half of it was never economically yours. Flag the categories that are shared and
+the budget page prints your share of them beside the whole, a row per category with spending
+that month, with the paid column carrying Actual's own euros on every row and in the total so
+the card can never disagree with the envelope table above it. The share comes from the roster
+— the average share of the time the part-time members are here, full-time members left out,
+or a partner who lives here would pull it towards 100% and silently neutralise the feature —
+unless you state one, and the card says which of the two it used, because a derived share is
+Balancr guessing at an agreement it has never seen. The assumption stays on screen with the
+figure: the whole invoice left your account and this share of it is yours, which is true of a
+school fee and false of a cost the co-parent invoices you for, so a wrongly flagged category
+is visible rather than quietly halved. The month's finding is one line for the household
+rather than one per envelope, capped at `info` and counted as good news, because nobody has
+done anything wrong by paying a bill that gets split. See
+[Costs shared with a co-parent](#costs-shared-with-a-co-parent).
 
 A month's spending now has an outside reference
 ([#43](https://github.com/nrosier/Balancr/issues/43)). Statbel's Household Budget Survey

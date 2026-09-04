@@ -85,6 +85,28 @@
     "trendTitle": "Uitgaven per categorie",
     "trendWindow": "De laatste {{window}}, oudste eerst."
   },
+  "custody": {
+    "assumption": "Dit gaat ervan uit dat de volledige factuur van jouw rekening ging en dat {{share}} ervan voor jou is. Niets hiervan verandert de cijfers van Actual — wat je betaalde, betaalde je.",
+    "basis": {
+      "roster_one": "Er is geen verdeling opgegeven, dus dit gebruikt het deel van de tijd dat {{value}} lid hier is: {{share}}.",
+      "roster_other": "Er is geen verdeling opgegeven, dus dit gebruikt het gemiddelde deel van de tijd dat {{value}} leden hier zijn: {{share}}.",
+      "stated": "Het aandeel van {{share}} is wat je onder Instellingen, Huishouden opgaf."
+    },
+    "caption": "Wat je aan gedeelde kosten betaalde en jouw aandeel daarin, grootste eerst",
+    "column": {
+      "borne": "Voor jou",
+      "category": "Categorie",
+      "paid": "Jij betaalde"
+    },
+    "lede": "In {{month}} betaalde je {{paid}} aan kosten die je met een co-ouder deelt. {{borne}} daarvan is economisch voor jou; {{offset}} is het aandeel van het andere huishouden.",
+    "share": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
+    "title": "Kosten gedeeld met een co-ouder",
+    "total": "Totaal",
+    "unavailable": {
+      "hint": "Voeg onder Instellingen, Huishouden toe wie hier een deel van de tijd is, of geef het aandeel rechtstreeks op — dan verschijnt de verdeling hier.",
+      "no_basis": "Categorieën ter waarde van {{amount}} deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is."
+    }
+  },
   "empty": {
     "categories": "Geen enkele categorie heeft uitgaven in deze maand.",
     "month": "Voor {{month}} is nog niets berekend.",

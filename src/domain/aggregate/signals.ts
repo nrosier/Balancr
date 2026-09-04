@@ -14,6 +14,7 @@
 import type { BenchmarkComparison } from '../benchmark/compare.ts'
 import { assertDenseMonths } from '../../util/month.ts'
 import type { MonthValue } from './baseline.ts'
+import { custodySignals, type CustodySplit } from './custody.ts'
 import { householdSignals } from './household.ts'
 import { hygieneSignals, type AccountReconciliation, type HygieneScore } from './hygiene.ts'
 import { benchmarkSignals, categorySignals, sortSignals, type Signal } from './overspend.ts'
@@ -54,6 +55,12 @@ export interface SignalInput {
    * summarised.
    */
   benchmark: BenchmarkComparison
+  /**
+   * This month's shared costs, split into what was paid and what is borne (#44), or an
+   * unavailable reason. Computed by the caller for the same reason `benchmark` is: it
+   * reads the category flags and a settings row, and this module is pure.
+   */
+  custody: CustodySplit
   params: AggregateParams
 }
 
@@ -110,6 +117,7 @@ export function computeSignals(input: SignalInput): SignalResult {
       params: input.params,
     }),
     ...benchmarkSignals(input.benchmark, input.params),
+    ...custodySignals(input.custody, input.params),
     ...hygiene.signals,
   ]
 
