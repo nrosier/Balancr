@@ -200,6 +200,22 @@ describe('the category', () => {
     ])
     expect(parsed[0]!.categoryId).toBeNull()
   })
+
+  it('does not choke on an action whose field is null rather than absent', async () => {
+    // Actual sends an explicit `field: null` on actions that don't target one — a
+    // `link-schedule` action, for instance. That must not fail the whole parse.
+    const parsed = await load([NETFLIX], [
+      {
+        id: 'rule-netflix',
+        conditions: [],
+        actions: [
+          { op: 'link-schedule', field: null, value: 'sch-netflix' },
+          { op: 'set', field: 'category', value: 'cat-subs' },
+        ],
+      },
+    ])
+    expect(parsed[0]!.categoryId).toBe('cat-subs')
+  })
 })
 
 describe('the dates', () => {
