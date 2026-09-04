@@ -1,0 +1,88 @@
+/**
+ * The static-scan counterpart to `test/unit/server-api.test.ts`'s "no-upstream rule":
+ * a direct `formatMoney`/`formatMoneyCompact`/`formatMicroEur` call anywhere under
+ * `web/src` is a money figure privacy mode cannot blur, because only `<Money>` and
+ * `<Private>` (`web/src/ui/Money.tsx`) attach the `data-private` hook `privacy.css`
+ * blurs. Rather than everybody remembering to route new money JSX through `<Money>`,
+ * this scans the tree and fails on any call site outside a short, named allowlist —
+ * so a new one fails here instead of shipping unblurred.
+ *
+ * The allowlist is not "files that happen to call these functions today" — each entry
+ * is a category #171 deliberately excludes, stated where it is decided:
+ *
+ *  - `ui/Money.tsx` — the wrapper itself.
+ *  - The five ECharts files — `filter` cannot reach canvas-drawn axis labels/geometry,
+ *    only DOM. Tooltip formatters already wrap their money substrings in
+ *    `privateText` (`charts/tooltip.ts`); axis labels stay visible, a documented,
+ *    accepted limitation. Their `summary`/aria-label strings (built by each file's own
+ *    `money` helper) are screen-reader-only text nothing ever renders visually, so
+ *    blurring is meaningless there — same reasoning as the `Budget.tsx` entry below.
+ *  - AI-operational-cost figures — the price of a Gemini call, not personal spending —
+ *    in `insights/Narrative.tsx`, `insights/Ledger.tsx`, `settings/Spend.tsx`,
+ *    `settings/Prompts.tsx`, `pages/Insights.tsx`.
+ *  - Settings/configuration numbers — thresholds and trading minimums the account
+ *    configures, not spending — in `settings/Thresholds.tsx`, `settings/Risk.tsx`.
+ *  - `pages/Budget.tsx`'s `pace.summary` — an aria-label on `PaceBar`, never rendered
+ *    visually.
+ */
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+const ROOT = join(import.meta.dirname, '..', 'src')
+
+const CALL_PATTERN = /\bformatMoney(?:Compact)?\(|\bformatMicroEur\(/
+
+const ALLOWED = new Set(
+  [
+    'ui/Money.tsx',
+    'charts/NetWorthChart.tsx',
+    'charts/AllocationChart.tsx',
+    'charts/BudgetBullet.tsx',
+    'charts/SpendSankey.tsx',
+    'charts/CategoryTrend.tsx',
+    'insights/Narrative.tsx',
+    'insights/Ledger.tsx',
+    'settings/Spend.tsx',
+    'settings/Prompts.tsx',
+    'pages/Insights.tsx',
+    'settings/Thresholds.tsx',
+    'settings/Risk.tsx',
+    'pages/Budget.tsx',
+  ].map((path) => join(ROOT, path)),
+)
+
+/** Every `.ts`/`.tsx` file under `dir`, recursively — `shared.ts` defines the functions and is not itself a call site. */
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return sourceFiles(path)
+    if (!/\.tsx?$/.test(name) || path === join(ROOT, 'shared.ts')) return []
+    return [path]
+  })
+}
+
+describe('the money-blur rule', () => {
+  it('routes every money figure through <Money>/<Private>, except the allowed exceptions', () => {
+    const offenders = sourceFiles(ROOT)
+      .filter((path) => !ALLOWED.has(path))
+      .filter((path) => CALL_PATTERN.test(readFileSync(path, 'utf8')))
+
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps every allowlisted path pointing at a real, still-offending file', () => {
+    // Guards the allowlist itself: a path that no longer calls one of these functions
+    // (renamed, refactored to <Money>) should be removed, or the list silently grows
+    // stale and stops meaning anything.
+    const stale = [...ALLOWED].filter((path) => {
+      try {
+        return !CALL_PATTERN.test(readFileSync(path, 'utf8'))
+      } catch {
+        return true
+      }
+    })
+
+    expect(stale).toEqual([])
+  })
+})

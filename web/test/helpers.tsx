@@ -28,6 +28,8 @@ import type { ReactNode } from 'react'
 import type { CsrfConfig } from '../src/api/client.ts'
 import { CsrfProvider } from '../src/api/csrf.tsx'
 import { initI18n, setLanguage } from '../src/i18n.ts'
+import { PrivacyProvider } from '../src/privacy/PrivacyContext.tsx'
+import { STORAGE_KEY as PRIVACY_STORAGE_KEY } from '../src/privacy/privacy.ts'
 import { RouterProvider } from '../src/router.tsx'
 import { ThemeProvider } from '../src/theme/ThemeContext.tsx'
 
@@ -77,9 +79,11 @@ export interface RenderAppOptions {
 function Providers({ children }: { children: ReactNode }): ReactNode {
   return (
     <ThemeProvider>
-      <CsrfProvider csrf={CSRF}>
-        <RouterProvider>{children}</RouterProvider>
-      </CsrfProvider>
+      <PrivacyProvider>
+        <CsrfProvider csrf={CSRF}>
+          <RouterProvider>{children}</RouterProvider>
+        </CsrfProvider>
+      </PrivacyProvider>
     </ThemeProvider>
   )
 }
@@ -231,6 +235,12 @@ export async function resetLanguage(): Promise<void> {
 export function resetTheme(): void {
   window.localStorage.clear()
   document.documentElement.removeAttribute('data-theme')
+}
+
+/** The counterpart to `resetTheme`, for the same reason: `localStorage` and `<html>`'s attribute both outlive the test that set them. */
+export function resetPrivacy(): void {
+  window.localStorage.removeItem(PRIVACY_STORAGE_KEY)
+  document.documentElement.removeAttribute('data-privacy')
 }
 
 /**

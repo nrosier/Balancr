@@ -32,10 +32,12 @@ import './theme/tokens.css'
 import './theme/base.css'
 import './theme/components.css'
 import './auth/signin.css'
+import './privacy/privacy.css'
 
 import { createRoot } from 'react-dom/client'
 import { App } from './App.tsx'
 import { initI18n } from './i18n.ts'
+import { PrivacyProvider } from './privacy/PrivacyContext.tsx'
 import { RouterProvider } from './router.tsx'
 import { configureFormatting, type BootstrapResponse } from './shared.ts'
 import { ThemeProvider } from './theme/ThemeContext.tsx'
@@ -99,8 +101,10 @@ await initI18n({
 
 createRoot(container).render(
   <ThemeProvider>
-    <RouterProvider>
-      <App bootstrap={bootstrap} />
-    </RouterProvider>
+    <PrivacyProvider>
+      <RouterProvider>
+        <App bootstrap={bootstrap} />
+      </RouterProvider>
+    </PrivacyProvider>
   </ThemeProvider>,
 )

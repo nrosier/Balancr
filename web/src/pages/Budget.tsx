@@ -33,6 +33,7 @@
  */
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { useResource } from '../api/resource.tsx'
 import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts'
 import { Benchmark } from '../budget/Benchmark.tsx'
@@ -41,9 +42,16 @@ import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
 import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
-import { formatBp, formatMonth, formatMoney, type Budget as BudgetPayload } from '../shared.ts'
+import {
+  formatBp,
+  formatDecimal,
+  formatMonth,
+  formatMoney,
+  type Budget as BudgetPayload,
+} from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
+import { Money } from '../ui/Money.tsx'
 import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
@@ -68,7 +76,7 @@ const BULLET_LIMIT = 12
 const TREND_VISIBLE = 8
 
 /** Whole euro. Cents on a monthly total are noise. */
-const euro = (cents: number): string => formatMoney(cents, { whole: true })
+const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
 
 /**
  * True when no job has ever written a month.
@@ -167,10 +175,15 @@ function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
       {uncategorised === null || uncategorised.txnCount === 0 ? null : (
         <div className="notice notice--warn" role="status">
           <p className="notice__lead">
-            {t('budget:uncategorised.notice', {
-              count: uncategorised.txnCount,
-              amount: euro(uncategorised.amountCents),
-            })}
+            <Trans
+              i18nKey="budget:uncategorised.notice"
+              count={uncategorised.txnCount}
+              // `count` alone only picks the plural form; `t()`'s `withFormattedCount`
+              // is what normally supplies the locale-formatted `{{value}}` — `Trans`
+              // bypasses that wrapper, so it is repeated here.
+              values={{ value: formatDecimal(uncategorised.txnCount) }}
+              components={{ money: <Money cents={uncategorised.amountCents} options={{ whole: true }} /> }}
+            />
           </p>
         </div>
       )}
@@ -389,14 +402,20 @@ function Pace({ signals, t }: { signals: readonly RenderedSignal[]; t: TFunction
               monthProgressBp={row.monthProgressBp}
               label={t('budget:pace.summary', {
                 category: row.name,
-                spent: euro(row.spentCents),
-                assigned: euro(row.assignedCents),
+                // Plain `formatMoney`, not `euro`: this string is only ever read as an
+                // `aria-label` on `PaceBar` — see that component — and blurring is
+                // meaningless for text nothing ever renders visually.
+                spent: formatMoney(row.spentCents, { whole: true }),
+                assigned: formatMoney(row.assignedCents, { whole: true }),
                 progress: formatBp(row.monthProgressBp),
               })}
             />
             <p className="pace__note">{row.text}</p>
             <p className="pace__note pace__note--warn num">
-              {t('budget:pace.overrun', { amount: euro(row.overrunCents) })}
+              <Trans
+                i18nKey="budget:pace.overrun"
+                components={{ money: <Money cents={row.overrunCents} options={{ whole: true }} /> }}
+              />
             </p>
           </li>
         ))}
@@ -447,12 +466,14 @@ function TrendWall({ categories, months, signals }: TrendWallProps): ReactNode {
             </p>
             {category.committedCents === 0 ? null : (
               <p className="trend__note num">
-                {t(
-                  category.committedApproximate
-                    ? 'budget:committed.categoryApprox'
-                    : 'budget:committed.category',
-                  { amount: euro(category.committedCents) },
-                )}
+                <Trans
+                  i18nKey={
+                    category.committedApproximate
+                      ? 'budget:committed.categoryApprox'
+                      : 'budget:committed.category'
+                  }
+                  components={{ money: <Money cents={category.committedCents} options={{ whole: true }} /> }}
+                />
               </p>
             )}
             <CategoryTrend

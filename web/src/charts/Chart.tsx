@@ -42,11 +42,27 @@ export interface ChartProps {
   /** Any CSS length. Charts reflow with the container; only the height is fixed. */
   height?: string
   className?: string
+  /**
+   * Blurs the whole rendered chart under privacy mode, not just its tooltip.
+   * ECharts draws with the SVG renderer (see the module doc above), so the
+   * chart's geometry and axis labels are real DOM inside this wrapper and a
+   * CSS `filter` reaches them — unlike the tooltip, which is a separate div
+   * on `document.body` and needs its own `data-private` markup regardless.
+   * Reserve this for a chart whose shape alone gives away the figure it
+   * would otherwise blur, such as a net-worth line against a labelled axis.
+   */
+  blurWhenPrivate?: boolean
 }
 
 type ChartInstance = ReturnType<typeof echarts.init>
 
-export function Chart({ option, summary, height = '16rem', className }: ChartProps): ReactNode {
+export function Chart({
+  option,
+  summary,
+  height = '16rem',
+  className,
+  blurWhenPrivate = false,
+}: ChartProps): ReactNode {
   const host = useRef<HTMLDivElement | null>(null)
   const instance = useRef<ChartInstance | null>(null)
   const { resolved } = useTheme()
@@ -92,6 +108,7 @@ export function Chart({ option, summary, height = '16rem', className }: ChartPro
       style={{ height, width: '100%' }}
       role="img"
       aria-label={summary}
+      data-private={blurWhenPrivate ? '' : undefined}
     />
   )
 }

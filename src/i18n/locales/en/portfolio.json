@@ -23,7 +23,7 @@
       "defensive": "Defensive",
       "growth": "Growth"
     },
-    "profileLine": "Measured against the {{profile}} profile, over {{invested}} invested.",
+    "profileLine": "Measured against the {{profile}} profile, over <money>{{invested}}</money> invested.",
     "state": {
       "aboveBy": "{{value}} above its ceiling of {{max}}",
       "belowBy": "{{value}} below its floor of {{min}}",
@@ -33,7 +33,7 @@
     "unavailable": "There is nothing invested to measure a profile against yet. Sync Ghostfolio and this section fills in.",
     "unmapped": {
       "hint": "These are left out of every figure above rather than counted against a band that was never set for them. Give them a band, or check how Ghostfolio classifies them.",
-      "line": "{{name}}: {{value}}, {{share}} of what is invested",
+      "line": "{{name}}: <money>{{value}}</money>, {{share}} of what is invested",
       "title": "Held in classes your profile has no band for"
     }
   },
@@ -106,13 +106,13 @@
       "capitalGains": "Capital gains are not in this figure: what you owe depends on what you paid, and Balancr never sees a cost base."
     },
     "position": {
-      "meta_one": "{{held}} held · the only position in this class",
-      "meta_other": "{{held}} held · one of {{value}} positions in this class",
+      "meta_one": "<money>{{held}}</money> held · the only position in this class",
+      "meta_other": "<money>{{held}}</money> held · one of {{value}} positions in this class",
       "unnamed": "A position the snapshot does not name"
     },
     "skipped": {
-      "belowMinTrade": "{{name}} is {{outside}} past its edge, but closing it takes only {{amount}} — under the {{floor}} you set as the smallest trade worth making.",
-      "insideTolerance": "{{name}} is {{outside}} past its edge, inside the {{tolerance}} you allow before acting. {{amount}} would close it.",
+      "belowMinTrade": "{{name}} is {{outside}} past its edge, but closing it takes only <money>{{amount}}</money> — under the <money2>{{floor}}</money2> you set as the smallest trade worth making.",
+      "insideTolerance": "{{name}} is {{outside}} past its edge, inside the {{tolerance}} you allow before acting. <money>{{amount}}</money> would close it.",
       "title": "Outside its band, and left alone"
     },
     "tax": {

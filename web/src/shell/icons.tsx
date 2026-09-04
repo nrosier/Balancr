@@ -119,3 +119,24 @@ export const IconSignOut = (props: IconProps): ReactNode =>
     </>,
     props,
   )
+
+/** Privacy off — figures are visible. */
+export const IconEye = (props: IconProps): ReactNode =>
+  svg(
+    <>
+      <path d="M2 10s2.8-5.5 8-5.5S18 10 18 10s-2.8 5.5-8 5.5S2 10 2 10Z" />
+      <circle cx="10" cy="10" r="2.2" />
+    </>,
+    props,
+  )
+
+/** Privacy on — figures are blurred. */
+export const IconEyeOff = (props: IconProps): ReactNode =>
+  svg(
+    <>
+      <path d="M2 10s2.8-5.5 8-5.5c1.5 0 2.8.35 3.9.9M18 10s-1 2-3 3.6M14.1 5.1 3.2 16" />
+      <path d="M8.2 8.2a2.2 2.2 0 0 0 3.1 3.1" />
+      <path d="M6 15.2C3.7 13.9 2 10 2 10" />
+    </>,
+    props,
+  )

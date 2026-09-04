@@ -26,6 +26,7 @@ import { useT } from '../i18n.ts'
 import { formatMoney, formatMoneyCompact } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
+import { privateText } from './tooltip.ts'
 
 export interface BulletCategory {
   name: string
@@ -70,7 +71,7 @@ export function BudgetBullet({ categories, height }: BudgetBulletProps): ReactNo
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? formatMoney(value, { whole: true }) : '',
+          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
       },
       legend: { data: [assigned, spent, baseline], bottom: 0 },
       grid: { left: 8, right: 16, top: 8, bottom: LEGEND_PX, containLabel: true },

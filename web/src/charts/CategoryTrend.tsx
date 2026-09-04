@@ -27,6 +27,7 @@ import { useT } from '../i18n.ts'
 import { formatMonth, formatMonthShort, formatMoney, formatMoneyCompact } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
+import { privateText } from './tooltip.ts'
 
 export interface CategoryTrendProps {
   name: string
@@ -56,7 +57,7 @@ export function CategoryTrend({
       tooltip: {
         trigger: 'axis',
         valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? formatMoney(value, { whole: true }) : '',
+          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
       },
       xAxis: {
         type: 'category',

@@ -112,6 +112,14 @@
       "lede": "Language, prompts, thresholds and which source owns each account."
     }
   },
+  "privacy": {
+    "toggle": {
+      "hint": "Blurs the screen for a shoulder glance — it is not a security control. Anyone with the browser's developer tools, the page's own data, or a screen reader can still read every figure. Shortcut: Shift+Ctrl+E (Shift+Cmd+E on a Mac).",
+      "label": "Privacy mode",
+      "off": "Privacy mode: off",
+      "on": "Privacy mode: on"
+    }
+  },
   "refresh": {
     "alsoRan": "{{jobs}} ran as well, because these figures are computed from them.",
     "busy": "Something is already running. Try again once it has finished.",

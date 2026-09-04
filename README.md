@@ -97,6 +97,32 @@ half-English, and costs a fraction of what shipping raw transactions would.
   about a split, the total you paid on shared costs, the share applied to it and the euros
   that leaves with the other household.
 
+### Privacy mode
+
+A separate, on-screen concern from the list above: the eye icon in the header
+(or Ctrl/Cmd+Shift+E) blurs every money figure and holdings quantity with a
+CSS filter, so a screen over your shoulder — a video call, someone walking
+past — sees shapes instead of numbers. Hovering or focusing one figure clears
+just that one; the choice persists across reloads via `localStorage`.
+
+It is a shoulder-check, not a security boundary:
+
+- **The underlying text never changes.** It is still selectable, still what a
+  screen reader announces, and still exactly what a look at DevTools or the
+  page's own API responses would show. Blurring is a `filter`, not redaction.
+- **Chart axis labels are a known, accepted gap.** ECharts draws a chart's
+  geometry and axis text to canvas, which a DOM filter cannot reach — only a
+  tooltip (a floating div) can carry a blurred figure. Every chart blurs its
+  tooltip's money text; the net worth chart, the single most revealing one,
+  blurs its whole canvas rather than leaving a labelled trend line on screen.
+  The other four accept the axis-label leak.
+- **Two categories of figure are deliberately exempt**, because they are not
+  personal spending: the price of an AI call (insights, prompts, spend
+  settings) and configuration numbers you set yourself (thresholds, trading
+  minimums). An enforcement test scans `web/src` for any money call that
+  bypasses `<Money>`/`<Private>` outside this named allowlist, so a new figure
+  added anywhere else fails to blur, not just this one.
+
 ## Quick start
 
 Requires an existing Actual Budget server, a Ghostfolio instance and a Gemini
