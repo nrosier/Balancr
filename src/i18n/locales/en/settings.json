@@ -160,6 +160,15 @@
     "nl": "Dutch",
     "title": "Language"
   },
+  "nav": {
+    "accounts": "Accounts",
+    "benchmark": "Benchmark",
+    "general": "General",
+    "prompts": "Prompts",
+    "risk": "Risk",
+    "spend": "AI usage",
+    "thresholds": "Thresholds"
+  },
   "profile": {
     "role": {
       "owner": "Owner",

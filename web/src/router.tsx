@@ -78,11 +78,19 @@ export interface LinkProps {
   className?: string
   /** Fires only on an in-app navigation — closing a mobile menu, for instance. */
   onNavigate?: () => void
+  /**
+   * Highlight only on an exact match, not on a descendant path. The primary nav wants
+   * prefix matching — a detail path still lights the section it sits under — but a
+   * flat tab strip whose own base path (e.g. `/settings`) is a literal prefix of every
+   * other tab would otherwise always read as current alongside whichever tab is
+   * actually open.
+   */
+  exact?: boolean
 }
 
-export function Link({ to, children, className, onNavigate }: LinkProps): ReactNode {
+export function Link({ to, children, className, onNavigate, exact = false }: LinkProps): ReactNode {
   const { path, navigate } = useRouter()
-  const active = isActive(path, to)
+  const active = exact ? path === to : isActive(path, to)
 
   const onClick = (event: MouseEvent<HTMLAnchorElement>): void => {
     // Anything but a plain left click belongs to the browser: a modifier means "new
