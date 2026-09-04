@@ -61,6 +61,13 @@ export interface JobContext {
   /** The tick's instant, passed in so a run is reproducible and testable. */
   readonly now: Date
   readonly log: Logger
+  /**
+   * Meaningless to every job but `ai`, which is why it lives here rather than
+   * on a job-specific context: the nightly ticker never sets it, so "must
+   * never set it" for every other job is automatic rather than special-cased
+   * (#160).
+   */
+  readonly force?: boolean
 }
 
 /** Counts and dates worth logging. Never a payee, never an amount. */
@@ -95,7 +102,12 @@ function upsert(db: Db, name: string, set: Partial<JobRow>): void {
  * Used by the ticker once a schedule is due, and directly by the "run now"
  * action — which is why it does not consult `isDue` itself.
  */
-export function runJob(db: Db, job: Job, now = new Date()): Promise<JobRun> {
+export function runJob(
+  db: Db,
+  job: Job,
+  now = new Date(),
+  options: { force?: boolean } = {},
+): Promise<JobRun> {
   // Before the queue, and synchronously. See `inFlight`.
   inFlight.add(job.name)
 
@@ -107,7 +119,7 @@ export function runJob(db: Db, job: Job, now = new Date()): Promise<JobRun> {
     jobLog.debug({ schedule: describeSchedule(job.schedule) }, 'job started')
 
     try {
-      const detail = (await job.run({ db, now, log: jobLog })) ?? {}
+      const detail = (await job.run({ db, now, log: jobLog, force: options.force ?? false })) ?? {}
       const durationMs = Date.now() - started
       const finished = new Date()
       upsert(db, job.name, {

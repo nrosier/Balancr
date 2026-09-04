@@ -700,7 +700,7 @@ export const aiRunSchema = z.object({
   kind: z.enum(['findings', 'narrative', 'clarify', 'chat', 'dryrun']),
   model: z.string(),
   locale: z.string(),
-  status: z.enum(['ok', 'error', 'blocked', 'capped']),
+  status: z.enum(['ok', 'error', 'blocked', 'capped', 'reused']),
   inputTokens: z.int().nonnegative(),
   outputTokens: z.int().nonnegative(),
   cachedTokens: z.int().nonnegative(),
@@ -716,6 +716,8 @@ export const aiRunSchema = z.object({
    * can reach from any month is not an audit (#158).
    */
   period: monthKey().nullable(),
+  /** The `ok` run this one served for free instead of calling the model (#160). */
+  reusedFromRunId: z.string().nullable(),
   createdAt: z.string(),
 })
 
@@ -1302,7 +1304,12 @@ export const aiEstimateSchema = z.object({
   payloadChars: z.int().nonnegative().nullable(),
   estimateMicroEur: microEur(),
   allowed: z.boolean(),
-  /** A code for the catalogue, never a sentence. Null when allowed. */
+  /**
+   * A code for the catalogue, never a sentence. Null when allowed for the
+   * ordinary reason — the one exception is `'reused'`, which is `allowed: true`
+   * with a reason, because "free" is worth saying even though it is not a
+   * refusal (#160).
+   */
   reason: z.string().nullable(),
 })
 

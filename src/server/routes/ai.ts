@@ -88,6 +88,17 @@ const dryRunRequest = z.strictObject({
     .optional(),
 })
 
+const aiRefreshRequest = z.strictObject({
+  /**
+   * Call the model even if a past run already answered this exact question.
+   *
+   * Off by default: the reuse check inside the run is what makes the ordinary
+   * button free on a catch-up night, and a caller has to opt into paying for the
+   * same answer again rather than that being silently possible (#160).
+   */
+  force: z.boolean().optional(),
+})
+
 const narrativeRequest = z.strictObject({
   /**
    * The month to review. Required, unlike the dry run's, and there is no default.
@@ -364,8 +375,9 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       const user = requireOwner(request)
       requireJobsEnabled(config.JOBS_ENABLED)
       requireAiAvailable(aiAvailability())
+      const body = parseBody(aiRefreshRequest, request.body ?? {})
 
-      const outcome = startRefresh(db, registry, ['ai'])
+      const outcome = startRefresh(db, registry, ['ai'], new Date(), { force: body.force ?? false })
       if ('busy' in outcome) throw busyError(outcome.busy)
 
       auditRefresh(db, user.id, outcome)

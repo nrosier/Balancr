@@ -73,6 +73,28 @@ describe('runJob', () => {
     expect(seen).toEqual({ rows: 1, now: '2026-01-15T10:00:00.000Z' })
   })
 
+  it('defaults force to false, and passes it through when a caller sets it (#160)', async () => {
+    let seenDefault: boolean | undefined
+    await runJob(
+      ctx.db,
+      job('probe', async (jobCtx) => {
+        seenDefault = jobCtx.force
+      }),
+    )
+    expect(seenDefault).toBe(false)
+
+    let seenForced: boolean | undefined
+    await runJob(
+      ctx.db,
+      job('probe', async (jobCtx) => {
+        seenForced = jobCtx.force
+      }),
+      new Date(),
+      { force: true },
+    )
+    expect(seenForced).toBe(true)
+  })
+
   it('returns a failure instead of throwing', async () => {
     // If this threw, one Ghostfolio timeout would take the ticker down and the
     // app would serve three-week-old figures without saying so.
