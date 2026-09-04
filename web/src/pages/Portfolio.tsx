@@ -26,16 +26,17 @@ import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { DriftTable } from '../portfolio/Drift.tsx'
 import { Suggestions } from '../portfolio/Suggestions.tsx'
-import { formatBp, formatDate, formatMoney, type Portfolio as PortfolioPayload } from '../shared.ts'
+import { formatBp, formatDate, type Portfolio as PortfolioPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
+import { Money } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../portfolio/advice.css'
 
 /** Whole euro. Cents on a portfolio total are noise, and the row prices carry them. */
-const euro = (cents: number): string => formatMoney(cents, { whole: true })
+const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
 
 /**
  * The one job behind every figure on this page.

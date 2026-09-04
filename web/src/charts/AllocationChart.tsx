@@ -24,7 +24,7 @@ import { useT, type TFunction } from '../i18n.ts'
 import { formatBp, formatMoney, type Portfolio } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
-import { tooltipRow } from './tooltip.ts'
+import { privateText, tooltipRow } from './tooltip.ts'
 
 export type AllocationSlice = Portfolio['allocation'][number]
 
@@ -61,7 +61,10 @@ export function AllocationChart({ allocation, height }: AllocationChartProps): R
         formatter: (params: unknown) => {
           const datum = params as { name?: string; value?: number; data?: { shareBp?: number } }
           const share = datum.data?.shareBp
-          const value = typeof datum.value === 'number' ? formatMoney(datum.value, { whole: true }) : ''
+          const value =
+            typeof datum.value === 'number'
+              ? privateText(formatMoney(datum.value, { whole: true }))
+              : ''
           const percent = typeof share === 'number' ? ` \u00b7 ${formatBp(share)}` : ''
           return tooltipRow(datum.name ?? '', `${value}${percent}`)
         },

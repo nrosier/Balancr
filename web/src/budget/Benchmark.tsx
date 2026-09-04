@@ -37,6 +37,7 @@
  * conversion `formatBp` does internally and not a number this card decided.
  */
 import { useId, type ReactNode } from 'react'
+import { Trans } from 'react-i18next'
 import { useT, type TFunction } from '../i18n.ts'
 import {
   formatBp,
@@ -44,15 +45,15 @@ import {
   formatDecimal,
   formatList,
   formatMonth,
-  formatMoney,
   MIN_DELTA_BP,
   MIN_MAPPED_BP,
   type BenchmarkGroupLine,
   type BenchmarkWire,
 } from '../shared.ts'
+import { Money } from '../ui/Money.tsx'
 
 /** Whole euro, like every other total on this page. Cents on a monthly figure are noise. */
-const euro = (cents: number): string => formatMoney(cents, { whole: true })
+const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
 
 /** The word in the last column, which is also the only judgement the card makes. */
 type LineState = 'unmapped' | 'above' | 'below' | 'inLine'
@@ -121,12 +122,15 @@ export function Benchmark({ benchmark }: { benchmark: BenchmarkWire }): ReactNod
       <h2 className="card__title">{t('budget:benchmark.title')}</h2>
 
       <p className="benchmark__lede">
-        {t(`budget:benchmark.lede.${benchmark.basis}`, {
-          month: formatMonth(benchmark.month, language),
-          survey: source.survey,
-          year: String(source.year),
-          total: euro(benchmark.comparedCents),
-        })}
+        <Trans
+          i18nKey={`budget:benchmark.lede.${benchmark.basis}`}
+          values={{
+            month: formatMonth(benchmark.month, language),
+            survey: source.survey,
+            year: String(source.year),
+          }}
+          components={{ money: <Money cents={benchmark.comparedCents} options={{ whole: true }} /> }}
+        />
       </p>
 
       <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
@@ -189,13 +193,19 @@ export function Benchmark({ benchmark }: { benchmark: BenchmarkWire }): ReactNod
 
       <ul className="benchmark__meta">
         <li>
-          {t('budget:benchmark.mapped', {
-            share: formatBp(benchmark.mappedShareBp),
-            consumption: euro(benchmark.consumptionCents),
-          })}
+          <Trans
+            i18nKey="budget:benchmark.mapped"
+            values={{ share: formatBp(benchmark.mappedShareBp) }}
+            components={{ money: <Money cents={benchmark.consumptionCents} options={{ whole: true }} /> }}
+          />
         </li>
         {benchmark.outsideCents === 0 ? null : (
-          <li>{t('budget:benchmark.outside', { amount: euro(benchmark.outsideCents) })}</li>
+          <li>
+            <Trans
+              i18nKey="budget:benchmark.outside"
+              components={{ money: <Money cents={benchmark.outsideCents} options={{ whole: true }} /> }}
+            />
+          </li>
         )}
         {householdLines(household, t).map((line) => (
           <li key={line}>{line}</li>
@@ -208,11 +218,11 @@ export function Benchmark({ benchmark }: { benchmark: BenchmarkWire }): ReactNod
           <ul className="notice__list">
             {unmapped.map((category) => (
               <li key={category.categoryId}>
-                {t('budget:benchmark.unmapped.line', {
-                  name: category.categoryName,
-                  value: euro(category.spentCents),
-                  share: formatBp(category.shareBp),
-                })}
+                <Trans
+                  i18nKey="budget:benchmark.unmapped.line"
+                  values={{ name: category.categoryName, share: formatBp(category.shareBp) }}
+                  components={{ money: <Money cents={category.spentCents} options={{ whole: true }} /> }}
+                />
               </li>
             ))}
           </ul>

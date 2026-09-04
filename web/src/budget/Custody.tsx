@@ -28,11 +28,13 @@
  * which is a subtraction the server did.
  */
 import { useId, type ReactNode } from 'react'
+import { Trans } from 'react-i18next'
 import { useT } from '../i18n.ts'
-import { formatBp, formatMonth, formatMoney, type CustodyWire } from '../shared.ts'
+import { formatBp, formatMonth, type CustodyWire } from '../shared.ts'
+import { Money } from '../ui/Money.tsx'
 
 /** Whole euro, like every other total on this page. */
-const euro = (cents: number): string => formatMoney(cents, { whole: true })
+const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
 
 export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
   const { t, language } = useT()
@@ -43,11 +45,14 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
     return (
       <div className="notice notice--info" role="status">
         <p className="notice__lead">
-          {t('budget:custody.unavailable.no_basis', {
+          <Trans
+            i18nKey="budget:custody.unavailable.no_basis"
             // `no_basis` always carries the flagged total; the nullable type is the
             // union's, not this branch's.
-            amount: euro(custody.paidCents ?? 0),
-          })}
+            components={{
+              money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
+            }}
+          />
         </p>
         <p className="notice__hint">{t('budget:custody.unavailable.hint')}</p>
       </div>
@@ -61,12 +66,15 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
       <h2 className="card__title">{t('budget:custody.title')}</h2>
 
       <p className="custody__lede">
-        {t('budget:custody.lede', {
-          month: formatMonth(custody.month, language),
-          paid: euro(custody.paidCents),
-          borne: euro(custody.borneCents),
-          offset: euro(custody.offsetCents),
-        })}
+        <Trans
+          i18nKey="budget:custody.lede"
+          values={{ month: formatMonth(custody.month, language) }}
+          components={{
+            money: <Money cents={custody.paidCents} options={{ whole: true }} />,
+            money2: <Money cents={custody.borneCents} options={{ whole: true }} />,
+            money3: <Money cents={custody.offsetCents} options={{ whole: true }} />,
+          }}
+        />
       </p>
 
       <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>

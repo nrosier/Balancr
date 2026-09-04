@@ -36,11 +36,11 @@
       "solo": "One person: {{scale}} on the equivalence scale."
     },
     "lede": {
-      "level": "What {{month}} came to, against what a household of your size spent according to the {{survey}} {{year}}: your {{total}} of compared spending against theirs, euro for euro.",
-      "mix": "How your {{total}} of {{month}} spending divides, against the shares Belgian households reported in the {{survey}} {{year}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
+      "level": "What {{month}} came to, against what a household of your size spent according to the {{survey}} {{year}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro.",
+      "mix": "How your <money>{{total}}</money> of {{month}} spending divides, against the shares Belgian households reported in the {{survey}} {{year}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
     },
-    "mapped": "{{share}} of your {{consumption}} of household spending is mapped to a group, and only that part is compared.",
-    "outside": "{{amount}} of savings, taxes and transfers sits outside the comparison: it is not household consumption, and the survey's shares do not cover it.",
+    "mapped": "{{share}} of your <money>{{consumption}}</money> of household spending is mapped to a group, and only that part is compared.",
+    "outside": "<money>{{amount}}</money> of savings, taxes and transfers sits outside the comparison: it is not household consumption, and the survey's shares do not cover it.",
     "source": "{{citation}}. Last checked {{verified}}.",
     "state": {
       "above": "Above reference",
@@ -57,7 +57,7 @@
     },
     "unmapped": {
       "hint": "Give each of these a COICOP division under Settings and they join the comparison.",
-      "line": "{{name}} — {{value}}, {{share}} of the month",
+      "line": "{{name}} — <money>{{value}}</money>, {{share}} of the month",
       "title": "Left out of the comparison"
     }
   },
@@ -87,8 +87,8 @@
   },
   "committed": {
     "approximate": "A schedule states a range rather than an amount; it is counted at its upper bound.",
-    "category": "{{amount}} still to come",
-    "categoryApprox": "about {{amount}} still to come",
+    "category": "<money>{{amount}}</money> still to come",
+    "categoryApprox": "about <money>{{amount}}</money> still to come",
     "unallocated_one": "{{value}} schedule has no category, so it counts in the month total only.",
     "unallocated_other": "{{value}} schedules have no category, so they count in the month total only."
   },
@@ -105,13 +105,13 @@
       "category": "Category",
       "paid": "You paid"
     },
-    "lede": "In {{month}} you paid {{paid}} on costs shared with a co-parent. {{borne}} of that is economically yours; {{offset}} is the other household's share.",
+    "lede": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{borne}}</money2> of that is economically yours; <money3>{{offset}}</money3> is the other household's share.",
     "share": "Shared costs are {{share}} of what you spent this month.",
     "title": "Costs shared with a co-parent",
     "total": "Total",
     "unavailable": {
       "hint": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
-      "no_basis": "Categories worth {{amount}} this month are flagged as shared with a co-parent, but nothing says what share of them is yours."
+      "no_basis": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but nothing says what share of them is yours."
     }
   },
   "empty": {
@@ -153,7 +153,7 @@
   },
   "pace": {
     "monthProgress": "{{progress}} of the month has passed",
-    "overrun": "Projected overrun {{amount}}",
+    "overrun": "Projected overrun <money>{{amount}}</money>",
     "summary": "{{category}}: {{spent}} spent of {{assigned}} assigned, with {{progress}} of the month gone."
   },
   "picker": {
@@ -161,7 +161,7 @@
   },
   "title": "Budget",
   "uncategorised": {
-    "notice_one": "{{value}} transaction worth {{amount}} has no category, so the figures below are incomplete.",
-    "notice_other": "{{value}} transactions worth {{amount}} have no category, so the figures below are incomplete."
+    "notice_one": "{{value}} transaction worth <money>{{amount}}</money> has no category, so the figures below are incomplete.",
+    "notice_other": "{{value}} transactions worth <money>{{amount}}</money> have no category, so the figures below are incomplete."
   }
 }
