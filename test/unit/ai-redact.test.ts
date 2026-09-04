@@ -71,6 +71,13 @@ const NEVER_SENT = [
  * holding in the bundle at all. These are asserted absent from the **fixture**
  * rather than only from the payload, which is the stronger statement and the one
  * that fails the day a `holdings` field comes back.
+ *
+ * A schedule's payee is in the same class (#159). Actual's `getSchedules` returns a
+ * `name`, a `payee` and an `account` beside the amount, and the committed figure needs
+ * none of the three — so `fetchSchedules` parses with a plain `z.object`, Zod strips
+ * them, and no type between the adapter and this file can carry them. Only aggregate
+ * cent totals are stored. Listing the payees here asserts that structurally: the day
+ * somebody adds `payee` to `ActualSchedule` to make a nicer screen, this fails.
  */
 const NEVER_COLLECTED = [
   'IE00B4L5Y983',
@@ -78,6 +85,11 @@ const NEVER_COLLECTED = [
   'IWDA.AS',
   'iShares Core MSCI World UCITS ETF',
   'Argenta Portfolio Defensive',
+  // Schedule payees. A monthly direct debit names the merchant, and a bill's payee
+  // is often more revealing than the transaction it settles.
+  'NETFLIX INTERNATIONAL B.V.',
+  'Dr. A. Vermeulen — maandelijkse sessie',
+  'Huur — Immo Van Damme',
 ]
 
 const fact = (overrides: Partial<MonthlyFact> = {}): MonthlyFact => ({
@@ -92,6 +104,9 @@ const fact = (overrides: Partial<MonthlyFact> = {}): MonthlyFact => ({
   carryoverEnabled: true,
   txnCount: 23,
   recomputedSpentCents: 52_000,
+  committedCents: 0,
+  committedToDateCents: 0,
+  committedApproximate: false,
   baseline: {
     baselineCents: 45_000,
     currentCents: 52_000,
@@ -143,6 +158,10 @@ const totals = (month: string): MonthTotals => ({
   fromLastMonthCents: 12_000,
   balanceCents: 39_000,
   savingsRateBp: 1_026,
+  committedCents: 0,
+  committedUnallocatedCents: 0,
+  committedUnallocatedCount: 0,
+  committedApproximate: false,
 })
 
 /** A sensitive category: a name that says what it is, a description that says who with. */
@@ -188,7 +207,9 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
     currency: 'EUR',
     categories: [
       {
-        fact: fact(),
+        // `committedCents` non-zero, so the allowlist walk actually sees the field
+        // the committed figure added (#159).
+        fact: fact({ committedCents: 5_000, committedToDateCents: 12_000 }),
         // Crosses on purpose: this is the answer to "what is this budget for?"
         // that the clarification queue collected.
         meta: meta({ userDescription: 'Weekly shop and household basics, me and my daughter' }),
@@ -377,6 +398,7 @@ describe('the payload has no field nobody decided to send', () => {
       'baselineCents',
       'deltaBp',
       'baselineMonths',
+      'committedCents',
     ]
     for (const field of optional) {
       expect(keys.has(field), `fixture never produced "${field}"`).toBe(true)

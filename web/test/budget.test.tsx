@@ -105,6 +105,12 @@ const FULL: BudgetPayload = {
     fromLastMonthCents: 50_000,
     balanceCents: 90_000,
     savingsRateBp: 2_619,
+    // Insurance's direct debit plus a €30 schedule nothing assigns a category to, so
+    // the month total is deliberately more than the categories below add up to (#159).
+    committedCents: 44_250,
+    committedUnallocatedCents: 3_000,
+    committedUnallocatedCount: 1,
+    committedApproximate: true,
   },
   history: [
     { month: '2026-07', incomeCents: 420_000, spentCents: 300_000, budgetedCents: 350_000, savingsRateBp: 2_857 },
@@ -121,6 +127,8 @@ const FULL: BudgetPayload = {
       budgetedCents: 0,
       availableCents: 0,
       txnCount: 1,
+      committedCents: 0,
+      committedApproximate: false,
       baselineCents: null,
       deltaBp: null,
       trendCents: [420_000, 420_000, 420_000],
@@ -134,6 +142,8 @@ const FULL: BudgetPayload = {
       budgetedCents: 60_000,
       availableCents: -5_000,
       txnCount: 24,
+      committedCents: 0,
+      committedApproximate: false,
       baselineCents: 55_000,
       deltaBp: 1_818,
       trendCents: [50_000, 52_000, 65_000],
@@ -147,6 +157,8 @@ const FULL: BudgetPayload = {
       budgetedCents: 120_000,
       availableCents: 0,
       txnCount: 1,
+      committedCents: 0,
+      committedApproximate: false,
       baselineCents: 126_000,
       deltaBp: -476,
       trendCents: [118_000, 119_000, 120_000],
@@ -160,6 +172,11 @@ const FULL: BudgetPayload = {
       budgetedCents: 40_000,
       availableCents: 40_000,
       txnCount: 0,
+      // The case #159 is for: nothing spent, everything assigned, and a direct debit
+      // for more than the envelope holds still to come. `approximate` because the
+      // schedule states a range and is counted at its upper bound.
+      committedCents: 41_250,
+      committedApproximate: true,
       baselineCents: null,
       deltaBp: null,
       trendCents: [0, 0, 0],
@@ -194,6 +211,14 @@ const FULL: BudgetPayload = {
       categoryName: 'Rent',
       severity: 'warn',
       metrics: { projectedCents: 130_000, assignedCents: 120_000 },
+    },
+    // The fifth overspend signal: money that has not moved yet and will (#159).
+    {
+      code: 'committed_over_available',
+      categoryId: 'cat-insurance',
+      categoryName: 'Insurance',
+      severity: 'warn',
+      metrics: { committedCents: 41_250, availableCents: 40_000, committedShortfallCents: 1_250 },
     },
     // A code from a server one release ahead of this bundle.
     {
@@ -328,7 +353,7 @@ describe('a month with figures in it', () => {
     return mock
   }
 
-  it('prints the four totals in Belgian conventions under an English UI', async () => {
+  it('prints the totals in Belgian conventions under an English UI', async () => {
     show()
 
     expect(await screen.findByText('€ 3.100')).toBeTruthy()
@@ -339,7 +364,7 @@ describe('a month with figures in it', () => {
 
     // By heading rather than by text: the bullet chart's legend names the same three
     // things, and a bare `getByText('Spent')` matches its SVG label too.
-    for (const label of ['Spent', 'Income', 'Left to assign', 'Savings rate']) {
+    for (const label of ['Spent', 'Income', 'Left to assign', 'Savings rate', 'Still to come']) {
       expect(screen.getByRole('heading', { name: label, level: 2 })).toBeTruthy()
     }
     // The supporting rows, read off the cards rather than off the page: the bullet
@@ -348,7 +373,14 @@ describe('a month with figures in it', () => {
     const rows = [...document.querySelectorAll('.metric__row')].map((row) =>
       (row.textContent ?? '').replaceAll('\u00a0', ' '),
     )
-    expect(rows).toEqual(['Assigned€ 3.500', 'Available€ 900', 'From last month€ 500'])
+    expect(rows).toEqual([
+      'Assigned€ 3.500',
+      'Available€ 900',
+      'From last month€ 500',
+      // The month's committed total is not the sum of its categories: one schedule has
+      // no category, and it is reported rather than attributed to an envelope (#159).
+      'Unassigned€ 30',
+    ])
   })
 
   it('warns that the figures are incomplete while transactions have no category', async () => {

@@ -102,13 +102,18 @@ const monthsFromBp = (bp: number | undefined, translate: Translate): string | un
 const NUMERIC_VARS: {
   readonly [C in FindingCode]: (metrics: Metrics, translate: Translate) => Vars
 } = {
-  // --- the four overspend signals ---
+  // --- the five overspend signals ---
   over_assigned: (m) => present({ spent: money(m.spentCents), assigned: money(m.assignedCents) }),
   over_available: (m) => present({ overspend: money(m.overspendCents) }),
   above_baseline: (m) =>
     present({ delta: magnitudePercent(m.deltaBp), baseline: money(m.baselineCents) }),
   above_benchmark: (m) =>
     present({ delta: magnitudePercent(m.deltaBp), benchmark: money(m.benchmarkCents) }),
+  // `available` is signed on purpose: an envelope that is already €12 in the red
+  // and has a €50 direct debit still coming is a different sentence from one with
+  // €38 left, and `formatMoney` prints the minus that says which.
+  committed_over_available: (m) =>
+    present({ committed: money(m.committedCents), available: money(m.availableCents) }),
 
   // --- trajectory ---
   burn_rate_over: (m) =>

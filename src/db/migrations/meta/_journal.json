@@ -92,6 +92,13 @@
       "when": 1788465596189,
       "tag": "0012_old_rhino",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1788482011814,
+      "tag": "0013_freezing_sentry",
+      "breakpoints": true
     }
   ]
 }

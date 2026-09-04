@@ -55,6 +55,32 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
+/**
+ * `YYYY-MM-DD` plus whole days, negative to go back.
+ *
+ * UTC throughout, like `daysBetween`: "four days after the 28th" is a statement about
+ * the calendar, and a local timezone would make it wrong for the two hours a year the
+ * clocks move.
+ */
+export function addDays(date: string, delta: number): string {
+  assertDate(date)
+  const shifted = new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000)
+  return shifted.toISOString().slice(0, 10)
+}
+
+/**
+ * 0 for Sunday through 6 for Saturday.
+ *
+ * Sunday-based because Actual's recurrence patterns are: its `SU`…`SA` letters index
+ * this way, and a Monday-based week would silently shift every "third Tuesday of the
+ * month" schedule by a day (#159). This is not the week-start question — that is a
+ * display decision and lives in `format.ts`.
+ */
+export function dayOfWeek(date: string): number {
+  assertDate(date)
+  return new Date(`${date}T00:00:00Z`).getUTCDay()
+}
+
 export function daysInMonth(month: string): number {
   assertMonth(month)
   // Day 0 of the following month is the last day of this one.

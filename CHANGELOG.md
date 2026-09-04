@@ -6,6 +6,63 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [Unreleased]
+
+### Added
+
+- **A projection that knows what the month has already committed**
+  ([#159](https://github.com/nrosier/Balancr/issues/159),
+  `src/domain/aggregate/committed.ts`). Rent leaves on the 28th, and until it does a burn
+  rate built on elapsed time says one of two wrong things: on the 3rd it extrapolates one
+  direct debit into ten, and on the 20th it reports an envelope as comfortable that has a
+  €900 payment still to fall. Balancr now reads Actual's schedules, expands their
+  recurrences over the days between today and month end, and states that figure separately:
+  what is still to come per envelope, what has already gone, and how many occurrences each
+  is. The budget page prints it beside what was spent, and the projection becomes
+  `spent + still to come + the variable half extrapolated` — so a fully scheduled envelope
+  is projected at exactly what it is scheduled for, and nothing is counted twice.
+- **`committed_over_available`, a fifth overspend signal that fires before anything is wrong**
+  (`src/domain/aggregate/overspend.ts`). €80 available and a €120 direct debit on the 28th is
+  a problem on the 3rd of the month, when it can still be moved, and an `over_available` on
+  the 29th, when it cannot. Capped at `warn` rather than `alert` for exactly that reason: the
+  money is still in the envelope and nothing has been taken. Reported beside the other four
+  and never folded into them, and silent under the same materiality floor — the €4,50
+  shortfall that a rounding difference produces is true and not worth a line.
+- **Actual's recurrence rules, reimplemented rather than approximated**
+  (`expandOccurrences`). Every frequency Actual offers, its interval, its day-of-month and
+  nth-weekday patterns, its three ending modes, and both weekend solve directions. Two
+  behaviours are Actual's own and would each be a plausible bug the other way: a monthly
+  schedule on the 31st has no occurrence in a 30-day month rather than being clamped to the
+  30th, and 29 February in a common year is skipped without consuming one of the counted
+  occurrences. A schedule solved backwards off a Sunday the 1st is paid in the previous
+  month, and the expansion says so.
+- **Schedules with no category count in the month total and in no envelope**
+  (`src/domain/aggregate/committed.ts`, `GET /api/budget`). Actual attributes a schedule
+  through the rule it owns, and a schedule whose rule sets no category is real money on a
+  real date that belongs to nothing. Guessing an envelope for it would put a figure in a row
+  that Actual will never agree with, so the month total carries it, states how many there
+  are, and is stored rather than summed from the rows — a total that disagrees with its own
+  rows needs to be the stored one, or the next reader will "fix" it.
+
+### Changed
+
+- **The schedule read is a privacy boundary, like every other Actual read**
+  (`src/adapters/actual/queries.ts`). A schedule carries a payee, an account and the rule
+  conditions that matched it — `NETFLIX INTERNATIONAL B.V.` among them — and Balancr's shape
+  declares eight fields, none of which is any of those. Zod's strip does the removing, so a
+  field Actual adds in a future version is dropped by default rather than surfacing in an AI
+  payload, and `test/unit/actual-schedules.test.ts` asserts the returned object against a
+  denylist built from a fixture's payees.
+- **A schedule stating a range is counted at its upper bound**, and every screen that prints
+  the figure says so. `Math.min` of the two bounds is the more negative one for an expense,
+  which is the direction that cannot produce a pleasant surprise; the panel note names the
+  assumption rather than leaving a figure looking exact.
+- **The burn rate no longer projects the same rent four times**. Its inputs gained the
+  committed figures, and the extrapolation now applies only to the part of the month's
+  spending that was not scheduled. With nothing scheduled the arithmetic is exactly the old
+  projection, which `test/unit/signals.test.ts` asserts across five month positions rather
+  than trusting the algebra.
+
 ## [0.8.2] — 2026-09-04
 
 ### Added

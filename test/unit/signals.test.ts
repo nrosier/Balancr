@@ -17,6 +17,10 @@ interface FactOverrides {
   spent?: number
   budgeted?: number
   available?: number
+  /** Still scheduled to leave between today and month end (#159). */
+  committed?: number
+  /** Of `spent`, the part a schedule accounts for. Left out of the projection. */
+  committedToDate?: number
   isIncome?: boolean
   baseline?: Partial<BaselineResult> | null
 }
@@ -40,6 +44,9 @@ function fact(overrides: FactOverrides = {}): MonthlyFact {
     carryoverEnabled: false,
     txnCount: 1,
     recomputedSpentCents: spentCents,
+    committedCents: overrides.committed ?? 0,
+    committedToDateCents: overrides.committedToDate ?? 0,
+    committedApproximate: false,
     baseline: overrides.baseline
       ? {
           baselineCents: 0,
@@ -59,7 +66,7 @@ const codes = (signals: readonly Signal[]): string[] => signals.map((signal) => 
 /** A month that is over, which suppresses the burn-rate projection. */
 const FINISHED = 1
 
-describe('the four overspend signals stay separate', () => {
+describe('the five overspend signals stay separate', () => {
   it('reports over_assigned alone when carry-in still covers the envelope', () => {
     // Routine in an envelope budget, and often fine: that is what a carried-over
     // balance is for. Merging this with over_available would cry wolf every month.
@@ -106,10 +113,106 @@ describe('the four overspend signals stay separate', () => {
   })
 
   it('ignores income, which is judged against its own baseline', () => {
+    // `committed` too, although `spend.ts` never puts a figure there for an income
+    // category: a scheduled salary is money arriving, and reading it as a commitment
+    // would warn that the envelope cannot cover being paid.
     expect(
       codes(
         categorySignals(
-          [fact({ isIncome: true, spent: 300_000, budgeted: 250_000, available: -50_000 })],
+          [
+            fact({
+              isIncome: true,
+              spent: 300_000,
+              budgeted: 250_000,
+              available: -50_000,
+              committed: 45_000,
+            }),
+          ],
+          FINISHED,
+          DEFAULT_PARAMS,
+        ),
+      ),
+    ).toEqual([])
+  })
+})
+
+describe('committed_over_available — money that has not moved yet (#159)', () => {
+  it('fires on an envelope nothing has been spent from', () => {
+    // The only one of the five that can. Nothing is wrong with this category on any
+    // other screen in the application — assigned in full, untouched — and a direct
+    // debit later in the month is already more than it holds.
+    const signals = categorySignals(
+      [fact({ spent: 0, budgeted: 40_000, available: 40_000, committed: 45_000 })],
+      FINISHED,
+      DEFAULT_PARAMS,
+    )
+    expect(codes(signals)).toEqual(['committed_over_available'])
+    expect(signals[0]?.metrics).toEqual({
+      committedCents: 45_000,
+      availableCents: 40_000,
+      committedShortfallCents: 5_000,
+    })
+  })
+
+  it('warns rather than alerts, because nothing has gone wrong yet', () => {
+    // The distinction is the point: the money is still in the envelope and the bill
+    // has not been taken. This is the one finding that can be acted on before it
+    // becomes an `over_available`.
+    const signals = categorySignals(
+      [fact({ budgeted: 40_000, available: 40_000, committed: 45_000 })],
+      FINISHED,
+      DEFAULT_PARAMS,
+    )
+    expect(signals[0]?.severity).toBe('warn')
+    expect(FINDING_SPECS.committed_over_available.maxSeverity).toBe('warn')
+  })
+
+  it('is reported beside over_available, never folded into it', () => {
+    // A negative envelope is money already gone; this is money that has not moved and
+    // still will. Merging them would report one number that is neither.
+    const signals = categorySignals(
+      [fact({ spent: 60_000, budgeted: 50_000, available: -10_000, committed: 30_000 })],
+      FINISHED,
+      DEFAULT_PARAMS,
+    )
+    expect(codes(signals)).toEqual(['over_available', 'over_assigned', 'committed_over_available'])
+    expect(signals[2]?.metrics.committedShortfallCents).toBe(40_000)
+  })
+
+  it('says nothing when the envelope covers what is coming', () => {
+    expect(
+      codes(
+        categorySignals(
+          [fact({ budgeted: 40_000, available: 40_000, committed: 10_000 })],
+          FINISHED,
+          DEFAULT_PARAMS,
+        ),
+      ),
+    ).toEqual([])
+  })
+
+  it('says nothing when nothing is scheduled, whatever the envelope looks like', () => {
+    // A past month has no committed figure at all, which is what keeps this signal
+    // out of every month but the one being lived in.
+    expect(
+      codes(
+        categorySignals(
+          [fact({ spent: 60_000, budgeted: 50_000, available: -10_000 })],
+          FINISHED,
+          DEFAULT_PARAMS,
+        ),
+      ),
+    ).toEqual(['over_available', 'over_assigned'])
+  })
+
+  it('holds the materiality floor, like the other four', () => {
+    // The shape #159 describes — EUR 80 assigned, EUR 0 spent, EUR 84,50 due on the
+    // 28th — is a shortfall of EUR 4,50, and being told about that is how somebody
+    // learns to ignore the panel. The floor applies to the shortfall, not the bill.
+    expect(
+      codes(
+        categorySignals(
+          [fact({ budgeted: 8_000, available: 8_000, committed: 8_450 })],
           FINISHED,
           DEFAULT_PARAMS,
         ),
@@ -188,6 +291,10 @@ describe('baseline signals', () => {
 describe('burn rate', () => {
   const halfSpent = fact({ spent: 50_000, budgeted: 100_000 })
 
+  /** By code rather than by position: a fixture that also overspends emits two. */
+  const projected = (signals: readonly Signal[]): number | undefined =>
+    signals.find((signal) => signal.code === 'burn_rate_over')?.metrics.projectedCents
+
   it('projects mid-month so the alert can still be acted on', () => {
     // A quarter through the month with half the envelope gone projects to 200%.
     const signals = categorySignals([halfSpent], 0.25, DEFAULT_PARAMS)
@@ -196,6 +303,7 @@ describe('burn rate', () => {
       projectedCents: 200_000,
       assignedCents: 100_000,
       spentCents: 50_000,
+      committedCents: 0,
       projectedOverrunCents: 100_000,
       monthProgressBp: 2_500,
     })
@@ -218,6 +326,72 @@ describe('burn rate', () => {
 
     const clearly = fact({ spent: 60_000, budgeted: 100_000 })
     expect(codes(categorySignals([clearly], 0.5, DEFAULT_PARAMS))).toEqual(['burn_rate_over'])
+  })
+
+  it('does not turn one rent into four (#159)', () => {
+    // The famous wrong answer, and the reason `committedToDateCents` is stored: rent
+    // paid on the 1st is not evidence that the month will cost four rents. What a
+    // schedule accounts for is added at face value and never extrapolated.
+    const scheduled = fact({ spent: 100_000, committedToDate: 100_000, budgeted: 100_000 })
+    expect(codes(categorySignals([scheduled], 0.25, DEFAULT_PARAMS))).toEqual([])
+
+    // The same figures with no schedule behind them are a category on course to spend
+    // four times its envelope, and still say so.
+    const variable = fact({ spent: 100_000, budgeted: 100_000 })
+    expect(projected(categorySignals([variable], 0.25, DEFAULT_PARAMS))).toBe(400_000)
+  })
+
+  it('projects an envelope nothing has been spent from, when a bill is still due', () => {
+    // The other famous wrong answer: a subscription due on the 28th projected to
+    // nothing at all, because zero spent extrapolates to zero. `available` is set to
+    // cover the bill so this test sees the burn rate alone.
+    const later = fact({ spent: 0, budgeted: 30_000, available: 40_000, committed: 40_000 })
+    const signals = categorySignals([later], 0.5, DEFAULT_PARAMS)
+    expect(codes(signals)).toEqual(['burn_rate_over'])
+    expect(signals[0]?.metrics.projectedCents).toBe(40_000)
+  })
+
+  it('extrapolates the variable half and adds the scheduled half whole', () => {
+    // EUR 1.300 spent halfway through the month, of which EUR 900 was the rent, plus
+    // EUR 100 still scheduled: EUR 400 of variable spending doubles to EUR 800, and
+    // the two scheduled figures are added as they are. The old formula divided the
+    // whole EUR 1.300 by the half-month and said EUR 2.600.
+    const mixed = fact({
+      spent: 130_000,
+      committedToDate: 90_000,
+      committed: 10_000,
+      budgeted: 130_000,
+      available: 130_000,
+    })
+    const signals = categorySignals([mixed], 0.5, DEFAULT_PARAMS)
+    expect(codes(signals)).toEqual(['burn_rate_over'])
+    expect(signals[0]?.metrics).toEqual({
+      projectedCents: 180_000,
+      assignedCents: 130_000,
+      spentCents: 130_000,
+      committedCents: 10_000,
+      projectedOverrunCents: 50_000,
+      monthProgressBp: 5_000,
+    })
+  })
+
+  it('is exactly the old projection when nothing is scheduled', () => {
+    // The property that makes #159 safe to ship: with both committed figures at zero
+    // the formula is `spent + round(spent x (1/p - 1))`, and `n + round(x - n)` is
+    // `round(x)` for a whole `n` — so an install with no schedules sees no change at
+    // all, down to the cent.
+    for (const progress of [0.25, 0.3, 0.5, 0.7, 0.9]) {
+      const signals = categorySignals([fact({ spent: 37_137, budgeted: 100 })], progress, DEFAULT_PARAMS)
+      expect(projected(signals)).toBe(Math.round(37_137 / progress))
+    }
+  })
+
+  it('clamps a schedule that posted early rather than projecting a negative', () => {
+    // `committedToDate` can exceed what Actual has recorded as spent — a direct debit
+    // Balancr counted on the day it fell due and the bank has not posted yet. The
+    // variable half is floored at zero, so the projection is the spend itself.
+    const early = fact({ spent: 20_000, committedToDate: 90_000, budgeted: 10_000 })
+    expect(projected(categorySignals([early], 0.5, DEFAULT_PARAMS))).toBe(20_000)
   })
 })
 

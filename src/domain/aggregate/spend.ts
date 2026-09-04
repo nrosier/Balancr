@@ -21,6 +21,7 @@
  */
 import type { BudgetMonth, CategoryMonth, RecomputedSpend } from '../../adapters/actual/queries.ts'
 import { assertDenseMonths } from '../../util/month.ts'
+import type { CommittedMonth } from './committed.ts'
 import {
   computeBaseline,
   type BaselineResult,
@@ -42,6 +43,16 @@ export interface SpendInput {
   frequencies: ReadonlyMap<string, ExpectedFrequency>
   /** Months to emit facts for. Must all appear in `history`. */
   targetMonths: readonly string[]
+  /**
+   * What is still to come, for the one month it means anything in (#159).
+   *
+   * Computed by the caller rather than here, for the reason every clock-dependent
+   * figure in this folder is: it is a function of today's date. Null, or a month that
+   * is not among `targetMonths`, leaves every committed figure at zero — which is also
+   * exactly right for an installation with no schedules, and is what makes the
+   * projection in `overspend.ts` degrade to the plain extrapolation it used to be.
+   */
+  committed?: CommittedMonth | null
   params: AggregateParams
 }
 
@@ -61,6 +72,23 @@ export interface MonthlyFact {
   txnCount: number
   /** Same scale as `spentCents`, or null when no AQL row covered the month. */
   recomputedSpentCents: number | null
+  /**
+   * Scheduled and still to come between today and month end, positive-out (#159).
+   *
+   * Deliberately beside `spentCents` and never inside it: Actual's own figure has to
+   * stay Actual's own figure. Zero for every month but the current one, where it is
+   * zero by definition, and zero for a category nothing is scheduled against.
+   */
+  committedCents: number
+  /**
+   * Scheduled occurrences that already fell earlier this month, same scale.
+   *
+   * Not for display. It is what lets the burn rate tell a rent paid on the 1st from a
+   * month's groceries: extrapolating the first would project thirty rents.
+   */
+  committedToDateCents: number
+  /** True when a committed figure above came from an approximate amount or a range. */
+  committedApproximate: boolean
   /** Null when there is not enough history to state a norm. */
   baseline: BaselineResult | null
 }
@@ -102,6 +130,18 @@ export interface MonthTotals {
    * a month whose salary landed on the 1st of the next one.
    */
   savingsRateBp: number | null
+  /**
+   * Everything still to come this month, attributed to an envelope or not (#159).
+   *
+   * Not the sum of the categories' `committedCents`: a schedule no rule assigns a
+   * category to is counted here and nowhere else, which is what
+   * `committedUnallocatedCents` exists to explain. Zero for any month but the current.
+   */
+  committedCents: number
+  committedUnallocatedCents: number
+  /** How many unattributed schedules are behind that figure. */
+  committedUnallocatedCount: number
+  committedApproximate: boolean
 }
 
 export interface SpendAggregate {
@@ -206,6 +246,11 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
   const mismatches: RecomputeMismatch[] = []
   const categoryIds = [...dimensions.keys()].sort()
 
+  // Applied by month rather than checked against the targets: a committed month that
+  // is not among them matches no fact and contributes nothing, which is the right
+  // answer for a backfill pass over months where the figure means nothing anyway.
+  const committed = input.committed ?? null
+
   for (const month of targets) {
     for (const categoryId of categoryIds) {
       const dimension = dimensions.get(categoryId) as CategoryDimension
@@ -217,6 +262,13 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
       if (!cell && recomputed === undefined && dimension.hidden) continue
 
       const spentCents = cell?.spentCents ?? 0
+      // Income is skipped for the same reason `committedForMonth` counts costs only:
+      // a scheduled salary is not a commitment, and a figure in this column on an
+      // income row would be read as one.
+      const scheduled =
+        committed?.month === month && !dimension.isIncome
+          ? committed.categories.get(categoryId)
+          : undefined
 
       facts.push({
         month,
@@ -230,6 +282,9 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
         carryoverEnabled: cell?.carryoverEnabled ?? false,
         txnCount: recomputedCounts.get(cellKey(month, categoryId)) ?? 0,
         recomputedSpentCents: recomputed ?? null,
+        committedCents: scheduled?.remainingCents ?? 0,
+        committedToDateCents: scheduled?.toDateCents ?? 0,
+        committedApproximate: scheduled?.approximate ?? false,
         baseline: computeBaseline(
           series.get(categoryId) as MonthValue[],
           month,
@@ -268,6 +323,10 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
         incomeCents > 0
           ? Math.round(((incomeCents - budgetMonth.totalSpentCents) / incomeCents) * 10_000)
           : null,
+      committedCents: committed?.month === month ? committed.totalCents : 0,
+      committedUnallocatedCents: committed?.month === month ? committed.unallocatedCents : 0,
+      committedUnallocatedCount: committed?.month === month ? committed.unallocatedCount : 0,
+      committedApproximate: committed?.month === month ? committed.approximate : false,
     }
   })
 

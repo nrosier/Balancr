@@ -349,6 +349,28 @@ export const monthlyCategoryFacts = sqliteTable(
      * eye.
      */
     recomputedSpentCents: integer('recomputed_spent_cents'),
+    /**
+     * Scheduled and still to come between today and month end, positive-out (#159).
+     *
+     * A separate column and never folded into `spent_cents`, which has to keep
+     * agreeing with Actual's UI. Zero for every month but the current one — a past
+     * month's commitments either happened, and are spend, or never will be — and
+     * recomputed by `sync` on every pass, because "still to come" is a statement about
+     * today and yesterday's figure is wrong by one day.
+     */
+    committedCents: integer('committed_cents').notNull().default(0),
+    /**
+     * Occurrences that already fell earlier this month, same scale.
+     *
+     * Stored rather than derived because the burn-rate projection needs it and runs in
+     * a later pass: extrapolating rent paid on the 1st projects thirty rents, and the
+     * only thing that can tell scheduled spend from variable spend is this column.
+     */
+    committedToDateCents: integer('committed_to_date_cents').notNull().default(0),
+    /** Whether an amount behind the two columns above was a range or approximate. */
+    committedApproximate: integer('committed_approximate', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     /** EWMA over the trailing window, winsorised. Null until enough history. */
     ewmaBaselineCents: integer('ewma_baseline_cents'),
     /** (spent - baseline) / baseline, basis points. Null when no baseline. */
@@ -405,6 +427,21 @@ export const monthlyTotals = sqliteTable(
     uncategorisedTxnCount: integer('uncategorised_txn_count').notNull().default(0),
     /** Positive-out, so a negative figure is an unassigned refund. */
     uncategorisedCents: integer('uncategorised_cents').notNull().default(0),
+    /**
+     * Everything still to come this month, attributed to an envelope or not (#159).
+     *
+     * Not the sum of the categories' `committed_cents`, and stored precisely because it
+     * is not: a schedule no rule assigns a category to is counted here and in
+     * `committed_unallocated_cents`, never guessed into an envelope. A month total that
+     * does not add up from the rows above it is the honest answer, and the unallocated
+     * figure beside it is what says why.
+     */
+    committedCents: integer('committed_cents').notNull().default(0),
+    committedUnallocatedCents: integer('committed_unallocated_cents').notNull().default(0),
+    committedUnallocatedCount: integer('committed_unallocated_count').notNull().default(0),
+    committedApproximate: integer('committed_approximate', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     computedAt: createdAt(),
   },
 )

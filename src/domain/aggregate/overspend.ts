@@ -1,5 +1,5 @@
 /**
- * "Am I overspending?" — four different questions, answered separately.
+ * "Am I overspending?" — five different questions, answered separately.
  *
  * Merging them into one number is the mistake this file exists to avoid. In an
  * envelope budget these routinely disagree, and each disagreement is
@@ -14,6 +14,12 @@
  *  - **`above_benchmark`** — a bigger share of the budget than Belgian
  *    households spend on that line (#43). Group-level and always `info`: it is
  *    context about the country, not evidence about you. See `benchmarkSignals`.
+ *  - **`committed_over_available`** — what is still scheduled to leave this month
+ *    is more than the envelope has left (#159). The only one of the five that can
+ *    fire on an envelope nothing has been spent from yet: €80 assigned, €0 spent,
+ *    a €84,50 direct debit due on the 28th. Reported separately and never merged
+ *    with the four above, because it is the only forward-looking *certainty* here
+ *    — the others describe what happened, and the burn rate is an extrapolation.
  *
  * Every relative signal is gated on an absolute floor. A €7 envelope going 40%
  * over is €2.80: arithmetically true, and noise. Getting flagged for it is how
@@ -106,6 +112,24 @@ export function categorySignals(
       )
     }
 
+    // 5. More still scheduled to leave than the envelope has left (#159).
+    // Beside signal 2 because both read `availableCents`, and deliberately not
+    // folded into it: a negative envelope is money already gone, this is money
+    // that has not moved yet and still will. `committedCents` counts only the
+    // occurrences between today and month end, so a past month is always zero
+    // here and a finished direct debit stops being a warning the day it posts.
+    const committedCents = fact.committedCents
+    const committedShortfallCents = committedCents - availableCents
+    if (committedCents > 0 && committedShortfallCents >= overspend.materialityFloorCents) {
+      signals.push(
+        signal('committed_over_available', fact, 'warn', {
+          committedCents,
+          availableCents,
+          committedShortfallCents,
+        }),
+      )
+    }
+
     // 3. Above your own norm. `deltaBp` is null when the baseline is zero, which
     // is a first-ever expense rather than an overspend — `irregular_expense`.
     const baseline = fact.baseline
@@ -157,13 +181,32 @@ export function categorySignals(
 
     // Burn rate: mid-month projection, so an alert arrives while it can still be
     // acted on rather than as a post-mortem on the 1st.
+    //
+    // Two halves, because a month's spending is two different things (#159). What
+    // is scheduled is *known*, and extrapolating it is what produced the two
+    // famous wrong answers: rent paid on the 1st projected to six rents by the
+    // 5th, and a subscription due on the 28th projected to nothing at all. So the
+    // schedules are added at face value and only the rest of the spending — what
+    // no schedule accounts for — is extrapolated over the remaining days:
+    //
+    //     projected = spent + committed + max(0, spent − committedToDate) × (1/p − 1)
+    //
+    // With no schedules anywhere both committed figures are zero and this reduces
+    // exactly to `spent / p`, which is why an install without schedules sees no
+    // change at all. `committedToDateCents` is stored for precisely this line:
+    // subtracting it leaves the variable spending, and clamping at zero handles a
+    // direct debit that has not posted yet or landed a day early.
+    const variableToDateCents = Math.max(0, spentCents - fact.committedToDateCents)
     if (
       monthProgress >= burnRate.minMonthProgress &&
       monthProgress < 1 &&
       budgetedCents > 0 &&
-      spentCents > 0
+      (spentCents > 0 || committedCents > 0)
     ) {
-      const projectedCents = Math.round(spentCents / monthProgress)
+      const projectedCents =
+        spentCents +
+        committedCents +
+        Math.round(variableToDateCents * (1 / monthProgress - 1))
       const toleranceCents = Math.round(budgetedCents * (1 + burnRate.toleranceBp / 10_000))
       const projectedOverrunCents = projectedCents - budgetedCents
       if (
@@ -175,6 +218,7 @@ export function categorySignals(
             projectedCents,
             assignedCents: budgetedCents,
             spentCents,
+            committedCents,
             projectedOverrunCents,
             monthProgressBp: Math.round(monthProgress * 10_000),
           }),

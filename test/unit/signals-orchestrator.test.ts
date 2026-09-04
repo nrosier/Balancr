@@ -28,6 +28,10 @@ function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotal
     fromLastMonthCents: 0,
     balanceCents: 80_000,
     savingsRateBp: 2_105,
+    committedCents: 0,
+    committedUnallocatedCents: 0,
+    committedUnallocatedCount: 0,
+    committedApproximate: false,
     ...overrides,
   }
 }
@@ -45,6 +49,9 @@ function fact(overrides: Partial<MonthlyFact> = {}): MonthlyFact {
     carryoverEnabled: false,
     txnCount: 6,
     recomputedSpentCents: 40_000,
+    committedCents: 0,
+    committedToDateCents: 0,
+    committedApproximate: false,
     baseline: null,
     ...overrides,
   }

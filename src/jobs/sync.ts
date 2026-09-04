@@ -16,6 +16,7 @@ import {
   fetchBudgetMonth,
   fetchBudgetMonths,
   fetchRecomputedSpend,
+  fetchSchedules,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
@@ -36,12 +37,13 @@ import {
   type GhostfolioAccountEvidence,
 } from '../domain/aggregate/classify.ts'
 import { FREQUENCY_WINDOW } from '../domain/aggregate/baseline.ts'
+import { committedForMonth, emptyCommitted } from '../domain/aggregate/committed.ts'
 import { loadFrequencies, persistFacts, syncCategoryMeta } from '../domain/aggregate/facts.ts'
 import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { aggregateSpend } from '../domain/aggregate/spend.ts'
 import type { Logger } from '../logger.ts'
-import { addMonths, currentMonthIn, endOfMonth, startOfMonth } from '../util/month.ts'
+import { addMonths, currentMonthIn, endOfMonth, startOfMonth, todayIn } from '../util/month.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
 /**
@@ -223,9 +225,10 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
 
   const params = loadParams(db)
   const available = await fetchBudgetMonths()
+  const currentMonth = currentMonthIn(config.TZ)
   const { load, targets } = planMonths(
     available,
-    currentMonthIn(config.TZ),
+    currentMonth,
     config.JOBS_HISTORY_MONTHS,
     params.baseline.windowMonths,
   )
@@ -243,11 +246,25 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
     endOfMonth(load[load.length - 1] as string),
   )
 
+  // What is still to come this month (#159). Read here rather than inside
+  // `aggregateSpend` for the reason every clock-dependent figure is: the
+  // aggregator is pure and this is a function of today. Only the current month
+  // gets one — a past month's committed figure is zero by definition, and the
+  // schedules for a future month are not what `targets` is about.
+  const committed = targets.includes(currentMonth)
+    ? committedForMonth({
+        schedules: await fetchSchedules(),
+        month: currentMonth,
+        today: todayIn(config.TZ),
+      })
+    : emptyCommitted(currentMonth)
+
   const aggregate = aggregateSpend({
     history,
     recomputed,
     frequencies: loadFrequencies(db),
     targetMonths: targets,
+    committed,
     params,
   })
 
@@ -278,6 +295,14 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
     accountsMirrored: accounts.mirrored,
     totals: months,
     uncategorisedTxns: aggregate.uncategorised.reduce((sum, b) => sum + b.txnCount, 0),
+    committedCents: committed.totalCents,
+    committedUnallocatedCents: committed.unallocatedCents,
+    committedOccurrences:
+      committed.unallocatedCount +
+      [...committed.categories.values()].reduce(
+        (sum, category) => sum + category.occurrences,
+        0,
+      ),
     mismatches: drift.mismatches,
   }
 }

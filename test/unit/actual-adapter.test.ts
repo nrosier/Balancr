@@ -38,6 +38,10 @@ describe('@actual-app/api pinning', () => {
       'getAccountBalance',
       'getServerVersion',
       'getPreferences',
+      // The two reads behind the committed figure (#159). Neither is documented
+      // in Actual's API reference, which is exactly why they are asserted here.
+      'getSchedules',
+      'getRules',
     ] as const) {
       expect(typeof api[method], method).toBe('function')
     }

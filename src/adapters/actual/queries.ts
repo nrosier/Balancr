@@ -353,3 +353,225 @@ export async function fetchTransactionDateRange(): Promise<{
   }
   return { first: await edge('asc'), last: await edge('desc') }
 }
+
+// ---------------------------------------------------------------------------
+//  Schedules — what is still to come (#159)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads, like everything else here. The three writers `@actual-app/api` offers for
+ * schedules — `createSchedule`, `updateSchedule`, `deleteSchedule` — are named in the
+ * denylist in `test/unit/actual-adapter.test.ts`, which scans this file's source, so
+ * "v1 never writes to Actual" stays enforced rather than intended.
+ *
+ * Three decisions worth knowing about:
+ *
+ * **The parse is the privacy boundary.** A schedule carries `name` ("Netflix"), a
+ * payee id and an account id, and none of them is a field this application has any use
+ * for: the figure it produces is a per-category total. `scheduleShape` is a plain
+ * `z.object`, so Zod *strips* every key not listed — those three included — and nothing
+ * downstream, the AI bundle least of all, can carry what was never mapped. This is why
+ * the shape is deliberately not `.loose()` like the budget rows above it.
+ *
+ * **A range counts at its upper bound, not its middle.** Actual's own
+ * `getScheduledAmount` averages `{num1, num2}`, which is the right answer for the "next
+ * up" list in its sidebar and the wrong one for "can this envelope still take what is
+ * coming": an average understates the cost half the time, and the half it understates
+ * is the half worth a warning. `Math.min` in Actual's sign convention — negative is
+ * money out — is the larger cost, and `approximate` is on the row so every screen that
+ * prints the figure can say the amount was not exact (#159).
+ *
+ * **A category comes from the schedule's own rule, or not at all.** Actual keeps the
+ * category as a `set` action on the rule a schedule owns, so that link is a fact. Rules
+ * that merely match a payee are *not* consulted: they would attribute money to an
+ * envelope by inference, and #159 rules that out — an unmatched schedule is counted in
+ * the month total and shown as unallocated instead.
+ */
+
+const recurPatternType = z.enum(['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'day'])
+
+/** Actual's `RecurPattern`: "the 2nd Tuesday" is `{value: 2, type: 'TU'}`. */
+export type RecurPatternType = z.infer<typeof recurPatternType>
+
+const recurConfigShape = z.object({
+  frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  interval: z.number().int().positive().optional(),
+  patterns: z.array(z.object({ value: z.number().int(), type: recurPatternType })).optional(),
+  skipWeekend: z.boolean().optional(),
+  start: z.string(),
+  endMode: z.enum(['never', 'after_n_occurrences', 'on_date']).optional(),
+  endOccurrences: z.number().int().nonnegative().optional(),
+  endDate: z.string().optional(),
+  weekendSolveMode: z.enum(['before', 'after']).optional(),
+})
+
+/**
+ * A recurrence with every default already applied.
+ *
+ * Normalised here rather than in the expander, so that "no `interval` means every
+ * one" is decided at the boundary where Actual's shape is still in view, and the pure
+ * module downstream has no optionality left to guess about.
+ */
+export interface ScheduleRecurrence {
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly'
+  /** Every nth period. 1 unless the schedule says otherwise. */
+  interval: number
+  /** Monthly and yearly only: days of the month and nth-weekdays. */
+  patterns: readonly { value: number; type: RecurPatternType }[]
+  skipWeekend: boolean
+  /** Which way a weekend date moves. Actual throws on a third value; we default. */
+  weekendSolveMode: 'before' | 'after'
+  /** `YYYY-MM-DD`. The anchor every occurrence is counted from. */
+  start: string
+  endMode: 'never' | 'after_n_occurrences' | 'on_date'
+  /** Only meaningful for `after_n_occurrences`. */
+  endOccurrences: number | null
+  /** Only meaningful for `on_date`. */
+  endDate: string | null
+}
+
+/** A schedule happens once on a date, or repeats. */
+export type ScheduleDate =
+  | { kind: 'once'; date: string }
+  | { kind: 'recurring'; recurrence: ScheduleRecurrence }
+
+export interface ActualSchedule {
+  id: string
+  /** The category the schedule's own rule assigns, or null when no rule does. */
+  categoryId: string | null
+  /** Actual's sign: negative is money out. The upper bound when the amount is a range. */
+  amountCents: number
+  /** True when the amount is a range or an approximation rather than a figure. */
+  approximate: boolean
+  /** A completed schedule is not coming again, whatever its dates say. */
+  completed: boolean
+  /**
+   * Whether Actual posts the transaction itself.
+   *
+   * Deliberately not a filter: one that does not post automatically is still an
+   * expected cost and still counts. It is carried because the distinction is real —
+   * a posting schedule turns into spend on the day, a manual one waits for somebody.
+   */
+  postsTransaction: boolean
+  /** Actual's own next occurrence, for the cross-check in the expander. */
+  nextDate: string | null
+  date: ScheduleDate
+}
+
+const scheduleAmountShape = z.union([
+  z.number().int(),
+  z.object({ num1: z.number().int(), num2: z.number().int() }),
+])
+
+const scheduleShape = z.object({
+  id: z.string(),
+  amount: scheduleAmountShape.optional(),
+  amountOp: z.enum(['is', 'isapprox', 'isbetween']),
+  date: z.union([z.string(), recurConfigShape]),
+  next_date: z.string().optional(),
+  completed: z.boolean().optional(),
+  posts_transaction: z.boolean().optional(),
+  /** The id of the rule this schedule owns, which is where its category lives. */
+  rule: z.string().optional(),
+  /** Actual soft-deletes; a tombstoned schedule is gone even if it comes back. */
+  tombstone: z.boolean().optional(),
+})
+
+const ruleShape = z.object({
+  id: z.string(),
+  /**
+   * `conditions` is absent on purpose, and the strip is what removes it: a rule's
+   * conditions are the payee and account matchers, which is exactly the text this
+   * application has no business holding.
+   */
+  actions: z.array(z.object({ op: z.string(), field: z.string().optional(), value: z.unknown() })),
+  tombstone: z.boolean().optional(),
+})
+
+type ParsedRule = z.infer<typeof ruleShape>
+
+/**
+ * Rule id → the category that rule sets.
+ *
+ * Exported for its test: this one link is the whole of schedule attribution, and a
+ * silent miss here would move a bill into the unallocated line rather than fail.
+ */
+export function scheduleCategories(rules: readonly ParsedRule[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const rule of rules) {
+    if (rule.tombstone === true) continue
+    for (const action of rule.actions) {
+      if (action.op !== 'set' || action.field !== 'category') continue
+      // `value` is `unknown` in Actual's own types and is legitimately null for
+      // "set the category to nothing", which is not an attribution.
+      if (typeof action.value === 'string' && action.value !== '') out.set(rule.id, action.value)
+    }
+  }
+  return out
+}
+
+/** The upper bound of a scheduled cost, in Actual's sign convention. */
+function scheduledAmount(amount: z.infer<typeof scheduleAmountShape> | undefined): number {
+  if (amount === undefined) return 0
+  if (typeof amount === 'number') return amount
+  return Math.min(amount.num1, amount.num2)
+}
+
+function toRecurrence(config: z.infer<typeof recurConfigShape>): ScheduleRecurrence {
+  return {
+    frequency: config.frequency,
+    interval: config.interval ?? 1,
+    patterns: config.patterns ?? [],
+    skipWeekend: config.skipWeekend ?? false,
+    weekendSolveMode: config.weekendSolveMode ?? 'after',
+    start: config.start,
+    endMode: config.endMode ?? 'never',
+    endOccurrences: config.endOccurrences ?? null,
+    endDate: config.endDate ?? null,
+  }
+}
+
+/**
+ * Every live schedule, with its category resolved and its identity left behind.
+ *
+ * One `withActual` call for both reads, because the two have to agree: a rule list
+ * fetched after a sync that changed a schedule's category would attribute this month's
+ * bill to last month's envelope.
+ */
+export async function fetchSchedules(): Promise<ActualSchedule[]> {
+  const raw = await withActual(async (actual) => ({
+    schedules: await actual.getSchedules(),
+    rules: await actual.getRules(),
+  }))
+
+  const schedules = z.array(scheduleShape).safeParse(raw.schedules)
+  if (!schedules.success) {
+    throw new Error(
+      `Actual "getSchedules" returned an unexpected shape: ${z.prettifyError(schedules.error)}`,
+    )
+  }
+  const rules = z.array(ruleShape).safeParse(raw.rules)
+  if (!rules.success) {
+    throw new Error(
+      `Actual "getRules" returned an unexpected shape: ${z.prettifyError(rules.error)}`,
+    )
+  }
+
+  const categories = scheduleCategories(rules.data)
+
+  return schedules.data
+    .filter((schedule) => schedule.tombstone !== true)
+    .map((schedule) => ({
+      id: schedule.id,
+      categoryId: (schedule.rule === undefined ? null : categories.get(schedule.rule)) ?? null,
+      amountCents: scheduledAmount(schedule.amount),
+      approximate: schedule.amountOp !== 'is',
+      completed: schedule.completed ?? false,
+      postsTransaction: schedule.posts_transaction ?? false,
+      nextDate: schedule.next_date ?? null,
+      date:
+        typeof schedule.date === 'string'
+          ? { kind: 'once' as const, date: schedule.date }
+          : { kind: 'recurring' as const, recurrence: toRecurrence(schedule.date) },
+    }))
+}

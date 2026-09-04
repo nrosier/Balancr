@@ -178,6 +178,16 @@ export const categoryFactSchema = z.object({
   budgetedCents: cents(),
   availableCents: cents(),
   txnCount: z.int().nonnegative(),
+  /**
+   * Still scheduled to leave this envelope between today and month end (#159).
+   *
+   * Never folded into `spentCents`: one is money that has gone, the other is money
+   * that will. Zero for every month but the current one, by definition. `approximate`
+   * is set when a schedule states a range rather than an amount — counted at its
+   * upper bound, and said so on screen rather than presented as a fact.
+   */
+  committedCents: cents(),
+  committedApproximate: z.boolean(),
   /** The EWMA norm, or null when there is not enough history to state one. */
   baselineCents: cents().nullable(),
   deltaBp: basisPoints().nullable(),
@@ -334,6 +344,16 @@ export const budgetSchema = z.object({
       fromLastMonthCents: cents(),
       balanceCents: cents(),
       savingsRateBp: basisPoints().nullable(),
+      /**
+       * The month's whole committed figure (#159), which is deliberately **not** the
+       * sum of `categories[].committedCents`: a schedule no rule assigns a category
+       * to is counted here and reported as unallocated, never attributed to an
+       * envelope by inference.
+       */
+      committedCents: cents(),
+      committedUnallocatedCents: cents(),
+      committedUnallocatedCount: z.int().nonnegative(),
+      committedApproximate: z.boolean(),
     })
     .nullable(),
   history: z.array(

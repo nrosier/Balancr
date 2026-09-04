@@ -92,6 +92,10 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
             fromLastMonthCents: totals.fromLastMonthCents,
             balanceCents: totals.balanceCents,
             savingsRateBp: totals.savingsRateBp,
+            committedCents: totals.committedCents,
+            committedUnallocatedCents: totals.committedUnallocatedCents,
+            committedUnallocatedCount: totals.committedUnallocatedCount,
+            committedApproximate: totals.committedApproximate,
           },
     history: history.map((entry) => ({
       month: entry.month,
@@ -110,6 +114,8 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
       budgetedCents: fact.budgetedCents,
       availableCents: fact.availableCents,
       txnCount: fact.txnCount,
+      committedCents: fact.committedCents,
+      committedApproximate: fact.committedApproximate,
       // Flattened out of `baseline`, because a client charting a norm wants the
       // number and the delta, and the months that fed the average are the
       // aggregation layer's business.

@@ -110,6 +110,17 @@ export interface RedactedCategory {
   budgetedCents: number
   availableCents: number
   txnCount: number
+  /**
+   * Still scheduled to leave this envelope before month end (#159). Omitted when
+   * zero, which is every past month and every envelope nothing is scheduled from.
+   *
+   * A cent total and nothing else. Actual's schedules carry a payee, a name and an
+   * account, and none of the three ever reaches a type this file can see: the
+   * adapter parses them away (`fetchSchedules`), so there is no field here to
+   * decide about. Sent because the model is asked to explain an envelope, and
+   * "€38 left" reads very differently once "€50 still due" is beside it.
+   */
+  committedCents?: number
   baselineCents?: number
   deltaBp?: number
   /** Months of history behind `baselineCents`, so thin evidence is visible. */
@@ -236,6 +247,8 @@ function toCategory(entry: BundleCategory, label: string): RedactedCategory {
     availableCents: fact.availableCents,
     txnCount: fact.txnCount,
   }
+
+  if (fact.committedCents > 0) out.committedCents = fact.committedCents
 
   // The whole point of the flag: a sensitive category keeps its amounts and its
   // shape, and loses everything that says what it is.
@@ -420,6 +433,7 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'income',
   'availableCents',
   'txnCount',
+  'committedCents',
   'baselineCents',
   'deltaBp',
   'baselineMonths',

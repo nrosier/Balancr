@@ -37,6 +37,10 @@ export function totals(month: string, overrides: Partial<MonthTotals> = {}): Mon
     fromLastMonthCents: 12_000,
     balanceCents: 70_000,
     savingsRateBp: 1_842,
+    committedCents: 0,
+    committedUnallocatedCents: 0,
+    committedUnallocatedCount: 0,
+    committedApproximate: false,
     ...overrides,
   }
 }
@@ -54,6 +58,9 @@ export function fact(month: string, id: string, overrides: Partial<MonthlyFact> 
     carryoverEnabled: false,
     txnCount: 3,
     recomputedSpentCents: 10_000,
+    committedCents: 0,
+    committedToDateCents: 0,
+    committedApproximate: false,
     baseline: null,
     ...overrides,
   }
