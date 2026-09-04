@@ -36,11 +36,11 @@
       "solo": "Één persoon: {{scale}} op de equivalentieschaal."
     },
     "lede": {
-      "level": "Waar {{month}} op uitkwam, naast wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{year}}: jouw {{total}} vergeleken uitgaven tegen die van hen, euro voor euro.",
-      "mix": "Hoe jouw {{total}} uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{year}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
+      "level": "Waar {{month}} op uitkwam, naast wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{year}}: jouw <money>{{total}}</money> vergeleken uitgaven tegen die van hen, euro voor euro.",
+      "mix": "Hoe jouw <money>{{total}}</money> uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{year}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
     },
-    "mapped": "{{share}} van jouw {{consumption}} huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
-    "outside": "{{amount}} aan sparen, belastingen en overdrachten valt buiten de vergelijking: het is geen huishoudelijke consumptie en de aandelen van het onderzoek dekken het niet.",
+    "mapped": "{{share}} van jouw <money>{{consumption}}</money> huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
+    "outside": "<money>{{amount}}</money> aan sparen, belastingen en overdrachten valt buiten de vergelijking: het is geen huishoudelijke consumptie en de aandelen van het onderzoek dekken het niet.",
     "source": "{{citation}}. Laatst nagekeken {{verified}}.",
     "state": {
       "above": "Boven referentie",
@@ -57,7 +57,7 @@
     },
     "unmapped": {
       "hint": "Geef elk van deze een COICOP-afdeling bij Instellingen en ze doen mee in de vergelijking.",
-      "line": "{{name}} — {{value}}, {{share}} van de maand",
+      "line": "{{name}} — <money>{{value}}</money>, {{share}} van de maand",
       "title": "Buiten de vergelijking gelaten"
     }
   },
@@ -87,8 +87,8 @@
   },
   "committed": {
     "approximate": "Een planning geeft een marge in plaats van een bedrag; die wordt op de bovengrens geteld.",
-    "category": "{{amount}} nog te komen",
-    "categoryApprox": "ongeveer {{amount}} nog te komen",
+    "category": "<money>{{amount}}</money> nog te komen",
+    "categoryApprox": "ongeveer <money>{{amount}}</money> nog te komen",
     "unallocated_one": "{{value}} planning heeft geen categorie en telt alleen mee in het maandtotaal.",
     "unallocated_other": "{{value}} planningen hebben geen categorie en tellen alleen mee in het maandtotaal."
   },
@@ -105,13 +105,13 @@
       "category": "Categorie",
       "paid": "Jij betaalde"
     },
-    "lede": "In {{month}} betaalde je {{paid}} aan kosten die je met een co-ouder deelt. {{borne}} daarvan is economisch voor jou; {{offset}} is het aandeel van het andere huishouden.",
+    "lede": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{borne}}</money2> daarvan is economisch voor jou; <money3>{{offset}}</money3> is het aandeel van het andere huishouden.",
     "share": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
     "title": "Kosten gedeeld met een co-ouder",
     "total": "Totaal",
     "unavailable": {
       "hint": "Voeg onder Instellingen, Huishouden toe wie hier een deel van de tijd is, of geef het aandeel rechtstreeks op — dan verschijnt de verdeling hier.",
-      "no_basis": "Categorieën ter waarde van {{amount}} deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is."
+      "no_basis": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is."
     }
   },
   "empty": {
@@ -153,7 +153,7 @@
   },
   "pace": {
     "monthProgress": "{{progress}} van de maand is voorbij",
-    "overrun": "Verwachte overschrijding {{amount}}",
+    "overrun": "Verwachte overschrijding <money>{{amount}}</money>",
     "summary": "{{category}}: {{spent}} uitgegeven van {{assigned}} toegewezen, met {{progress}} van de maand voorbij."
   },
   "picker": {
@@ -161,7 +161,7 @@
   },
   "title": "Budget",
   "uncategorised": {
-    "notice_one": "{{value}} transactie van {{amount}} heeft geen categorie, dus de cijfers hieronder zijn onvolledig.",
-    "notice_other": "{{value}} transacties van {{amount}} hebben geen categorie, dus de cijfers hieronder zijn onvolledig."
+    "notice_one": "{{value}} transactie van <money>{{amount}}</money> heeft geen categorie, dus de cijfers hieronder zijn onvolledig.",
+    "notice_other": "{{value}} transacties van <money>{{amount}}</money> hebben geen categorie, dus de cijfers hieronder zijn onvolledig."
   }
 }

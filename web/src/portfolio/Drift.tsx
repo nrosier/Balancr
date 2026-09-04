@@ -27,9 +27,11 @@
  * balance it would otherwise drag every class below its floor at once.
  */
 import { useId, type ReactNode } from 'react'
+import { Trans } from 'react-i18next'
 import { assetClassLabel } from '../charts/AllocationChart.tsx'
 import { useT, type TFunction } from '../i18n.ts'
-import { formatBp, formatMoney, type Advice, type DriftLine } from '../shared.ts'
+import { formatBp, type Advice, type DriftLine } from '../shared.ts'
+import { Money } from '../ui/Money.tsx'
 
 /** The badge tone per state, which is also the exhaustiveness check on the enum. */
 const TONE: Readonly<Record<DriftLine['state'], string>> = {
@@ -92,10 +94,13 @@ export function DriftTable({ advice }: { advice: Advice }): ReactNode {
   return (
     <>
       <p className="panel__hint muted">
-        {t('portfolio:advice.profileLine', {
-          profile: t(`portfolio:advice.profile.${advice.profile}`),
-          invested: formatMoney(drift.investedValueCents, { whole: true }),
-        })}
+        <Trans
+          i18nKey="portfolio:advice.profileLine"
+          values={{ profile: t(`portfolio:advice.profile.${advice.profile}`) }}
+          components={{
+            money: <Money cents={drift.investedValueCents} options={{ whole: true }} />,
+          }}
+        />
         {advice.isPreset ? null : ` · ${t('portfolio:advice.edited')}`}
       </p>
 
@@ -149,7 +154,7 @@ export function DriftTable({ advice }: { advice: Advice }): ReactNode {
                   the suggestion, which is where that distinction is explained.
                 */}
                 <td className="table__cell--number">
-                  {formatMoney(line.gapCents, { whole: true, signed: true })}
+                  <Money cents={line.gapCents} options={{ whole: true, signed: true }} />
                 </td>
                 <td>
                   <span className={`badge ${TONE[line.state]}`}>
@@ -168,11 +173,14 @@ export function DriftTable({ advice }: { advice: Advice }): ReactNode {
           <ul className="notice__list">
             {drift.unmapped.map((slice) => (
               <li key={slice.assetClass}>
-                {t('portfolio:advice.unmapped.line', {
-                  name: assetClassLabel(t, slice.assetClass),
-                  value: formatMoney(slice.valueCents, { whole: true }),
-                  share: formatBp(slice.shareBp),
-                })}
+                <Trans
+                  i18nKey="portfolio:advice.unmapped.line"
+                  values={{
+                    name: assetClassLabel(t, slice.assetClass),
+                    share: formatBp(slice.shareBp),
+                  }}
+                  components={{ money: <Money cents={slice.valueCents} options={{ whole: true }} /> }}
+                />
               </li>
             ))}
           </ul>

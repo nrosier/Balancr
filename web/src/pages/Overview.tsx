@@ -29,16 +29,11 @@ import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
-import {
-  formatBp,
-  formatDate,
-  formatMoney,
-  formatMonth,
-  type Overview as OverviewPayload,
-} from '../shared.ts'
+import { formatBp, formatDate, formatMonth, type Overview as OverviewPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
+import { Money } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
@@ -78,7 +73,7 @@ export function Overview(): ReactNode {
 }
 
 /** Whole euro. Cents on a net-worth figure are noise nobody reads. */
-const euro = (cents: number): string => formatMoney(cents, { whole: true })
+const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
 
 function Figures({
   data,

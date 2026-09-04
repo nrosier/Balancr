@@ -28,7 +28,25 @@ export function escapeText(value: string): string {
   return escaped
 }
 
-/** A tooltip row: a name and the figure beside it, both already text. */
+/**
+ * A tooltip row: a name and the figure beside it. Only `name` goes through
+ * `escapeText` — it is the bank-feed-derived text described above. `value` is
+ * always this application's own `format.ts` output, never user- or
+ * feed-derived, so it is safe to leave unescaped here — which is what lets a
+ * caller pass `privateText`'s `<span data-private>` markup through instead of
+ * having it escaped back into inert text.
+ */
 export function tooltipRow(name: string, value: string): string {
-  return `${escapeText(name)}<br><strong>${escapeText(value)}</strong>`
+  return `${escapeText(name)}<br><strong>${value}</strong>`
+}
+
+/**
+ * Marks a tooltip figure for privacy mode to blur, mirroring `ui/Money.tsx`'s
+ * `<span data-private>` wrapper for JSX. A tooltip is a floating div appended
+ * to `document.body` by ECharts itself, outside any component's own DOM, so
+ * `privacy.css`'s rule has to reach it through this string rather than
+ * through a React-rendered wrapper.
+ */
+export function privateText(value: string): string {
+  return `<span data-private>${escapeText(value)}</span>`
 }

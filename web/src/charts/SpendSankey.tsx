@@ -30,7 +30,7 @@ import { useT } from '../i18n.ts'
 import { formatMoney } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
-import { tooltipRow } from './tooltip.ts'
+import { privateText, tooltipRow } from './tooltip.ts'
 
 export interface SankeyCategory {
   name: string
@@ -146,10 +146,10 @@ export function SpendSankey({ categories, height }: SpendSankeyProps): ReactNode
             const link = item.data ?? {}
             return tooltipRow(
               `${link.source ?? ''} → ${link.target ?? ''}`,
-              formatMoney(link.value ?? 0, { whole: true }),
+              privateText(formatMoney(link.value ?? 0, { whole: true })),
             )
           }
-          return tooltipRow(item.name ?? '', formatMoney(cents, { whole: true }))
+          return tooltipRow(item.name ?? '', privateText(formatMoney(cents, { whole: true })))
         },
       },
       series: [

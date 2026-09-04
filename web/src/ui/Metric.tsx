@@ -8,6 +8,11 @@
  * `value: null` is the exception it does have to know about — "not known yet" is a
  * state, and the alternative is a page full of zeroes that read as facts.
  *
+ * `value` is `ReactNode`, not `string`, so a caller can pass `<Money>`/`<Private>`
+ * from `ui/Money.tsx` in place of a plain formatted string — the same "already
+ * formatted, never re-derived" contract, just wrapped for privacy mode to blur.
+ * `{known ? value : unknown}` already renders either shape identically.
+ *
  * The breakdown is a `<dl>` rather than a table because it is label-and-value pairs
  * with no columns to align across rows, and `.num` on the values is what keeps the
  * digits in a straight line.
@@ -19,14 +24,14 @@ export type Tone = 'positive' | 'negative'
 export interface MetricRow {
   label: string
   /** Already formatted. */
-  value: string
+  value: ReactNode
   tone?: Tone
 }
 
 export interface MetricProps {
   label: string
   /** Already formatted, or null for "the jobs have not produced this yet". */
-  value: string | null
+  value: ReactNode | null
   /** What null prints. Passed in, so the placeholder is translated by the page. */
   unknown: string
   /** One line under the figure: the month it covers, the date it was taken. */

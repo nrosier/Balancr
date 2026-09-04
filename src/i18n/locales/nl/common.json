@@ -112,6 +112,14 @@
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
     }
   },
+  "privacy": {
+    "toggle": {
+      "hint": "Vervaagt het scherm tegen een meekijkende blik — het is geen beveiliging. Wie de developertools van de browser gebruikt, de eigen gegevens van de pagina bekijkt, of een schermlezer gebruikt, leest nog elk cijfer. Snelkoppeling: Shift+Ctrl+E (Shift+Cmd+E op een Mac).",
+      "label": "Privacymodus",
+      "off": "Privacymodus: uit",
+      "on": "Privacymodus: aan"
+    }
+  },
   "refresh": {
     "alsoRan": "{{jobs}} liep ook, omdat deze cijfers daaruit worden berekend.",
     "busy": "Er loopt al iets. Probeer het opnieuw zodra dat klaar is.",

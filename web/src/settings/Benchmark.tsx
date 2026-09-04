@@ -48,11 +48,11 @@ import {
   formatBp,
   formatDate,
   formatList,
-  formatMoney,
   MAX_HOUSEHOLD_MEMBERS,
   OUTSIDE_CONSUMPTION,
   type BenchmarkSetting,
 } from '../shared.ts'
+import { Money } from '../ui/Money.tsx'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
 
@@ -509,7 +509,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                         ) : null}
                       </th>
                       <td className="table__cell--number">
-                        {formatMoney(category.spentCents, { whole: true })}
+                        <Money cents={category.spentCents} options={{ whole: true }} />
                       </td>
                       <td>
                         <select

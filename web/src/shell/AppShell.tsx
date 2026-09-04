@@ -26,6 +26,7 @@ import { useT } from '../i18n.ts'
 import { Link, useRouter } from '../router.tsx'
 import { Account } from './Account.tsx'
 import { Nav } from './Nav.tsx'
+import { PrivacyToggle } from './PrivacyToggle.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
 import './shell.css'
 
@@ -80,6 +81,7 @@ export function AppShell({
           </Link>
           <p className="brand__tagline">{t('app.tagline')}</p>
         </div>
+        <PrivacyToggle />
         <ThemeToggle />
         <Account user={user} csrf={csrf} onSignedOut={onSignedOut} />
       </header>

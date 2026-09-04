@@ -1,0 +1,18 @@
+/*
+ * One rule and its exception. `data-privacy="on"` lives on <html> — see
+ * privacy.ts for why — so this reaches every `[data-private]` node in the
+ * document, including an ECharts tooltip floated onto <body>.
+ *
+ * The peek is both a hover and a focus-visible rule: a mouse user rests the
+ * pointer on a figure, a keyboard user tabs to it, and either way only that
+ * one node clears. Nothing else on the page un-blurs with it.
+ */
+[data-privacy='on'] [data-private] {
+  filter: blur(0.4em);
+  transition: filter 0.1s ease-out;
+}
+
+[data-privacy='on'] [data-private]:hover,
+[data-privacy='on'] [data-private]:focus-visible {
+  filter: none;
+}

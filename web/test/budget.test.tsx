@@ -293,6 +293,32 @@ const summaries = (): string[] =>
     .getAllByRole('img')
     .map((chart) => (chart.getAttribute('aria-label') ?? '').replaceAll(' ', ' '))
 
+/**
+ * A `getByText`/`findByText` matcher for a sentence that carries a `<Money>`: testing
+ * library's default matching only concatenates a node's direct text children, so a
+ * string that crosses `<Money>`'s span boundary is invisible to a plain string or
+ * regex target. `element.textContent` reads the whole subtree instead — the same fix
+ * used elsewhere in this suite for text split across elements (see `status.test.tsx`).
+ */
+const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim()
+
+const withMoney = (target: string | RegExp) => {
+  // `\s` also matches the non-breaking spaces `Intl.NumberFormat` puts around the
+  // figure, which is what the default (single-node) matcher normalises away for free.
+  const hits = (element: Element): boolean => {
+    const text = normalize(element.textContent ?? '')
+    return typeof target === 'string' ? text === target : target.test(text)
+  }
+  // Reading the whole subtree means every ancestor up to `<body>` matches too, once
+  // one descendant does. Excluding any element with a matching descendant leaves only
+  // the innermost one, so `getByText` sees a single hit instead of the whole chain.
+  const hasMatchingDescendant = (element: Element): boolean =>
+    [...element.children].some((child) => hits(child) || hasMatchingDescendant(child))
+
+  return (_content: string, element: Element | null) =>
+    element !== null && hits(element) && !hasMatchingDescendant(element)
+}
+
 const original = {
   width: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth'),
   height: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight'),
@@ -389,7 +415,7 @@ describe('a month with figures in it', () => {
 
     expect(
       screen.getByText(
-        '3 transactions worth € 125 have no category, so the figures below are incomplete.',
+        withMoney('3 transactions worth € 125 have no category, so the figures below are incomplete.'),
       ),
     ).toBeTruthy()
   })
@@ -423,8 +449,8 @@ describe('a month with figures in it', () => {
 
     // The server's month progress, not one derived from today's date.
     expect(screen.getByText('77,4% of the month has passed')).toBeTruthy()
-    expect(screen.getByText('Projected month end: € 840')).toBeTruthy()
-    expect(screen.getByText('Projected overrun € 240')).toBeTruthy()
+    expect(screen.getByText(withMoney('Projected month end: € 840'))).toBeTruthy()
+    expect(screen.getByText(withMoney('Projected overrun € 240'))).toBeTruthy()
     expect(
       screen.getByText(
         'Groceries is on track for € 840,00 this month, against € 600,00 assigned.',
@@ -492,7 +518,9 @@ describe('the Belgian comparison', () => {
 
     // The mix basis, in words rather than as a badge: shares against shares, and an
     // explicit sentence that nothing here says whether you spend more than they do.
-    expect(screen.getByText(/How your € 1.850 of August 2026 spending divides/)).toBeTruthy()
+    expect(
+      screen.getByText(withMoney(/How your € 1.850 of August 2026 spending divides/)),
+    ).toBeTruthy()
     expect(screen.getByText(/Shares only/)).toBeTruthy()
 
     // Both mapped lines are far enough above the reference to be named, and the eight
@@ -509,7 +537,9 @@ describe('the Belgian comparison', () => {
     expect(screen.getByText('+151%')).toBeTruthy()
 
     // How much of the month the comparison covers, said in the same card as the figures.
-    expect(screen.getByText(/100% of your € 1.850 of household spending is mapped/)).toBeTruthy()
+    expect(
+      screen.getByText(withMoney(/100% of your € 1.850 of household spending is mapped/)),
+    ).toBeTruthy()
 
     // The household, all three sentences: the scale figure to two decimals because
     // proration produces one the published scale never does, how many count as children,
@@ -622,7 +652,7 @@ describe('the shared-cost split', () => {
     expect(await screen.findByText('Costs shared with a co-parent')).toBeTruthy()
     expect(
       screen.getByText(
-        /In August 2026 you paid € 520 on costs shared with a co-parent\. € 260 of that is/,
+        withMoney(/In August 2026 you paid € 520 on costs shared with a co-parent\. € 260 of that is/),
       ),
     ).toBeTruthy()
 
@@ -687,7 +717,7 @@ describe('the shared-cost split', () => {
 
     expect(
       await screen.findByText(
-        /Categories worth € 520 this month are flagged as shared with a co-parent/,
+        withMoney(/Categories worth € 520 this month are flagged as shared with a co-parent/),
       ),
     ).toBeTruthy()
     expect(screen.getByText(/Add whoever is here part of the time under Settings, Household/))

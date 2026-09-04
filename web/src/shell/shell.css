@@ -144,6 +144,33 @@
   box-shadow: var(--shadow-card);
 }
 
+/* ── Privacy control ─────────────────────────────────────────────────────── */
+
+.privacy-toggle {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.privacy-toggle:hover {
+  color: var(--text);
+}
+
+.privacy-toggle[aria-pressed='true'] {
+  background: var(--surface-card);
+  color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
 /* ── Account ─────────────────────────────────────────────────────────────── */
 
 .account {

@@ -23,7 +23,7 @@
       "defensive": "Defensief",
       "growth": "Groei"
     },
-    "profileLine": "Afgemeten tegen het profiel {{profile}}, over {{invested}} belegd.",
+    "profileLine": "Afgemeten tegen het profiel {{profile}}, over <money>{{invested}}</money> belegd.",
     "state": {
       "aboveBy": "{{value}} boven het plafond van {{max}}",
       "belowBy": "{{value}} onder de bodem van {{min}}",
@@ -33,7 +33,7 @@
     "unavailable": "Er is nog niets belegd om een profiel tegen af te meten. Synchroniseer Ghostfolio en dit deel vult zich.",
     "unmapped": {
       "hint": "Deze blijven buiten elk cijfer hierboven in plaats van te worden afgemeten tegen een band die er nooit voor gezet is. Geef ze een band, of kijk na hoe Ghostfolio ze indeelt.",
-      "line": "{{name}}: {{value}}, {{share}} van wat belegd is",
+      "line": "{{name}}: <money>{{value}}</money>, {{share}} van wat belegd is",
       "title": "Posities in klassen waarvoor je profiel geen band heeft"
     }
   },
@@ -106,13 +106,13 @@
       "capitalGains": "Meerwaardebelasting zit niet in dit cijfer: wat je verschuldigd bent hangt af van je aankoopprijs, en die ziet Balancr nooit."
     },
     "position": {
-      "meta_one": "{{held}} aangehouden · de enige positie in deze klasse",
-      "meta_other": "{{held}} aangehouden · één van {{value}} posities in deze klasse",
+      "meta_one": "<money>{{held}}</money> aangehouden · de enige positie in deze klasse",
+      "meta_other": "<money>{{held}}</money> aangehouden · één van {{value}} posities in deze klasse",
       "unnamed": "Een positie zonder naam in de momentopname"
     },
     "skipped": {
-      "belowMinTrade": "{{name}} staat {{outside}} buiten de rand, maar het dichten kost maar {{amount}} — onder de {{floor}} die je als kleinste zinvolle verrichting instelde.",
-      "insideTolerance": "{{name}} staat {{outside}} buiten de rand, binnen de {{tolerance}} die je toelaat voor je ingrijpt. {{amount}} zou het dichten.",
+      "belowMinTrade": "{{name}} staat {{outside}} buiten de rand, maar het dichten kost maar <money>{{amount}}</money> — onder de <money2>{{floor}}</money2> die je als kleinste zinvolle verrichting instelde.",
+      "insideTolerance": "{{name}} staat {{outside}} buiten de rand, binnen de {{tolerance}} die je toelaat voor je ingrijpt. <money>{{amount}}</money> zou het dichten.",
       "title": "Buiten de band, en toch niets gedaan"
     },
     "tax": {

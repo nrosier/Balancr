@@ -29,15 +29,17 @@
  * how big the trade was — the numbers needed to judge the threshold.
  */
 import { type ReactNode } from 'react'
+import { Trans } from 'react-i18next'
 import { assetClassLabel } from '../charts/AllocationChart.tsx'
 import { useT, type TFunction } from '../i18n.ts'
 import {
   describeTaxEstimate,
   formatBp,
-  formatMoney,
+  formatDecimal,
   type Advice,
   type Suggestion,
 } from '../shared.ts'
+import { Money } from '../ui/Money.tsx'
 import { driftSentence } from './Drift.tsx'
 
 /**
@@ -159,12 +161,15 @@ function Instrument({ suggestion, t }: { suggestion: Suggestion; t: TFunction })
         </span>
         {position.isin === null ? null : <span className="suggestion__isin">{position.isin}</span>}
         <span className="muted">
-          {t('portfolio:suggest.position.meta', {
+          <Trans
+            i18nKey="portfolio:suggest.position.meta"
             // `held`, not `value`: the count is what `{{value}}` carries in a pluralised
             // key (see `withFormattedCount`), so the money needs a name of its own.
-            held: formatMoney(position.valueCents, { whole: true }),
-            count: position.alternatives,
-          })}
+            // `Trans` bypasses `t()`'s wrapper, so `value` is formatted here instead.
+            count={position.alternatives}
+            values={{ value: formatDecimal(position.alternatives) }}
+            components={{ money: <Money cents={position.valueCents} options={{ whole: true }} /> }}
+          />
         </span>
       </p>
     )
@@ -200,7 +205,7 @@ function Card({
           {t(`portfolio:suggest.action.${suggestion.action}`)}
         </span>{' '}
         <span className="suggestion__amount">
-          {formatMoney(suggestion.amountCents, { whole: true })}
+          <Money cents={suggestion.amountCents} options={{ whole: true }} />
         </span>{' '}
         <span className="suggestion__class">{assetClassLabel(t, suggestion.assetClass)}</span>
       </p>
@@ -244,13 +249,18 @@ export function Suggestions({ advice }: { advice: Advice }): ReactNode {
           <ul className="notice__list">
             {skipped.map((skip) => (
               <li key={skip.assetClass}>
-                {t(SKIP_KEY[skip.reason], {
-                  name: assetClassLabel(t, skip.assetClass),
-                  outside: formatBp(skip.outsideBp),
-                  amount: formatMoney(skip.amountCents, { whole: true }),
-                  tolerance: formatBp(advice.toleranceBp),
-                  floor: formatMoney(advice.minTradeCents, { whole: true }),
-                })}
+                <Trans
+                  i18nKey={SKIP_KEY[skip.reason]}
+                  values={{
+                    name: assetClassLabel(t, skip.assetClass),
+                    outside: formatBp(skip.outsideBp),
+                    tolerance: formatBp(advice.toleranceBp),
+                  }}
+                  components={{
+                    money: <Money cents={skip.amountCents} options={{ whole: true }} />,
+                    money2: <Money cents={advice.minTradeCents} options={{ whole: true }} />,
+                  }}
+                />
               </li>
             ))}
           </ul>

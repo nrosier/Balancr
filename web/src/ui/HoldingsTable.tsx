@@ -39,7 +39,8 @@
  */
 import { useId, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
-import { formatBp, formatDecimal, formatMoney, type Portfolio } from '../shared.ts'
+import { formatBp, formatDecimal, type Portfolio } from '../shared.ts'
+import { Money, Private } from './Money.tsx'
 
 export type Holding = Portfolio['holdings'][number]
 
@@ -110,12 +111,14 @@ export function HoldingsTable({ holdings, totalValueCents }: HoldingsTableProps)
                   {holding.name ?? holding.isin ?? holding.symbol ?? holding.instrument}
                 </th>
                 <td className="table__cell--code">{holding.isin ?? holding.symbol ?? '—'}</td>
-                <td className="table__cell--number">{formatQuantity(holding.quantity)}</td>
                 <td className="table__cell--number">
-                  {formatMoney(holding.priceCents, { currency: holding.priceCurrency })}
+                  <Private>{formatQuantity(holding.quantity)}</Private>
                 </td>
                 <td className="table__cell--number">
-                  {formatMoney(holding.valueCents, { whole: true })}
+                  <Money cents={holding.priceCents} options={{ currency: holding.priceCurrency }} />
+                </td>
+                <td className="table__cell--number">
+                  <Money cents={holding.valueCents} options={{ whole: true }} />
                 </td>
                 <td className="table__cell--number">
                   {weight === null ? t('empty.unknown') : formatBp(weight)}

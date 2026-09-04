@@ -29,6 +29,7 @@ import { useT } from '../i18n.ts'
 import { formatDate, formatMoney, formatMoneyCompact, formatMonthShort } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
+import { privateText } from './tooltip.ts'
 
 export interface NetWorthPoint {
   date: string
@@ -83,7 +84,7 @@ export function NetWorthChart({
       tooltip: {
         trigger: 'axis',
         valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? formatMoney(value, { whole: true }) : '',
+          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
       },
       xAxis: {
         type: 'category',
@@ -127,5 +128,12 @@ export function NetWorthChart({
           end: formatMoney(last.totalCents, { whole: true }),
         })
 
-  return <Chart option={option} summary={summary} {...(height === undefined ? {} : { height })} />
+  return (
+    <Chart
+      option={option}
+      summary={summary}
+      blurWhenPrivate
+      {...(height === undefined ? {} : { height })}
+    />
+  )
 }
