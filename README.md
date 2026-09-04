@@ -948,7 +948,13 @@ confirming second press left is on a bulk apply, because that can touch as many
 transactions or budgets as are checked at once. Reversing one is Actual's own
 job, not a new one Balancr had to build: every apply is an audit-logged row, and
 undoing it is whatever Actual already offers for undoing a category or budget
-change. Behind
+change. A fourth rider let the household's own first row answer to a name:
+[#215](https://github.com/nrosier/Balancr/issues/215) replaces the fixed "You"
+in that sentence with whatever the owner types into a plain text box beside
+the roster, capped at the same forty characters as any other member's label —
+but it stays outside the roster on purpose, never gaining a birth year or a
+custody share, and the equivalence scale keeps adding that person's weight
+unconditionally whether or not a name was ever set. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,

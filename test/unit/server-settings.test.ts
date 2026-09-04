@@ -309,6 +309,21 @@ describe('PATCH /api/settings/household', () => {
     expect(loadHousehold(ctx.db).sharedCostBp).toBe(6_000)
   })
 
+  it('stores a name for the first person and answers with it (#215)', async () => {
+    const res = await send_({ members: [], selfLabel: 'Nick' })
+
+    expect(res.json<Settings>().benchmark.household.selfLabel).toBe('Nick')
+    expect(loadHousehold(ctx.db).selfLabel).toBe('Nick')
+  })
+
+  it('drops the first person\'s name when a later patch omits it, like the roster it travels with', async () => {
+    await send_({ members: [], selfLabel: 'Nick' })
+    const res = await send_({ members: [] })
+
+    expect(res.json<Settings>().benchmark.household.selfLabel).toBeUndefined()
+    expect(loadHousehold(ctx.db).selfLabel).toBeUndefined()
+  })
+
   it('takes null as "derive it from the roster again"', async () => {
     await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], sharedCostBp: 6_000 })
     const res = await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], sharedCostBp: null })
