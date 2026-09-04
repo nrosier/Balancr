@@ -869,7 +869,7 @@ ends.
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
 **Where it is now** — `0.9.0` is under way, and five slices of it are on screen. The insights
-page finally has the same month picker the budget page has had since `0.3.0`: findings, the
+page finally has the same month picker the budget page has had since `0.6.0`: findings, the
 narrative and the run ledger now narrow to whatever month is selected, while the clarification
 queue and the proposal review stay whole on purpose, because neither is about a month and the
 page says so rather than leaving a reader to wonder why one card ignores the control above it.
