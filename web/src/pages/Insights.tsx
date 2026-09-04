@@ -39,6 +39,7 @@
 import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
+import { BudgetNudge } from '../insights/BudgetNudge.tsx'
 import { Findings } from '../insights/Findings.tsx'
 import { Ledger } from '../insights/Ledger.tsx'
 import { Narrative } from '../insights/Narrative.tsx'
@@ -193,6 +194,9 @@ function Sections({
           owner={data.owner}
           onGuessed={onRefreshed}
         />
+      ) : null}
+      {data.ai.enabled && data.month !== null ? (
+        <BudgetNudge month={data.month} owner={data.owner} onAdjusted={onRefreshed} />
       ) : null}
       {data.ai.enabled || data.proposals.length > 0 ? (
         <Proposals

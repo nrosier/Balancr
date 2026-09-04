@@ -11,6 +11,26 @@
     "variable": "Variable cost",
     "yes": "Yes"
   },
+  "budgetNudge": {
+    "cancel": "Not now",
+    "confirm": "Spend {{cost}} and check the note",
+    "lede": "Reads your “what's coming up” note alongside next month's suggested budgets, and may adjust one of them for something the trailing average couldn't know about.",
+    "owner": "Only the owner can run this.",
+    "price": "Checking {{month}} against the note would cost about {{cost}}.",
+    "reason": {
+      "bad_response": "The model's answer did not match the schema, so nothing from it was used.",
+      "call_failed": "The model could not be reached.",
+      "estimate_exceeds_remaining": "A run would cost more than this month has left.",
+      "month_budget_exceeded": "This month's AI budget is already spent.",
+      "no_candidates": "There is no suggested budget for this month to adjust yet.",
+      "no_note": "The “what's coming up” note is empty, so there is nothing to check it against.",
+      "ok": "Completed."
+    },
+    "resultOk": "Done. Check the suggested budgets below for what changed.",
+    "start": "Check the note",
+    "starting": "Checking…",
+    "title": "Budget nudge"
+  },
   "clarify": {
     "custody_shared_unknown": "Do you share {{category}} with your co-parent?",
     "frequency_unknown": "How often does {{category}} come up?",

@@ -45,12 +45,21 @@
  * cached as a candidate instead of guessed automatically, and these are the only
  * way one becomes a real proposal. Same six-way fencing, plus a body that names
  * which cached candidates to guess for rather than a month.
+ *
+ * `POST /api/ai/budget-nudge` is the seventh, added with #217 to close a different
+ * gap #45 left on purpose: `suggestBudgetAmounts` only ever looks backward at a
+ * trailing average, so it has no way to know a dentist bill or an annual renewal is
+ * coming. This reads the owner's running "what's coming up" note beside that
+ * month's already-pending `budget_amount.set` proposals and may adjust one — priced
+ * first by `GET /api/ai/estimate?kind=budget_nudge`, month-scoped like the narrative
+ * rather than selection-scoped like a category guess, same six-way fencing.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
+import { estimateBudgetNudge, runBudgetNudge } from '../../domain/ai/budget-nudge.ts'
 import { estimateCategoryGuess, runCategoryGuess } from '../../domain/ai/category-guess.ts'
 import { estimateNarrative, monthHasEnded, runNarrative } from '../../domain/ai/narrative.ts'
 import {
@@ -67,6 +76,7 @@ import { parseBody } from '../validate.ts'
 import { resolveMonth } from './api/budget.ts'
 import { auditRefresh, busyError, requireJobsEnabled } from './refresh.ts'
 import {
+  aiBudgetNudgeRunSchema,
   aiDryRunSchema,
   aiEstimateSchema,
   aiNarrativeRunSchema,
@@ -74,6 +84,7 @@ import {
   categoryGuessRunSchema,
   monthKey,
   refreshAcceptedSchema,
+  type AiBudgetNudgeRun,
   type AiDryRun,
   type AiEstimate,
   type AiNarrativeRun,
@@ -120,6 +131,21 @@ const aiRefreshRequest = z.strictObject({
  */
 const categoryGuessRequest = z.strictObject({
   ids: z.array(z.string().min(1)).min(1).max(50),
+})
+
+/**
+ * The month to nudge, optional like the dry run's rather than required like the
+ * narrative's (#217): there is no per-month uniqueness gate a wrong default could
+ * break, so `monthToRun`'s "latest stored month" default is safe here.
+ */
+const budgetNudgeRequest = z.strictObject({
+  month: monthKey().optional(),
+  locale: z
+    .string()
+    .refine((value) => config.SUPPORTED_LOCALES.includes(value), {
+      message: 'unsupported locale',
+    })
+    .optional(),
 })
 
 const narrativeRequest = z.strictObject({
@@ -251,14 +277,16 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     // than a fall-through to the cheaper of the two: quoting the analysis price for a
     // deep-model run would understate it by more than tenfold (#158).
     const kind = query?.kind ?? 'findings'
-    if (kind !== 'findings' && kind !== 'narrative') {
-      throw badRequest('kind must be findings or narrative.', { kind })
+    if (kind !== 'findings' && kind !== 'narrative' && kind !== 'budget_nudge') {
+      throw badRequest('kind must be findings, narrative, or budget_nudge.', { kind })
     }
 
     const estimate =
       kind === 'narrative'
         ? estimateNarrative(db, { period: month, locale: user.locale })
-        : estimateAnalysis(db, { month, locale: user.locale })
+        : kind === 'budget_nudge'
+          ? estimateBudgetNudge(db, { month, locale: user.locale })
+          : estimateAnalysis(db, { month, locale: user.locale })
 
     return aiEstimateSchema.parse({ ...estimate, kind })
   })
@@ -451,6 +479,39 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
 
       const outcome = await runCategoryGuess(db, { ids: body.ids, locale: user.locale, userId: user.id })
       return categoryGuessRunSchema.parse(outcome)
+    },
+  )
+
+  /**
+   * Adjusts however many of the month's pending `budget_amount.set` proposals the
+   * owner's note actually speaks to, or explains why it could not (#217).
+   *
+   * `results` is deliberately absent, unlike the category-guess run: an adjusted
+   * proposal supersedes #45's own via `createProposal`'s existing same-target
+   * behaviour, so it is indistinguishable from the client's point of view once it
+   * reloads `/api/insights` — there is nothing this response needs to list.
+   */
+  app.post(
+    '/api/ai/budget-nudge',
+    { ...aiRateLimit() },
+    async (request: FastifyRequest): Promise<AiBudgetNudgeRun> => {
+      const user = requireOwner(request)
+      requireAiAvailable(aiAvailability())
+      const body = parseBody(budgetNudgeRequest, request.body ?? {})
+      const locale = body.locale ?? user.locale
+      const month = monthToRun(db, body.month)
+
+      const outcome = await runBudgetNudge(db, { month, locale, userId: user.id })
+
+      return aiBudgetNudgeRunSchema.parse({
+        status: outcome.status,
+        reason: outcome.reason,
+        runId: outcome.runId,
+        month: outcome.month,
+        locale: outcome.locale,
+        degraded: outcome.degraded,
+        costMicroEur: outcome.costMicroEur,
+      })
     },
   )
 }

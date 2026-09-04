@@ -727,7 +727,15 @@ export const portfolioSchema = z.object({
  */
 export const aiRunSchema = z.object({
   id: z.string(),
-  kind: z.enum(['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess']),
+  kind: z.enum([
+    'findings',
+    'narrative',
+    'clarify',
+    'chat',
+    'dryrun',
+    'category_guess',
+    'budget_nudge',
+  ]),
   model: z.string(),
   locale: z.string(),
   status: z.enum(['ok', 'error', 'blocked', 'capped', 'reused']),
@@ -1289,6 +1297,8 @@ export const settingsSchema = z.object({
     exceeded: z.boolean(),
     /** Newest first, so the page can show this month and the trend behind it. */
     history: z.array(spendMonthSchema),
+    /** The owner's running "what's coming up" note, or `''` when none is set (#217). */
+    upcomingNote: z.string(),
   }),
 })
 
@@ -1335,7 +1345,7 @@ export const aiEstimateSchema = z.object({
    * button would understate a real charge by more than ten times, and it is the sort of
    * mix-up that only shows up on the invoice (#158).
    */
-  kind: z.enum(['findings', 'narrative']),
+  kind: z.enum(['findings', 'narrative', 'budget_nudge']),
   month: monthKey(),
   model: z.string(),
   /** Null when the month has no facts, which is also when a dry run is pointless. */
@@ -1371,6 +1381,24 @@ export const aiNarrativeRunSchema = z.object({
   reason: z.string(),
   runId: z.string().nullable(),
   period: monthKey(),
+  locale: z.string(),
+  degraded: z.boolean(),
+  costMicroEur: microEur(),
+})
+
+/**
+ * `POST /api/ai/budget-nudge` — the note read alongside the trailing average, for one
+ * month's pending `budget_amount.set` proposals (#217).
+ *
+ * Thin like `aiNarrativeRunSchema`, for the same reason: the adjusted proposals are not
+ * listed here — the client reloads `/api/insights`, where `createProposal`'s supersede
+ * has already made the change indistinguishable from #45's own suggestion.
+ */
+export const aiBudgetNudgeRunSchema = z.object({
+  status: z.enum(['ok', 'capped', 'error', 'skipped']),
+  reason: z.string(),
+  runId: z.string().nullable(),
+  month: monthKey(),
   locale: z.string(),
   degraded: z.boolean(),
   costMicroEur: microEur(),
@@ -1620,6 +1648,7 @@ export type BandsSetting = z.infer<typeof bandsSettingSchema>
 export type AiAvailabilityWire = z.infer<typeof aiAvailabilitySchema>
 export type AiEstimate = z.infer<typeof aiEstimateSchema>
 export type AiNarrativeRun = z.infer<typeof aiNarrativeRunSchema>
+export type AiBudgetNudgeRun = z.infer<typeof aiBudgetNudgeRunSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>
 export type ChangelogEntry = z.infer<typeof changelogEntrySchema>

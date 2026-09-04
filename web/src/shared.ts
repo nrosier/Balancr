@@ -73,6 +73,7 @@ export type {
   AccountSetting,
   Advice,
   AiAvailabilityWire,
+  AiBudgetNudgeRun,
   AiDryRun,
   AiEstimate,
   AiNarrativeRun,

@@ -26,14 +26,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   GUESS_PAYLOAD_KEYS,
+  NUDGE_PAYLOAD_KEYS,
   PAYLOAD_KEYS,
   PURPOSE_MAX_CHARS,
   redact,
+  redactBudgetNudgeBatch,
   redactCategoryGuessBatch,
   type AnalysisBundle,
   type BundleCategory,
   type CategoryMetaRow,
   type GuessCandidateInput,
+  type NudgeCandidateInput,
 } from '../../src/domain/ai/redact.ts'
 import type { AccountMapRow } from '../../src/domain/aggregate/accounts.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
@@ -855,5 +858,77 @@ describe('redactCategoryGuessBatch sends only an opaque batch', () => {
     expect(unknown?.name).toBeUndefined()
     expect(unknown?.coicop).toBeUndefined()
     expect(unknown?.nature).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+//  #217 — redactBudgetNudgeBatch, PAYLOAD_KEYS's counterpart for a batch of
+//  pending budget-amount candidates read alongside the owner's own note.
+// ---------------------------------------------------------------------------
+
+const NUDGE_CATEGORY_META = new Map<string, CategoryMetaRow | null>([
+  ['cat-groceries', meta()],
+  ['cat-therapy', meta({ categoryId: 'cat-therapy', sensitive: true, nameSnapshot: 'Therapy — Dr. A. Vermeulen' })],
+])
+
+function nudgeCandidate(overrides: Partial<NudgeCandidateInput> = {}): NudgeCandidateInput {
+  return {
+    categoryId: 'cat-groceries',
+    suggestedCents: 15_000,
+    currentCents: 12_000,
+    baselineCents: 11_000,
+    ...overrides,
+  }
+}
+
+function nudgeBatch(
+  candidates: readonly NudgeCandidateInput[] = [nudgeCandidate()],
+  note = 'Dentist bill in March, about 150 euros.',
+) {
+  return redactBudgetNudgeBatch(candidates, NUDGE_CATEGORY_META, '2026-03', 'en', note)
+}
+
+describe('redactBudgetNudgeBatch sends only an opaque batch', () => {
+  it('uses only keys on NUDGE_PAYLOAD_KEYS', () => {
+    const unexpected = [...new Set(keysIn(nudgeBatch().payload))].filter(
+      (key) => !NUDGE_PAYLOAD_KEYS.includes(key),
+    )
+    expect(unexpected, 'new nudge payload field: decide whether it is safe to send').toEqual([])
+  })
+
+  it('passes the note through as the owner wrote it', () => {
+    const { payload } = nudgeBatch([nudgeCandidate()], 'Car insurance renews in November.')
+    expect(payload.note).toBe('Car insurance renews in November.')
+  })
+
+  it('labels a sensitive category with no name, but keeps its amounts', () => {
+    const { payload, categoryIdFor } = nudgeBatch([
+      nudgeCandidate({ categoryId: 'cat-therapy', suggestedCents: 8_000, currentCents: 6_000 }),
+    ])
+    const therapy = payload.candidates.find((c) => categoryIdFor.get(c.label) === 'cat-therapy')
+    expect(therapy?.name).toBeUndefined()
+    expect(therapy?.suggestedCents).toBe(8_000)
+    expect(therapy?.currentCents).toBe(6_000)
+    expect(JSON.stringify(payload)).not.toContain('Vermeulen')
+  })
+
+  it('sends the name of a non-sensitive category', () => {
+    const { payload, categoryIdFor } = nudgeBatch()
+    const groceries = payload.candidates.find((c) => categoryIdFor.get(c.label) === 'cat-groceries')
+    expect(groceries?.name).toBe('Groceries')
+  })
+
+  it('omits baselineCents when the category has no baseline yet', () => {
+    const { payload } = nudgeBatch([nudgeCandidate({ baselineCents: null })])
+    expect(payload.candidates[0]?.baselineCents).toBeUndefined()
+  })
+
+  it('assigns labels in sorted-category-id order', () => {
+    const { payload, categoryIdFor } = nudgeBatch([
+      nudgeCandidate({ categoryId: 'cat-therapy' }),
+      nudgeCandidate({ categoryId: 'cat-groceries' }),
+    ])
+    expect(categoryIdFor.get(payload.candidates[0]!.label)).toBe('cat-groceries')
+    expect(categoryIdFor.get(payload.candidates[1]!.label)).toBe('cat-therapy')
   })
 })
