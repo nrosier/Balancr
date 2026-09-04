@@ -23,15 +23,18 @@ import {
   spendMonthOf,
 } from '../../src/domain/ai/budget.ts'
 import {
+  findReusableRun,
   latestSuccessfulRun,
   loadRun,
   loadRunPayload,
   recentRuns,
   recordRun,
   type RecordRun,
+  type ReuseKey,
   type RunStatus,
 } from '../../src/domain/ai/runs.ts'
 import { config } from '../../src/config.ts'
+import { prompts } from '../../src/db/schema.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: ReturnType<typeof createTestDb>['db']
@@ -49,6 +52,7 @@ const run = (overrides: Partial<RecordRun> = {}): RecordRun => ({
   model: MODEL,
   locale: 'en',
   payload: { month: '2026-03', categories: [{ label: 'c1', spentCents: 42_000 }] },
+  payloadHash: 'hash-default',
   status: 'ok',
   usage: { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 },
   ...overrides,
@@ -63,6 +67,7 @@ const refused = (status: RunStatus): RecordRun => ({
   model: MODEL,
   locale: 'en',
   payload: { month: '2026-03' },
+  payloadHash: 'hash-default',
   status,
 })
 
@@ -172,6 +177,95 @@ describe('latestSuccessfulRun', () => {
 
   it('is null on an empty ledger', () => {
     expect(latestSuccessfulRun(db, 'findings')).toBeNull()
+  })
+})
+
+describe('findReusableRun', () => {
+  let promptA: string
+  let promptB: string
+
+  beforeEach(() => {
+    promptA = db
+      .insert(prompts)
+      .values({ key: 'analysis.system', locale: 'en', version: 1, body: 'a' })
+      .returning({ id: prompts.id })
+      .get()!.id
+    promptB = db
+      .insert(prompts)
+      .values({ key: 'analysis.system', locale: 'en', version: 2, body: 'b' })
+      .returning({ id: prompts.id })
+      .get()!.id
+  })
+
+  const key = (overrides: Partial<ReuseKey> = {}): ReuseKey => ({
+    kind: 'findings',
+    period: '2026-03',
+    locale: 'en',
+    payloadHash: 'hash-a',
+    promptId: promptA,
+    model: MODEL,
+    ...overrides,
+  })
+
+  /** A source run matching `key()` exactly, unless told otherwise. */
+  const source = (overrides: Partial<RecordRun> = {}): RecordRun =>
+    run({
+      kind: 'findings',
+      period: '2026-03',
+      locale: 'en',
+      payloadHash: 'hash-a',
+      promptId: promptA,
+      model: MODEL,
+      status: 'ok',
+      ...overrides,
+    })
+
+  it('matches a run agreeing on every field of the key', () => {
+    const id = recordRun(db, source())
+    expect(findReusableRun(db, key())?.id).toBe(id)
+  })
+
+  it.each([
+    ['kind', { kind: 'narrative' as const }],
+    ['period', { period: '2026-04' }],
+    ['locale', { locale: 'nl' }],
+    ['payloadHash', { payloadHash: 'hash-b' }],
+    ['model', { model: 'gemini-3.1-pro-preview' }],
+  ] as const)('misses when %s differs', (_field, override) => {
+    recordRun(db, source(override))
+    expect(findReusableRun(db, key())).toBeNull()
+  })
+
+  it('misses when promptId differs', () => {
+    recordRun(db, source({ promptId: promptB }))
+    expect(findReusableRun(db, key())).toBeNull()
+  })
+
+  it('matches a null promptId only against a null promptId', () => {
+    recordRun(db, source({ promptId: null }))
+    expect(findReusableRun(db, key({ promptId: null }))).not.toBeNull()
+    expect(findReusableRun(db, key())).toBeNull()
+  })
+
+  it.each(['capped', 'error', 'blocked', 'reused'] as const)(
+    'never treats a %s run as a source',
+    (status) => {
+      recordRun(db, source({ status }))
+      expect(findReusableRun(db, key())).toBeNull()
+    },
+  )
+
+  it('returns the newest match when several agree', () => {
+    const older = recordRun(db, source())
+    backdate(older, new Date('2026-03-01T00:00:00Z'))
+    const newer = recordRun(db, source())
+    backdate(newer, new Date('2026-03-05T00:00:00Z'))
+
+    expect(findReusableRun(db, key())?.id).toBe(newer)
+  })
+
+  it('is null on an empty ledger', () => {
+    expect(findReusableRun(db, key())).toBeNull()
   })
 })
 

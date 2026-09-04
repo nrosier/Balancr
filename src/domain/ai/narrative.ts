@@ -36,6 +36,7 @@ import { logger } from '../../logger.ts'
 import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
 import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
 import { checkBudget, spendMonthOf } from './budget.ts'
+import { hashPayload } from './payload-hash.ts'
 import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
 import type { RedactedPayload } from './redact.ts'
 import { recordRun } from './runs.ts'
@@ -431,6 +432,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     return failed(period, locale, 'skipped', 'no_facts')
   }
   const { payload, nameForLabel } = prepared
+  const payloadHash = hashPayload(payload)
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, estimate, now)
@@ -441,6 +443,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       locale,
       period,
       payload,
+      payloadHash,
       status: 'capped',
       error: decision.reason,
       userId: options.userId ?? null,
@@ -470,6 +473,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       locale,
       period,
       payload,
+      payloadHash,
       status: 'error',
       promptId: prompt.id,
       error: message,
@@ -491,6 +495,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       locale,
       period,
       payload,
+      payloadHash,
       status: 'error',
       promptId: prompt.id,
       usage: result.usage,
@@ -508,6 +513,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     locale,
     period,
     payload,
+    payloadHash,
     status: 'ok',
     promptId: prompt.id,
     usage: result.usage,
@@ -576,6 +582,7 @@ export async function translateNarrative(
   }
 
   const payload = { period, from, to, bodyMd: source.bodyMd }
+  const payloadHash = hashPayload(payload)
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
   const decision = checkBudget(db, estimate, now)
   if (!decision.allowed) {
@@ -585,6 +592,7 @@ export async function translateNarrative(
       locale: to,
       period,
       payload,
+      payloadHash,
       status: 'capped',
       error: decision.reason,
       userId: options.userId ?? null,
@@ -612,6 +620,7 @@ export async function translateNarrative(
       locale: to,
       period,
       payload,
+      payloadHash,
       status: 'error',
       error: message,
       userId: options.userId ?? null,
@@ -630,6 +639,7 @@ export async function translateNarrative(
       locale: to,
       period,
       payload,
+      payloadHash,
       status: 'error',
       usage: result.usage,
       durationMs: result.durationMs,
@@ -645,6 +655,7 @@ export async function translateNarrative(
     locale: to,
     period,
     payload,
+    payloadHash,
     status: 'ok',
     usage: result.usage,
     durationMs: result.durationMs,

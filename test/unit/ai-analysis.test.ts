@@ -28,6 +28,7 @@ import { syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import {
   analysisInstruction,
+  estimateAnalysis,
   prepareMonth,
   runAnalysis,
 } from '../../src/domain/ai/analysis.ts'
@@ -321,6 +322,7 @@ describe('runAnalysis when it cannot ask the model', () => {
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: {},
+      payloadHash: 'unrelated-hash',
       status: 'ok',
       costMicroEurOverride: eurToMicroEur(500),
     })
@@ -386,5 +388,118 @@ describe('runAnalysis when it cannot ask the model', () => {
     expect(outcome.reason).toBe('bad_response')
     expect(outcome.findings).toHaveLength(1)
     expect(db.select().from(aiFindings).all()).toHaveLength(0)
+  })
+})
+
+describe('runAnalysis reuse (#160)', () => {
+  it('serves a second call on the same bundle for free, without asking the model again', async () => {
+    seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
+    const food = labelOf('food')
+    const recorded = fakeGemini(
+      response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
+    )
+
+    const first = await runAnalysis(db, { month: MONTH })
+    expect(first.status).toBe('ok')
+    expect(recorded.prompts).toHaveLength(1)
+
+    const second = await runAnalysis(db, { month: MONTH })
+
+    expect(recorded.prompts).toHaveLength(1)
+    expect(second.status).toBe('ok')
+    expect(second.reason).toBe('reused')
+    expect(second.costMicroEur).toBe(0)
+    expect(second.findings).toEqual(first.findings)
+
+    const row = recentRuns(db)[0]
+    expect(row?.status).toBe('reused')
+    expect(row?.reusedFromRunId).toBe(first.runId)
+  })
+
+  it('calls again when the bundle actually changed', async () => {
+    seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
+    const food = labelOf('food')
+    const recorded = fakeGemini(
+      response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
+    )
+    await runAnalysis(db, { month: MONTH })
+
+    seedTypicalMonth([overspend('food', 12_000, 'Groceries')])
+    fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
+    const second = await runAnalysis(db, { month: MONTH })
+
+    expect(recorded.prompts).toHaveLength(1)
+    expect(second.reason).not.toBe('reused')
+    expect(second.status).toBe('ok')
+  })
+
+  it('force calls the model again even though a matching run exists', async () => {
+    seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
+    const food = labelOf('food')
+    const recorded = fakeGemini(
+      response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
+    )
+    await runAnalysis(db, { month: MONTH })
+
+    const second = await runAnalysis(db, { month: MONTH, force: true })
+
+    expect(recorded.prompts).toHaveLength(2)
+    expect(second.reason).not.toBe('reused')
+    expect(second.status).toBe('ok')
+  })
+
+  it('reuses even when the month budget is exhausted — the ordering the issue exists for', async () => {
+    // The load-bearing case: a reuse is free, so it must never be turned away by
+    // a budget check that runs before the reuse lookup does.
+    seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
+    const food = labelOf('food')
+    fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
+    const first = await runAnalysis(db, { month: MONTH })
+    expect(first.status).toBe('ok')
+
+    recordRun(db, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: {},
+      payloadHash: 'unrelated-hash',
+      status: 'ok',
+      costMicroEurOverride: eurToMicroEur(500),
+    })
+
+    const recorded = fakeGemini(
+      response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
+    )
+    const second = await runAnalysis(db, { month: MONTH })
+
+    expect(recorded.prompts).toHaveLength(0)
+    expect(second.status).toBe('ok')
+    expect(second.reason).toBe('reused')
+    expect(second.costMicroEur).toBe(0)
+  })
+})
+
+describe('estimateAnalysis reuse (#160)', () => {
+  it('prices a reuse at zero and allows it, even over budget', async () => {
+    seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
+    const food = labelOf('food')
+    fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
+    await runAnalysis(db, { month: MONTH })
+
+    recordRun(db, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: {},
+      payloadHash: 'unrelated-hash',
+      status: 'ok',
+      costMicroEurOverride: eurToMicroEur(500),
+    })
+
+    const estimate = estimateAnalysis(db, { month: MONTH })
+
+    expect(estimate.allowed).toBe(true)
+    expect(estimate.estimateMicroEur).toBe(0)
+    expect(estimate.reason).toBe('reused')
   })
 })

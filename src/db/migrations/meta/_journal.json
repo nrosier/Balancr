@@ -113,6 +113,13 @@
       "when": 1788514915995,
       "tag": "0015_melted_metal_master",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1788519963789,
+      "tag": "0016_stale_legion",
+      "breakpoints": true
     }
   ]
 }

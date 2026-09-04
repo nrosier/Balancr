@@ -327,6 +327,29 @@ describe('POST /api/ai/refresh', () => {
     expect(entries[0]?.actorId).not.toBeNull()
     expect(after(entries[0])).toEqual({ requested: true })
   })
+
+  it('passes force through to the job context, and defaults it to false (#160)', async () => {
+    // `startRefresh`'s options reach `runJob` reach the context `aiJob.run` sees — this
+    // is the one place that chain is observable from outside the job itself.
+    await app.close()
+    const seen: (boolean | undefined)[] = []
+    const jobs: Job[] = REFRESHABLE.map((name) => ({
+      name,
+      schedule: { kind: 'interval', minutes: 60 } as const,
+      run: async (jobCtx) => {
+        if (name === 'ai') seen.push(jobCtx.force)
+        ran.push(name)
+      },
+    }))
+    app = await buildApp({ db: ctx.db, web: null, jobs })
+
+    await post('/api/ai/refresh', { force: true })
+    await drain()
+    await post('/api/ai/refresh')
+    await drain()
+
+    expect(seen).toEqual([true, false])
+  })
 })
 
 describe('the guards that read configuration', () => {

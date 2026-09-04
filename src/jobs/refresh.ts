@@ -199,6 +199,7 @@ export function startRefresh(
   registry: readonly Job[],
   asked: readonly Refreshable[],
   now = new Date(),
+  options: { force?: boolean } = {},
 ): RefreshStarted | RefreshBusy {
   const busy = jobsInFlight()
   if (busy.length > 0) return { busy }
@@ -213,7 +214,7 @@ export function startRefresh(
     return job === undefined ? [] : [job]
   })
 
-  void Promise.all(running.map((job) => runJob(db, job, now))).catch((error: unknown) => {
+  void Promise.all(running.map((job) => runJob(db, job, now, options))).catch((error: unknown) => {
     log.error({ err: error }, 'the refresh chain failed outside a job')
   })
 

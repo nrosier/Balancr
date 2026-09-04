@@ -123,6 +123,7 @@ const someRun = (): string =>
     model: config.GEMINI_MODEL_DEEP,
     locale: 'en',
     payload: {},
+    payloadHash: 'unrelated-hash',
     status: 'ok',
   })
 
@@ -316,6 +317,7 @@ describe('runNarrative', () => {
       model: config.GEMINI_MODEL_DEEP,
       locale: 'en',
       payload: {},
+      payloadHash: 'unrelated-hash',
       status: 'ok',
       costMicroEurOverride: eurToMicroEur(500),
     })
@@ -435,6 +437,7 @@ describe('translateNarrative', () => {
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},
+      payloadHash: 'unrelated-hash',
       status: 'ok',
       costMicroEurOverride: eurToMicroEur(500),
     })

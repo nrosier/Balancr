@@ -220,17 +220,37 @@ describe('the nightly pass', () => {
     expect(openQuestionCount(db)).toBe(1)
   })
 
-  it('pays for the narrative once, however many nights run', async () => {
-    // The whole reason the narrative is cached per (period, locale): the deep model
-    // is the expensive one, and nothing about a closed month changes.
+  it('pays for the narrative once, and the analysis once, however many nights run', async () => {
+    // The narrative is cached per (period, locale): the deep model is the
+    // expensive one, and nothing about a closed month changes. The analysis has
+    // no such cache of its own, but a second night on an unchanged month reuses
+    // the first night's answer for free rather than asking again (#160) — which
+    // is the whole reason CATCHUP_NIGHTS re-runs the same month at all.
     seedTwoMonths()
     const recorded = fakeGemini(response())
 
     await night()
     await night(new Date('2026-03-13T02:00:00Z'))
 
-    expect(recorded).toEqual({ analysis: 2, narrative: 1 })
+    expect(recorded).toEqual({ analysis: 1, narrative: 1 })
     expect(runsOf('narrative')).toHaveLength(1)
+    const analyses = runsOf('findings')
+    expect(analyses).toHaveLength(2)
+    expect(analyses[0]?.status).toBe('ok')
+    expect(analyses[1]?.status).toBe('reused')
+  })
+
+  it('force reaches both the analysis and the narrative, so neither is served free (#160)', async () => {
+    seedTwoMonths()
+    const recorded = fakeGemini(response())
+
+    await night()
+    await runJob(db, aiJob, new Date('2026-03-13T02:00:00Z'), { force: true })
+
+    // Without force this would be the reused/cached pass above: {analysis: 1, narrative: 1}.
+    expect(recorded).toEqual({ analysis: 2, narrative: 2 })
+    expect(runsOf('narrative')).toHaveLength(2)
+    expect(runsOf('findings').every((row) => row.status === 'ok')).toBe(true)
   })
 
   it('analyses the month that just ended on the first night of a new one', async () => {

@@ -148,6 +148,7 @@
     "open": "Open",
     "pending": "Awaiting review",
     "rejected": "Rejected",
+    "reused": "Reused — free",
     "running": "Running",
     "shapeMismatch": "Unexpected shape",
     "skipped": "Skipped",

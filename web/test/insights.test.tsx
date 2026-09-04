@@ -90,6 +90,7 @@ const RUNS: AiRun[] = [
     costMicroEur: 1_240,
     durationMs: 1_900,
     error: null,
+    reusedFromRunId: null,
     createdAt: '2026-09-01T04:12:00Z',
   },
   {
@@ -105,6 +106,7 @@ const RUNS: AiRun[] = [
     costMicroEur: 0,
     durationMs: null,
     error: null,
+    reusedFromRunId: null,
     createdAt: '2026-08-31T23:05:00Z',
   },
   {
@@ -120,6 +122,7 @@ const RUNS: AiRun[] = [
     costMicroEur: 0,
     durationMs: 220,
     error: 'RESOURCE_EXHAUSTED: quota exceeded for this project',
+    reusedFromRunId: null,
     createdAt: '2026-08-30T22:00:00Z',
   },
 ]

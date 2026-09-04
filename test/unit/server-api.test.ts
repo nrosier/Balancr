@@ -566,6 +566,7 @@ describe('GET /api/insights', () => {
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
+      payloadHash: 'august-hash',
       status: 'ok',
       period: MONTH,
     })
@@ -574,6 +575,7 @@ describe('GET /api/insights', () => {
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
+      payloadHash: 'july-hash',
       status: 'ok',
       period: PREVIOUS_MONTH,
     })
@@ -582,6 +584,7 @@ describe('GET /api/insights', () => {
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
+      payloadHash: 'chat-hash',
       status: 'ok',
     })
 
@@ -627,6 +630,7 @@ describe('GET /api/insights', () => {
         model: 'gemini-3.1-pro-preview',
         locale: 'en',
         payload: { categories: [] },
+        payloadHash: 'narrative-hash',
         status: 'ok',
       }),
       period: MONTH,
@@ -660,6 +664,7 @@ describe('the AI ledger', () => {
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { month: MONTH, categories: [{ label: 'c1', spentCents: 72_000 }] },
+      payloadHash: 'ok-hash',
       status: 'ok',
       usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0 },
       durationMs: 1_400,
@@ -669,6 +674,7 @@ describe('the AI ledger', () => {
       model: 'gemini-3.1-pro-preview',
       locale: 'nl',
       payload: { month: MONTH, categories: [] },
+      payloadHash: 'capped-hash',
       status: 'capped',
       error: 'the month budget is exhausted',
     })
