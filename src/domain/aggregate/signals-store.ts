@@ -13,7 +13,8 @@
  */
 import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
-import { monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
+import { categoryGuessCandidates, monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
+import type { CategoryHistorySample } from './proposal-rules.ts'
 import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
 import type { Signal } from './overspend.ts'
@@ -81,6 +82,114 @@ export function persistSignals(
   })
 
   return { signals: rows.length }
+}
+
+export interface CategoryGuessCandidate {
+  transactionId: string
+  payeeId: string
+  payeeName: string | null
+  amountCents: number
+  date: string
+  history: readonly CategoryHistorySample[]
+}
+
+/**
+ * Below-threshold categorisation candidates for a month (#216) — wholesale
+ * replace scoped to `month`, same reasoning as `persistSignals`: this runs once
+ * per judged month, and a global delete would drop every other month's rows on
+ * each pass.
+ */
+export function persistCategoryGuessCandidates(
+  db: Db,
+  month: string,
+  candidates: readonly CategoryGuessCandidate[],
+): void {
+  const computedAt = new Date()
+  const rows = candidates.map((candidate) => ({
+    month,
+    transactionId: candidate.transactionId,
+    payeeId: candidate.payeeId,
+    payeeName: candidate.payeeName,
+    amountCents: candidate.amountCents,
+    date: candidate.date,
+    historyJson: JSON.stringify(candidate.history),
+    computedAt,
+  }))
+
+  db.transaction((tx) => {
+    tx.delete(categoryGuessCandidates).where(eq(categoryGuessCandidates.month, month)).run()
+    if (rows.length > 0) tx.insert(categoryGuessCandidates).values(rows).run()
+  })
+}
+
+function toCandidate(row: typeof categoryGuessCandidates.$inferSelect): CategoryGuessCandidate {
+  return {
+    transactionId: row.transactionId,
+    payeeId: row.payeeId,
+    payeeName: row.payeeName,
+    amountCents: row.amountCents,
+    date: row.date,
+    history: toHistory(row.historyJson),
+  }
+}
+
+/** The stored candidates for a month, in insertion order. */
+export function loadCategoryGuessCandidates(db: Db, month: string): CategoryGuessCandidate[] {
+  const rows = db
+    .select()
+    .from(categoryGuessCandidates)
+    .where(eq(categoryGuessCandidates.month, month))
+    .all()
+
+  return rows.map(toCandidate)
+}
+
+/**
+ * The stored candidates for a set of transaction ids, regardless of which
+ * month cached them (#216).
+ *
+ * A guess batch is selected on the Insights page by transaction, and that
+ * selection can span more than one judged month — `transactionId` is Actual's
+ * own id and is unique on its own, so this looks it up directly rather than
+ * asking the caller to also know which month each id belongs to.
+ */
+export function loadCategoryGuessCandidatesByIds(
+  db: Db,
+  ids: readonly string[],
+): CategoryGuessCandidate[] {
+  if (ids.length === 0) return []
+
+  const rows = db
+    .select()
+    .from(categoryGuessCandidates)
+    .where(inArray(categoryGuessCandidates.transactionId, [...ids]))
+    .all()
+
+  return rows.map(toCandidate)
+}
+
+/** A candidate whose history can't be read back is treated as having none, not as a crash. */
+function toHistory(json: string): CategoryHistorySample[] {
+  let raw: unknown
+  try {
+    raw = JSON.parse(json)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(raw)) return []
+
+  const history: CategoryHistorySample[] = []
+  for (const entry of raw) {
+    if (
+      entry !== null &&
+      typeof entry === 'object' &&
+      typeof (entry as { categoryId?: unknown }).categoryId === 'string' &&
+      typeof (entry as { count?: unknown }).count === 'number'
+    ) {
+      history.push({ categoryId: (entry as { categoryId: string }).categoryId, count: (entry as { count: number }).count })
+    }
+  }
+  return history
 }
 
 /** Numbers only, so nothing that was stored as JSON can arrive as a string. */

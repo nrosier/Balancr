@@ -51,8 +51,13 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
+import { loadCategoryMeta } from '../../../domain/aggregate/facts.ts'
 import { loadMonthTotals, storedMonths } from '../../../domain/aggregate/month-store.ts'
-import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import {
+  loadCategoryGuessCandidates,
+  loadSignals,
+  type CategoryGuessCandidate,
+} from '../../../domain/aggregate/signals-store.ts'
 import { aiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
@@ -65,6 +70,7 @@ import {
   insightsSchema,
   type AiRun,
   type AiRunPayload,
+  type CategoryGuessCandidateWire,
   type Insights,
 } from './schemas.ts'
 import { freshness } from './freshness.ts'
@@ -100,6 +106,8 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
     factsChangedAt: factsChangedAt?.toISOString() ?? null,
     months: storedMonths(db),
     signals: month === null ? [] : loadSignals(db, month),
+    categoryGuessCandidates:
+      month === null ? [] : wireCandidates(loadCategoryGuessCandidates(db, month), loadCategoryMeta(db)),
     narrative:
       narrative === null
         ? null
@@ -153,6 +161,28 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
     // whatever is on screen rather than under nothing.
     runs: (month === null ? recentRuns(db, 20) : recentRuns(db, 20, month)).map(wireRun),
   })
+}
+
+/**
+ * A cached candidate, with its history's category ids resolved to the names
+ * they had last sync — the model itself never sees a name, only the opaque
+ * label `redactCategoryGuessBatch` builds from the same id.
+ */
+function wireCandidates(
+  candidates: readonly CategoryGuessCandidate[],
+  categoryMetaById: Map<string, { nameSnapshot: string }>,
+): CategoryGuessCandidateWire[] {
+  return candidates.map((candidate) => ({
+    transactionId: candidate.transactionId,
+    payeeName: candidate.payeeName,
+    amountCents: candidate.amountCents,
+    date: candidate.date,
+    history: candidate.history.map((sample) => ({
+      categoryId: sample.categoryId,
+      categoryName: categoryMetaById.get(sample.categoryId)?.nameSnapshot ?? sample.categoryId,
+      count: sample.count,
+    })),
+  }))
 }
 
 /** One ledger row, minus `payloadJson` and `promptId`. */

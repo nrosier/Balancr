@@ -25,6 +25,24 @@
     "suggestion": "Vermoeden: {{guess}}",
     "title": "Help de assistent begrijpen"
   },
+  "guess": {
+    "cancel": "Annuleren",
+    "confirm": "{{cost}} uitgeven",
+    "estimate": "Prijs opvragen ({{count}} geselecteerd)",
+    "estimating": "Prijs opvragen…",
+    "guessing": "Bezig met raden…",
+    "hint": "Onder de drempel voor een automatisch vermoeden — te weinig geschiedenis, of te gemengd om zeker te zijn. Selecteer de verrichtingen die het waard zijn om een model te vragen; de prijs staat er voordat er iets wordt uitgegeven.",
+    "historyEntry": "{{category}} × {{count}}",
+    "none": "Er wacht niets op een vermoeden.",
+    "ownerOnly": "Enkel de eigenaar kan om een vermoeden vragen.",
+    "price": "Een vermoeden voor {{count}} kost ongeveer {{cost}}.",
+    "resultOk": "Geraden — wacht hieronder op een beslissing.",
+    "select": "Selecteer {{target}}",
+    "selectAll": "Alles selecteren",
+    "start": "Raden",
+    "title": "Onder de zekerheidsdrempel",
+    "unnamedPayee": "een naamloze tegenpartij"
+  },
   "findings": {
     "above_baseline": "{{category}} ligt {{delta}} boven je 12-maandsgemiddelde van {{baseline}}.",
     "above_benchmark": "{{group}} ligt {{delta}} boven de Belgische referentie van {{benchmark}} voor die groep.",

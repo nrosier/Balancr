@@ -420,6 +420,8 @@ const uncategorisedTransactionRow = z.object({
   id: z.string(),
   payee: z.string().nullable(),
   payeeName: z.string().nullable(),
+  amount: cents,
+  date: z.string(),
 })
 
 export interface UncategorisedTransaction {
@@ -427,6 +429,9 @@ export interface UncategorisedTransaction {
   payeeId: string | null
   /** For the review card — snapshotted here rather than looked up again at apply time. */
   payeeName: string | null
+  /** Signed, as Actual stores it: negative for expenses. Needed by #216's candidate cache. */
+  amountCents: number
+  date: string
 }
 
 /**
@@ -452,9 +457,17 @@ export function fetchUncategorisedTransactions(
           starting_balance_flag: false,
           'account.offbudget': false,
         })
-        .select(['id', 'payee', { payeeName: 'payee.name' }]),
+        .select(['id', 'payee', { payeeName: 'payee.name' }, 'amount', 'date']),
     uncategorisedTransactionRow,
-  ).then((rows) => rows.map((row) => ({ id: row.id, payeeId: row.payee, payeeName: row.payeeName })))
+  ).then((rows) =>
+    rows.map((row) => ({
+      id: row.id,
+      payeeId: row.payee,
+      payeeName: row.payeeName,
+      amountCents: row.amount,
+      date: row.date,
+    })),
+  )
 }
 
 /**
