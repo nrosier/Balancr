@@ -96,6 +96,9 @@
       "reads": "Counts {{weight}}, {{share}} of the time.",
       "readsShare": "Here {{share}} of the time.",
       "remove": "Remove",
+      "selfLabel": "Your name",
+      "selfLabelHint": "Shown below and in the roster's own year note instead of \"You\". Never leaves the machine, like the names above.",
+      "selfLabelPlaceholder": "You",
       "sharedCost": "Your share of shared costs",
       "sharedCostDerived_one": "Empty, so it is derived from the {{value}} member who is here part of the time: {{share}}.",
       "sharedCostDerived_other": "Empty, so it is derived from the {{value}} members who are here part of the time: {{share}}.",
@@ -104,7 +107,7 @@
       "sharedCostNotANumber": "A whole number of basis points up to 10000, or empty to derive it.",
       "sharedCostReads": "{{share}} of every shared cost counts as yours.",
       "title": "Household",
-      "you": "You are always the first person on the scale, so you are not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
+      "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
     },
     "mapping": {
       "caption": "Each category's division, the reference line it feeds, and whether it is shared",
