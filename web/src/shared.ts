@@ -83,6 +83,8 @@ export type {
   BenchmarkSetting,
   BenchmarkWire,
   Budget,
+  Changelog,
+  ChangelogEntry,
   CustodyWire,
   DriftLine,
   Freshness,

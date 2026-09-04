@@ -1429,6 +1429,37 @@ export const refreshAcceptedSchema = z.object({
 })
 
 /**
+ * One `## [X.Y.Z] — <date>` section of `CHANGELOG.md`, rendered for the dialog
+ * the version number in the header opens.
+ *
+ * `html` is produced by the same sanitiser the AI narrative uses
+ * (`util/markdown.ts`): escape everything first, emit only a fixed tag list with
+ * no attributes. The changelog is written by a person rather than a model, but a
+ * dialog injecting raw markdown into the page wants that property regardless of
+ * who wrote the source — and it means an issue reference like `[#203](...)`
+ * collapses to plain text the same way it does everywhere else this renderer is
+ * used. `releaseUrl` is built from `version` rather than parsed out of the
+ * markdown, so it survives that collapse.
+ */
+export const changelogEntrySchema = z.object({
+  version: z.string(),
+  date: z.string(),
+  html: z.string(),
+  releaseUrl: z.string(),
+})
+
+/**
+ * `available` is false when `CHANGELOG.md` was not shipped with this build — an
+ * image built before this endpoint existed, or a dev checkout with a stale
+ * `dist/`. The dialog reads that as "no changelog shipped with this build"
+ * rather than treating an empty list as a repository with no history.
+ */
+export const changelogSchema = z.object({
+  available: z.boolean(),
+  entries: z.array(changelogEntrySchema),
+})
+
+/**
  * The two shapes that appear inside more than one response, named because the
  * client renders each with one component. Structurally identical to the interfaces
  * in `freshness.ts` and `hygiene.ts`, which is the point: those describe what the
@@ -1469,3 +1500,5 @@ export type AiEstimate = z.infer<typeof aiEstimateSchema>
 export type AiNarrativeRun = z.infer<typeof aiNarrativeRunSchema>
 export type AiDryRun = z.infer<typeof aiDryRunSchema>
 export type RefreshAccepted = z.infer<typeof refreshAcceptedSchema>
+export type ChangelogEntry = z.infer<typeof changelogEntrySchema>
+export type Changelog = z.infer<typeof changelogSchema>

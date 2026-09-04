@@ -44,6 +44,14 @@
     "totp": "Authenticator code",
     "username": "Username"
   },
+  "changelog": {
+    "close": "Close",
+    "empty": "This build shipped without its changelog.",
+    "englishOnly": "These notes are written in English only.",
+    "loadError": "The changelog could not be loaded.",
+    "title": "What's changed",
+    "viewOnGithub": "View v{{version}} on GitHub"
+  },
   "empty": {
     "noData": "No data yet",
     "noDataHint": "Run a sync to pull in your budget and portfolio.",

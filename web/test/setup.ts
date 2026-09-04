@@ -32,6 +32,14 @@
  * the top on every navigation — so without a no-op every routing test would print an
  * error it is not about.
  *
+ *  - **`<dialog>`'s modal methods.** jsdom 30 reflects the `open` attribute but does
+ *    not implement `showModal`/`close` at all — not even as a "not implemented"
+ *    stub — so `shell/ChangelogDialog.tsx`'s own `showModal()` call throws outright.
+ *    The stub sets `open` and, the other direction, fires the same `close` event a
+ *    real browser does — including on Escape, which real dialogs close on natively
+ *    and jsdom does not — so a test can dispatch a `keydown` and assert on the
+ *    component's `onClose`, exactly as it would against a browser.
+ *
  * `matchMedia` is the last thing jsdom lacks and is deliberately *not* stubbed here.
  * `theme.ts` treats its absence as "the machine has no opinion", which resolves to
  * light — a real state worth being the default in tests. The tests that care about a
@@ -93,6 +101,23 @@ HTMLCanvasElement.prototype.getContext = ((): unknown => ({
 })) as unknown as typeof HTMLCanvasElement.prototype.getContext
 
 globalThis.scrollTo = () => {}
+
+HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement): void {
+  this.setAttribute('open', '')
+  const onKeydown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') this.close()
+  }
+  this.addEventListener('keydown', onKeydown)
+  this.addEventListener('close', () => this.removeEventListener('keydown', onKeydown), {
+    once: true,
+  })
+}
+
+HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement): void {
+  if (!this.open) return
+  this.removeAttribute('open')
+  this.dispatchEvent(new Event('close'))
+}
 
 // Testing Library's automatic cleanup only registers itself when the global test
 // hooks are enabled, and they are not here — every test file imports its own.

@@ -44,6 +44,14 @@
     "totp": "Authenticatorcode",
     "username": "Gebruikersnaam"
   },
+  "changelog": {
+    "close": "Sluiten",
+    "empty": "Deze build is verschenen zonder wijzigingslog.",
+    "englishOnly": "Deze aantekeningen zijn alleen in het Engels beschikbaar.",
+    "loadError": "Het wijzigingslog kon niet worden geladen.",
+    "title": "Wat is er veranderd",
+    "viewOnGithub": "Bekijk v{{version}} op GitHub"
+  },
   "empty": {
     "noData": "Nog geen gegevens",
     "noDataHint": "Voer een synchronisatie uit om je budget en portefeuille op te halen.",
