@@ -26,7 +26,7 @@ import { z } from 'zod'
 import { toGeminiSchema } from './json-schema.ts'
 import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from '../../domain/ai/codes.ts'
 import type { ClarificationCode, FindingCode, Severity } from '../../domain/ai/codes.ts'
-import type { RedactedPayload, RedactedSignal } from '../../domain/ai/redact.ts'
+import type { RedactedGuessBatch, RedactedPayload, RedactedSignal } from '../../domain/ai/redact.ts'
 
 /**
  * The label a household-level finding carries.
@@ -271,6 +271,113 @@ export function groundResponse(response: AnalysisResponse, payload: RedactedPayl
       label: clarification.label,
       guess: guess.slice(0, GUESS_MAX_CHARS),
     })
+  }
+
+  return out
+}
+
+// ---------------------------------------------------------------------------
+//  #216 — a category guess: one label per candidate, nothing else
+// ---------------------------------------------------------------------------
+
+/** One candidate's guessed category, by the opaque labels it was sent. */
+export const guessSelectionSchema = z.object({
+  clientId: z.string().min(1).max(16),
+  categoryLabel: z.string().min(1).max(16),
+})
+
+export const guessResponseSchema = z.object({
+  guesses: z.array(guessSelectionSchema).max(50),
+})
+
+export type GuessSelection = z.infer<typeof guessSelectionSchema>
+export type GuessResponse = z.infer<typeof guessResponseSchema>
+
+/** Same two-layer contract as `analysisJsonSchema` — see its own comment. */
+export function guessJsonSchema(): unknown {
+  return toGeminiSchema(z.toJSONSchema(guessResponseSchema, { target: 'draft-7' }))
+}
+
+/** Model text → a validated guess response, or an error. Same leniency as `parseAnalysisResponse`. */
+export function parseGuessResponse(text: string): GuessResponse {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+
+  let raw: unknown
+  try {
+    raw = JSON.parse(trimmed)
+  } catch (error) {
+    throw new GeminiResponseError(
+      `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
+      text,
+    )
+  }
+
+  const result = guessResponseSchema.safeParse(raw)
+  if (!result.success) {
+    throw new GeminiResponseError(
+      `model response did not match the category-guess schema:\n${z.prettifyError(result.error)}`,
+      text,
+    )
+  }
+  return result.data
+}
+
+/** A guess that survived grounding: an opaque candidate paired with an opaque category. */
+export interface GroundedGuess {
+  clientId: string
+  categoryLabel: string
+}
+
+/** Why a returned guess was thrown away. Recorded, so a hallucinated guess is visible. */
+export interface DroppedGuess {
+  clientId: string
+  categoryLabel: string
+  reason: 'duplicate' | 'unknown_client' | 'not_offered'
+}
+
+export interface GroundedGuessBatch {
+  guesses: GroundedGuess[]
+  dropped: DroppedGuess[]
+}
+
+/**
+ * A parsed guess response → only the guesses the batch actually supports.
+ *
+ * The wire schema restricts `categoryLabel` to a short string, nothing more — it
+ * has no way to know which labels belong to which candidate. This is the second
+ * layer, exactly as `groundResponse` is for findings: a `categoryLabel` the model
+ * invented, or borrowed from a *different* candidate's own history, is dropped
+ * rather than turned into a proposal. Only a label that candidate's own payload
+ * actually offered survives.
+ */
+export function groundGuessResponse(
+  response: GuessResponse,
+  payload: RedactedGuessBatch,
+): GroundedGuessBatch {
+  const offeredLabelsFor = new Map<string, ReadonlySet<string>>()
+  for (const candidate of payload.candidates) {
+    offeredLabelsFor.set(candidate.clientId, new Set(candidate.history.map((entry) => entry.label)))
+  }
+
+  const out: GroundedGuessBatch = { guesses: [], dropped: [] }
+  const seen = new Set<string>()
+
+  for (const guess of response.guesses) {
+    if (seen.has(guess.clientId)) {
+      out.dropped.push({ ...guess, reason: 'duplicate' })
+      continue
+    }
+    const offered = offeredLabelsFor.get(guess.clientId)
+    if (offered === undefined) {
+      out.dropped.push({ ...guess, reason: 'unknown_client' })
+      continue
+    }
+    if (!offered.has(guess.categoryLabel)) {
+      out.dropped.push({ ...guess, reason: 'not_offered' })
+      continue
+    }
+    seen.add(guess.clientId)
+    out.guesses.push(guess)
   }
 
   return out

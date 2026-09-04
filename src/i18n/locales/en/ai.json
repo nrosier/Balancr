@@ -25,6 +25,24 @@
     "suggestion": "Best guess: {{guess}}",
     "title": "Help the assistant understand"
   },
+  "guess": {
+    "cancel": "Cancel",
+    "confirm": "Spend {{cost}}",
+    "estimate": "Estimate ({{count}} selected)",
+    "estimating": "Estimating…",
+    "guessing": "Guessing…",
+    "hint": "Below the bar for an automatic guess — too little history, or too mixed to be sure. Select the ones worth asking a model about; the price is shown before anything is spent.",
+    "historyEntry": "{{category}} × {{count}}",
+    "none": "Nothing is waiting on a guess.",
+    "ownerOnly": "Only the owner can ask for a guess.",
+    "price": "Guessing {{count}} would cost about {{cost}}.",
+    "resultOk": "Guessed — now waiting for a decision below.",
+    "select": "Select {{target}}",
+    "selectAll": "Select all",
+    "start": "Guess",
+    "title": "Below the confidence bar",
+    "unnamedPayee": "an unnamed payee"
+  },
   "findings": {
     "above_baseline": "{{category}} is {{delta}} above your 12-month norm of {{baseline}}.",
     "above_benchmark": "{{group}} is {{delta}} above the Belgian reference of {{benchmark}} for that group.",

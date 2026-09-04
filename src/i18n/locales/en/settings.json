@@ -40,7 +40,10 @@
       "call_failed": "The model could not be reached.",
       "estimate_exceeds_remaining": "A run would cost more than this month has left.",
       "month_budget_exceeded": "This month's budget is already spent.",
+      "no_candidate": "This transaction was never cached as a guess candidate.",
+      "no_candidates": "None of the selected transactions is a cached guess candidate.",
       "no_facts": "That month has no aggregated figures to analyse.",
+      "not_confident": "The model was not confident enough about this one to guess.",
       "ok": "Completed.",
       "reused": "Answered from a past run with nothing new to check — no charge."
     },

@@ -17,6 +17,7 @@ import {
   generateCategoryProposals,
 } from '../../src/domain/ai/proposal-generators.ts'
 import { decodeBudgetTarget, pendingProposals } from '../../src/domain/ai/proposals.ts'
+import { loadCategoryGuessCandidates } from '../../src/domain/aggregate/signals-store.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
@@ -71,7 +72,7 @@ function signal(overrides: Partial<Signal> = {}): Signal {
 describe('generateCategoryProposals', () => {
   it('proposes the majority category for a confident payee match', async () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
-      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt' },
+      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
     vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
       { categoryId: 'food' },
@@ -97,7 +98,7 @@ describe('generateCategoryProposals', () => {
 
   it('skips a payee match below the confidence bar rather than guessing', async () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
-      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt' },
+      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
     vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
       { categoryId: 'food' },
@@ -111,11 +112,69 @@ describe('generateCategoryProposals', () => {
     expect(fetchTransaction).not.toHaveBeenCalled()
   })
 
+  it('caches a below-threshold match as a #216 candidate instead of dropping it', async () => {
+    vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
+      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
+    ])
+    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
+      { categoryId: 'food' },
+      { categoryId: 'other' },
+    ])
+
+    await generateCategoryProposals(db, MONTH)
+
+    const candidates = loadCategoryGuessCandidates(db, MONTH)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      transactionId: 'txn-1',
+      payeeId: 'payee-1',
+      payeeName: 'Colruyt',
+      amountCents: -4200,
+      date: '2026-03-05',
+    })
+    expect(candidates[0]!.history).toEqual(
+      expect.arrayContaining([
+        { categoryId: 'food', count: 1 },
+        { categoryId: 'other', count: 1 },
+      ]),
+    )
+  })
+
+  it('does not cache a candidate for a payee with no categorised history at all', async () => {
+    vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
+      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
+    ])
+    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([{ categoryId: null }])
+
+    await generateCategoryProposals(db, MONTH)
+
+    expect(loadCategoryGuessCandidates(db, MONTH)).toHaveLength(0)
+  })
+
+  it("re-running for one month leaves another month's cached candidates alone", async () => {
+    vi.mocked(fetchUncategorisedTransactions).mockResolvedValueOnce([
+      { id: 'txn-old', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-02-05' },
+    ])
+    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
+      { categoryId: 'food' },
+      { categoryId: 'other' },
+    ])
+    await generateCategoryProposals(db, '2026-02')
+
+    vi.mocked(fetchUncategorisedTransactions).mockResolvedValueOnce([
+      { id: 'txn-new', payeeId: 'payee-2', payeeName: 'Delhaize', amountCents: -1500, date: '2026-03-05' },
+    ])
+    await generateCategoryProposals(db, MONTH)
+
+    expect(loadCategoryGuessCandidates(db, '2026-02')).toHaveLength(1)
+    expect(loadCategoryGuessCandidates(db, MONTH)).toHaveLength(1)
+  })
+
   it('skips a transaction already carrying the suggested category', async () => {
     // Confident history, but the transaction turns out already set — the
     // no-op diff `createProposal` refuses, not a bug in the generator.
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
-      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt' },
+      { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
     vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
       { categoryId: 'food' },
@@ -135,7 +194,7 @@ describe('generateCategoryProposals', () => {
 
   it('skips a transaction with no payee to match against', async () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
-      { id: 'txn-1', payeeId: null, payeeName: null },
+      { id: 'txn-1', payeeId: null, payeeName: null, amountCents: -4200, date: '2026-03-05' },
     ])
 
     const created = await generateCategoryProposals(db, MONTH)

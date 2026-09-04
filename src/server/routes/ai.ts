@@ -1,5 +1,5 @@
 /**
- * The four endpoints that can spend money, and the only ones in the HTTP layer that
+ * The six endpoints that can spend money, and the only ones in the HTTP layer that
  * reach Gemini at all.
  *
  * Everything else Balancr serves comes out of SQLite, written by the nightly job —
@@ -38,12 +38,20 @@
  * time claim, the audit entry, the `202` — it gets by going through the same
  * `startRefresh`, so there is one implementation of "a job someone started by hand"
  * and two doors to it with different locks.
+ *
+ * `POST /api/ai/category-guess/estimate` and `POST /api/ai/category-guess` are the
+ * fifth and sixth, added with #216 to close the gap `generateCategoryProposals`
+ * deliberately left when #45 shipped: a payee match below the confidence bar is
+ * cached as a candidate instead of guessed automatically, and these are the only
+ * way one becomes a real proposal. Same six-way fencing, plus a body that names
+ * which cached candidates to guess for rather than a month.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
+import { estimateCategoryGuess, runCategoryGuess } from '../../domain/ai/category-guess.ts'
 import { estimateNarrative, monthHasEnded, runNarrative } from '../../domain/ai/narrative.ts'
 import {
   aiAvailability,
@@ -62,11 +70,15 @@ import {
   aiDryRunSchema,
   aiEstimateSchema,
   aiNarrativeRunSchema,
+  categoryGuessEstimateSchema,
+  categoryGuessRunSchema,
   monthKey,
   refreshAcceptedSchema,
   type AiDryRun,
   type AiEstimate,
   type AiNarrativeRun,
+  type CategoryGuessEstimateWire,
+  type CategoryGuessRunWire,
   type RefreshAccepted,
 } from './api/schemas.ts'
 
@@ -97,6 +109,17 @@ const aiRefreshRequest = z.strictObject({
    * same answer again rather than that being silently possible (#160).
    */
   force: z.boolean().optional(),
+})
+
+/**
+ * Which cached candidates to guess for, mirroring `applyBatchRequest`
+ * (`proposals.ts:49`) rather than a comma-joined query param — an array of
+ * ids belongs in a body, and this keeps the pair consistent with the one
+ * existing ids-batch convention in this codebase. The same cap as a redacted
+ * response's own `RESPONSE_LIMITS`-style ceiling (`guessResponseSchema.max(50)`).
+ */
+const categoryGuessRequest = z.strictObject({
+  ids: z.array(z.string().min(1)).min(1).max(50),
 })
 
 const narrativeRequest = z.strictObject({
@@ -388,6 +411,46 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
         requested: outcome.requested,
         startedAt: outcome.startedAt.toISOString(),
       })
+    },
+  )
+
+  /**
+   * What a guess on this selection would cost, having spent nothing to find
+   * out (#216). Same shape as `GET /api/ai/estimate`, but priced by the
+   * selection rather than by a month, so it is a `POST` — a body of up to 50
+   * ids belongs there, not in a query string.
+   */
+  app.post(
+    '/api/ai/category-guess/estimate',
+    { ...aiRateLimit() },
+    async (request: FastifyRequest): Promise<CategoryGuessEstimateWire> => {
+      const user = requireOwner(request)
+      requireAiAvailable(aiAvailability())
+      const body = parseBody(categoryGuessRequest, request.body)
+
+      const estimate = await estimateCategoryGuess(db, { ids: body.ids, locale: user.locale })
+      return categoryGuessEstimateSchema.parse(estimate)
+    },
+  )
+
+  /**
+   * Turns however many of the selected candidates the model was confident
+   * about into real `transaction_category.set` proposals (#216).
+   *
+   * `results` is one entry per id in the request, the same per-id contract as
+   * `POST /api/proposals/apply-batch` — a stale or already-categorised
+   * candidate does not fail the rest of the batch.
+   */
+  app.post(
+    '/api/ai/category-guess',
+    { ...aiRateLimit() },
+    async (request: FastifyRequest): Promise<CategoryGuessRunWire> => {
+      const user = requireOwner(request)
+      requireAiAvailable(aiAvailability())
+      const body = parseBody(categoryGuessRequest, request.body)
+
+      const outcome = await runCategoryGuess(db, { ids: body.ids, locale: user.locale, userId: user.id })
+      return categoryGuessRunSchema.parse(outcome)
     },
   )
 }
