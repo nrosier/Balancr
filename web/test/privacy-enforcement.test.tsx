@@ -20,13 +20,14 @@
  *    either a tooltip string or a `summary`/aria-label string (screen-reader-only text
  *    nothing renders visually), neither of which `<Money>` can wrap — same reasoning as
  *    the `Budget.tsx` entry below.
- *  - `insights/Narrative.tsx`, `insights/Pending.tsx` and `pages/Insights.tsx` — all call
- *    the formatter only to build a `{{cost}}`/`{{spent}}`/`{{budget}}` value for a
- *    translated sentence, which `t()` returns as a plain string i18next has already
- *    assembled — there is no sub-string DOM node left to wrap. Each wraps the *whole
- *    rendered sentence* in `<Private>` at the call site instead (verified by reading each
- *    site, not by this scan), which blurs the figure along with the words around it.
- *    `Narrative.tsx`'s and `Pending.tsx`'s confirm-button labels are the calls left
+ *  - `insights/Narrative.tsx`, `insights/Pending.tsx`, `insights/BudgetNudge.tsx` and
+ *    `pages/Insights.tsx` — all call the formatter only to build a
+ *    `{{cost}}`/`{{spent}}`/`{{budget}}` value for a translated sentence, which `t()`
+ *    returns as a plain string i18next has already assembled — there is no sub-string
+ *    DOM node left to wrap. Each wraps the *whole rendered sentence* in `<Private>` at
+ *    the call site instead (verified by reading each site, not by this scan), which
+ *    blurs the figure along with the words around it. `Narrative.tsx`'s,
+ *    `Pending.tsx`'s and `BudgetNudge.tsx`'s confirm-button labels are the calls left
  *    genuinely unwrapped: each repeats a cost already blurred one line above it, moments
  *    before the reader presses the button that spends it, and a nested focusable span
  *    inside a `<button>` would double the tab stop. `Pending.tsx`'s transaction-amount
@@ -56,6 +57,7 @@ const ALLOWED = new Set(
     'charts/CategoryTrend.tsx',
     'insights/Narrative.tsx',
     'insights/Pending.tsx',
+    'insights/BudgetNudge.tsx',
     'settings/Spend.tsx',
     'settings/Prompts.tsx',
     'pages/Insights.tsx',

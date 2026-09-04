@@ -31,6 +31,7 @@ import {
   encodeBudgetTarget,
   expireProposals,
   loadProposal,
+  pendingBudgetProposals,
   pendingProposals,
   proposalHistory,
   ProposalError,
@@ -511,6 +512,30 @@ describe('budget_amount.set', () => {
     // The next sync refreshes this; patching it here would be a second source
     // of truth for the same number.
     expect(budgetedCentsOf('food', MONTH)).toBe(12_000)
+  })
+
+  it('pendingBudgetProposals lists only that month\'s pending budget_amount.set rows, oldest first', async () => {
+    const other = await createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: encodeBudgetTarget('rent', MONTH),
+      payload: { amountCents: 15_000 },
+      runId,
+      now: new Date('2026-03-10T09:00:00Z'),
+    })
+    const first = await proposeBudgetChange(15_000, { now: new Date('2026-03-11T09:00:00Z') })
+    // A different month, and a different proposal type, must both be excluded.
+    seedMonth(db, '2026-04', { facts: [fact('2026-04', 'food')] })
+    await createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: encodeBudgetTarget('food', '2026-04'),
+      payload: { amountCents: 16_000 },
+      runId,
+    })
+    await propose({ nature: 'variable' })
+
+    const rows = pendingBudgetProposals(db, MONTH)
+
+    expect(rows.map((row) => row.id)).toEqual([other.id, first.id])
   })
 })
 

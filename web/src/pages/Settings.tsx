@@ -62,6 +62,7 @@ import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsPanel } from '../settings/Thresholds.tsx'
+import { UpcomingPanel } from '../settings/Upcoming.tsx'
 import { useSettings } from '../settings/state.ts'
 import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -162,7 +163,12 @@ export function Settings(): ReactNode {
                 </>
               )}
 
-              {section === 'spend' && <SpendPanel {...props} />}
+              {section === 'spend' && (
+                <>
+                  <SpendPanel {...props} />
+                  <UpcomingPanel {...props} />
+                </>
+              )}
             </>
           )
         }}

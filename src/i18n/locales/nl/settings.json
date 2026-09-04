@@ -63,6 +63,13 @@
     "spend": "{{spent}} van {{budget}} deze maand",
     "spent": "Uitgegeven",
     "title": "AI-gebruik",
+    "upcomingNote": {
+      "count": "{{count}}/{{max}} tekens",
+      "hint": "Een doorlopende notitie over wat er nog aankomt — een tandartsrekening, een jaarlijkse verlenging, alles waar het lopend gemiddelde geen weet van kan hebben. De budgetbijstelling hieronder kan deze notitie lezen naast de voorgestelde bedragen voor volgende maand.",
+      "label": "Wat er nog aankomt",
+      "placeholder": "bv. Tandartsafspraak in oktober, ongeveer €150. Autoverzekering wordt in november verlengd.",
+      "title": "Wat er nog aankomt"
+    },
     "tokens": {
       "cached": "Uit cache",
       "input": "In",

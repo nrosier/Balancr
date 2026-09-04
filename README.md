@@ -966,7 +966,18 @@ own id, and a guess outside that specific set is grounded away rather than
 trusted because the schema happened to allow it. What comes back is not a new
 kind of decision: it is the same `transaction_category.set` proposal #45
 already built a queue and an apply path for, so accepting one looks exactly
-like accepting a deterministic guess. Behind
+like accepting a deterministic guess. A sixth rider gave that same trailing-average
+proposal something a purely mechanical average can never see coming:
+[#217](https://github.com/nrosier/Balancr/issues/217) adds one running,
+free-text "what's coming up" note on the settings page — a dentist bill, a
+renewal, anything the average couldn't know about — and an optional,
+owner-priced pass reads it alongside #45's own suggestions for the month and
+nudges only the category the note actually speaks to, within three times its
+suggested amount either way; everything else is left exactly as the trailing
+average proposed. An empty note skips the model call entirely, at zero cost,
+and a nudged amount replaces the pending proposal it adjusts rather than
+sitting beside it, so approving one still looks like approving a single
+`budget_amount.set` suggestion. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,

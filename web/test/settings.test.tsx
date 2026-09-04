@@ -313,6 +313,7 @@ const PAYLOAD: Payload = {
         costMicroEur: 4_200_000,
       },
     ],
+    upcomingNote: '',
   },
 }
 
@@ -1850,6 +1851,60 @@ describe('AI spend', () => {
     // No price on a run that cannot start.
     expect(screen.queryByText(/would cost about/)).toBeNull()
     expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
+  })
+})
+
+describe('the upcoming note', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/spend')
+
+  const noteBox = (): HTMLTextAreaElement => screen.getByLabelText("What's coming up") as HTMLTextAreaElement
+
+  const saveNote = (): HTMLButtonElement =>
+    within(noteBox().closest('form') ?? document.body).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  it('reads the stored note into the box', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        ai: { ...PAYLOAD.ai, upcomingNote: 'Dentist bill in March, about 150 euros.' },
+      } satisfies Payload),
+    })
+
+    expect(noteBox().value).toBe('Dentist bill in March, about 150 euros.')
+  })
+
+  it('has nothing to save until the box is touched', async () => {
+    await open(READS)
+
+    expect(saveNote().disabled).toBe(true)
+  })
+
+  it('sends the typed note, trimmed', async () => {
+    const calls = await open({ ...READS, '/api/settings/upcoming-note': json(PAYLOAD) })
+
+    fireEvent.change(noteBox(), { target: { value: '  Dentist bill in March.  ' } })
+    expect(saveNote().disabled).toBe(false)
+    fireEvent.click(saveNote())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/upcoming-note', method: 'PATCH', body: { text: 'Dentist bill in March.' } },
+      ])
+    })
+  })
+
+  it('is disabled for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      } satisfies Payload),
+    })
+
+    expect(noteBox().disabled).toBe(true)
+    expect(saveNote().disabled).toBe(true)
   })
 })
 

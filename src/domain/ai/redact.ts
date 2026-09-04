@@ -730,3 +730,95 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'severity',
   'metrics',
 ]
+
+// ---------------------------------------------------------------------------
+//  #217 — a pending budget-amount candidate, redacted for a nudge
+// ---------------------------------------------------------------------------
+
+/** One pending `budget_amount.set` proposal's own numbers, before anything is taken away. */
+export interface NudgeCandidateInput {
+  categoryId: string
+  /** #45's own trailing-average suggestion — what the nudge may adjust. */
+  suggestedCents: number
+  /** The category's current budgeted amount, for context. */
+  currentCents: number
+  /** Null when the category has no baseline yet. */
+  baselineCents: number | null
+}
+
+export interface RedactedNudgeCandidate {
+  /** `c1`…`cN`, scoped to this one batch — never the same namespace as a `redact()` call. */
+  label: string
+  /** Omitted entirely when the category is sensitive. */
+  name?: string
+  suggestedCents: number
+  currentCents: number
+  baselineCents?: number
+}
+
+/** Exactly what is sent for a budget-nudge batch. Stored verbatim in `ai_runs.payload_json`. */
+export interface RedactedNudgeBatch {
+  month: string
+  locale: string
+  /** The owner's own words, collapsed and truncated — never a category's own description. */
+  note: string
+  candidates: RedactedNudgeCandidate[]
+}
+
+export interface NudgeRedaction {
+  payload: RedactedNudgeBatch
+  /** `c1`…`cN` → the real category id, scoped to this one batch. */
+  categoryIdFor: ReadonlyMap<string, string>
+}
+
+/**
+ * The pending budget-amount candidates for one month → exactly what may be sent
+ * for a nudge (#217). Same two rules as `redact`: every field written out by
+ * hand, and every category addressed only by an opaque label — assigned in
+ * sorted-id order, same discipline as `redactCategoryGuessBatch`.
+ */
+export function redactBudgetNudgeBatch(
+  candidates: readonly NudgeCandidateInput[],
+  categoryMetaById: ReadonlyMap<string, CategoryMetaRow | null>,
+  month: string,
+  locale: string,
+  note: string,
+): NudgeRedaction {
+  const sorted = [...candidates].sort((a, b) => a.categoryId.localeCompare(b.categoryId))
+
+  const categoryIdFor = new Map<string, string>()
+  const redactedCandidates: RedactedNudgeCandidate[] = sorted.map((candidate, index) => {
+    const label = `c${index + 1}`
+    categoryIdFor.set(label, candidate.categoryId)
+
+    const meta = categoryMetaById.get(candidate.categoryId) ?? null
+    const sensitive = meta?.sensitive === true
+
+    const out: RedactedNudgeCandidate = {
+      label,
+      suggestedCents: candidate.suggestedCents,
+      currentCents: candidate.currentCents,
+    }
+    if (!sensitive && meta !== null) out.name = meta.nameSnapshot
+    if (candidate.baselineCents !== null) out.baselineCents = candidate.baselineCents
+    return out
+  })
+
+  return {
+    payload: { month, locale, note, candidates: redactedCandidates },
+    categoryIdFor,
+  }
+}
+
+/** `PAYLOAD_KEYS`'s counterpart for a `RedactedNudgeBatch` — same discipline, own allow-list. */
+export const NUDGE_PAYLOAD_KEYS: readonly string[] = [
+  'month',
+  'locale',
+  'note',
+  'candidates',
+  'label',
+  'name',
+  'suggestedCents',
+  'currentCents',
+  'baselineCents',
+]
