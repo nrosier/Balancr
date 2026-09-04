@@ -484,7 +484,12 @@ const ruleShape = z.object({
    * conditions are the payee and account matchers, which is exactly the text this
    * application has no business holding.
    */
-  actions: z.array(z.object({ op: z.string(), field: z.string().optional(), value: z.unknown() })),
+  actions: z.array(
+    // `field` is `nullish` rather than just `optional`: Actual sends an explicit
+    // `null` (not a missing key) on actions where a field doesn't apply — a
+    // `link-schedule` action, for instance, has none to set.
+    z.object({ op: z.string(), field: z.string().nullish(), value: z.unknown() }),
+  ),
   tombstone: z.boolean().optional(),
 })
 
