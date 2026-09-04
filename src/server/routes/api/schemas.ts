@@ -1124,6 +1124,8 @@ export const benchmarkSettingSchema = z.object({
         label: z.string().optional(),
       }),
     ),
+    /** A name for the first person on the scale, or absent for the panel's placeholder (#215). */
+    selfLabel: z.string().optional(),
     /**
      * The stated share of a shared cost that is yours, or null to derive it from the
      * roster (#44). Null is a value the form has to be able to show and to send back:

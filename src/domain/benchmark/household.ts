@@ -81,6 +81,14 @@ export const householdSchema = z
      */
     members: z.array(memberSchema).max(MAX_HOUSEHOLD_MEMBERS).default([]),
     /**
+     * A name for the first person on the scale, who otherwise has no row and no field of
+     * their own (#215). Purely an identity label: `equivalentAdults` never reads this —
+     * `first_person_bp` is added unconditionally, with no age check, exactly as it was
+     * before this field existed. Optional and undefined by default, because a placeholder
+     * ("You") is a fine thing to show and a bad thing to store as if somebody had typed it.
+     */
+    selfLabel: z.string().trim().max(40).optional(),
+    /**
      * The share of a cost flagged `custody_shared` that is economically yours, in basis
      * points, or null to derive it from the roster (#44).
      *

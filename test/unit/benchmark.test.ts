@@ -494,6 +494,16 @@ describe('equivalentAdults', () => {
     expect(result.bp).toBe(13_334)
     expect(result.members).toBe(2)
   })
+
+  it('does not read the first person a name at all (#215)', () => {
+    // The whole point of a name rather than a row: nothing about the weight logic may
+    // notice this field, so the same household with and without it scores identically.
+    const named = HOUSEHOLD([{ birthYear: 2013, custodyBp: 5_000 }])
+    named.selfLabel = 'Nick'
+    expect(equivalentAdults(named, SCALE, 2026)).toEqual(
+      equivalentAdults(HOUSEHOLD([{ birthYear: 2013, custodyBp: 5_000 }]), SCALE, 2026),
+    )
+  })
 })
 
 describe('householdSchema', () => {
@@ -533,6 +543,20 @@ describe('householdSchema', () => {
     }))
     expect(householdSchema.safeParse({ members }).success).toBe(false)
   })
+
+  it('accepts a name for the first person, trimmed like a member label (#215)', () => {
+    expect(householdSchema.parse({ members: [], selfLabel: '  Nick  ' })).toEqual({
+      members: [],
+      selfLabel: 'Nick',
+      sharedCostBp: null,
+    })
+  })
+
+  it('refuses a name longer than a member label may be', () => {
+    expect(householdSchema.safeParse({ members: [], selfLabel: 'x'.repeat(41) }).success).toBe(
+      false,
+    )
+  })
 })
 
 describe('the stored household', () => {
@@ -560,6 +584,16 @@ describe('the stored household', () => {
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
     })
+  })
+
+  it('round-trips a name for the first person, and drops it when the patch omits it (#215)', () => {
+    saveHousehold(ctx.db, { members: [], selfLabel: '  Nick  ' })
+    expect(loadHousehold(ctx.db).selfLabel).toBe('Nick')
+
+    // Wholesale, like every other field here: a patch that says nothing about the name
+    // clears it, the same direction `sharedCostBp` already takes for the same reason.
+    saveHousehold(ctx.db, { members: [] })
+    expect(loadHousehold(ctx.db).selfLabel).toBeUndefined()
   })
 
   it('is replaced whole, so a row can be removed', () => {

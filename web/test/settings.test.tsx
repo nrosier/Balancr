@@ -1086,6 +1086,86 @@ describe('the household', () => {
     expect(saveHousehold().disabled).toBe(true)
   })
 
+  it('shows a placeholder for the first person until a name is stored (#215)', async () => {
+    await open(READS)
+
+    const input = screen.getByLabelText('Your name') as HTMLInputElement
+    expect(input.value).toBe('')
+    expect(input.placeholder).toBe('You')
+    expect(
+      within(household()).getByText(/^You — always the first person on the scale/),
+    ).toBeTruthy()
+  })
+
+  it('reads the stored name in place of the placeholder, and prefills the box (#215)', async () => {
+    const named = {
+      ...PAYLOAD,
+      benchmark: {
+        ...PAYLOAD.benchmark,
+        household: { ...PAYLOAD.benchmark.household, selfLabel: 'Nick' },
+      },
+    }
+    await open({ ...READS, '/api/settings': json(named) })
+
+    expect((screen.getByLabelText('Your name') as HTMLInputElement).value).toBe('Nick')
+    expect(
+      within(household()).getByText(/^Nick — always the first person on the scale/),
+    ).toBeTruthy()
+  })
+
+  it('sends a typed name with the roster, trimmed (#215)', async () => {
+    const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: '  Nick  ' } })
+    expect(saveHousehold().disabled).toBe(false)
+    fireEvent.click(saveHousehold())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+            selfLabel: 'Nick',
+            sharedCostBp: null,
+          },
+        },
+      ])
+    })
+  })
+
+  it('drops a stored name when the box is cleared, the same direction the shared-cost box takes (#215)', async () => {
+    const named = {
+      ...PAYLOAD,
+      benchmark: {
+        ...PAYLOAD.benchmark,
+        household: { ...PAYLOAD.benchmark.household, selfLabel: 'Nick' },
+      },
+    }
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(named),
+      '/api/settings/household': json(named),
+    })
+
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: '' } })
+    fireEvent.click(saveHousehold())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+            sharedCostBp: null,
+          },
+        },
+      ])
+    })
+  })
+
   it('sends the whole roster, because removing a row cannot be expressed as a merge', async () => {
     const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
 
