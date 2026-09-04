@@ -160,6 +160,15 @@
     "nl": "Nederlands",
     "title": "Taal"
   },
+  "nav": {
+    "accounts": "Rekeningen",
+    "benchmark": "Vergelijking",
+    "general": "Algemeen",
+    "prompts": "Instructies",
+    "risk": "Risico",
+    "spend": "AI-gebruik",
+    "thresholds": "Drempels"
+  },
   "profile": {
     "role": {
       "owner": "Eigenaar",
