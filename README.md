@@ -110,18 +110,21 @@ It is a shoulder-check, not a security boundary:
 - **The underlying text never changes.** It is still selectable, still what a
   screen reader announces, and still exactly what a look at DevTools or the
   page's own API responses would show. Blurring is a `filter`, not redaction.
-- **Chart axis labels are a known, accepted gap.** ECharts draws a chart's
-  geometry and axis text to canvas, which a DOM filter cannot reach — only a
-  tooltip (a floating div) can carry a blurred figure. Every chart blurs its
-  tooltip's money text; the net worth chart, the single most revealing one,
-  blurs its whole canvas rather than leaving a labelled trend line on screen.
-  The other four accept the axis-label leak.
-- **Two categories of figure are deliberately exempt**, because they are not
-  personal spending: the price of an AI call (insights, prompts, spend
-  settings) and configuration numbers you set yourself (thresholds, trading
-  minimums). An enforcement test scans `web/src` for any money call that
-  bypasses `<Money>`/`<Private>` outside this named allowlist, so a new figure
-  added anywhere else fails to blur, not just this one.
+- **Chart axes blur along with everything else.** Charts render with ECharts'
+  SVG renderer, not canvas, so axis text is real DOM the same filter already
+  reaches — net worth, budget-versus-actual and the category trend all blur
+  wholesale rather than leaving a labelled line or bar on screen. The other
+  two charts have no money-labelled axis to begin with, only a tooltip
+  (already blurred).
+- **One category of figure is deliberately exempt**, because it is not
+  personal spending: the price of an AI call on the settings page (the
+  prompt editor's test run, the spend panel) and configuration numbers you
+  set yourself (thresholds, trading minimums). The same figures on the
+  insights page — what a review cost, what a month has spent against its
+  cap — blur like everything else there. An enforcement test scans `web/src`
+  for any money call that bypasses `<Money>`/`<Private>` outside this named
+  allowlist, so a new figure added anywhere else fails to blur, not just
+  this one.
 
 ## Quick start
 
@@ -919,7 +922,20 @@ between milestones rather than inside one,
 header toggle and a Ctrl/Cmd+Shift+E shortcut blur every money figure and holdings
 quantity on screen, for a shoulder glance rather than a threat model — the text
 underneath is unchanged, still selectable, still what a screen reader announces.
-[Privacy mode](#privacy-mode) says exactly what it does and does not cover. Behind
+[Privacy mode](#privacy-mode) says exactly what it does and does not cover. A
+follow-up closed the gaps that first pass left: chart axes render as SVG, not
+canvas, so the net worth, budget-versus-actual and category-trend charts now blur
+their axis labels along with everything else instead of leaving a dollar-labelled
+scale on screen, and the insights page's own AI-cost figures — a review's price,
+what a month has spent against its cap — blur like every other number on that
+page rather than sitting exempt beside blurred ones. Only the settings page's own
+AI-cost controls stay exempt, because that price is what running the app costs,
+not personal spending. Settings itself was the other rider:
+[#200](https://github.com/nrosier/Balancr/issues/200) split what used to be one
+long-scrolling page into a horizontal tab strip — General, Prompts, Risk,
+Thresholds, Accounts, Benchmark, AI usage — each its own route under
+`/settings/*`, so a bookmark or a reload lands back on the section it left, not
+at the top of everything. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
