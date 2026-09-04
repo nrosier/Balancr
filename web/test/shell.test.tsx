@@ -21,7 +21,7 @@
  * accepts. Faking it would leave a browser showing the sign-in screen while the
  * session it claims to have ended stayed valid for anyone holding the cookie.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CsrfConfig } from '../src/api/client.ts'
 import type { SessionUserResponse } from '../src/auth/session.ts'
@@ -166,6 +166,67 @@ describe('AppShell', () => {
     shell()
     expect(screen.getByRole('group', { name: 'Colour theme' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
+  })
+})
+
+describe('ChangelogDialog', () => {
+  const shell = (): ReturnType<typeof renderApp> =>
+    renderApp(
+      <AppShell user={OWNER} csrf={CSRF} version="0.5.1" onSignedOut={() => undefined}>
+        <h1>Overview</h1>
+      </AppShell>,
+      { path: '/' },
+    )
+
+  const changelogFetchMock = (
+    body: unknown = { available: true, entries: [] },
+  ): ReturnType<typeof vi.fn> => {
+    const mock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', mock)
+    return mock
+  }
+
+  const openButton = (): HTMLElement => screen.getByRole('button', { name: 'v0.5.1' })
+
+  it('is closed until the version button is clicked', () => {
+    changelogFetchMock()
+    shell()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens on the version button, naming the running version, and loads the changelog', async () => {
+    changelogFetchMock()
+    shell()
+    fireEvent.click(openButton())
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.hasAttribute('open')).toBe(true)
+    expect(document.getElementById('changelog-title')?.textContent).toContain('0.5.1')
+
+    await waitFor(() => {
+      expect(screen.getByText('This build shipped without its changelog.')).toBeTruthy()
+    })
+  })
+
+  it('returns focus to the button and closes on Escape', async () => {
+    changelogFetchMock()
+    shell()
+    fireEvent.click(openButton())
+    const dialog = screen.getByRole('dialog')
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    expect(document.activeElement).toBe(openButton())
   })
 })
 

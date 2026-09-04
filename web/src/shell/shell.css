@@ -95,9 +95,19 @@
 }
 
 .brand__version {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: var(--type-xs);
   font-weight: var(--weight-regular);
   color: var(--text-muted);
+  cursor: pointer;
+}
+
+.brand__version:hover,
+.brand__version:focus-visible {
+  color: var(--text);
 }
 
 /*
@@ -356,4 +366,133 @@
     padding: var(--space-6) var(--space-5);
   }
 
+}
+
+/* ── Changelog dialog ────────────────────────────────────────────────────── */
+
+.changelog-dialog {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  max-width: 34rem;
+  width: calc(100% - var(--space-5));
+  /* Leaves room for the browser chrome above and below on a short phone screen. */
+  max-height: calc(100dvh - var(--space-6));
+}
+
+.changelog-dialog::backdrop {
+  background: rgb(17 23 38 / 0.4);
+}
+
+.changelog-dialog__panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--space-6));
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+}
+
+.changelog-dialog__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.changelog-dialog__head h2 {
+  margin: 0;
+  font-size: var(--type-lg);
+}
+
+.changelog-dialog__close {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  cursor: pointer;
+}
+
+.changelog-dialog__close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.changelog-dialog__body {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.changelog-entry {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.changelog-entry__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--type-md);
+}
+
+.changelog-entry__date {
+  font-size: var(--type-sm);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+
+.changelog-entry__link {
+  justify-self: start;
+  font-size: var(--type-sm);
+}
+
+.changelog-dialog__note {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--type-xs);
+}
+
+/*
+ * `.prose` duplicated from `insights/insights.css` rather than imported from there:
+ * that stylesheet is only loaded once the Insights page has been visited, and this
+ * dialog is reachable from every page via the header. Same markup, same rules.
+ */
+.changelog-dialog .prose {
+  display: grid;
+  gap: var(--space-3);
+  font-size: var(--type-base);
+  line-height: var(--lead-normal);
+}
+
+.changelog-dialog .prose h3 {
+  margin: 0;
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+}
+
+.changelog-dialog .prose p,
+.changelog-dialog .prose ul,
+.changelog-dialog .prose ol {
+  margin: 0;
+}
+
+.changelog-dialog .prose ul,
+.changelog-dialog .prose ol {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-5);
+}
+
+.changelog-dialog .prose code {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
 }

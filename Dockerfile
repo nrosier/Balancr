@@ -47,6 +47,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+COPY CHANGELOG.md ./
 # The fund universe template (#40). Shipped so a new install has something to copy
 # and read, not so it is used where it sits: /app is read-only, and a list you keep in
 # the image is a list an upgrade replaces. FUND_UNIVERSE_PATH points at the volume.
