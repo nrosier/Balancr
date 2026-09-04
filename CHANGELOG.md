@@ -6,6 +6,29 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.2] — 2026-09-04
+
+### Added
+
+- **The settings page is now a tab strip, not one long scroll**
+  ([#200](https://github.com/nrosier/Balancr/issues/200)). General, Prompts, Risk,
+  Thresholds, Accounts, Benchmark and AI usage each get their own `/settings/*`
+  route, so a bookmark or a reload lands back on the section it left rather than
+  the top of everything.
+
+### Fixed
+
+- **Privacy mode's blur had two gaps left over from #171**
+  ([#171](https://github.com/nrosier/Balancr/issues/171)). Chart axis labels
+  render as SVG text, not canvas, so a DOM filter reaches them the same as any
+  other money figure — the budget-versus-actual and category-trend charts now
+  blur their axes along with the net worth chart, instead of leaving a
+  dollar-labelled scale exposed. The insights page's own AI-cost figures — a
+  review's price, what a month has spent against its cap — were carved out as
+  an AI-operational-cost exception meant for the settings page; they now blur
+  like every other number on that page. Only the settings page's own AI-cost
+  controls stay exempt.
+
 ## [0.10.1] — 2026-09-04
 
 ### Added
