@@ -96,6 +96,9 @@
       "reads": "Telt {{weight}}, {{share}} van de tijd.",
       "readsShare": "Hier {{share}} van de tijd.",
       "remove": "Verwijderen",
+      "selfLabel": "Jouw naam",
+      "selfLabelHint": "Wordt hieronder en in de jaarnotitie bij de rij getoond in plaats van \"Jij\". Verlaat de machine nooit, net als de namen hierboven.",
+      "selfLabelPlaceholder": "Jij",
       "sharedCost": "Jouw aandeel in gedeelde kosten",
       "sharedCostDerived_one": "Leeg, dus afgeleid van het {{value}} lid dat hier een deel van de tijd is: {{share}}.",
       "sharedCostDerived_other": "Leeg, dus afgeleid van de {{value}} leden die hier een deel van de tijd zijn: {{share}}.",
@@ -104,7 +107,7 @@
       "sharedCostNotANumber": "Een geheel getal in basispunten tot 10000, of leeg om het af te leiden.",
       "sharedCostReads": "{{share}} van elke gedeelde kost geldt als jouw deel.",
       "title": "Huishouden",
-      "you": "Jij bent altijd de eerste persoon op de schaal en staat daarom niet als rij tussen de anderen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene."
+      "you": "{{name}} — altijd de eerste persoon op de schaal, geen rij hiertussen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene."
     },
     "mapping": {
       "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, en of ze gedeeld is",

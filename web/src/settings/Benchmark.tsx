@@ -34,6 +34,10 @@
  *    picker was trying to answer without losing the information.
  *  - **A year of birth, not a "child" checkbox.** A checkbox is right the day it is ticked
  *    and quietly wrong from the next birthday, with nothing on screen to say so.
+ *  - **The first person gets a name, not a row (#215).** `selfLabel` is a plain text field
+ *    beside the roster, not a member with a birth year and a custody share — those would
+ *    let the one row `household.ts` guarantees always exists become editable, removable,
+ *    or ageing, which is the invariant the field is careful not to touch.
  *
  * The classification beside each member is as of *this* year, and says so: the comparison
  * ages the household at the year of the month being compared, so a member who turned
@@ -100,6 +104,16 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   const locked = !owner || state.busy
 
   /**
+   * The first person's own name as typed, or null for "whatever is stored" (#215).
+   *
+   * Same shape as `sharedDraft` below: the outer null is "untouched", so a save doesn't
+   * have to know whether this box has been touched to decide whether to send it — it
+   * always sends the household wholesale, and the panel just needs to know what to show.
+   */
+  const [selfLabelDraft, setSelfLabelDraft] = useState<string | null>(null)
+  const selfLabelText = selfLabelDraft ?? benchmark.household.selfLabel ?? ''
+
+  /**
    * The stated shared-cost share as typed, or null for "whatever is stored" (#44).
    *
    * Empty text is a value here rather than an absence: clearing the box means "derive it
@@ -154,13 +168,19 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   }
 
   const submit = (): void => {
-    const body = { members, sharedCostBp: sharedBp }
+    const selfLabel = selfLabelText.trim()
+    const body = {
+      members,
+      ...(selfLabel === '' ? {} : { selfLabel }),
+      sharedCostBp: sharedBp,
+    }
     state.save('household', 'PATCH', '/api/settings/household', body, () => {
       // Back to "whatever is stored", which the answer has just replaced. Keeping the
       // drafts would leave the form showing text that happens to agree with the server
       // until it silently stops agreeing.
       setDrafts(null)
       setSharedDraft(null)
+      setSelfLabelDraft(null)
     })
   }
 
@@ -202,8 +222,29 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
           submit()
         }}
       >
+        <div className="field">
+          <label className="field__label" htmlFor="self-label">
+            {t('settings:benchmark.household.selfLabel')}
+          </label>
+          <input
+            id="self-label"
+            className="field__input"
+            type="text"
+            autoComplete="off"
+            maxLength={40}
+            placeholder={t('settings:benchmark.household.selfLabelPlaceholder')}
+            value={selfLabelText}
+            disabled={locked}
+            onChange={(event) => setSelfLabelDraft(event.target.value)}
+          />
+          <p className="panel__meta muted">{t('settings:benchmark.household.selfLabelHint')}</p>
+        </div>
+
         <p className="panel__meta muted">
-          {t('settings:benchmark.household.you', { year: String(thisYear) })}
+          {t('settings:benchmark.household.you', {
+            year: String(thisYear),
+            name: selfLabelText.trim() || t('settings:benchmark.household.selfLabelPlaceholder'),
+          })}
         </p>
 
         {rows.length === 0 ? (
@@ -346,7 +387,10 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             type="submit"
             className="button button--primary"
             disabled={
-              locked || (drafts === null && sharedDraft === null) || invalid.size > 0 || sharedInvalid
+              locked ||
+              (drafts === null && sharedDraft === null && selfLabelDraft === null) ||
+              invalid.size > 0 ||
+              sharedInvalid
             }
           >
             {state.pending === 'household' ? t('shell.loading') : t('action.save')}

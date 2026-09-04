@@ -214,6 +214,12 @@ const householdPatchRequest = z.strictObject({
     }),
   ),
   /**
+   * A name for the first person on the scale (#215). Optional, and — like `sharedCostBp`
+   * below — omitting it clears it: the household is one row written wholesale, so there is
+   * no partial-preserve gesture for any field in it, this one included.
+   */
+  selfLabel: z.string().optional(),
+  /**
    * The share of a shared cost that is yours, or null to derive it from the roster (#44).
    *
    * Nullable because going back to a derived share is a correction somebody has to be able
@@ -406,6 +412,7 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
         custodyBp: member.custodyBp,
         ...(member.label === undefined ? {} : { label: member.label }),
       })),
+      ...(household.selfLabel === undefined ? {} : { selfLabel: household.selfLabel }),
       sharedCostBp: household.sharedCostBp,
     },
     outsideCode: '00',
