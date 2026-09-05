@@ -10,6 +10,7 @@
 import { fetchPayeeCategoryHistory, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
 import { endOfMonth, startOfMonth } from '../../util/month.ts'
+import { loadCategoryTrends } from '../aggregate/facts.ts'
 import type { CategoryGuessCandidate } from '../aggregate/signals-store.ts'
 import { persistCategoryGuessCandidates } from '../aggregate/signals-store.ts'
 import type { MonthlyFact } from '../aggregate/spend.ts'
@@ -76,7 +77,9 @@ export async function generateCategoryProposals(db: Db, month: string): Promise<
 /**
  * One `budget_amount.set` proposal per category the current month's signals
  * flag as miscalibrated. `signals`/`facts` are the same values `judgeMonth`
- * already computed for `computeSignals` — nothing here re-reads them.
+ * already computed for `computeSignals` — nothing here re-reads them; the
+ * trailing 12-month spend history that sizes the amount (#220) is read fresh,
+ * since nothing upstream needed it before now.
  */
 export async function generateBudgetProposals(
   db: Db,
@@ -85,8 +88,9 @@ export async function generateBudgetProposals(
   facts: readonly MonthlyFact[],
 ): Promise<number> {
   let created = 0
+  const trends = loadCategoryTrends(db, month, 12)
 
-  for (const suggestion of suggestBudgetAmounts(signals, facts)) {
+  for (const suggestion of suggestBudgetAmounts(signals, facts, trends.byCategory)) {
     try {
       await createProposal(db, {
         type: 'budget_amount.set',
