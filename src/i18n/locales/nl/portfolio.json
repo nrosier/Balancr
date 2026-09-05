@@ -89,6 +89,11 @@
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
     "value": "Marktwaarde"
   },
+  "nav": {
+    "advice": "Advies",
+    "holdings": "Posities",
+    "overview": "Overzicht"
+  },
   "property": {
     "caption_one": "Eén eigendom.",
     "caption_other": "{{value}} eigendommen.",

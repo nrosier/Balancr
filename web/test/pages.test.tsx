@@ -58,10 +58,10 @@ describe('routeFor', () => {
 
   it('resolves nothing for a path no page owns', () => {
     expect(routeFor('/nope')).toBeUndefined()
-    // Nested detail paths arrive with the pages that need them (#30 onwards). Until
-    // then this is a 404 in the content area, while the nav still lights the section
-    // it sits under — which is the behaviour `isActive` is written for.
-    expect(routeFor('/budget/2026-08')).toBeUndefined()
+    // A shared prefix is not the same as being nested under it — `nested`
+    // requires the `/` boundary, so a sibling path spelled as an extension
+    // of another route's own path must not resolve to that route.
+    expect(routeFor('/budgetary')).toBeUndefined()
   })
 })
 

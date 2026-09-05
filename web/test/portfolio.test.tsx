@@ -27,7 +27,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { Portfolio } from '../src/pages/Portfolio.tsx'
 import { formatQuantity } from '../src/ui/HoldingsTable.tsx'
 import type { Advice, Freshness, Portfolio as PortfolioPayload } from '../src/shared.ts'
-import { i18nReady, renderApp } from './helpers.tsx'
+import { i18nReady, renderApp, visit } from './helpers.tsx'
 
 /**
  * Every Unicode space separator, normalised to a plain one.
@@ -409,6 +409,10 @@ afterAll(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // Most tests here never set a path and rely on landing on the overview tab by
+  // default; the few that navigate elsewhere (#229) would otherwise leak that
+  // location into whichever test runs next.
+  visit('/')
 })
 
 describe('before and instead of an answer', () => {
@@ -478,7 +482,9 @@ describe('a portfolio with positions in it', () => {
 
   it('speaks both charts, naming the series the page asked for', async () => {
     show()
-    await screen.findByRole('table')
+    // Both charts live on Overview; waiting for them both to have spoken (rather than
+    // for a table, which is on its own tab (#229) now) is what settles the render.
+    await screen.findAllByRole('img')
 
     const spoken = summaries()
     // The value series says "market value", not "net worth": one chart, two subjects.
@@ -489,6 +495,13 @@ describe('a portfolio with positions in it', () => {
     // The treemap names its largest slice and that slice's share, both server-computed.
     expect(spoken.some((text) => text.includes('Equities') && text.includes('76%'))).toBe(true)
   })
+})
+
+describe('the holdings table (#229)', () => {
+  const show = (payload: PortfolioPayload = FULL): void => {
+    serve(json(payload))
+    renderApp(<Portfolio />, { path: '/portfolio/holdings' })
+  }
 
   it('captions the table with how many rows there are and how they are ordered', async () => {
     show()
@@ -568,10 +581,27 @@ describe('a portfolio with positions in it', () => {
   })
 })
 
+describe('the section tabs (#229)', () => {
+  it('marks the open tab current, and lands on Overview for a path it does not recognise', async () => {
+    serve(json(FULL))
+    const holdings = renderApp(<Portfolio />, { path: '/portfolio/holdings' })
+    await screen.findByRole('table')
+
+    expect(screen.getByRole('link', { name: 'Holdings' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+    expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('aria-current')).toBeNull()
+    holdings.unmount()
+
+    renderApp(<Portfolio />, { path: '/portfolio/nonsense' })
+    await screen.findByRole('heading', { level: 2, name: 'Market value' })
+  })
+})
+
 describe('the risk profile and the drift from it', () => {
   const show = (advice: Advice | null): void => {
     serve(json({ ...FULL, advice }))
-    renderApp(<Portfolio />)
+    renderApp(<Portfolio />, { path: '/portfolio/advice' })
   }
 
   it('says there is nothing to measure rather than dropping the section', async () => {
@@ -691,7 +721,7 @@ describe('the risk profile and the drift from it', () => {
 describe('the trades that would close the drift', () => {
   const show = (advice: Advice): void => {
     serve(json({ ...FULL, advice }))
-    renderApp(<Portfolio />)
+    renderApp(<Portfolio />, { path: '/portfolio/advice' })
   }
 
   /** One suggestion card's text, with `Intl`'s spaces normalised. */
@@ -825,7 +855,7 @@ describe('money at the broker that is not invested', () => {
   it('keeps the treemap a picture of the invested half, not of the total', async () => {
     serve(json(MIXED))
     renderApp(<Portfolio />)
-    await screen.findByRole('table')
+    await screen.findAllByRole('img')
 
     // 76%, which is 3.800.000 of the invested 5.000.000. Over the € 55.000 total the
     // same slice would be 69% — the number a page that fed it the total would show.
@@ -932,7 +962,7 @@ describe('property', () => {
 describe('a weight with no total to be a share of', () => {
   it('says the weight is not known rather than dividing by zero', async () => {
     serve(json({ ...FULL, totalValueCents: 0 }))
-    renderApp(<Portfolio />)
+    renderApp(<Portfolio />, { path: '/portfolio/holdings' })
     await screen.findByRole('table')
 
     expect(row('BTC')[5]).toBe('Not known yet')

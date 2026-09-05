@@ -240,6 +240,12 @@
   font-size: var(--type-xs);
 }
 
+/* The editable amount on a `budget_amount.set` card (#220) sits below the diff it edits. */
+.proposal__amount {
+  max-width: 12rem;
+  margin-top: var(--space-2);
+}
+
 /* ---------------------------------------------------------------------------
    The ledger
    --------------------------------------------------------------------------- */

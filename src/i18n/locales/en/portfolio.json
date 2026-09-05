@@ -89,6 +89,11 @@
     "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",
     "value": "Market value"
   },
+  "nav": {
+    "advice": "Advice",
+    "holdings": "Holdings",
+    "overview": "Overview"
+  },
   "property": {
     "caption_one": "One property.",
     "caption_other": "{{value}} properties.",
