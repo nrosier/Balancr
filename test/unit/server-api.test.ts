@@ -39,6 +39,7 @@ import { initI18n } from '../../src/i18n/index.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { saveHousehold } from '../../src/domain/benchmark/household.ts'
+import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
 const ENDPOINTS = ['/api/overview', '/api/budget', '/api/portfolio', '/api/insights'] as const
@@ -129,6 +130,8 @@ describe('GET /api/overview', () => {
       liquidCents: 1_240_000,
       investedCents: 3_700_000,
       debtCents: 120_000,
+      propertyValueCents: null,
+      mortgageBalanceCents: null,
     })
     expect(body.month).toBe(MONTH)
     expect(body.totals.incomeCents).toBe(400_000)
@@ -378,6 +381,95 @@ describe('GET /api/portfolio', () => {
     expect(body.totalValueCents).toBe(382_143)
     expect(body.investedValueCents).toBeNull()
     expect(body.cashValueCents).toBeNull()
+  })
+})
+
+describe('property tracking, out of the allocation and drift entirely (#227)', () => {
+  // Zero rate and zero payment so the outstanding balance is exactly `principalCents`
+  // no matter what day this runs on — the route prices a mortgage as of the real
+  // clock, and a test that let it amortize would drift with the calendar.
+  const HOME = {
+    id: 'prop-1',
+    kind: 'primary' as const,
+    label: 'House',
+    propertyValueCents: 40_000_000,
+    rentCents: null,
+    mortgage: {
+      principalCents: 18_000_000,
+      anchorDate: '2020-01-01',
+      rateBp: 0,
+      monthlyPaymentCents: 0,
+      remainingTermMonths: 600,
+    },
+  }
+
+  const RENTAL = {
+    id: 'prop-2',
+    kind: 'rental' as const,
+    label: 'Antwerp flat',
+    propertyValueCents: 25_000_000,
+    rentCents: 90_000,
+    mortgage: null,
+  }
+
+  it("nets a property's equity into the overview total and reports the two halves", async () => {
+    saveProperties(ctx.db, { properties: [HOME, RENTAL] })
+    const body = (await get('/api/overview')).json()
+
+    // 4 820 000 already in the fixture, plus (40M - 18M) + (25M - 0) of equity.
+    expect(body.netWorth.totalCents).toBe(4_820_000 + 47_000_000)
+    expect(body.netWorth.propertyValueCents).toBe(65_000_000)
+    expect(body.netWorth.mortgageBalanceCents).toBe(18_000_000)
+  })
+
+  it('leaves the net-worth history untouched — no retroactive equity', async () => {
+    saveProperties(ctx.db, { properties: [HOME] })
+    const body = (await get('/api/overview')).json()
+
+    expect(body.history).toEqual([{ date: SNAPSHOT_DATE, totalCents: 4_820_000 }])
+  })
+
+  it('adds a priced-as-of-today row per property, alongside (never inside) the allocation', async () => {
+    saveProperties(ctx.db, { properties: [HOME, RENTAL] })
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.properties).toEqual([
+      {
+        id: 'prop-1',
+        kind: 'primary',
+        label: 'House',
+        propertyValueCents: 40_000_000,
+        mortgageBalanceCents: 18_000_000,
+        equityCents: 22_000_000,
+        rentCents: null,
+        netCashFlowCents: null,
+        grossYieldBp: null,
+      },
+      {
+        id: 'prop-2',
+        kind: 'rental',
+        label: 'Antwerp flat',
+        propertyValueCents: 25_000_000,
+        mortgageBalanceCents: 0,
+        equityCents: 25_000_000,
+        rentCents: 90_000,
+        netCashFlowCents: 90_000,
+        grossYieldBp: 432,
+      },
+    ])
+    expect(body.totalPropertyEquityCents).toBe(47_000_000)
+    // Not a synthetic asset-class slice: the allocation the drift table reads is
+    // exactly what Ghostfolio reported, untouched by owning a house outright.
+    expect(body.allocation).toEqual([
+      { assetClass: 'EQUITY', valueCents: 382_143, shareBp: 10_000 },
+    ])
+  })
+
+  it('answers an empty list and a null total when nothing is tracked', async () => {
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.properties).toEqual([])
+    expect(body.totalPropertyEquityCents).toBeNull()
   })
 })
 

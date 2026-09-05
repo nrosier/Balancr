@@ -171,10 +171,15 @@ export const overviewSchema = z.object({
   netWorth: z
     .object({
       date: dateKey(),
+      /** Includes every property's equity (#227) — netted in, the same treatment debt gets. */
       totalCents: cents(),
       liquidCents: cents(),
       investedCents: cents(),
       debtCents: cents(),
+      /** Summed across every owned property with a tracked value; null when none is. */
+      propertyValueCents: cents().nullable(),
+      /** Summed outstanding mortgage balance; null when no property has a mortgage. */
+      mortgageBalanceCents: cents().nullable(),
     })
     .nullable(),
   history: z.array(netWorthPointSchema),
@@ -669,6 +674,23 @@ export const holdingSchema = z.object({
   currency: z.string(),
 })
 
+/**
+ * One owned property, priced at request time rather than at the snapshot's own `date`
+ * (#227) — see `portfolioSchema.properties`.
+ */
+export const portfolioPropertySchema = z.object({
+  id: z.string(),
+  kind: z.enum(['primary', 'rental']),
+  label: z.string(),
+  propertyValueCents: cents().nullable(),
+  mortgageBalanceCents: cents(),
+  equityCents: cents().nullable(),
+  /** Monthly rent received. Only meaningful for a `rental`. */
+  rentCents: cents().nullable(),
+  netCashFlowCents: cents().nullable(),
+  grossYieldBp: basisPoints().nullable(),
+})
+
 export const portfolioSchema = z.object({
   freshness: freshnessSchema,
   date: dateKey().nullable(),
@@ -704,6 +726,15 @@ export const portfolioSchema = z.object({
    * be shown four red bands and four suggestions to buy nothing.
    */
   advice: adviceSchema.nullable(),
+  /**
+   * Owned properties and their mortgages, tracked by Balancr rather than Ghostfolio
+   * (#227) — deliberately outside `allocation`/`advice` entirely, see `properties.ts`.
+   * Priced as of the request, not as of `date`: a mortgage amortizes with the calendar,
+   * not with Ghostfolio's own sync cadence.
+   */
+  properties: z.array(portfolioPropertySchema),
+  /** Summed across every property with a tracked value; null when none of them are. */
+  totalPropertyEquityCents: cents().nullable(),
 })
 
 // ---------------------------------------------------------------------------
@@ -1211,6 +1242,35 @@ export const benchmarkSettingSchema = z.object({
   ),
 })
 
+/**
+ * One owned property and its mortgage, if it has one (#227). Sent as-is — the wire shape
+ * is the stored record, not a derived balance: `outstandingBalanceCents` needs a date,
+ * and `today` is a fact about the request, not about settings.
+ */
+const propertyMortgageSchema = z.object({
+  principalCents: cents(),
+  /** The date `principalCents` was true. */
+  anchorDate: z.string(),
+  rateBp: basisPoints(),
+  monthlyPaymentCents: cents(),
+  remainingTermMonths: z.int(),
+})
+
+const propertySchema = z.object({
+  id: z.string(),
+  kind: z.enum(['primary', 'rental']),
+  label: z.string(),
+  propertyValueCents: cents().nullable(),
+  /** Monthly rent received. Only meaningful for a `rental`. */
+  rentCents: cents().nullable(),
+  /** Null when the property has no mortgage — paid off, or bought outright. */
+  mortgage: propertyMortgageSchema.nullable(),
+})
+
+export const propertiesSettingSchema = z.object({
+  properties: z.array(propertySchema),
+})
+
 export const settingsSchema = z.object({
   /**
    * Which build is answering.
@@ -1249,6 +1309,8 @@ export const settingsSchema = z.object({
   advice: riskProfileSettingSchema,
   /** The benchmark file, the household it is scaled to, and the mapping. */
   benchmark: benchmarkSettingSchema,
+  /** The owned properties and their mortgages, tracked by Balancr rather than Ghostfolio (#227). */
+  property: propertiesSettingSchema,
   prompts: z.array(promptSchema),
   accounts: z.array(accountSettingSchema),
   /**
@@ -1663,6 +1725,7 @@ export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
+export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
 export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>
 export type BenchmarkGroupLine = z.infer<typeof benchmarkGroupSchema>
 export type CustodyWire = z.infer<typeof custodySplitSchema>

@@ -101,6 +101,7 @@ export type {
   PromptDiff,
   PromptSetting,
   PromptVersionSetting,
+  PropertiesSetting,
   ProbeStatus,
   ProposalAdjustResult,
   ProposalBatchApply,
@@ -130,6 +131,18 @@ export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe
 
 export { custodyShare } from '../../src/domain/aggregate/custody.ts'
 export type { CustodyBasis } from '../../src/domain/aggregate/custody.ts'
+
+export {
+  grossYieldBp,
+  MAX_PROPERTIES,
+  netCashFlowCents,
+  outstandingBalanceCents,
+  propertyEquityCents,
+  propertyKinds,
+  standardMonthlyPaymentCents,
+  totalEquityCents,
+} from '../../src/domain/property/vocabulary.ts'
+export type { Mortgage, Property, PropertyKind } from '../../src/domain/property/vocabulary.ts'
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'

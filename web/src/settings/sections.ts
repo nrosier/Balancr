@@ -21,6 +21,7 @@ export type SettingsSectionId =
   | 'thresholds'
   | 'accounts'
   | 'benchmark'
+  | 'property'
   | 'spend'
 
 export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
@@ -30,6 +31,7 @@ export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'thresholds', path: '/settings/thresholds', labelKey: 'settings:nav.thresholds' },
   { id: 'accounts', path: '/settings/accounts', labelKey: 'settings:nav.accounts' },
   { id: 'benchmark', path: '/settings/benchmark', labelKey: 'settings:nav.benchmark' },
+  { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
   { id: 'spend', path: '/settings/spend', labelKey: 'settings:nav.spend' },
 ]
 

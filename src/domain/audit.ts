@@ -90,6 +90,13 @@ export const AUDIT_ACTIONS = [
    */
   'settings.upcomingNote',
   /**
+   * The owned properties and their mortgages (#227).
+   *
+   * Judgement Actual and Ghostfolio have no way to regenerate: the owner's own
+   * estimate of what each property is worth and what is still owed on it.
+   */
+  'settings.property',
+  /**
    * A job someone started by hand.
    *
    * The odd one out, and worth saying why it belongs. Nothing a refresh writes is

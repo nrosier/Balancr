@@ -80,8 +80,10 @@
     "invested": "Geïnvesteerd",
     "investedHint": "Alleen posities, en dat is waar de verdeling hieronder een beeld van geeft.",
     "liquid": "Direct beschikbaar",
+    "mortgageBalance": "Hypotheeksaldo",
     "mwr": "Geldgewogen rendement",
     "netWorth": "Nettovermogen",
+    "propertyValue": "Vastgoedwaarde",
     "ter": "Jaarlijkse kosten",
     "twr": "Tijdgewogen rendement",
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
@@ -91,6 +93,21 @@
     "advice": "Advies",
     "holdings": "Posities",
     "overview": "Overzicht"
+  },
+  "property": {
+    "caption_one": "Eén eigendom.",
+    "caption_other": "{{value}} eigendommen.",
+    "column": {
+      "balance": "Hypotheek",
+      "cashFlow": "Cashflow",
+      "equity": "Overwaarde",
+      "kind": "Type",
+      "name": "Eigendom",
+      "rent": "Huur",
+      "value": "Waarde",
+      "yield": "Rendement"
+    },
+    "title": "Eigendom"
   },
   "suggest": {
     "action": {
