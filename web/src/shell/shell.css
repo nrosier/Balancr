@@ -199,6 +199,22 @@
   color: var(--text-muted);
 }
 
+/*
+ * Anchored at the end of the nav (#231), not in the header: on the bottom tab bar it
+ * sits as the trailing, non-growing item so it does not eat into the five links'
+ * equal share; on the sidebar `margin-top: auto` pushes it to the bottom, away from
+ * the section list above it.
+ */
+.nav .account {
+  flex: 0 0 auto;
+  padding-inline: var(--space-2);
+  border-left: 1px solid var(--border);
+}
+
+.nav .account__name {
+  display: none;
+}
+
 /* ── Navigation ──────────────────────────────────────────────────────────── */
 
 .nav {
@@ -360,6 +376,19 @@
     text-align: start;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  .nav .account {
+    flex-direction: row;
+    margin-top: auto;
+    padding: var(--space-3) var(--space-3) 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .nav .account__name {
+    display: block;
+    max-width: 10ch;
   }
 
   .main {

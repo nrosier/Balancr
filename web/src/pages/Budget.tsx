@@ -30,6 +30,17 @@
  * rank: the bullet chart by the extent of its own row — an envelope with € 400 assigned
  * and nothing spent is exactly what "budget versus actual" is asking about — and the
  * trend wall by what was actually spent, since a flat line at zero has no shape to read.
+ *
+ * **Sections (#230).** The same split Settings settled on (#200) and Insights reused
+ * (#228): one tab strip, one section at a time, chosen by `../budget/sections.ts`'s
+ * `sectionFor` from the real URL (`routes.ts` marks `/budget` `nested`, so every
+ * `/budget/*` path still lands on this component). Overview carries everything that is
+ * a verdict on the month itself — the totals, the uncategorised notice, the charts and
+ * the burn-rate pace — while Benchmark and Custody are each a standing comparison, not
+ * a verdict on the month, and already came last on the page for that reason. The
+ * freshness bar and the month picker stay above the tabs, since both apply to every
+ * section regardless of which one is open, and `useResource` is still called exactly
+ * once here regardless of which tab is open.
  */
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
@@ -38,10 +49,12 @@ import { useResource } from '../api/resource.tsx'
 import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts'
 import { Benchmark } from '../budget/Benchmark.tsx'
 import { Custody } from '../budget/Custody.tsx'
+import { BUDGET_SECTIONS, sectionFor } from '../budget/sections.ts'
 import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
 import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
+import { useRouter } from '../router.tsx'
 import {
   formatBp,
   formatDecimal,
@@ -55,6 +68,7 @@ import { Money } from '../ui/Money.tsx'
 import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../budget/benchmark.css'
 import '../budget/custody.css'
@@ -91,6 +105,8 @@ function isEmpty(data: BudgetPayload): boolean {
 
 export function Budget(): ReactNode {
   const { t } = useT()
+  const { path } = useRouter()
+  const section = sectionFor(path)
   const [month, setMonth] = useState<string | null>(null)
   // No month yet means "whatever the server considers latest", which is what the
   // endpoint defaults to. Naming a month here would guess at what has been aggregated.
@@ -101,9 +117,15 @@ export function Budget(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.budget')} lede={t('page.budget.lede')} />
+      <SectionNav sections={BUDGET_SECTIONS} ariaLabel={t('nav.budget')} />
       <DataState resource={resource} isEmpty={isEmpty}>
         {(data) => (
-          <Figures data={data} onSelect={setMonth} onRefreshed={resource.reload} />
+          <Figures
+            data={data}
+            section={section}
+            onSelect={setMonth}
+            onRefreshed={resource.reload}
+          />
         )}
       </DataState>
     </>
@@ -112,11 +134,12 @@ export function Budget(): ReactNode {
 
 interface FiguresProps {
   data: BudgetPayload
+  section: (typeof BUDGET_SECTIONS)[number]['id']
   onSelect: (month: string) => void
   onRefreshed: () => void
 }
 
-function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
+function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactNode {
   const { t, language } = useT()
   const {
     benchmark,
@@ -172,62 +195,70 @@ function Figures({ data, onSelect, onRefreshed }: FiguresProps): ReactNode {
         />
       </div>
 
-      {uncategorised === null || uncategorised.txnCount === 0 ? null : (
-        <div className="notice notice--warn" role="status">
-          <p className="notice__lead">
-            <Trans
-              i18nKey="budget:uncategorised.notice"
-              count={uncategorised.txnCount}
-              // `count` alone only picks the plural form; `t()`'s `withFormattedCount`
-              // is what normally supplies the locale-formatted `{{value}}` — `Trans`
-              // bypasses that wrapper, so it is repeated here.
-              values={{ value: formatDecimal(uncategorised.txnCount) }}
-              components={{ money: <Money cents={uncategorised.amountCents} options={{ whole: true }} /> }}
-            />
-          </p>
-        </div>
-      )}
-
-      {totals === null ? (
-        <div className="notice notice--info" role="status">
-          <p className="notice__lead">
-            {t('budget:empty.month', { month: formatMonth(month, language) })}
-          </p>
-          <p className="notice__hint">{t('budget:empty.monthHint')}</p>
-        </div>
-      ) : (
-        <Totals totals={totals} />
-      )}
-
-      {categories.length === 0 ? null : (
+      {section === 'overview' && (
         <>
-          <section className="card">
-            <h2 className="card__title">{t('budget:chart.sankeyTitle')}</h2>
-            <SpendSankey
-              categories={categories.map((category) => ({
-                name: category.categoryName,
-                isIncome: category.isIncome,
-                spentCents: category.spentCents,
-              }))}
-              height="20rem"
-            />
-          </section>
+          {uncategorised === null || uncategorised.txnCount === 0 ? null : (
+            <div className="notice notice--warn" role="status">
+              <p className="notice__lead">
+                <Trans
+                  i18nKey="budget:uncategorised.notice"
+                  count={uncategorised.txnCount}
+                  // `count` alone only picks the plural form; `t()`'s `withFormattedCount`
+                  // is what normally supplies the locale-formatted `{{value}}` — `Trans`
+                  // bypasses that wrapper, so it is repeated here.
+                  values={{ value: formatDecimal(uncategorised.txnCount) }}
+                  components={{
+                    money: <Money cents={uncategorised.amountCents} options={{ whole: true }} />,
+                  }}
+                />
+              </p>
+            </div>
+          )}
 
-          <section className="card">
-            <h2 className="card__title">{t('budget:chart.bulletTitle')}</h2>
-            {bullet.length === 0 ? (
-              <p className="muted">{t('budget:empty.categories')}</p>
-            ) : (
-              <BudgetBullet categories={bullet} />
-            )}
-          </section>
+          {totals === null ? (
+            <div className="notice notice--info" role="status">
+              <p className="notice__lead">
+                {t('budget:empty.month', { month: formatMonth(month, language) })}
+              </p>
+              <p className="notice__hint">{t('budget:empty.monthHint')}</p>
+            </div>
+          ) : (
+            <Totals totals={totals} />
+          )}
 
-          <Pace signals={rendered} t={t} />
-          <TrendWall categories={trend} months={trendMonths} signals={rendered} />
-          <Custody custody={custody} />
-          <Benchmark benchmark={benchmark} />
+          {categories.length === 0 ? null : (
+            <>
+              <section className="card">
+                <h2 className="card__title">{t('budget:chart.sankeyTitle')}</h2>
+                <SpendSankey
+                  categories={categories.map((category) => ({
+                    name: category.categoryName,
+                    isIncome: category.isIncome,
+                    spentCents: category.spentCents,
+                  }))}
+                  height="20rem"
+                />
+              </section>
+
+              <section className="card">
+                <h2 className="card__title">{t('budget:chart.bulletTitle')}</h2>
+                {bullet.length === 0 ? (
+                  <p className="muted">{t('budget:empty.categories')}</p>
+                ) : (
+                  <BudgetBullet categories={bullet} />
+                )}
+              </section>
+
+              <Pace signals={rendered} t={t} />
+              <TrendWall categories={trend} months={trendMonths} signals={rendered} />
+            </>
+          )}
         </>
       )}
+
+      {section === 'benchmark' && categories.length > 0 && <Benchmark benchmark={benchmark} />}
+
+      {section === 'custody' && categories.length > 0 && <Custody custody={custody} />}
     </>
   )
 }
