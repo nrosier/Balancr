@@ -593,6 +593,8 @@ export interface ProposalCard {
   /** Unformatted: the view owns Belgian date formatting, not the domain. */
   expiresAt: Date | null
   status: ProposalRow['status']
+  /** The raw proposed amount for a `budget_amount.set` card (#220); null for every other type. */
+  amountCents: number | null
 }
 
 /**
@@ -650,6 +652,14 @@ export function renderProposal(
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
     status: row.status,
+    amountCents:
+      row.type === 'budget_amount.set' &&
+      typeof payload === 'object' &&
+      payload !== null &&
+      'amountCents' in payload &&
+      typeof payload.amountCents === 'number'
+        ? payload.amountCents
+        : null,
   }
 }
 
@@ -767,6 +777,61 @@ export async function applyProposal(db: Db, options: DecideOptions): Promise<App
 
     return { id: row.id, type: row.type, targetRef: row.targetRef, fields, auditId }
   })
+}
+
+export interface AdjustProposalOptions {
+  id: string
+  amountCents: number
+  userId?: string | null
+  now?: Date
+}
+
+export interface AdjustResult {
+  id: string
+  status: 'pending' | 'rejected'
+}
+
+/**
+ * Edits a pending `budget_amount.set` proposal's amount before it is applied (#220).
+ *
+ * Goes through `createProposal` rather than patching the stored payload directly,
+ * so the edited amount gets its own `diff` — computed against the live budgeted
+ * amount, same as any other proposal — and `applyProposal` later audits what was
+ * actually applied, not what was first suggested.
+ *
+ * Setting the amount back to the category's current budgeted amount makes that
+ * diff empty, which `createProposal` refuses as a no-op. Here that refusal means
+ * "the owner declined the suggestion", so it is turned into a rejection of the
+ * *original* proposal instead of an error.
+ */
+export async function adjustProposal(db: Db, options: AdjustProposalOptions): Promise<AdjustResult> {
+  const now = options.now ?? new Date()
+  const userId = options.userId ?? null
+  const original = db.select().from(proposals).where(eq(proposals.id, options.id)).get()
+  if (original === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
+  if (original.status !== 'pending') {
+    throw new ProposalError(`proposal ${options.id} is already ${original.status}`)
+  }
+  if (original.type !== 'budget_amount.set') {
+    throw new ProposalError(`proposal ${options.id} is a ${original.type}, not budget_amount.set`)
+  }
+
+  try {
+    const row = await createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: original.targetRef,
+      payload: { amountCents: options.amountCents },
+      runId: original.runId,
+      now,
+    })
+    return { id: row.id, status: 'pending' }
+  } catch (error) {
+    if (error instanceof ProposalError && error.message.endsWith('would change nothing')) {
+      const rejected = rejectProposal(db, { id: original.id, userId, now })
+      return { id: rejected.id, status: 'rejected' }
+    }
+    throw error
+  }
 }
 
 /**
