@@ -34,6 +34,7 @@ import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
 import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.tsx'
 import { Insights } from '../src/pages/Insights.tsx'
+import { formatMoney } from '../src/shared.ts'
 import type { AiBudgetNudgeRun, AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
 import { i18nReady, renderApp } from './helpers.tsx'
 
@@ -201,6 +202,7 @@ const FULL: InsightsPayload = {
       ],
       createdAt: '2026-09-01T04:13:00Z',
       expiresAt: '2026-09-08T04:13:00Z',
+      amountCents: null,
     },
   ],
   categoryGuessCandidates: [
@@ -880,6 +882,18 @@ const TWO_PROPOSALS: InsightsPayload['proposals'] = [
   { ...FULL.proposals[0]!, id: 'p-groceries', targetRef: 'c-groceries', targetName: 'Groceries' },
 ]
 
+/** A `budget_amount.set` proposal, the one type whose card carries an editable amount (#220). */
+const BUDGET_PROPOSAL: InsightsPayload['proposals'][number] = {
+  id: 'p-budget-food',
+  type: 'budget_amount.set',
+  targetRef: 'food:2026-08',
+  targetName: 'Groceries (2026-08)',
+  fields: [{ field: 'amount', label: 'Budgeted amount', before: '€ 120,00', after: '€ 150,00', warn: null }],
+  createdAt: '2026-09-01T04:13:00Z',
+  expiresAt: '2026-09-08T04:13:00Z',
+  amountCents: 15_000,
+}
+
 describe('the proposal queue', () => {
   it('shows what would change, field by field, before and after', () => {
     renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
@@ -1085,6 +1099,89 @@ describe('the proposal queue', () => {
     renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
+  })
+
+  it('shows an editable amount field, pre-filled with the proposed figure, only on a budget_amount.set card (#220)', () => {
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL, ...FULL.proposals]} scoped={false} owner={true} onDecided={vi.fn()} />)
+
+    expect((screen.getByLabelText('Budget amount') as HTMLInputElement).value).toBe(formatMoney(15_000))
+    // `FULL.proposals[0]` is a `category_meta` card, which has nothing to adjust.
+    expect(screen.getAllByLabelText('Budget amount')).toHaveLength(1)
+  })
+
+  it('disables the amount field for a viewer, same as every other control on the card', () => {
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={false} onDecided={vi.fn()} />)
+
+    expect((screen.getByLabelText('Budget amount') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('applies the proposed amount directly, with no adjust call, when the owner leaves it unedited', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-budget-food/apply': json({ id: 'p-budget-food', status: 'applied' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-budget-food/apply',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/proposals/p-budget-food/adjust', expect.anything())
+  })
+
+  it('adjusts, then applies the proposal the adjustment produced, when the owner edits the amount', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-budget-food/adjust': json({ id: 'p-budget-food-2', status: 'pending' }),
+      '/api/proposals/p-budget-food-2/apply': json({ id: 'p-budget-food-2', status: 'applied' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: '160,00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-budget-food/adjust',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ amountCents: 16_000 }) }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-budget-food-2/apply',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('stops at the adjustment and never applies when the edited amount matches what is already budgeted', async () => {
+    const fetchMock = serve({
+      '/api/proposals/p-budget-food/adjust': json({ id: 'p-budget-food', status: 'rejected' }),
+    })
+    const onDecided = vi.fn()
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+
+    fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: '120,00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/proposals/p-budget-food/adjust',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/proposals/p-budget-food/apply', expect.anything())
+  })
+
+  it('shows a validation message and calls nothing when the edited amount does not parse', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: 'not a number' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await screen.findByText('Enter a valid amount.')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
