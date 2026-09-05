@@ -53,9 +53,12 @@ import {
   formatDate,
   formatDateTime,
   formatMicroEur,
+  formatMoney,
+  parseMoneyToCents,
   type CategoryGuessEstimateWire,
   type CategoryGuessRunWire,
   type Insights,
+  type ProposalAdjustResult,
   type ProposalBatchApply,
 } from '../shared.ts'
 import { Money, Private } from '../ui/Money.tsx'
@@ -129,6 +132,18 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
   const [armed, setArmed] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<ApiError | null>(null)
+  // Keyed by proposal id, untouched until the owner edits a `budget_amount.set`
+  // card's amount — absence means "still the proposed figure".
+  const [amountDrafts, setAmountDrafts] = useState<Readonly<Record<string, string>>>({})
+
+  function clearAmountDraft(id: string): void {
+    setAmountDrafts((prev) => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
 
   // Intersected with the current list rather than trusted on its own: a decision that
   // just succeeded reloads the page's data, which drops the id from `proposals` before
@@ -179,6 +194,67 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
         setBusy((prev) => {
           const next = new Set(prev)
           next.delete(id)
+          return next
+        })
+      })
+  }
+
+  /**
+   * Applies a `budget_amount.set` card, first adjusting it if the owner edited
+   * the amount away from what was proposed (#220). Adjusting supersedes the
+   * proposal with a new pending id carrying the edited amount — so it is that
+   * id, not `proposal.id`, that gets applied. Setting the amount back to what
+   * it already is comes back `rejected` instead: the same as pressing "Reject",
+   * so there is nothing left to apply.
+   */
+  function applyBudgetAmount(proposal: Insights['proposals'][number]): void {
+    if (proposal.amountCents === null) return
+    const draft = amountDrafts[proposal.id]
+    const amountCents = draft === undefined ? proposal.amountCents : parseMoneyToCents(draft)
+    if (amountCents === null) {
+      setRowErrors((prev) => ({ ...prev, [proposal.id]: t('ai:proposal.invalidAmount') }))
+      return
+    }
+
+    setBusy((prev) => new Set(prev).add(proposal.id))
+    setRowErrors((prev) => {
+      if (!(proposal.id in prev)) return prev
+      const next = { ...prev }
+      delete next[proposal.id]
+      return next
+    })
+
+    const run = async (): Promise<void> => {
+      let applyId = proposal.id
+      if (amountCents !== proposal.amountCents) {
+        const result = await apiSend<ProposalAdjustResult>(
+          'POST',
+          `/api/proposals/${proposal.id}/adjust`,
+          { amountCents },
+          csrf,
+        )
+        if (result.status === 'rejected') {
+          clearAmountDraft(proposal.id)
+          onDecided()
+          return
+        }
+        applyId = result.id
+      }
+      await apiSend('POST', `/api/proposals/${applyId}/apply`, undefined, csrf)
+      clearAmountDraft(proposal.id)
+      onDecided()
+    }
+
+    void run()
+      .catch((cause: unknown) => {
+        const error = decisionFailure(cause)
+        if (error.code === 'unauthenticated') expired()
+        else setRowErrors((prev) => ({ ...prev, [proposal.id]: error.message }))
+      })
+      .finally(() => {
+        setBusy((prev) => {
+          const next = new Set(prev)
+          next.delete(proposal.id)
           return next
         })
       })
@@ -297,6 +373,26 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
                         </div>
                       ))}
                     </dl>
+                    {proposal.type === 'budget_amount.set' && proposal.amountCents !== null ? (
+                      <div className="field proposal__amount">
+                        <label className="field__label" htmlFor={`proposal-amount-${proposal.id}`}>
+                          {t('ai:proposal.amountLabel')}
+                        </label>
+                        <input
+                          id={`proposal-amount-${proposal.id}`}
+                          className="field__input num"
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={amountDrafts[proposal.id] ?? formatMoney(proposal.amountCents)}
+                          disabled={!owner || busy.has(proposal.id) || bulkBusy}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setAmountDrafts((prev) => ({ ...prev, [proposal.id]: value }))
+                          }}
+                        />
+                      </div>
+                    ) : null}
                     {rowErrors[proposal.id] === undefined ? null : (
                       <p className="notice notice--warn" role="status">
                         {rowErrors[proposal.id]}
@@ -307,7 +403,11 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
                         type="button"
                         className="button button--quiet"
                         disabled={!owner || busy.has(proposal.id) || bulkBusy}
-                        onClick={() => decideOne(proposal.id, 'apply')}
+                        onClick={() =>
+                          proposal.type === 'budget_amount.set'
+                            ? applyBudgetAmount(proposal)
+                            : decideOne(proposal.id, 'apply')
+                        }
                       >
                         {busy.has(proposal.id) ? t('ai:proposal.applying') : t('ai:proposal.apply')}
                       </button>

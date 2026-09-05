@@ -25,6 +25,7 @@ import { categoryMeta, monthlyCategoryFacts, proposals, users } from '../../src/
 import { loadAuditTrail } from '../../src/domain/audit.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import {
+  adjustProposal,
   applyProposal,
   createProposal,
   decodeBudgetTarget,
@@ -271,6 +272,20 @@ describe('renderProposal', () => {
     ctx.sqlite.prepare('update proposals set rendered_diff_json = ?').run('{not json')
 
     expect(renderProposal(db, loadProposal(db, row.id) as ProposalRow, 'en').fields).toEqual([])
+  })
+
+  it('exposes the raw proposed amount for a budget_amount.set card, and null for every other type (#220)', async () => {
+    const budgetRow = await createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: encodeBudgetTarget('food', MONTH),
+      payload: { amountCents: 15_000 },
+      runId,
+      now: NOW,
+    })
+    const metaRow = await propose({ nature: 'variable' })
+
+    expect(renderProposal(db, budgetRow, 'en').amountCents).toBe(15_000)
+    expect(renderProposal(db, metaRow, 'en').amountCents).toBeNull()
   })
 })
 
@@ -536,6 +551,52 @@ describe('budget_amount.set', () => {
     const rows = pendingBudgetProposals(db, MONTH)
 
     expect(rows.map((row) => row.id)).toEqual([other.id, first.id])
+  })
+})
+
+describe('adjustProposal', () => {
+  const target = encodeBudgetTarget('food', MONTH)
+
+  const proposeBudgetChange = (amountCents: number): Promise<ProposalRow> =>
+    createProposal(db, { type: 'budget_amount.set', targetRef: target, payload: { amountCents }, runId, now: NOW })
+
+  it('supersedes the original with a fresh proposal at the adjusted amount', async () => {
+    const original = await proposeBudgetChange(15_000)
+
+    const result = await adjustProposal(db, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
+
+    expect(result.status).toBe('pending')
+    expect(result.id).not.toBe(original.id)
+    expect(loadProposal(db, original.id)?.status).toBe('expired')
+    const adjusted = loadProposal(db, result.id)
+    expect(storedDiff(adjusted as ProposalRow)?.fields).toEqual([
+      { field: 'amount', before: formatMoney(12_000), after: formatMoney(16_000) },
+    ])
+  })
+
+  it('rejects the original instead of erroring when the adjustment matches what is already budgeted', async () => {
+    const original = await proposeBudgetChange(15_000)
+
+    const result = await adjustProposal(db, { id: original.id, amountCents: 12_000, userId: 'u1', now: NOW })
+
+    expect(result).toEqual({ id: original.id, status: 'rejected' })
+    expect(loadProposal(db, original.id)?.status).toBe('rejected')
+  })
+
+  it('refuses a proposal that is not budget_amount.set', async () => {
+    const row = await propose({ nature: 'variable' })
+    await expect(adjustProposal(db, { id: row.id, amountCents: 1_000 })).rejects.toThrow(/not budget_amount\.set/)
+  })
+
+  it('refuses one that was already decided', async () => {
+    const original = await proposeBudgetChange(15_000)
+    rejectProposal(db, { id: original.id, now: NOW })
+
+    await expect(adjustProposal(db, { id: original.id, amountCents: 16_000 })).rejects.toThrow(/already rejected/)
+  })
+
+  it('refuses an id that does not exist', async () => {
+    await expect(adjustProposal(db, { id: 'nope', amountCents: 1_000 })).rejects.toThrow(/does not exist/)
   })
 })
 

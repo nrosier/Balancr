@@ -11,6 +11,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import type { BaselineResult } from '../../src/domain/aggregate/baseline.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
+import { monthsBefore } from '../../src/util/month.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 import {
   generateBudgetProposals,
@@ -67,6 +68,23 @@ function signal(overrides: Partial<Signal> = {}): Signal {
     metrics: {},
     ...overrides,
   }
+}
+
+/**
+ * The 11 months before `MONTH`, seeded thinly (one category, unjudged) so
+ * `loadCategoryTrends`' 12-month window — the other 9 at `olderCents`, the
+ * last 2 (paired with whatever `MONTH` itself gets) at `recentCents` — has a
+ * real trailing history for #220's weighted average to chew on.
+ */
+function seedTrailingSpend(categoryId: string, recentCents: number, olderCents: number): void {
+  const priorMonths = monthsBefore(MONTH, 11)
+  priorMonths.forEach((month, at) => {
+    const spentCents = at >= priorMonths.length - 2 ? recentCents : olderCents
+    seedMonth(db, month, {
+      facts: [fact(month, categoryId, { spentCents, budgetedCents: spentCents + 1_000 })],
+      judged: false,
+    })
+  })
 }
 
 describe('generateCategoryProposals', () => {
@@ -205,8 +223,9 @@ describe('generateCategoryProposals', () => {
 })
 
 describe('generateBudgetProposals', () => {
-  it('proposes the rounded baseline for a category with a triggered signal', async () => {
-    const facts = [fact(MONTH, 'food', { budgetedCents: 12_000, baseline: baseline(15_070) })]
+  it('proposes the weighted trailing average for a category with a triggered signal', async () => {
+    seedTrailingSpend('food', 20_000, 10_000)
+    const facts = [fact(MONTH, 'food', { spentCents: 20_000, budgetedCents: 12_000, baseline: baseline(15_070) })]
     seedMonth(db, MONTH, { facts })
 
     const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
@@ -216,11 +235,13 @@ describe('generateBudgetProposals', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ type: 'budget_amount.set' })
     expect(decodeBudgetTarget(rows[0]!.targetRef)).toEqual({ categoryId: 'food', month: MONTH })
-    expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 15_100 })
+    // recent 3 (last 2 seeded months + MONTH) average 20_000, older 9 average 10_000: 20_000*0.6 + 10_000*0.4
+    expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 16_000 })
   })
 
-  it('skips a category already at the rounded baseline', async () => {
-    const facts = [fact(MONTH, 'food', { budgetedCents: 15_100, baseline: baseline(15_070) })]
+  it('skips a category already at the weighted trailing average', async () => {
+    seedTrailingSpend('food', 15_000, 15_000)
+    const facts = [fact(MONTH, 'food', { spentCents: 15_000, budgetedCents: 15_000, baseline: baseline(15_070) })]
     seedMonth(db, MONTH, { facts })
 
     const created = await generateBudgetProposals(db, MONTH, [signal()], facts)

@@ -155,6 +155,7 @@
     "viewPayload": "Show the exact payload"
   },
   "proposal": {
+    "amountLabel": "Budget amount",
     "apply": "Apply",
     "applySelected": "Apply selected ({{count}})",
     "applying": "Applying…",
@@ -162,6 +163,7 @@
     "confirmApply": "Apply {{count}} to Actual?",
     "diff": "Now / proposed",
     "expiresAt": "Expires {{when}}",
+    "invalidAmount": "Enter a valid amount.",
     "field": {
       "amount": "Budgeted amount",
       "category": "Category",
