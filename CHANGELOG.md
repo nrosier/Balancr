@@ -6,6 +6,43 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.7] — 2026-09-05
+
+### Added
+
+- **An editable figure on budget-amount proposals**
+  ([#220](https://github.com/nrosier/Balancr/issues/220)). The amount #45's
+  weighted trailing average proposes — or #217's note-driven nudge on top of
+  it — is now a field the owner can edit before pressing apply, rather than
+  only a binary accept/reject. An edited figure supersedes the pending
+  proposal with a fresh one at the new amount; typing back the amount already
+  budgeted rejects the proposal outright instead of erroring on "no change
+  requested."
+- **Owned property and its mortgage, tracked as their own kind of position**
+  ([#227](https://github.com/nrosier/Balancr/issues/227)). Any property held
+  outright — a home lived in, a flat let out — with an optional mortgage whose
+  outstanding balance amortizes forward from a principal, rate and remaining
+  term set once at whatever point the owner's last statement was true, rather
+  than typed in fresh every month. A property's equity nets into net worth the
+  same way debt already does, and a rental adds its own net cash flow and
+  gross yield. Deliberately outside the fund universe, drift table and
+  rebalance engine — a paid-down room isn't a position either one can buy or
+  sell to correct.
+- **Insights, Budget and Portfolio split into section tabs**
+  ([#228](https://github.com/nrosier/Balancr/issues/228),
+  [#230](https://github.com/nrosier/Balancr/issues/230),
+  [#229](https://github.com/nrosier/Balancr/issues/229)), reusing the
+  horizontal tab-strip component Settings (#200) introduced. Each page's
+  freshness bar and any page-wide notices stay above the tabs since they
+  qualify every section, not one; a bookmark to a specific tab's path lands
+  directly on that section instead of at the top of a long scroll.
+
+### Changed
+
+- **The sign-out control moved to the bottom of the sidebar nav**
+  ([#231](https://github.com/nrosier/Balancr/issues/231)), out of the header,
+  matching where the rest of the account-level chrome already lives.
+
 ## [0.10.6] — 2026-09-05
 
 ### Added
