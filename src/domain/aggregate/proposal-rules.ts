@@ -83,20 +83,48 @@ export interface BudgetSuggestion {
 /** The two overspend signals that mean a category's budget looks miscalibrated, not just spent. */
 const BUDGET_TRIGGER_CODES: ReadonlySet<FindingCode> = new Set(['over_available', 'above_baseline'])
 
+/** How much a suggestion leans on the last 3 months over the 9 before them (#220). */
+const RECENT_WEIGHT = 0.6
+const OLDER_WEIGHT = 1 - RECENT_WEIGHT
+
+const mean = (values: readonly number[]): number | null =>
+  values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length
+
 /**
- * One suggestion per category with a triggered signal this month, sourced from
- * that category's own EWMA baseline rather than a separately-tracked streak —
- * `computeBaseline` already trails several months, so a category has to be off
- * its norm for a while before `above_baseline`/`over_available` fire at all.
+ * A trailing spend history, oldest first, into one weighted figure — the last 3
+ * entries count for 60%, the up-to-9 before them for the other 40% (#220). Plain
+ * `mean` rather than the closed-form weighted average, because the two windows
+ * can have different lengths (a category with under a year of history) and
+ * a per-sample weight would have to change with that length to keep the 60/40
+ * split honest.
+ */
+function weightedTrailingAverageCents(history: readonly number[]): number | null {
+  const recent = history.slice(Math.max(0, history.length - 3))
+  const older = history.slice(Math.max(0, history.length - 12), Math.max(0, history.length - 3))
+
+  const recentMean = mean(recent)
+  if (recentMean === null) return null
+  const olderMean = mean(older)
+  if (olderMean === null) return recentMean
+
+  return recentMean * RECENT_WEIGHT + olderMean * OLDER_WEIGHT
+}
+
+/**
+ * One suggestion per category with a triggered signal this month, sourced from a
+ * weighted trailing average of what it actually spent rather than the rounded EWMA
+ * baseline alone — the baseline is still what decides *whether* a category looks
+ * miscalibrated (below), but the amount itself now tracks recent spend more closely
+ * than a single smoothed figure does.
  *
- * Rounded to the nearest euro because a suggestion to the cent reads as
- * spuriously precise for a trailing average. Skips a category already at that
- * rounded figure — `createProposal` refuses a no-op diff anyway, but there is
- * no reason to compute one.
+ * Rounded to the nearest euro because a suggestion to the cent reads as spuriously
+ * precise for a trailing average. Skips a category already at that rounded figure —
+ * `createProposal` refuses a no-op diff anyway, but there is no reason to compute one.
  */
 export function suggestBudgetAmounts(
   signals: readonly Signal[],
   facts: readonly MonthlyFact[],
+  trailingSpendCents: ReadonlyMap<string, readonly number[]>,
 ): BudgetSuggestion[] {
   const factsByCategory = new Map(facts.map((fact) => [fact.categoryId, fact]))
   const suggestions: BudgetSuggestion[] = []
@@ -111,7 +139,9 @@ export function suggestBudgetAmounts(
     const baselineCents = fact.baseline?.baselineCents
     if (baselineCents === undefined || baselineCents <= 0) continue
 
-    const amountCents = Math.round(baselineCents / 100) * 100
+    const history = trailingSpendCents.get(signal.categoryId) ?? []
+    const weightedCents = weightedTrailingAverageCents(history) ?? baselineCents
+    const amountCents = Math.round(weightedCents / 100) * 100
     if (amountCents === fact.budgetedCents) continue
 
     seen.add(signal.categoryId)
