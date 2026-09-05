@@ -1002,7 +1002,15 @@ Custody — reusing the tab-strip component #200 built and #228 reused rather
 than growing a third one, so a bookmark to `/budget/benchmark` or
 `/budget/custody` lands directly on that section instead of at the top of a
 long scroll. The freshness bar and the month picker stay above the tabs,
-since both apply to every section regardless of which one is open. Behind
+since both apply to every section regardless of which one is open. A tenth
+rider carried the same pattern to a fourth page:
+[#229](https://github.com/nrosier/Balancr/issues/229) splits Portfolio into
+the same horizontal tab strip — Overview, Advice, Holdings — reusing the
+tab-strip component #200 built and #228/#230 reused rather than growing a
+fourth one, so a bookmark to `/portfolio/advice` or `/portfolio/holdings`
+lands directly on that section instead of at the top of a long scroll. The
+freshness bar stays above the tabs, since it applies to every section
+regardless of which one is open. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
