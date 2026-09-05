@@ -87,6 +87,11 @@
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",
     "value": "Marktwaarde"
   },
+  "nav": {
+    "advice": "Advies",
+    "holdings": "Posities",
+    "overview": "Overzicht"
+  },
   "suggest": {
     "action": {
       "buy": "Kopen",

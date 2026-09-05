@@ -225,6 +225,7 @@ const bounds: Array<{ prefix: string; max: number; box: string }> = [
   { prefix: 'common:action.', max: 20, box: 'a button sharing a row with another button' },
   { prefix: 'settings:nav.', max: 20, box: 'one link in a section tab strip' },
   { prefix: 'insights:nav.', max: 20, box: 'one link in a section tab strip' },
+  { prefix: 'portfolio:nav.', max: 20, box: 'one link in a section tab strip' },
   { prefix: 'budget:nav.', max: 20, box: 'one link in a section tab strip' },
   { prefix: 'budget:metric.', max: 24, box: 'two rows of the bullet-chart legend' },
   {

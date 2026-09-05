@@ -18,6 +18,16 @@
  * "not known yet" teaches the reader that the placeholder means nothing, so the
  * card is not drawn at all — see `portfolio:metric.ter`, which stays in the
  * catalogue for the version that can fill it.
+ *
+ * **Sections (#229).** The same split Settings settled on (#200), Insights reused
+ * (#228) and Budget reused again (#230): one tab strip, one section at a time, chosen
+ * by `../portfolio/sections.ts`'s `sectionFor` from the real URL (`routes.ts` marks
+ * `/portfolio` `nested`, so every `/portfolio/*` path still lands on this component).
+ * Overview carries the value metrics and both charts, Advice the drift table and the
+ * rebalance suggestions, Holdings the table of rows — the same top-to-bottom order the
+ * page always read, narrowest last. The freshness bar stays above the tabs, since it
+ * applies to every section regardless of which one is open, and `useResource` is still
+ * called exactly once here regardless of which tab is open.
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -25,13 +35,16 @@ import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { DriftTable } from '../portfolio/Drift.tsx'
+import { PORTFOLIO_SECTIONS, sectionFor } from '../portfolio/sections.ts'
 import { Suggestions } from '../portfolio/Suggestions.tsx'
+import { useRouter } from '../router.tsx'
 import { formatBp, formatDate, type Portfolio as PortfolioPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../portfolio/advice.css'
 
@@ -67,13 +80,16 @@ function isEmpty(data: PortfolioPayload): boolean {
 
 export function Portfolio(): ReactNode {
   const { t } = useT()
+  const { path } = useRouter()
+  const section = sectionFor(path)
   const resource = useResource<PortfolioPayload>('/api/portfolio')
 
   return (
     <>
       <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
+      <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')} />
       <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Figures data={data} onRefreshed={resource.reload} />}
+        {(data) => <Figures data={data} section={section} onRefreshed={resource.reload} />}
       </DataState>
     </>
   )
@@ -81,9 +97,11 @@ export function Portfolio(): ReactNode {
 
 function Figures({
   data,
+  section,
   onRefreshed,
 }: {
   data: PortfolioPayload
+  section: (typeof PORTFOLIO_SECTIONS)[number]['id']
   onRefreshed: () => void
 }): ReactNode {
   const { t } = useT()
@@ -95,108 +113,120 @@ function Figures({
     <>
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
-      <div className="grid-cards">
-        <Metric
-          label={t('portfolio:metric.value')}
-          value={totalValueCents === null ? null : euro(totalValueCents)}
-          unknown={unknown}
-          {...(date === null ? {} : { note: t('time.lastUpdated', { when: formatDate(date) }) })}
-        />
+      {section === 'overview' && (
+        <>
+          <div className="grid-cards">
+            <Metric
+              label={t('portfolio:metric.value')}
+              value={totalValueCents === null ? null : euro(totalValueCents)}
+              unknown={unknown}
+              {...(date === null
+                ? {}
+                : { note: t('time.lastUpdated', { when: formatDate(date) }) })}
+            />
 
-        <Metric
-          label={t('portfolio:metric.invested')}
-          value={investedValueCents === null ? null : euro(investedValueCents)}
-          unknown={unknown}
-          note={t('portfolio:metric.investedHint')}
-        />
+            <Metric
+              label={t('portfolio:metric.invested')}
+              value={investedValueCents === null ? null : euro(investedValueCents)}
+              unknown={unknown}
+              note={t('portfolio:metric.investedHint')}
+            />
 
-        <Metric
-          label={t('portfolio:metric.cash')}
-          value={cashValueCents === null ? null : euro(cashValueCents)}
-          unknown={unknown}
-          // No tone. Cash at a broker is neither good nor bad without knowing why it
-          // is there, and a colour would be this page taking a position it cannot
-          // support — most of it here is a bank balance a syncing tool wrote in.
-          note={t('portfolio:metric.cashHint')}
-        />
+            <Metric
+              label={t('portfolio:metric.cash')}
+              value={cashValueCents === null ? null : euro(cashValueCents)}
+              unknown={unknown}
+              // No tone. Cash at a broker is neither good nor bad without knowing why it
+              // is there, and a colour would be this page taking a position it cannot
+              // support — most of it here is a bank balance a syncing tool wrote in.
+              note={t('portfolio:metric.cashHint')}
+            />
 
-        <Metric
-          label={t('portfolio:metric.twr')}
-          value={twrBp === null ? null : formatBp(twrBp)}
-          unknown={unknown}
-          // The sign decides the colour, and zero is neither: a portfolio exactly
-          // flat is not good news to be painted green.
-          {...(twrBp === null || twrBp === 0
-            ? {}
-            : { tone: twrBp < 0 ? ('negative' as const) : ('positive' as const) })}
-          note={t('portfolio:metric.twrHint')}
-        />
-      </div>
+            <Metric
+              label={t('portfolio:metric.twr')}
+              value={twrBp === null ? null : formatBp(twrBp)}
+              unknown={unknown}
+              // The sign decides the colour, and zero is neither: a portfolio exactly
+              // flat is not good news to be painted green.
+              {...(twrBp === null || twrBp === 0
+                ? {}
+                : { tone: twrBp < 0 ? ('negative' as const) : ('positive' as const) })}
+              note={t('portfolio:metric.twrHint')}
+            />
+          </div>
 
-      <section className="card">
-        <h2 className="card__title">{t('portfolio:chart.valueTitle')}</h2>
-        {history.length === 0 ? (
-          <p className="muted">{t('empty.noData')}</p>
-        ) : (
-          // The same chart the overview draws, relabelled: this series is the
-          // invested value rather than everything, and the axis rules are the part
-          // worth sharing rather than copying.
-          <NetWorthChart
-            history={history}
-            name={t('portfolio:metric.value')}
-            summaryKey="portfolio:chart.valueSummary"
-          />
-        )}
-      </section>
+          <section className="card">
+            <h2 className="card__title">{t('portfolio:chart.valueTitle')}</h2>
+            {history.length === 0 ? (
+              <p className="muted">{t('empty.noData')}</p>
+            ) : (
+              // The same chart the overview draws, relabelled: this series is the
+              // invested value rather than everything, and the axis rules are the part
+              // worth sharing rather than copying.
+              <NetWorthChart
+                history={history}
+                name={t('portfolio:metric.value')}
+                summaryKey="portfolio:chart.valueSummary"
+              />
+            )}
+          </section>
 
-      <section className="card">
-        <h2 className="card__title">{t('portfolio:chart.allocationTitle')}</h2>
-        {/*
-          These slices add up to the invested figure above, not to the total: cash
-          held at the broker is not an asset class and would otherwise appear as one.
-          The two cards make the difference readable, which is why they are drawn
-          even when the split is unknown.
-        */}
-        {allocation.length === 0 ? (
-          <p className="muted">{t('empty.noData')}</p>
-        ) : (
-          <AllocationChart allocation={allocation} />
-        )}
-      </section>
-
-      {/*
-        Advice comes after the shape and before the rows, because it is an argument about
-        the shape: the treemap says 100% equities and this section says what the profile
-        wanted instead. It is null exactly when there is no invested value to measure —
-        an instance nobody has synced yet, where four suggestions to buy would be the
-        app's first act — and then the section says so rather than disappearing, since a
-        missing section is indistinguishable from a feature nobody built.
-      */}
-      <section className="card">
-        <h2 className="card__title">{t('portfolio:advice.title')}</h2>
-        {advice === null ? (
-          <p className="muted">{t('portfolio:advice.unavailable')}</p>
-        ) : (
-          <DriftTable advice={advice} />
-        )}
-      </section>
-
-      {advice === null ? null : (
-        <section className="card">
-          <h2 className="card__title">{t('portfolio:suggest.title')}</h2>
-          <p className="panel__hint muted">{t('portfolio:suggest.lede')}</p>
-          <Suggestions advice={advice} />
-        </section>
+          <section className="card">
+            <h2 className="card__title">{t('portfolio:chart.allocationTitle')}</h2>
+            {/*
+              These slices add up to the invested figure above, not to the total: cash
+              held at the broker is not an asset class and would otherwise appear as one.
+              The two cards make the difference readable, which is why they are drawn
+              even when the split is unknown.
+            */}
+            {allocation.length === 0 ? (
+              <p className="muted">{t('empty.noData')}</p>
+            ) : (
+              <AllocationChart allocation={allocation} />
+            )}
+          </section>
+        </>
       )}
 
-      <section className="card">
-        <h2 className="card__title">{t('portfolio:holding.title')}</h2>
-        {holdings.length === 0 ? (
-          <p className="muted">{t('empty.noData')}</p>
-        ) : (
-          <HoldingsTable holdings={holdings} totalValueCents={totalValueCents} />
-        )}
-      </section>
+      {section === 'advice' && (
+        <>
+          {/*
+            Advice is an argument about the shape drawn on Overview: the treemap says
+            100% equities and this section says what the profile wanted instead. It is
+            null exactly when there is no invested value to measure — an instance nobody
+            has synced yet, where four suggestions to buy would be the app's first act —
+            and then the section says so rather than disappearing, since a missing
+            section is indistinguishable from a feature nobody built.
+          */}
+          <section className="card">
+            <h2 className="card__title">{t('portfolio:advice.title')}</h2>
+            {advice === null ? (
+              <p className="muted">{t('portfolio:advice.unavailable')}</p>
+            ) : (
+              <DriftTable advice={advice} />
+            )}
+          </section>
+
+          {advice === null ? null : (
+            <section className="card">
+              <h2 className="card__title">{t('portfolio:suggest.title')}</h2>
+              <p className="panel__hint muted">{t('portfolio:suggest.lede')}</p>
+              <Suggestions advice={advice} />
+            </section>
+          )}
+        </>
+      )}
+
+      {section === 'holdings' && (
+        <section className="card">
+          <h2 className="card__title">{t('portfolio:holding.title')}</h2>
+          {holdings.length === 0 ? (
+            <p className="muted">{t('empty.noData')}</p>
+          ) : (
+            <HoldingsTable holdings={holdings} totalValueCents={totalValueCents} />
+          )}
+        </section>
+      )}
     </>
   )
 }
