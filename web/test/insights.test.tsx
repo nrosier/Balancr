@@ -36,7 +36,7 @@ import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.t
 import { Insights } from '../src/pages/Insights.tsx'
 import { formatMoney } from '../src/shared.ts'
 import type { AiBudgetNudgeRun, AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
-import { i18nReady, renderApp } from './helpers.tsx'
+import { i18nReady, renderApp, visit } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
 
@@ -268,6 +268,10 @@ beforeAll(async () => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // Most tests here never set a path and rely on landing on the findings tab by
+  // default; the few that navigate elsewhere (#228) would otherwise leak that
+  // location into whichever test runs next.
+  visit('/')
 })
 
 describe('the page', () => {
@@ -294,20 +298,57 @@ describe('the page', () => {
     expect(screen.getByRole('status').textContent).toBe('Loading…')
   })
 
-  it('orders the sections conclusions, reasoning, then evidence', async () => {
+  it('orders each tab conclusions, reasoning, then evidence (#228)', async () => {
+    // Splitting the page into tabs (#228) moved "order" from one long scroll to each
+    // tab's own content — findings and the ledger hold one card each, so it is the
+    // narrative tab (review, then the nudge) and the pending tab (guesses, proposals,
+    // then clarifications) where an ordering claim still means something.
     serve({ '/api/insights': json(FULL) })
-    renderApp(<Insights />)
 
+    const findings = renderApp(<Insights />, { path: '/insights' })
     await screen.findByText('What stands out')
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'What stands out',
+    ])
+    findings.unmount()
+
+    const narrative = renderApp(<Insights />, { path: '/insights/narrative' })
+    await screen.findByText('August 2026 in words')
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'August 2026 in words',
-      'Help the assistant understand',
-      'Below the confidence bar',
       'Budget nudge',
+    ])
+    narrative.unmount()
+
+    const pending = renderApp(<Insights />, { path: '/insights/pending' })
+    await screen.findByText('Below the confidence bar')
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'Below the confidence bar',
       'Proposed changes',
+      'Help the assistant understand',
+    ])
+    pending.unmount()
+
+    const ledger = renderApp(<Insights />, { path: '/insights/ledger' })
+    await screen.findByText('What was sent')
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'What was sent',
     ])
+  })
+
+  it('marks the open tab current, and lands on Findings for a path it does not recognise (#228)', async () => {
+    serve({ '/api/insights': json(FULL) })
+    const narrative = renderApp(<Insights />, { path: '/insights/narrative' })
+    await screen.findByText('August 2026 in words')
+
+    expect(screen.getByRole('link', { name: 'Narrative' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+    expect(screen.getByRole('link', { name: 'Findings' }).getAttribute('aria-current')).toBeNull()
+    narrative.unmount()
+
+    renderApp(<Insights />, { path: '/insights/nonsense' })
+    await screen.findByText('What stands out')
   })
 
   it('explains an absent model and drops the sections only a model can fill (#165)', async () => {
@@ -366,7 +407,7 @@ describe('the page', () => {
         ai: { enabled: false, reason: 'switchedOff' },
       } satisfies InsightsPayload),
     })
-    renderApp(<Insights />)
+    renderApp(<Insights />, { path: '/insights/narrative' })
 
     await screen.findByText('August 2026 in words')
     expect(screen.getByText('The assistant is switched off')).toBeTruthy()

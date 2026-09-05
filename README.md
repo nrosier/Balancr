@@ -977,16 +977,25 @@ suggested amount either way; everything else is left exactly as the trailing
 average proposed. An empty note skips the model call entirely, at zero cost,
 and a nudged amount replaces the pending proposal it adjusts rather than
 sitting beside it, so approving one still looks like approving a single
-`budget_amount.set` suggestion. A seventh rider let the owner have the last
-word on that figure instead of only a binary choice over it:
+`budget_amount.set` suggestion. A seventh rider carried #200's own pattern to
+a second page: [#228](https://github.com/nrosier/Balancr/issues/228) splits
+Insights into the same horizontal tab strip — Findings, Narrative, Pending,
+Ledger — reusing the tab-strip component #200 built rather than growing a
+second one, so a bookmark to `/insights/narrative` or `/insights/pending`
+lands directly on that section instead of at the top of a long scroll. The
+freshness bar, the month picker, the spend-exceeded notice and the AI-off
+notice stay above the tabs rather than inside any one of them, because they
+qualify what every section below is showing, not one section's own content.
+An eighth rider let the owner have the last word on that same
+`budget_amount.set` figure instead of only a binary choice over it:
 [#220](https://github.com/nrosier/Balancr/issues/220) turns the proposed
-amount on a `budget_amount.set` card into a field the owner can edit before
-pressing apply, pre-filled with whatever the trailing average — or #217's
-nudge on top of it — proposed. An edited figure supersedes the pending
-proposal with a fresh one at the new amount, exactly the way #217's own nudge
-already did, so approving an edit still looks like approving a single
-suggestion; typing back the amount already budgeted rejects the proposal
-outright rather than raising an error for "no change requested." Behind
+amount on that card into a field the owner can edit before pressing apply,
+pre-filled with whatever the trailing average — or #217's nudge on top of it
+— proposed. An edited figure supersedes the pending proposal with a fresh one
+at the new amount, exactly the way #217's own nudge already did, so approving
+an edit still looks like approving a single suggestion; typing back the
+amount already budgeted rejects the proposal outright rather than raising an
+error for "no change requested." Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
