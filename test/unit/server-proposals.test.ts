@@ -12,14 +12,18 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, categoryMeta, users } from '../../src/db/schema.ts'
-import { createProposal, loadProposal, type ProposalRow } from '../../src/domain/ai/proposals.ts'
+import { createProposal, encodeBudgetTarget, loadProposal, type ProposalRow } from '../../src/domain/ai/proposals.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
-import type { ProposalBatchApply, ProposalDecision } from '../../src/server/routes/api/schemas.ts'
-import { apiFixture } from '../helpers/api-fixture.ts'
+import type {
+  ProposalAdjustResult,
+  ProposalBatchApply,
+  ProposalDecision,
+} from '../../src/server/routes/api/schemas.ts'
+import { apiFixture, MONTH } from '../helpers/api-fixture.ts'
 import { eq } from 'drizzle-orm'
 
 let ctx: ReturnType<typeof apiFixture>
@@ -72,6 +76,15 @@ async function pendingProposal(categoryId = 'cat-groceries'): Promise<ProposalRo
     type: 'category_meta.set',
     targetRef: categoryId,
     payload: { custodyShared: true },
+  })
+}
+
+/** A pending `budget_amount.set` proposal against a real category/month from the fixture. */
+async function pendingBudgetProposal(amountCents = 80_000): Promise<ProposalRow> {
+  return createProposal(ctx.db, {
+    type: 'budget_amount.set',
+    targetRef: encodeBudgetTarget('cat-groceries', MONTH),
+    payload: { amountCents },
   })
 }
 
@@ -128,6 +141,63 @@ describe('POST /api/proposals/:id/apply', () => {
   it('refuses a viewer: reading the queue is reading, applying is not', async () => {
     const row = await pendingProposal()
     const res = await post(`/api/proposals/${row.id}/apply`, viewer)
+    expect(res.statusCode).toBe(403)
+    expect(loadProposal(ctx.db, row.id)?.status).toBe('pending')
+  })
+})
+
+describe('POST /api/proposals/:id/adjust', () => {
+  it('supersedes the proposal with a new one at the adjusted amount', async () => {
+    const row = await pendingBudgetProposal(80_000)
+
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 90_000 })
+    expect(res.statusCode).toBe(200)
+
+    const body = res.json<ProposalAdjustResult>()
+    expect(body.status).toBe('pending')
+    expect(body.id).not.toBe(row.id)
+    expect(loadProposal(ctx.db, row.id)?.status).toBe('expired')
+    expect(loadProposal(ctx.db, body.id)?.status).toBe('pending')
+  })
+
+  it('rejects the original instead of erroring when the adjustment matches what is already budgeted', async () => {
+    const row = await pendingBudgetProposal(80_000)
+
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 73_000 })
+    expect(res.statusCode).toBe(200)
+    expect(res.json<ProposalAdjustResult>()).toEqual({ id: row.id, status: 'rejected' })
+    expect(loadProposal(ctx.db, row.id)?.status).toBe('rejected')
+  })
+
+  it('400s a proposal type with no amount to adjust', async () => {
+    const row = await pendingProposal()
+
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 1_000 })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('404s for an id that does not exist', async () => {
+    const res = await postBody('/api/proposals/does-not-exist/adjust', { amountCents: 1_000 })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('409s for a proposal that was already decided', async () => {
+    const row = await pendingBudgetProposal(80_000)
+    expect((await post(`/api/proposals/${row.id}/reject`)).statusCode).toBe(200)
+
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 90_000 })
+    expect(res.statusCode).toBe(409)
+  })
+
+  it('400s a malformed amount', async () => {
+    const row = await pendingBudgetProposal(80_000)
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 'lots' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses a viewer: only the owner may adjust a proposed amount', async () => {
+    const row = await pendingBudgetProposal(80_000)
+    const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 90_000 }, viewer)
     expect(res.statusCode).toBe(403)
     expect(loadProposal(ctx.db, row.id)?.status).toBe('pending')
   })
