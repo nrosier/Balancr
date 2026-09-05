@@ -27,6 +27,7 @@ import {
 } from '../../../domain/advice/suggest.ts'
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
+import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
 import { BENCHMARK_BASES, BENCHMARK_UNAVAILABLE } from '../../../domain/benchmark/compare.ts'
 import {
   BENCHMARK_BLOCKS,
@@ -1042,6 +1043,15 @@ export const accountSettingSchema = z.object({
    * rather than the stored JSON string: the client should not be parsing a column.
    */
   decidedFields: z.array(z.enum(['kind', 'includeInNetWorth', 'dedupeGroup', 'isSourceOfTruth'])),
+  /**
+   * Why this row's value isn't in net worth, or `null` when it is counted (#245).
+   *
+   * Derived from the same three fields already on this object, so it never
+   * disagrees with `computeNetWorth` — but a person reading `includeInNetWorth:
+   * true` and a dedupe group with no source of truth has no way to see that the
+   * two together still add up to "not counted" without this.
+   */
+  netWorthExclusionReason: z.enum(EXCLUSION_REASONS).nullable(),
 })
 
 export const spendMonthSchema = z.object({

@@ -268,6 +268,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
     {
       id: 'a-mirror',
@@ -278,6 +279,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
     {
       id: 'g-broker',
@@ -288,6 +290,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
   ],
   dedupe: [
@@ -951,7 +954,7 @@ describe('accounts', () => {
     const calls = await open({ ...READS, '/api/settings/accounts/group': json(PAYLOAD) })
 
     expect(screen.getByText('Bolero may be the same money as Investments (mirror).')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Group, Bolero counts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Link, Bolero counts' }))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
@@ -1005,7 +1008,7 @@ describe('accounts', () => {
     expect(
       screen.getByText('Bolero may be the same money as Investments (mirror).'),
     ).toBeTruthy()
-    for (const name of ['Group, Bolero counts', 'Group, Investments (mirror) counts', 'Not the same money']) {
+    for (const name of ['Link, Bolero counts', 'Link, Investments (mirror) counts', 'Not the same money']) {
       expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
     }
   })
@@ -1047,6 +1050,95 @@ describe('accounts', () => {
         },
       ])
     })
+  })
+})
+
+/**
+ * #245: a linked pair used to render as two independent rows, which is what led the
+ * user to uncheck the wrong one thinking it was a duplicate. These check that a
+ * linked pair now renders — and behaves — as exactly one block.
+ */
+describe('a linked pair of accounts', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/accounts')
+
+  const LINKED_PAYLOAD: Payload = {
+    ...PAYLOAD,
+    accounts: [
+      PAYLOAD.accounts[0]!,
+      {
+        ...PAYLOAD.accounts[1]!,
+        dedupeGroup: 'broker-1',
+        isSourceOfTruth: false,
+      },
+      {
+        ...PAYLOAD.accounts[2]!,
+        dedupeGroup: 'broker-1',
+        isSourceOfTruth: true,
+      },
+    ],
+    // Already linked — nothing left to suggest.
+    dedupe: [],
+  }
+
+  it('shows one block for the pair, not two rows', async () => {
+    await open({ ...READS, '/api/settings': json(LINKED_PAYLOAD) })
+
+    expect(screen.getAllByRole('heading', { level: 3, name: 'Current account' })).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { level: 3, name: 'Bolero' })).toHaveLength(1)
+    // The mirror's own name is still visible, just not as a second row.
+    expect(screen.getByText('Linked with Investments (mirror) (Actual Budget)')).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 3, name: 'Investments (mirror)' })).toBeNull()
+  })
+
+  it('drives the toggle from the source-of-truth side of the pair', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(LINKED_PAYLOAD),
+      '/api/settings/accounts/g-broker': json(LINKED_PAYLOAD),
+    })
+
+    // One toggle for the block, not one per member: current account (ungrouped) + the pair.
+    const boxes = screen.getAllByLabelText('Count toward net worth')
+    expect(boxes).toHaveLength(2)
+    fireEvent.click(boxes[1] ?? document.createElement('input'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/accounts/g-broker',
+          method: 'PATCH',
+          body: { includeInNetWorth: false },
+        },
+      ])
+    })
+  })
+
+  it('unlinks the whole pair with one button', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(LINKED_PAYLOAD),
+      '/api/settings/accounts/g-broker/ungroup': json(PAYLOAD),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/accounts/g-broker/ungroup', method: 'POST', body: undefined },
+      ])
+    })
+  })
+
+  it('disables Unlink for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...LINKED_PAYLOAD,
+        profile: { ...LINKED_PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect(screen.getByRole('button', { name: 'Unlink' }).hasAttribute('disabled')).toBe(true)
   })
 })
 
