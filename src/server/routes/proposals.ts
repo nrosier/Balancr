@@ -17,6 +17,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import {
+  adjustProposal,
   applyProposal,
   loadProposal,
   rejectProposal,
@@ -25,9 +26,14 @@ import {
   type ProposalRow,
 } from '../../domain/ai/proposals.ts'
 import { requireOwner } from '../auth/guard.ts'
-import { conflict, notFound } from '../errors.ts'
+import { badRequest, conflict, notFound } from '../errors.ts'
 import { parseBody } from '../validate.ts'
-import { proposalBatchApplySchema, proposalDecisionSchema } from './api/schemas.ts'
+import {
+  proposalAdjustRequest,
+  proposalAdjustSchema,
+  proposalBatchApplySchema,
+  proposalDecisionSchema,
+} from './api/schemas.ts'
 
 /**
  * Loads the row for a 404, then re-checks the two things `applyProposal` and
@@ -69,6 +75,24 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
     } catch (error) {
       // Reached only if the row's state moved between `requirePending`'s read
       // and the write itself — the ordinary refusals are already 404/409 by then.
+      if (error instanceof ProposalError) throw conflict(error.message)
+      throw error
+    }
+  })
+
+  app.post('/api/proposals/:id/adjust', async (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const { id } = request.params as { id: string }
+    const { amountCents } = parseBody(proposalAdjustRequest, request.body)
+    const row = requirePending(db, id)
+    if (row.type !== 'budget_amount.set') {
+      throw badRequest('Only a budget amount proposal has an amount to adjust.')
+    }
+
+    try {
+      const result = await adjustProposal(db, { id, amountCents, userId: user.id })
+      return proposalAdjustSchema.parse(result)
+    } catch (error) {
       if (error instanceof ProposalError) throw conflict(error.message)
       throw error
     }

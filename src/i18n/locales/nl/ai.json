@@ -155,6 +155,7 @@
     "viewPayload": "Toon de exacte verzonden gegevens"
   },
   "proposal": {
+    "amountLabel": "Begroot bedrag",
     "apply": "Toepassen",
     "applySelected": "Selectie toepassen ({{count}})",
     "applying": "Toepassen…",
@@ -162,6 +163,7 @@
     "confirmApply": "{{count}} voorstellen toepassen op Actual?",
     "diff": "Nu / voorstel",
     "expiresAt": "Verloopt op {{when}}",
+    "invalidAmount": "Voer een geldig bedrag in.",
     "field": {
       "amount": "Begroot bedrag",
       "category": "Categorie",
