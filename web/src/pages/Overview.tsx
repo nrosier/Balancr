@@ -102,6 +102,18 @@ function Figures({
             value: euro(netWorth.debtCents),
             ...(netWorth.debtCents === 0 ? {} : { tone: 'negative' as const }),
           },
+          ...(netWorth.propertyValueCents === null
+            ? []
+            : [{ label: t('portfolio:metric.propertyValue'), value: euro(netWorth.propertyValueCents) }]),
+          ...(netWorth.mortgageBalanceCents === null
+            ? []
+            : [
+                {
+                  label: t('portfolio:metric.mortgageBalance'),
+                  value: euro(netWorth.mortgageBalanceCents),
+                  ...(netWorth.mortgageBalanceCents === 0 ? {} : { tone: 'negative' as const }),
+                },
+              ]),
         ]
 
   const budgetRows: MetricRow[] =

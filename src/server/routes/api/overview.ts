@@ -9,11 +9,23 @@
  * fresh deployment has run no jobs, so it has no net worth and no month — and the
  * honest answer to "what is my net worth" before the first sync is "not known yet",
  * not zero. Zero is a number someone would act on.
+ *
+ * `netWorth.totalCents` also nets in every owned property's equity (#227) — the same
+ * treatment debt already gets, folded in rather than broken out elsewhere. Gated on
+ * `netWorth` itself being non-null: a property tracked before the first net-worth
+ * snapshot has nothing to be netted into yet. `history` is deliberately left alone —
+ * retroactively injecting today's property value into past dates would fabricate
+ * equity the owner may not have held throughout that window.
  */
 import type { Db } from '../../../db/index.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../../../domain/aggregate/networth-store.ts'
 import { latestStoredMonth, loadMonthTotals, loadTrailingTotals } from '../../../domain/aggregate/month-store.ts'
 import { loadHygiene } from '../../../domain/aggregate/signals-store.ts'
+import {
+  loadProperties,
+  outstandingBalanceCents,
+  totalEquityCents,
+} from '../../../domain/property/properties.ts'
 import { freshness } from './freshness.ts'
 import { overviewSchema, type Overview } from './schemas.ts'
 
@@ -49,6 +61,11 @@ export function buildOverview(db: Db): Overview {
   const totals = month === null ? null : (loadMonthTotals(db, [month])[0] ?? null)
   const netWorth = loadLatestNetWorth(db)
   const history = month === null ? [] : loadTrailingTotals(db, month, COVER_WINDOW_MONTHS)
+  // Priced as of right now, not as of `netWorth.date`: a mortgage amortizes with the
+  // calendar, not with whatever night the net-worth job last ran (#227).
+  const today = new Date().toISOString().slice(0, 10)
+  const properties = loadProperties(db).properties
+  const propertyEquity = totalEquityCents(properties, today)
 
   return overviewSchema.parse({
     freshness: freshness(db),
@@ -57,10 +74,19 @@ export function buildOverview(db: Db): Overview {
         ? null
         : {
             date: netWorth.date,
-            totalCents: netWorth.totalCents,
+            totalCents: netWorth.totalCents + (propertyEquity ?? 0),
             liquidCents: netWorth.liquidCents,
             investedCents: netWorth.investedCents,
             debtCents: netWorth.debtCents,
+            propertyValueCents: properties.some((property) => property.propertyValueCents !== null)
+              ? properties.reduce((sum, property) => sum + (property.propertyValueCents ?? 0), 0)
+              : null,
+            mortgageBalanceCents: properties.some((property) => property.mortgage !== null)
+              ? properties.reduce(
+                  (sum, property) => sum + outstandingBalanceCents(property.mortgage, today),
+                  0,
+                )
+              : null,
           },
     history: loadNetWorthHistory(db),
     month,

@@ -35,7 +35,10 @@
  *  - AI-operational-cost figures elsewhere — the price of a Gemini call, not personal
  *    spending — in `settings/Spend.tsx`, `settings/Prompts.tsx`.
  *  - Settings/configuration numbers — thresholds and trading minimums the account
- *    configures, not spending — in `settings/Thresholds.tsx`, `settings/Risk.tsx`.
+ *    configures, not spending — in `settings/Thresholds.tsx`, `settings/Risk.tsx`,
+ *    `settings/Property.tsx` (a property's value, a mortgage's balance and payment,
+ *    a rental's rent — all figures the owner types into this settings form, not a
+ *    spending report).
  *  - `pages/Budget.tsx`'s `pace.summary` — an aria-label on `PaceBar`, never rendered
  *    visually.
  */
@@ -63,6 +66,7 @@ const ALLOWED = new Set(
     'pages/Insights.tsx',
     'settings/Thresholds.tsx',
     'settings/Risk.tsx',
+    'settings/Property.tsx',
     'pages/Budget.tsx',
   ].map((path) => join(ROOT, path)),
 )

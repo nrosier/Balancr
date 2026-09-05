@@ -177,6 +177,7 @@
     "accounts": "Accounts",
     "benchmark": "Benchmark",
     "general": "General",
+    "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",
     "spend": "AI usage",
@@ -258,6 +259,37 @@
     "versions": "Versions",
     "versionsNone": "Nothing saved yet, so the built-in instructions are in use.",
     "which": "Which instructions"
+  },
+  "property": {
+    "add": "Add a property",
+    "cashFlowReads": "{{value}} left after the mortgage payment each month.",
+    "equityReads": "{{value}} of equity today.",
+    "hasMortgage": "Has a mortgage",
+    "hint": "What you own — the home you live in, or a place you rent out. A change is reflected in net worth and on the portfolio page the next time either loads; nothing here recomputes.",
+    "invalid": "Something in this row isn't a valid number yet.",
+    "kind": {
+      "primary": "Home",
+      "rental": "Rental"
+    },
+    "kindLabel": "Type",
+    "label": "Name",
+    "labelPlaceholder": "e.g. Home, Antwerp flat",
+    "mortgage": {
+      "anchorDate": "Balance as of",
+      "payment": "Monthly payment",
+      "principal": "Outstanding balance",
+      "rate": "Interest rate",
+      "rateReads": "Reads as {{value}}.",
+      "term": "Months remaining",
+      "useStandardPayment": "Use the standard payment for this rate and term"
+    },
+    "none": "No properties yet. Add the one you live in, or one you rent out.",
+    "propertyValue": "Estimated value",
+    "propertyValueUnset": "Add a value to see the equity.",
+    "remove": "Remove",
+    "rent": "Monthly rent",
+    "title": "Property",
+    "yieldReads": "{{value}} gross yield."
   },
   "risk": {
     "column": {

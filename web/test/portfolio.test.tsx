@@ -103,6 +103,8 @@ const FULL: PortfolioPayload = {
     { date: '2026-09-01', totalCents: 5_000_000 },
   ],
   advice: null,
+  properties: [],
+  totalPropertyEquityCents: null,
 }
 
 /** Nothing has ever been snapshotted. */
@@ -117,6 +119,8 @@ const EMPTY: PortfolioPayload = {
   holdings: [],
   history: [],
   advice: null,
+  properties: [],
+  totalPropertyEquityCents: null,
 }
 
 /**
@@ -884,6 +888,74 @@ describe('money at the broker that is not invested', () => {
     expect(metric('Cash at broker')).toBe('Not known yet')
     expect(metric('Market value')).toBe('€ 50.000')
     expect(metric('Time-weighted return')).toBe('7,4%')
+  })
+})
+
+describe('property', () => {
+  const HOME: PortfolioPayload['properties'][number] = {
+    id: 'prop-1',
+    kind: 'primary',
+    label: 'House',
+    propertyValueCents: 40_000_000,
+    mortgageBalanceCents: 18_000_000,
+    equityCents: 22_000_000,
+    rentCents: null,
+    netCashFlowCents: null,
+    grossYieldBp: null,
+  }
+
+  const RENTAL: PortfolioPayload['properties'][number] = {
+    id: 'prop-2',
+    kind: 'rental',
+    label: 'Antwerp flat',
+    propertyValueCents: 25_000_000,
+    mortgageBalanceCents: 0,
+    equityCents: 25_000_000,
+    rentCents: 90_000,
+    netCashFlowCents: 90_000,
+    grossYieldBp: 450,
+  }
+
+  it('draws no card when nothing is owned outright', async () => {
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Property' })).toBeNull()
+  })
+
+  it('shows the value, mortgage balance and equity a home implies, with a dash where nothing is tracked', async () => {
+    serve(json({ ...FULL, properties: [HOME], totalPropertyEquityCents: 22_000_000 }))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Property' })
+
+    expect(row('House')).toEqual([
+      'House',
+      'Home',
+      '€ 400.000',
+      '€ 180.000',
+      '€ 220.000',
+      '—',
+      '—',
+      '—',
+    ])
+  })
+
+  it("reads a rental's rent, cash flow and yield alongside the equity", async () => {
+    serve(json({ ...FULL, properties: [RENTAL], totalPropertyEquityCents: 25_000_000 }))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Property' })
+
+    expect(row('Antwerp flat')).toEqual([
+      'Antwerp flat',
+      'Rental',
+      '€ 250.000',
+      '€ 0',
+      '€ 250.000',
+      '€ 900',
+      '€ 900',
+      '4,5%',
+    ])
   })
 })
 
