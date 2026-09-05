@@ -151,6 +151,11 @@
     "spent": "Uitgegeven",
     "toBudget": "Nog toe te wijzen"
   },
+  "nav": {
+    "benchmark": "Vergelijking",
+    "custody": "Co-ouderschap",
+    "overview": "Overzicht"
+  },
   "pace": {
     "monthProgress": "{{progress}} van de maand is voorbij",
     "overrun": "Verwachte overschrijding <money>{{amount}}</money>",
