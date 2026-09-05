@@ -25,6 +25,7 @@ import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { DriftTable } from '../portfolio/Drift.tsx'
+import { PropertyTable } from '../portfolio/Property.tsx'
 import { Suggestions } from '../portfolio/Suggestions.tsx'
 import { formatBp, formatDate, type Portfolio as PortfolioPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -88,7 +89,7 @@ function Figures({
 }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { advice, allocation, cashValueCents, date, history, holdings } = data
+  const { advice, allocation, cashValueCents, date, history, holdings, properties } = data
   const { investedValueCents, totalValueCents, twrBp } = data
 
   return (
@@ -163,6 +164,19 @@ function Figures({
           <AllocationChart allocation={allocation} />
         )}
       </section>
+
+      {/*
+        Outside `allocation`/`advice` on purpose (#227) — a paid-down room in an actual
+        house is not a position the drift table can buy or sell to correct, so it gets
+        its own card rather than a synthetic slice. No fallback branch: a household
+        that tracks no property is not shown an empty table.
+      */}
+      {properties.length === 0 ? null : (
+        <section className="card">
+          <h2 className="card__title">{t('portfolio:property.title')}</h2>
+          <PropertyTable properties={properties} />
+        </section>
+      )}
 
       {/*
         Advice comes after the shape and before the rows, because it is an argument about

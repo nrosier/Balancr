@@ -80,12 +80,29 @@
     "invested": "Invested",
     "investedHint": "Positions only, which is what the allocation below is a picture of.",
     "liquid": "Directly available",
+    "mortgageBalance": "Mortgage balance",
     "mwr": "Money-weighted return",
     "netWorth": "Net worth",
+    "propertyValue": "Property value",
     "ter": "Annual costs",
     "twr": "Time-weighted return",
     "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",
     "value": "Market value"
+  },
+  "property": {
+    "caption_one": "One property.",
+    "caption_other": "{{value}} properties.",
+    "column": {
+      "balance": "Mortgage",
+      "cashFlow": "Cash flow",
+      "equity": "Equity",
+      "kind": "Type",
+      "name": "Property",
+      "rent": "Rent",
+      "value": "Value",
+      "yield": "Yield"
+    },
+    "title": "Property"
   },
   "suggest": {
     "action": {

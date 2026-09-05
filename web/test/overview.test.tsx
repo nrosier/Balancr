@@ -45,6 +45,8 @@ const FULL: OverviewPayload = {
     liquidCents: 2_500_000,
     investedCents: 9_845_678,
     debtCents: -1_000_000,
+    propertyValueCents: 40_000_000,
+    mortgageBalanceCents: 18_000_000,
   },
   history: [
     { date: '2026-06-30', totalCents: 11_000_000 },
@@ -271,6 +273,8 @@ describe('when a figure is absent', () => {
           liquidCents: 2_500_000,
           investedCents: 9_845_678,
           debtCents: 0,
+          propertyValueCents: null,
+          mortgageBalanceCents: null,
         },
       } satisfies OverviewPayload),
     )

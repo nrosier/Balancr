@@ -294,6 +294,7 @@ const PAYLOAD: Payload = {
     { ghostfolioId: 'g-broker', actualId: 'a-mirror', signals: ['name', 'balance'] },
   ],
   benchmark: BENCHMARK,
+  property: { properties: [] },
   ai: {
     availability: { enabled: true, reason: null },
     models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
@@ -439,6 +440,7 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/thresholds': 'Thresholds',
   '/settings/accounts': 'Accounts',
   '/settings/benchmark': 'Household',
+  '/settings/property': 'Property',
   '/settings/spend': 'AI usage',
 }
 
@@ -1328,6 +1330,218 @@ describe('the household', () => {
     // Still readable: the point of showing a viewer the panel is that they can see what
     // the comparison was drawn against.
     expect(memberField('Year of birth').value).toBe('2013')
+  })
+})
+
+describe('property', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/property')
+
+  const property = (): HTMLElement => form('property-form')
+
+  const saveProperty = (): HTMLButtonElement =>
+    within(property()).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  const addProperty = (): void => {
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a property' }))
+  }
+
+  /** A payload with one property already on the roster, for the edit/remove cases. */
+  const withOneProperty = (extra: Partial<Payload['property']['properties'][number]> = {}): Payload => ({
+    ...PAYLOAD,
+    property: {
+      properties: [
+        {
+          id: 'prop-1',
+          kind: 'primary',
+          label: 'Home',
+          propertyValueCents: 40_000_000,
+          rentCents: null,
+          mortgage: null,
+          ...extra,
+        },
+      ],
+    },
+  })
+
+  it('shows the empty state when nothing is stored yet', async () => {
+    await open(READS)
+
+    expect(within(property()).getByText('No properties yet. Add the one you live in, or one you rent out.')).toBeTruthy()
+    expect(saveProperty().disabled).toBe(true)
+  })
+
+  it('has nothing to save until a row is touched', async () => {
+    await open(READS)
+
+    expect(saveProperty().disabled).toBe(true)
+  })
+
+  it('sends a new row on save, with an id it made up itself', async () => {
+    const calls = await open({ ...READS, '/api/settings/property': json(PAYLOAD) })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home' } })
+    fireEvent.change(screen.getByLabelText('Estimated value'), { target: { value: '400000' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/property',
+          method: 'PATCH',
+          body: {
+            properties: [
+              {
+                id: expect.any(String),
+                kind: 'primary',
+                label: 'Home',
+                propertyValueCents: 40_000_000,
+                rentCents: null,
+                mortgage: null,
+              },
+            ],
+          },
+        },
+      ])
+    })
+  })
+
+  it('only asks for rent once the row is a rental', async () => {
+    await open(READS)
+
+    addProperty()
+    expect(screen.queryByLabelText('Monthly rent')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    expect(screen.getByLabelText('Monthly rent')).toBeTruthy()
+  })
+
+  it('reads back the equity a stated value implies', async () => {
+    await open({ ...READS, '/api/settings': json(withOneProperty()) })
+
+    expect(within(property()).getByText('€ 400.000,00 of equity today.')).toBeTruthy()
+  })
+
+  it('sends the whole list, because removing a row cannot be expressed as a merge', async () => {
+    const stated = withOneProperty()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stated),
+      '/api/settings/property': json(stated),
+    })
+
+    fireEvent.click(within(property()).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/property', method: 'PATCH', body: { properties: [] } },
+      ])
+    })
+  })
+
+  it('shows the mortgage sub-form only once the checkbox is on, and includes it on save', async () => {
+    const stated = withOneProperty()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stated),
+      '/api/settings/property': json(stated),
+    })
+
+    expect(screen.queryByLabelText('Outstanding balance')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    expect(screen.getByLabelText('Outstanding balance')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
+    fireEvent.change(screen.getByLabelText('Balance as of'), { target: { value: '2026-09-01' } })
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
+    fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '180' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1500' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/property',
+          method: 'PATCH',
+          body: {
+            properties: [
+              {
+                id: 'prop-1',
+                kind: 'primary',
+                label: 'Home',
+                propertyValueCents: 40_000_000,
+                rentCents: null,
+                mortgage: {
+                  principalCents: 20_000_000,
+                  anchorDate: '2026-09-01',
+                  rateBp: 350,
+                  monthlyPaymentCents: 150_000,
+                  remainingTermMonths: 180,
+                },
+              },
+            ],
+          },
+        },
+      ])
+    })
+  })
+
+  it('reads the rate back in percent, right beside the box that holds basis points', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
+
+    expect(within(property()).getByText('Reads as 3,5%.')).toBeTruthy()
+  })
+
+  it('fills the standard payment without submitting anything', async () => {
+    const calls = await open(READS)
+
+    addProperty()
+    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
+    fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '180' } })
+
+    fireEvent.click(
+      within(property()).getByRole('button', {
+        name: 'Use the standard payment for this rate and term',
+      }),
+    )
+
+    expect((screen.getByLabelText('Monthly payment') as HTMLInputElement).value).not.toBe('')
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('refuses a mortgage left half-typed rather than sending it', async () => {
+    const calls = await open(READS)
+
+    addProperty()
+    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
+    // Rate, term and payment are left empty — an incomplete mortgage, not a missing one.
+
+    expect(within(property()).getAllByText("Something in this row isn't a valid number yet.").length).toBeGreaterThan(0)
+    expect(saveProperty().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('leaves the list read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...withOneProperty(),
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(true)
+    expect(saveProperty().disabled).toBe(true)
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Home')
   })
 })
 
