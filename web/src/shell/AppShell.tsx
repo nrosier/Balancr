@@ -24,7 +24,6 @@ import mark from '../assets/favicon.svg'
 import type { SessionUserResponse } from '../auth/session.ts'
 import { useT } from '../i18n.ts'
 import { Link, useRouter } from '../router.tsx'
-import { Account } from './Account.tsx'
 import { ChangelogDialog } from './ChangelogDialog.tsx'
 import { Nav } from './Nav.tsx'
 import { PrivacyToggle } from './PrivacyToggle.tsx'
@@ -93,10 +92,9 @@ export function AppShell({
         </div>
         <PrivacyToggle />
         <ThemeToggle />
-        <Account user={user} csrf={csrf} onSignedOut={onSignedOut} />
       </header>
 
-      <Nav />
+      <Nav account={{ user, csrf, onSignedOut }} />
 
       <main id="main" className="main" ref={main} tabIndex={-1}>
         {children}
