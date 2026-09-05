@@ -24,54 +24,6 @@
  */
 
 /* ---------------------------------------------------------------------------
-   The section tab strip (#200)
-
-   Visually its own thing rather than a second copy of `.nav`'s fixed bar: this sits
-   inline under the page heading and scrolls sideways instead of wrapping, because
-   seven Dutch labels do not fit one row at 375px and wrapping would push every panel
-   down by a variable amount depending on how many tabs broke. An underline marks the
-   active tab rather than a filled background, so it reads as a peer of the page's own
-   `<h2>` headings rather than as another sidebar.
-   --------------------------------------------------------------------------- */
-
-.settings-nav {
-  display: flex;
-  gap: var(--space-4);
-  overflow-x: auto;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border);
-  /* Scrollable without a visible scrollbar stealing a row of its own on desktop. */
-  scrollbar-width: none;
-}
-
-.settings-nav::-webkit-scrollbar {
-  display: none;
-}
-
-.settings-nav__link {
-  flex: 0 0 auto;
-  padding: var(--space-2) 0;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: var(--type-sm);
-  white-space: nowrap;
-  transition:
-    color var(--transition),
-    border-color var(--transition);
-}
-
-.settings-nav__link:hover {
-  color: var(--text);
-}
-
-.settings-nav__link[aria-current='page'] {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: var(--weight-medium);
-}
-
-/* ---------------------------------------------------------------------------
    The shared frame
    --------------------------------------------------------------------------- */
 

@@ -103,6 +103,19 @@ describe('Nav', () => {
         .map((a) => a.textContent),
     ).toEqual(['Budget'])
   })
+
+  it('renders no account when none is given, rather than a broken sign-out button', () => {
+    renderApp(<Nav />, { path: '/' })
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull()
+  })
+
+  it('appends the account after every section link when one is given (#231)', () => {
+    renderApp(<Nav account={{ user: OWNER, csrf: CSRF, onSignedOut: () => undefined }} />, {
+      path: '/',
+    })
+    expect(links()).toHaveLength(ROUTES.length)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
+  })
 })
 
 describe('AppShell', () => {
@@ -162,10 +175,16 @@ describe('AppShell', () => {
     expect(document.activeElement).toBe(screen.getByRole('main'))
   })
 
-  it('carries the theme control and the account in the header', () => {
+  it('keeps the theme control in the header', () => {
     shell()
     expect(screen.getByRole('group', { name: 'Colour theme' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
+  })
+
+  it('anchors sign-out in the section nav, not the header (#231)', () => {
+    shell()
+    const signOut = screen.getByRole('button', { name: 'Sign out' })
+    expect(screen.getByRole('navigation').contains(signOut)).toBe(true)
+    expect(document.querySelector('.header')?.contains(signOut)).toBe(false)
   })
 })
 

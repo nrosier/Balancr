@@ -103,6 +103,7 @@ export type {
   PromptVersionSetting,
   PropertiesSetting,
   ProbeStatus,
+  ProposalAdjustResult,
   ProposalBatchApply,
   ProposalDecision,
   RefreshAccepted,

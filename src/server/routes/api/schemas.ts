@@ -923,6 +923,8 @@ export const insightsSchema = z.object({
       ),
       createdAt: z.string(),
       expiresAt: z.string().nullable(),
+      /** The raw proposed amount for a `budget_amount.set` card (#220); null otherwise. */
+      amountCents: z.int().nullable(),
     }),
   ),
   spend: z.object({
@@ -1601,6 +1603,26 @@ export const proposalDecisionSchema = z.object({
 })
 
 /**
+ * `POST /api/proposals/:id/adjust` (#220) — the owner edits a `budget_amount.set`
+ * card's amount before applying it.
+ */
+export const proposalAdjustRequest = z.strictObject({
+  amountCents: z.int(),
+})
+
+/**
+ * Setting the amount back to what it already is supersedes to a no-op, which
+ * `createProposal` refuses — so the adjust endpoint rejects the *original*
+ * proposal instead of creating a new one (see `adjustProposal`). Either way
+ * `id` is the row the client should now act on: apply it, or nothing further
+ * to do when it comes back `rejected`.
+ */
+export const proposalAdjustSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'rejected']),
+})
+
+/**
  * `POST /api/proposals/apply-batch` — one result per id asked for, in request
  * order, whether or not it succeeded (#45).
  *
@@ -1721,3 +1743,4 @@ export type CategoryGuessRunWire = z.infer<typeof categoryGuessRunSchema>
 export type CategoryGuessCandidateWire = z.infer<typeof categoryGuessCandidateSchema>
 export type ProposalDecision = z.infer<typeof proposalDecisionSchema>
 export type ProposalBatchApply = z.infer<typeof proposalBatchApplySchema>
+export type ProposalAdjustResult = z.infer<typeof proposalAdjustSchema>
