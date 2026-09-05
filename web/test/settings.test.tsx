@@ -268,6 +268,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
     {
       id: 'a-mirror',
@@ -278,6 +279,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
     {
       id: 'g-broker',
@@ -288,6 +290,7 @@ const PAYLOAD: Payload = {
       dedupeGroup: null,
       isSourceOfTruth: false,
       decidedFields: [],
+      netWorthExclusionReason: null,
     },
   ],
   dedupe: [

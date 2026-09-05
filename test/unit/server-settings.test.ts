@@ -636,6 +636,10 @@ describe('the account mapping', () => {
     // "a rule guessed this" and "you set this" invite different actions from the
     // reader — and #124's classifier will only overwrite the former.
     expect(account?.decidedFields.sort()).toEqual(['includeInNetWorth', 'kind'])
+    // #245: the reason has to follow the toggle in the same response, not just the
+    // toggle itself — this is the field that turns "count toward net worth: off"
+    // into a visible "and that's why it's not in the total".
+    expect(account?.netWorthExclusionReason).toBe('not_included')
     // The whole payload, so the screen replaces its state rather than patching it.
     expect(settings.params).toEqual(DEFAULT_PARAMS)
     expect(settings.prompts).toHaveLength(2)
@@ -659,6 +663,10 @@ describe('the account mapping', () => {
     }
     expect(grouped.filter((row) => row.isSourceOfTruth)).toHaveLength(1)
     expect(grouped.find((row) => row.isSourceOfTruth)?.id).toBe(second)
+    // #245: the truth counts, its twin is excluded and says so — this is the exact
+    // "invested shows 0 on Overview" report made visible instead of silent.
+    expect(grouped.find((row) => row.isSourceOfTruth)?.netWorthExclusionReason).toBeNull()
+    expect(grouped.find((row) => !row.isSourceOfTruth)?.netWorthExclusionReason).toBe('deduped')
     // One entry per account touched, because the change is to both rows.
     expect(auditActions(ctx.db).filter((action) => action === 'account.map')).toHaveLength(2)
   })

@@ -167,7 +167,16 @@ interface RowProps {
 
 function Row({ account, busy, owner, onPatch, onTruth, onUngroup }: RowProps): ReactNode {
   const { t } = useT()
-  const { id, dedupeGroup, includeInNetWorth, isSourceOfTruth, kind, name, source } = account
+  const {
+    id,
+    dedupeGroup,
+    includeInNetWorth,
+    isSourceOfTruth,
+    kind,
+    name,
+    netWorthExclusionReason,
+    source,
+  } = account
   const locked = !owner || busy
 
   return (
@@ -181,6 +190,18 @@ function Row({ account, busy, owner, onPatch, onTruth, onUngroup }: RowProps): R
         <h3 className="account__name">{name}</h3>
         <span className="account__source muted">{t(`source.${source}`)}</span>
       </div>
+
+      {/*
+        #245: `includeInNetWorth` on and a resolved-looking group can still add up to
+        "not counted" — the reason lives in the dedupe decision, not in any one field
+        on this row. Said here rather than left to a warn-level log line nobody but
+        the server reads.
+      */}
+      {netWorthExclusionReason === null ? null : (
+        <p className="notice notice--warn">
+          {t(`settings:accounts.excluded.${netWorthExclusionReason}`)}
+        </p>
+      )}
 
       <div className="account__controls">
         <div className="field field--inline">

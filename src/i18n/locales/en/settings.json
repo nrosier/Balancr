@@ -15,6 +15,11 @@
       "title": "Possibly counted twice",
       "useThis": "Group, {{name}} counts"
     },
+    "excluded": {
+      "deduped": "Not counted — another account in its group is the source of truth.",
+      "no_source_of_truth": "Not counted — this group has no source of truth yet. Pick one below.",
+      "not_included": "Not counted — \"Count toward net worth\" is off."
+    },
     "group": "Group",
     "hint": "Mark one source of truth per account that exists in both tools.",
     "includeInNetWorth": "Count toward net worth",

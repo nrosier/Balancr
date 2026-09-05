@@ -15,6 +15,11 @@
       "title": "Mogelijk dubbel geteld",
       "useThis": "Groeperen, {{name}} telt"
     },
+    "excluded": {
+      "deduped": "Telt niet mee — een andere rekening in de groep is het brongegeven.",
+      "no_source_of_truth": "Telt niet mee — deze groep heeft nog geen brongegeven. Kies er hieronder één.",
+      "not_included": "Telt niet mee — \"Meetellen in nettovermogen\" staat uit."
+    },
     "group": "Groep",
     "hint": "Duid één brongegeven aan per rekening die in beide tools staat.",
     "includeInNetWorth": "Meetellen in nettovermogen",
