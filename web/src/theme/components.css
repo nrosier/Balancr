@@ -33,6 +33,54 @@
   }
 }
 
+/* ── Section tabs ────────────────────────────────────────────────────────── */
+
+/*
+ * The tab strip a page splits itself into (#200, generalized for #228/#229/#230). Its
+ * own thing rather than a second copy of `.nav`'s fixed bar: this sits inline under the
+ * page heading and scrolls sideways instead of wrapping, because the longest set of
+ * Dutch labels does not fit one row at 375px and wrapping would push every panel down by
+ * a variable amount depending on how many tabs broke. An underline marks the active tab
+ * rather than a filled background, so it reads as a peer of the page's own `<h2>`
+ * headings rather than as another sidebar.
+ */
+.section-nav {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  /* Scrollable without a visible scrollbar stealing a row of its own on desktop. */
+  scrollbar-width: none;
+}
+
+.section-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.section-nav__link {
+  flex: 0 0 auto;
+  padding: var(--space-2) 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: var(--type-sm);
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.section-nav__link:hover {
+  color: var(--text);
+}
+
+.section-nav__link[aria-current='page'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 
 .card {
