@@ -102,6 +102,7 @@ export type {
   PromptSetting,
   PromptVersionSetting,
   ProbeStatus,
+  ProposalAdjustResult,
   ProposalBatchApply,
   ProposalDecision,
   RefreshAccepted,
