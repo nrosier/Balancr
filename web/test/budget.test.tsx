@@ -29,7 +29,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Budget } from '../src/pages/Budget.tsx'
 import type { Budget as BudgetPayload, CustodyWire, Freshness } from '../src/shared.ts'
-import { i18nReady, renderApp } from './helpers.tsx'
+import { i18nReady, renderApp, visit } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
 
@@ -342,6 +342,10 @@ afterAll(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // Most tests here never set a path and rely on landing on the Overview tab by
+  // default; the tab-navigation tests (#230) would otherwise leak that location into
+  // whichever test runs next.
+  visit('/')
 })
 
 describe('before and instead of an answer', () => {
@@ -512,7 +516,7 @@ describe('a month with figures in it', () => {
 describe('the Belgian comparison', () => {
   it('says what it compared, what it divided by, and what nobody has checked', async () => {
     serve(json(FULL))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/benchmark' })
 
     expect(await screen.findByText('Compared with Belgian households')).toBeTruthy()
 
@@ -561,7 +565,7 @@ describe('the Belgian comparison', () => {
 
   it('never raises a difference above information', async () => {
     serve(json(FULL))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/benchmark' })
     await screen.findByText('Compared with Belgian households')
 
     // #43 asks for this as context and never as a verdict. Scoped to the card, because
@@ -591,7 +595,7 @@ describe('the Belgian comparison', () => {
         benchmark: { kind: 'unavailable', reason: 'too_unmapped', mappedShareBp: 6_486 },
       } satisfies BudgetPayload),
     )
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/benchmark' })
 
     expect(
       await screen.findByText(/Only 64,9% of this month's spending is mapped .* under the 70%/),
@@ -604,13 +608,15 @@ describe('the Belgian comparison', () => {
 
   it('draws nothing at all for a month with no spending in it', async () => {
     serve(json(UNCOMPUTED))
-    renderApp(<Budget />)
-    await screen.findByText('Nothing has been computed for May 2026 yet.')
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+    // The month picker is page-level (#230), so it is what settles regardless of which
+    // tab is open — the empty-month notice itself lives on Overview.
+    await screen.findByLabelText('Month')
 
     // `no_month` and `no_file` are both supported states rather than problems, and a box
     // on every budget page saying so would be noise on a page that already says the month
     // is empty. Asserted through the card's own sentences rather than through the notice
-    // classes, because the empty month has a notice of its own two lines up.
+    // classes, because the empty month has a notice of its own two lines up (on Overview).
     expect(screen.queryByText('Compared with Belgian households')).toBeNull()
     expect(screen.queryByText(/Map your categories to a COICOP division/)).toBeNull()
   })
@@ -647,7 +653,7 @@ describe('the shared-cost split', () => {
 
   it('prints Actual\u2019s figure beside your share, and says what it assumed', async () => {
     serve(json(withSplit(SPLIT)))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/custody' })
 
     expect(await screen.findByText('Costs shared with a co-parent')).toBeTruthy()
     expect(
@@ -691,7 +697,7 @@ describe('the shared-cost split', () => {
     // The distinction #44 asks to be reported: one is somebody's arrangement, the other
     // is Balancr guessing at an arrangement it has never seen.
     serve(json(withSplit({ ...SPLIT, basis: 'stated', shareBp: 6_000, members: 0 })))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/custody' })
 
     expect(
       await screen.findByText('The 60% share is the one you stated under Settings, Household.'),
@@ -701,7 +707,7 @@ describe('the shared-cost split', () => {
 
   it('never raises a split above information', async () => {
     serve(json(withSplit(SPLIT)))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/custody' })
     await screen.findByText('Costs shared with a co-parent')
 
     // Nobody has done anything wrong by paying a bill that gets split, and a red cell is
@@ -713,7 +719,7 @@ describe('the shared-cost split', () => {
   it('asks for a share when categories are flagged and nothing implies one', async () => {
     // The one unavailable reason worth a box: the flags say somebody meant this to work.
     serve(json(withSplit({ kind: 'unavailable', reason: 'no_basis', paidCents: 52_000 })))
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/custody' })
 
     expect(
       await screen.findByText(
@@ -727,12 +733,27 @@ describe('the shared-cost split', () => {
 
   it('draws nothing when nothing is flagged, and nothing for an empty month', async () => {
     // The ordinary state of most budgets. A card explaining an absence nobody asked about
-    // is noise, and the empty month already has a notice of its own.
+    // is noise, and the empty month already has a notice of its own (on Overview).
     serve(json(FULL))
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
+    renderApp(<Budget />, { path: '/budget/custody' })
+    await screen.findByLabelText('Month')
     expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
     expect(screen.queryByText(/are flagged as shared with a co-parent/)).toBeNull()
+  })
+})
+
+describe('the section tabs (#230)', () => {
+  it('marks the open tab current, and lands on Overview for a path it does not recognise', async () => {
+    serve(json(FULL))
+    const benchmark = renderApp(<Budget />, { path: '/budget/benchmark' })
+    await screen.findByText('Compared with Belgian households')
+
+    expect(screen.getByRole('link', { name: 'Benchmark' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Overview' }).getAttribute('aria-current')).toBeNull()
+    benchmark.unmount()
+
+    renderApp(<Budget />, { path: '/budget/nonsense' })
+    await screen.findByText('€ 3.100')
   })
 })
 
