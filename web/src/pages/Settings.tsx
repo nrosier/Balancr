@@ -56,6 +56,7 @@ import { AccountsPanel } from '../settings/Accounts.tsx'
 import { HouseholdPanel, MappingPanel } from '../settings/Benchmark.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
+import { PropertyPanel } from '../settings/Property.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
 import { sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
@@ -162,6 +163,8 @@ export function Settings(): ReactNode {
                   <MappingPanel {...props} />
                 </>
               )}
+
+              {section === 'property' && <PropertyPanel {...props} />}
 
               {section === 'spend' && (
                 <>

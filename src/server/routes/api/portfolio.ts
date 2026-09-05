@@ -18,6 +18,12 @@
  * `portfolio_metrics.drift_json` stays null. It lives there rather than here because the
  * AI bundle asks the same question, and "the narrative's figures match the portfolio
  * page" is only structural while both go through one function (#183).
+ *
+ * `properties` is the one field on this response that never touches Ghostfolio at all
+ * (#227) — deliberately outside `allocation`/`advice`, see `domain/property/vocabulary.ts`.
+ * Priced as of the request rather than as of `date`: a mortgage amortizes with the
+ * calendar, not with whatever night Ghostfolio's snapshot last ran, and a fresh install
+ * with no Ghostfolio holdings at all (`date === null`) still has properties to show.
  */
 import type { Db } from '../../../db/index.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
@@ -28,6 +34,14 @@ import {
   loadPortfolioValueHistory,
   loadSnapshot,
 } from '../../../domain/portfolio/store.ts'
+import {
+  grossYieldBp,
+  loadProperties,
+  netCashFlowCents,
+  outstandingBalanceCents,
+  propertyEquityCents,
+  totalEquityCents,
+} from '../../../domain/property/properties.ts'
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
@@ -36,6 +50,8 @@ export function buildPortfolio(db: Db): Portfolio {
   const metrics = date === null ? null : loadPortfolioMetrics(db, date)
   const holdings = date === null ? [] : loadSnapshot(db, date)
   const split = knownSplit(metrics)
+  const today = new Date().toISOString().slice(0, 10)
+  const properties = loadProperties(db).properties
 
   return portfolioSchema.parse({
     freshness: freshness(db),
@@ -72,5 +88,17 @@ export function buildPortfolio(db: Db): Portfolio {
       .sort((a, b) => b.valueCents - a.valueCents),
     history: loadPortfolioValueHistory(db),
     advice: adviceFor(db, metrics, split.investedValueCents, holdings),
+    properties: properties.map((property) => ({
+      id: property.id,
+      kind: property.kind,
+      label: property.label,
+      propertyValueCents: property.propertyValueCents,
+      mortgageBalanceCents: outstandingBalanceCents(property.mortgage, today),
+      equityCents: propertyEquityCents(property, today),
+      rentCents: property.rentCents,
+      netCashFlowCents: netCashFlowCents(property),
+      grossYieldBp: grossYieldBp(property),
+    })),
+    totalPropertyEquityCents: totalEquityCents(properties, today),
   })
 }

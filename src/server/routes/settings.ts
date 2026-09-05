@@ -68,6 +68,7 @@ import {
   saveUpcomingNote,
   UPCOMING_NOTE_KEY,
 } from '../../domain/ai/upcoming-note.ts'
+import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
 import {
   COICOP_CHOICES,
   loadMapping,
@@ -250,6 +251,39 @@ const householdPatchRequest = z.strictObject({
  */
 const upcomingNotePatchRequest = z.strictObject({
   text: z.string(),
+})
+
+/**
+ * The owned properties and their mortgages, if any (#227).
+ *
+ * The whole list, always — same reason as the household roster: a list's only two
+ * gestures are "here is a new one" and "drop a row", and a merge can't express the
+ * second. The bounds (rate, term, non-negative cents, the twenty-property cap) live in
+ * `propertiesSchema` and are enforced by `saveProperties`, the same division every other
+ * patch on this page explains. There is no rate-history endpoint: a rate change on one
+ * property is a fresh PATCH of the whole list with today's actual balance as its new
+ * anchor.
+ */
+const propertyPatchRequest = z.strictObject({
+  properties: z.array(
+    z.strictObject({
+      id: z.string(),
+      kind: z.enum(['primary', 'rental']).optional(),
+      label: z.string().optional(),
+      propertyValueCents: z.number().int().nullable().optional(),
+      rentCents: z.number().int().nullable().optional(),
+      mortgage: z
+        .strictObject({
+          principalCents: z.number().int(),
+          anchorDate: z.string(),
+          rateBp: z.number().int(),
+          monthlyPaymentCents: z.number().int(),
+          remainingTermMonths: z.number().int(),
+        })
+        .nullable()
+        .optional(),
+    }),
+  ),
 })
 
 /**
@@ -461,6 +495,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     paramDefaults: DEFAULT_PARAMS,
     advice: riskProfileSetting(db),
     benchmark: benchmarkSetting(db),
+    property: loadProperties(db),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -700,6 +735,42 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       action: 'settings.upcomingNote',
       entity: 'settings',
       entityRef: UPCOMING_NOTE_KEY,
+      actorId: user.id,
+      before,
+      after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * The owned properties and their mortgages, if any (#227).
+   *
+   * Takes effect immediately: `outstandingBalanceCents` is computed from this row on
+   * every read, so a rate or balance correction is reflected the next time the
+   * overview or portfolio page loads, with no separate recompute step.
+   */
+  app.patch('/api/settings/property', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(propertyPatchRequest, request.body)
+
+    const before = loadProperties(db)
+    let after
+    try {
+      after = saveProperties(db, patch)
+    } catch (error) {
+      // The rate/term bounds can only be checked once parsed, so they fail here rather
+      // than in `parseBody` — same division as the household roster.
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.property',
+      entity: 'settings',
+      entityRef: PROPERTY_KEY,
       actorId: user.id,
       before,
       after,

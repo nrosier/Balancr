@@ -977,7 +977,18 @@ suggested amount either way; everything else is left exactly as the trailing
 average proposed. An empty note skips the model call entirely, at zero cost,
 and a nudged amount replaces the pending proposal it adjusts rather than
 sitting beside it, so approving one still looks like approving a single
-`budget_amount.set` suggestion. Behind
+`budget_amount.set` suggestion. A seventh rider gave Balancr something
+Ghostfolio has no concept for:
+[#227](https://github.com/nrosier/Balancr/issues/227) lets the owner list any
+property they hold outright — a home lived in, a flat let out — each with an
+optional mortgage whose outstanding balance amortizes forward from a
+principal, rate and remaining term set once at whatever point the owner's
+last statement was true, rather than typed in fresh every month. A property's
+equity nets into net worth the same way debt already does, and a rental adds
+its own net cash flow and gross yield alongside its equity; none of it enters
+the fund universe's own idea of real estate, the drift table or the
+fund-suggestion engine, because a paid-down room isn't a position either one
+can buy or sell to correct. Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,

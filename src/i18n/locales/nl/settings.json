@@ -177,6 +177,7 @@
     "accounts": "Rekeningen",
     "benchmark": "Vergelijking",
     "general": "Algemeen",
+    "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",
     "spend": "AI-gebruik",
@@ -258,6 +259,37 @@
     "versions": "Versies",
     "versionsNone": "Nog niets bewaard, dus de ingebouwde instructies zijn in gebruik.",
     "which": "Welke instructies"
+  },
+  "property": {
+    "add": "Eigendom toevoegen",
+    "cashFlowReads": "{{value}} over na de hypotheekbetaling per maand.",
+    "equityReads": "{{value}} overwaarde vandaag.",
+    "hasMortgage": "Heeft een hypotheek",
+    "hint": "Wat je in eigendom hebt — het huis waar je woont, of iets dat je verhuurt. Een wijziging is de volgende keer dat het vermogensoverzicht of de portefeuillepagina laadt zichtbaar; niets hier wordt hier herrekend.",
+    "invalid": "Iets in deze rij is nog geen geldig getal.",
+    "kind": {
+      "primary": "Eigen woning",
+      "rental": "Verhuur"
+    },
+    "kindLabel": "Type",
+    "label": "Naam",
+    "labelPlaceholder": "bv. Thuis, Appartement Antwerpen",
+    "mortgage": {
+      "anchorDate": "Saldo per",
+      "payment": "Maandelijkse betaling",
+      "principal": "Openstaand saldo",
+      "rate": "Rentevoet",
+      "rateReads": "Komt neer op {{value}}.",
+      "term": "Resterende looptijd in maanden",
+      "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd"
+    },
+    "none": "Nog geen eigendommen. Voeg toe waar je woont, of iets dat je verhuurt.",
+    "propertyValue": "Geschatte waarde",
+    "propertyValueUnset": "Vul een waarde in om de overwaarde te zien.",
+    "remove": "Verwijderen",
+    "rent": "Maandelijkse huur",
+    "title": "Eigendom",
+    "yieldReads": "{{value}} brutorendement."
   },
   "risk": {
     "column": {
