@@ -58,10 +58,12 @@ describe('routeFor', () => {
 
   it('resolves nothing for a path no page owns', () => {
     expect(routeFor('/nope')).toBeUndefined()
-    // Nested detail paths arrive with the pages that need them (#30 onwards). Until
-    // then this is a 404 in the content area, while the nav still lights the section
-    // it sits under — which is the behaviour `isActive` is written for.
-    expect(routeFor('/budget/2026-08')).toBeUndefined()
+    // Nested paths arrive with the pages that need them (#30 onwards) — Settings
+    // (#200), Insights (#228) and Budget (#230) so far, Portfolio (#229) not yet.
+    // Until a page is marked `nested` this is a 404 in the content area, while the
+    // nav still lights the section it sits under — which is the behaviour
+    // `isActive` is written for.
+    expect(routeFor('/portfolio/2026-08')).toBeUndefined()
   })
 })
 

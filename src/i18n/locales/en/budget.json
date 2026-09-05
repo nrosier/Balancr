@@ -151,6 +151,11 @@
     "spent": "Spent",
     "toBudget": "Left to assign"
   },
+  "nav": {
+    "benchmark": "Benchmark",
+    "custody": "Custody",
+    "overview": "Overview"
+  },
   "pace": {
     "monthProgress": "{{progress}} of the month has passed",
     "overrun": "Projected overrun <money>{{amount}}</money>",
