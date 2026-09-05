@@ -35,6 +35,14 @@
  * owner only, and never offered for a month still in progress. It is here rather than on
  * the settings page for one reason — a review is written for a *particular* month, and
  * this is the only screen that knows which month is on screen.
+ *
+ * **Sections (#228).** The same split Settings settled on (#200): one tab strip, one
+ * section at a time, chosen by `../insights/sections.ts`'s `sectionFor` from the real URL
+ * (`routes.ts` marks `/insights` `nested`, so every `/insights/*` path still lands on this
+ * component). The freshness bar, the month picker, the spend-exceeded notice and the
+ * AI-off notice stay above the tabs rather than inside any one of them — they qualify
+ * what every section below is showing, not one section's own content — and `useResource`
+ * is still called exactly once here regardless of which tab is open.
  */
 import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
@@ -44,6 +52,8 @@ import { Findings } from '../insights/Findings.tsx'
 import { Ledger } from '../insights/Ledger.tsx'
 import { Narrative } from '../insights/Narrative.tsx'
 import { CategoryGuesses, Proposals, Questions } from '../insights/Pending.tsx'
+import { INSIGHTS_SECTIONS, sectionFor } from '../insights/sections.ts'
+import { useRouter } from '../router.tsx'
 import {
   formatMicroEur,
   type AiAvailabilityWire,
@@ -53,6 +63,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { Private } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
 import '../insights/insights.css'
 
@@ -92,6 +103,8 @@ function isEmpty(data: InsightsPayload): boolean {
 
 export function Insights(): ReactNode {
   const { t } = useT()
+  const { path } = useRouter()
+  const section = sectionFor(path)
   // Null means "whatever the server calls the latest", which is what a first visit wants
   // and what a reload after writing a review has to keep — pinning the month here on
   // mount would freeze the page on a month that had no figures yet.
@@ -103,9 +116,15 @@ export function Insights(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.insights')} lede={t('page.insights.lede')} />
+      <SectionNav sections={INSIGHTS_SECTIONS} ariaLabel={t('nav.insights')} />
       <DataState resource={resource} isEmpty={isEmpty}>
         {(data) => (
-          <Sections data={data} onRefreshed={resource.reload} onSelect={setMonth} />
+          <Sections
+            data={data}
+            section={section}
+            onRefreshed={resource.reload}
+            onSelect={setMonth}
+          />
         )}
       </DataState>
     </>
@@ -114,10 +133,12 @@ export function Insights(): ReactNode {
 
 function Sections({
   data,
+  section,
   onRefreshed,
   onSelect,
 }: {
   data: InsightsPayload
+  section: (typeof INSIGHTS_SECTIONS)[number]['id']
   onRefreshed: () => void
   onSelect: (month: string) => void
 }): ReactNode {
@@ -165,7 +186,7 @@ function Sections({
 
       {data.ai.enabled ? null : <AiOff availability={data.ai} />}
 
-      <Findings signals={data.signals} month={data.month} />
+      {section === 'findings' && <Findings signals={data.signals} month={data.month} />}
 
       {/*
         Four sections that only a model can fill, each with its own "nothing yet" copy.
@@ -174,39 +195,47 @@ function Sections({
         above says why. Anything already stored still renders: switching the model off
         should not throw away last month's narrative.
       */}
-      {data.ai.enabled || data.narrative !== null ? (
-        <Narrative
-          narrative={data.narrative}
-          month={data.month}
-          ended={ended}
-          owner={data.owner}
-          aiEnabled={data.ai.enabled}
-          factsChangedAt={data.factsChangedAt}
-          onWritten={onRefreshed}
-        />
-      ) : null}
-      {data.ai.enabled || data.questions.length > 0 ? (
-        <Questions questions={data.questions} scoped={data.month !== null} />
-      ) : null}
-      {data.ai.enabled || data.categoryGuessCandidates.length > 0 ? (
-        <CategoryGuesses
-          candidates={data.categoryGuessCandidates}
-          owner={data.owner}
-          onGuessed={onRefreshed}
-        />
-      ) : null}
-      {data.ai.enabled && data.month !== null ? (
-        <BudgetNudge month={data.month} owner={data.owner} onAdjusted={onRefreshed} />
-      ) : null}
-      {data.ai.enabled || data.proposals.length > 0 ? (
-        <Proposals
-          proposals={data.proposals}
-          scoped={data.month !== null}
-          owner={data.owner}
-          onDecided={onRefreshed}
-        />
-      ) : null}
-      {data.ai.enabled || data.runs.length > 0 ? (
+      {section === 'narrative' && (
+        <>
+          {data.ai.enabled || data.narrative !== null ? (
+            <Narrative
+              narrative={data.narrative}
+              month={data.month}
+              ended={ended}
+              owner={data.owner}
+              aiEnabled={data.ai.enabled}
+              factsChangedAt={data.factsChangedAt}
+              onWritten={onRefreshed}
+            />
+          ) : null}
+          {data.ai.enabled && data.month !== null ? (
+            <BudgetNudge month={data.month} owner={data.owner} onAdjusted={onRefreshed} />
+          ) : null}
+        </>
+      )}
+      {section === 'pending' && (
+        <>
+          {data.ai.enabled || data.categoryGuessCandidates.length > 0 ? (
+            <CategoryGuesses
+              candidates={data.categoryGuessCandidates}
+              owner={data.owner}
+              onGuessed={onRefreshed}
+            />
+          ) : null}
+          {data.ai.enabled || data.proposals.length > 0 ? (
+            <Proposals
+              proposals={data.proposals}
+              scoped={data.month !== null}
+              owner={data.owner}
+              onDecided={onRefreshed}
+            />
+          ) : null}
+          {data.ai.enabled || data.questions.length > 0 ? (
+            <Questions questions={data.questions} scoped={data.month !== null} />
+          ) : null}
+        </>
+      )}
+      {section === 'ledger' && (data.ai.enabled || data.runs.length > 0) ? (
         <Ledger runs={data.runs} month={data.month} />
       ) : null}
     </>

@@ -977,7 +977,16 @@ suggested amount either way; everything else is left exactly as the trailing
 average proposed. An empty note skips the model call entirely, at zero cost,
 and a nudged amount replaces the pending proposal it adjusts rather than
 sitting beside it, so approving one still looks like approving a single
-`budget_amount.set` suggestion. Behind
+`budget_amount.set` suggestion. A seventh rider carried #200's own pattern to
+a second page: [#228](https://github.com/nrosier/Balancr/issues/228) splits
+Insights into the same horizontal tab strip — Findings, Narrative, Pending,
+Ledger — reusing the tab-strip component #200 built rather than growing a
+second one, so a bookmark to `/insights/narrative` or `/insights/pending`
+lands directly on that section instead of at the top of a long scroll. The
+freshness bar, the month picker, the spend-exceeded notice and the AI-off
+notice stay above the tabs rather than inside any one of them, because they
+qualify what every section below is showing, not one section's own content.
+Behind
 `0.10.0`, `0.9.0` is done, on five slices rather than the six the milestone
 opened with. The insights page has the same month picker the budget page has had since
 `0.6.0`: findings, the narrative and the run ledger narrow to whatever month is selected,
