@@ -2,7 +2,8 @@
   "accounts": {
     "dedupe": {
       "because": "Suggested because: {{signals}}.",
-      "hint": "A Ghostfolio account and an Actual account can hold the same money — the same positions, or the same bank balance copied in by a syncing tool. Group them and say which one counts, or net worth adds it twice.",
+      "hint": "A Ghostfolio account and an Actual account can hold the same money — the same positions, or the same bank balance copied in by a syncing tool. Link them and say which one counts, or net worth adds it twice.",
+      "link": "Link, {{name}} counts",
       "notMirrored": "Not the same money",
       "notMirroredHint": "Keeps both counting, and stops this suggestion coming back.",
       "pair": "{{ghostfolio}} may be the same money as {{actual}}.",
@@ -12,24 +13,23 @@
         "name": "both are called the same thing",
         "nameContains": "one name contains the other"
       },
-      "title": "Possibly counted twice",
-      "useThis": "Group, {{name}} counts"
+      "title": "Possibly counted twice"
     },
     "excluded": {
       "deduped": "Not counted — another account in its group is the source of truth.",
       "no_source_of_truth": "Not counted — this group has no source of truth yet. Pick one below.",
       "not_included": "Not counted — \"Count toward net worth\" is off."
     },
-    "group": "Group",
-    "hint": "Mark one source of truth per account that exists in both tools.",
+    "hint": "Accounts that exist in both tools are linked, so their balance counts once.",
     "includeInNetWorth": "Count toward net worth",
     "kind": "Kind",
+    "linked": {
+      "badge": "Linked",
+      "unlink": "Unlink",
+      "with": "Linked with {{name}} ({{source}})"
+    },
     "none": "No accounts have been mapped yet. Run a sync first.",
-    "onItsOwn": "On its own",
-    "sourceOfTruth": "Source of truth",
-    "title": "Accounts",
-    "ungroup": "Ungroup",
-    "useAsTruth": "Make source of truth"
+    "title": "Accounts"
   },
   "ai": {
     "budget": "Monthly budget",

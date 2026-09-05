@@ -2,7 +2,8 @@
   "accounts": {
     "dedupe": {
       "because": "Voorgesteld omdat: {{signals}}.",
-      "hint": "Een Ghostfolio-rekening en een Actual-rekening kunnen hetzelfde geld bevatten — dezelfde posities, of hetzelfde banksaldo dat een synchronisatietool erin heeft gezet. Groepeer ze en duid aan welke meetelt, anders telt je nettovermogen het twee keer.",
+      "hint": "Een Ghostfolio-rekening en een Actual-rekening kunnen hetzelfde geld bevatten — dezelfde posities, of hetzelfde banksaldo dat een synchronisatietool erin heeft gezet. Koppel ze en duid aan welke meetelt, anders telt je nettovermogen het twee keer.",
+      "link": "Koppelen, {{name}} telt",
       "notMirrored": "Niet hetzelfde geld",
       "notMirroredHint": "Beide blijven meetellen, en deze suggestie komt niet terug.",
       "pair": "{{ghostfolio}} is mogelijk hetzelfde geld als {{actual}}.",
@@ -12,24 +13,23 @@
         "name": "ze allebei hetzelfde heten",
         "nameContains": "de ene naam de andere bevat"
       },
-      "title": "Mogelijk dubbel geteld",
-      "useThis": "Groeperen, {{name}} telt"
+      "title": "Mogelijk dubbel geteld"
     },
     "excluded": {
       "deduped": "Telt niet mee — een andere rekening in de groep is het brongegeven.",
       "no_source_of_truth": "Telt niet mee — deze groep heeft nog geen brongegeven. Kies er hieronder één.",
       "not_included": "Telt niet mee — \"Meetellen in nettovermogen\" staat uit."
     },
-    "group": "Groep",
-    "hint": "Duid één brongegeven aan per rekening die in beide tools staat.",
+    "hint": "Rekeningen die in beide tools staan, worden gekoppeld zodat hun saldo één keer meetelt.",
     "includeInNetWorth": "Meetellen in nettovermogen",
     "kind": "Soort",
+    "linked": {
+      "badge": "Gekoppeld",
+      "unlink": "Ontkoppelen",
+      "with": "Gekoppeld met {{name}} ({{source}})"
+    },
     "none": "Er zijn nog geen rekeningen gekoppeld. Synchroniseer eerst.",
-    "onItsOwn": "Op zichzelf",
-    "sourceOfTruth": "Brongegeven",
-    "title": "Rekeningen",
-    "ungroup": "Uit de groep halen",
-    "useAsTruth": "Als brongegeven instellen"
+    "title": "Rekeningen"
   },
   "ai": {
     "budget": "Maandbudget",
