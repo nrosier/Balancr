@@ -151,6 +151,17 @@
     "spent": "Uitgegeven",
     "toBudget": "Nog toe te wijzen"
   },
+  "monthNote": {
+    "count": "{{count}}/{{max}} tekens",
+    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. De AI-budgetbijstelling op de Inzichten-pagina kan zo'n notitie gebruiken bij het voorstellen van bedragen voor volgende maand.",
+    "label": "Notitie voor {{month}}",
+    "placeholder": "bv. Wasmachine vervangen deze maand, ongeveer €400. Tandartsafspraak in oktober, ongeveer €150.",
+    "stepper": {
+      "next": "Volgende maand",
+      "previous": "Vorige maand"
+    },
+    "title": "Notities"
+  },
   "nav": {
     "benchmark": "Vergelijking",
     "custody": "Co-ouderschap",

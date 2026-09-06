@@ -25,7 +25,7 @@
  * way `overview.test.tsx` does — not to assert geometry, but to keep ECharts' "Can't
  * get DOM width or height" warning out of output that is about something else.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Budget } from '../src/pages/Budget.tsx'
 import type { Budget as BudgetPayload, CustodyWire, Freshness } from '../src/shared.ts'
@@ -96,6 +96,7 @@ const FULL: BudgetPayload = {
   freshness: FRESH,
   month: '2026-08',
   months: ['2026-08', '2026-07', '2026-06'],
+  owner: true,
   totals: {
     month: '2026-08',
     incomeCents: 420_000,
@@ -241,6 +242,7 @@ const EMPTY: BudgetPayload = {
   freshness: FRESH,
   month: '2026-09',
   months: [],
+  owner: true,
   totals: null,
   history: [],
   trendMonths: [],
@@ -772,7 +774,11 @@ describe('the month picker', () => {
 
     fireEvent.change(picker, { target: { value: '2026-07' } })
     await waitFor(() => {
-      expect(paths(mock)).toEqual(['/api/budget', '/api/budget?month=2026-07'])
+      expect(paths(mock)).toEqual([
+        '/api/budget',
+        '/api/budget/note?month=2026-08',
+        '/api/budget?month=2026-07',
+      ])
     })
   })
 
@@ -782,6 +788,94 @@ describe('the month picker', () => {
     await screen.findByText('€ 3.100')
 
     expect(screen.queryByLabelText('Month')).toBeNull()
+  })
+})
+
+describe('the month note', () => {
+  const noteBox = (): HTMLTextAreaElement => screen.getByLabelText('Note for August 2026') as HTMLTextAreaElement
+
+  const saveNote = (): HTMLButtonElement =>
+    within(noteBox().closest('form') ?? document.body).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  const stepNext = (): HTMLButtonElement => screen.getByRole('button', { name: 'Next month' }) as HTMLButtonElement
+
+  it('reads the stored note for the month on screen', async () => {
+    const mock = serve({
+      '/api/budget': json(FULL),
+      '/api/budget/note?month=2026-08': json({ text: 'Replaced the dishwasher this month.' }),
+    })
+    renderApp(<Budget />)
+
+    expect(await screen.findByDisplayValue('Replaced the dishwasher this month.')).toBe(noteBox())
+    expect(mock.mock.calls.map((call) => String(call[0]))).toContain('/api/budget/note?month=2026-08')
+  })
+
+  it('has nothing to save until the box is touched', async () => {
+    serve({
+      '/api/budget': json(FULL),
+      '/api/budget/note?month=2026-08': json({ text: '' }),
+    })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    expect(saveNote().disabled).toBe(true)
+  })
+
+  it('sends the typed note, trimmed', async () => {
+    const mock = serve({
+      '/api/budget': json(FULL),
+      '/api/budget/note?month=2026-08': json({ text: '' }),
+      '/api/budget/note': json({ text: 'Replaced the dishwasher this month.' }),
+    })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    fireEvent.change(noteBox(), { target: { value: '  Replaced the dishwasher this month.  ' } })
+    expect(saveNote().disabled).toBe(false)
+    fireEvent.click(saveNote())
+
+    await waitFor(() => {
+      const patchCall = mock.mock.calls.find((call) => String(call[0]) === '/api/budget/note')
+      expect(patchCall).toBeDefined()
+      const init = patchCall?.[1] as RequestInit
+      expect(init.method).toBe('PATCH')
+      expect(JSON.parse(String(init.body))).toEqual({
+        month: '2026-08',
+        text: 'Replaced the dishwasher this month.',
+      })
+    })
+  })
+
+  it('is disabled for a viewer', async () => {
+    serve({
+      '/api/budget': json({ ...FULL, owner: false } satisfies BudgetPayload),
+      '/api/budget/note?month=2026-08': json({ text: '' }),
+    })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    expect(screen.getByText('Only the owner can change this.')).toBeTruthy()
+    expect(noteBox().disabled).toBe(true)
+    expect(saveNote().disabled).toBe(true)
+  })
+
+  it('keeps the month stepper blocked until an unsaved edit is saved (#268)', async () => {
+    serve({
+      '/api/budget': json(FULL),
+      '/api/budget/note?month=2026-08': json({ text: '' }),
+      '/api/budget/note': json({ text: 'Replaced the dishwasher this month.' }),
+      '/api/budget/note?month=2026-09': json({ text: '' }),
+    })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    fireEvent.change(noteBox(), { target: { value: 'Replaced the dishwasher this month.' } })
+    expect(stepNext().disabled).toBe(true)
+
+    fireEvent.click(saveNote())
+    await waitFor(() => {
+      expect(stepNext().disabled).toBe(false)
+    })
   })
 })
 
