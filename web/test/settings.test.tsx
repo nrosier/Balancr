@@ -459,11 +459,16 @@ const SECTION_HEADING: Record<string, string> = {
  * path (#200) — `openPage` is the name that shadow calls through, kept exported at
  * this scope so a block that needs more than one section (a viewer's, the page's own
  * shape) can still reach every tab from one helper.
+ *
+ * `heading` overrides `SECTION_HEADING`'s lookup for a subsection path (#262) — a
+ * group's own tab still renders the section's title, so a fixed heading covers every
+ * `/settings/thresholds/<group>` and `/settings/benchmark/<tab>` path without growing
+ * the map by one entry per subsection.
  */
-async function openPage(replies: Replies, path = '/settings'): Promise<Call[]> {
+async function openPage(replies: Replies, path = '/settings', heading?: string): Promise<Call[]> {
   const calls = serve(replies)
   renderApp(<Settings />, { path })
-  await screen.findByRole('heading', { level: 2, name: SECTION_HEADING[path] ?? 'Account' })
+  await screen.findByRole('heading', { level: 2, name: heading ?? SECTION_HEADING[path] ?? 'Account' })
   return calls
 }
 
@@ -554,17 +559,34 @@ describe('the shape of the page', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
   })
 
-  it('opens on General, and only General, with the build the answer came from', async () => {
+  it('opens on General, and only General’s own subsection, with the build the answer came from', async () => {
     await open(READS)
 
-    for (const title of ['Account', 'Data window', 'This instance', 'Status of this instance']) {
+    for (const title of ['Account', 'Data window', 'This instance']) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
     }
     expect(screen.getByText('abc1234')).toBeTruthy()
     expect(screen.getByText('0.5.6')).toBeTruthy()
 
-    // Every other section's panel stays off the page until its own tab is open.
-    for (const title of ['Assistant instructions', 'Thresholds', 'Accounts', 'Household', 'AI usage']) {
+    // Status moved to its own subsection tab (#262), and every other section's panel
+    // stays off the page until its own tab is open.
+    for (const title of [
+      'Status of this instance',
+      'Assistant instructions',
+      'Thresholds',
+      'Accounts',
+      'Household',
+      'AI usage',
+    ]) {
+      expect(screen.queryByRole('heading', { level: 2, name: title })).toBeNull()
+    }
+  })
+
+  it('shows only Status on its own subsection tab, not General’s own fields (#262)', async () => {
+    await openPage(READS, '/settings/status', 'Status of this instance')
+
+    await screen.findByText('This instance is serving pages.')
+    for (const title of ['Account', 'Data window', 'This instance']) {
       expect(screen.queryByRole('heading', { level: 2, name: title })).toBeNull()
     }
   })
@@ -582,11 +604,23 @@ describe('the shape of the page', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'Status of this instance' })).toBeNull()
   })
 
-  it('shows the household and the category mapping together on Benchmark', async () => {
+  it('shows only the household on Benchmark’s own household tab (#262)', async () => {
+    await openPage(READS, '/settings/benchmark/household', 'Household')
+    expect(screen.getByRole('heading', { level: 2, name: 'Household' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Categories' })).toBeNull()
+  })
+
+  it('shows only the category mapping on Benchmark’s other tab (#262)', async () => {
+    await openPage(READS, '/settings/benchmark/mapping', 'Categories')
+    expect(screen.getByRole('heading', { level: 2, name: 'Categories' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Household' })).toBeNull()
+  })
+
+  it('lands on Household by default when Benchmark’s own tab is not named', async () => {
     await open(READS, '/settings/benchmark')
 
     expect(screen.getByRole('heading', { level: 2, name: 'Household' })).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 2, name: 'Categories' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Categories' })).toBeNull()
     expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
   })
 
@@ -617,8 +651,8 @@ describe('the shape of the page', () => {
   })
 
   it('asks for the payload once, and for the price a run would cost, on every tab', async () => {
-    const calls = await open(READS)
-    // `/api/status` is General's own panel and separate from the payload on purpose —
+    const calls = await openPage(READS, '/settings/status', 'Status of this instance')
+    // `/api/status` is Status' own panel and separate from the payload on purpose —
     // `Settings.tsx` says why — so it is a third request here rather than a sixth field.
     await screen.findByText('This instance is serving pages.')
 
@@ -635,7 +669,7 @@ describe('the shape of the page', () => {
 
     // `/api/ai/estimate` is asked for regardless of tab — both Prompts' test run and
     // Spend's by-hand run price against it — but `/api/status` is never asked for here:
-    // only General mounts the panel that reads it.
+    // only General's own Status subsection mounts the panel that reads it (#262).
     expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
   })
 })
@@ -675,27 +709,65 @@ describe('language', () => {
 })
 
 describe('thresholds', () => {
-  /** Thresholds moved to its own tab (#200); every case here means that tab. */
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/thresholds')
+  /**
+   * Thresholds moved to its own tab (#200), then grew one tab per group (#262) — every
+   * case here means one of those, `baseline` (the default group) unless it says
+   * otherwise.
+   */
+  const open = (replies: Replies, group = 'baseline'): Promise<Call[]> =>
+    openPage(replies, `/settings/thresholds/${group}`, 'Thresholds')
 
-  it('sends only the fields that changed, in their groups', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
+  it('sends only the fields that changed, across the subsections they live in', async () => {
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'baseline')
 
-    fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     fireEvent.change(field('Months of history in the norm'), { target: { value: '18' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Overspending' }))
+    fireEvent.change(await screen.findByLabelText('Warn above the norm', { exact: false }), {
+      target: { value: '2500' },
+    })
     fireEvent.click(save())
 
     await waitFor(() => {
       expect(writes(calls)).toHaveLength(1)
     })
     expect(writes(calls)[0]?.body).toEqual({
-      overspend: { baselineWarnBp: 2_500 },
       baseline: { windowMonths: 18 },
+      overspend: { baselineWarnBp: 2_500 },
     })
   })
 
+  it('keeps a typed value after switching to a different subsection tab and back', async () => {
+    await open(READS, 'baseline')
+
+    fireEvent.change(field('Months of history in the norm'), { target: { value: '18' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Overspending' }))
+    await screen.findByLabelText('Warn above the norm', { exact: false })
+    fireEvent.click(screen.getByRole('link', { name: 'Your own norm' }))
+
+    const input = (await screen.findByLabelText('Months of history in the norm', {
+      exact: false,
+    })) as HTMLInputElement
+    expect(input.value).toBe('18')
+  })
+
+  it('shows only the active group’s fieldset, not the other five', async () => {
+    await open(READS, 'drift')
+
+    expect(screen.getByRole('group', { name: 'Portfolio drift' })).toBeTruthy()
+    for (const group of ['Your own norm', 'Overspending', 'Pace', 'Data hygiene', 'Household targets']) {
+      expect(screen.queryByRole('group', { name: group })).toBeNull()
+    }
+  })
+
+  it('lands on its own default group when the subsection is not named', async () => {
+    await openPage(READS, '/settings/thresholds', 'Thresholds')
+
+    expect(screen.getByRole('group', { name: 'Your own norm' })).toBeTruthy()
+    expect(screen.queryByRole('group', { name: 'Portfolio drift' })).toBeNull()
+  })
+
   it('parses a money field the Belgian way and sends cents', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'overspend')
 
     // Shown as `€ 25,00`, typed back as an amount, sent as an integer number of cents.
     expect(field('Ignore amounts under').value).toBe(eur('25,00'))
@@ -708,7 +780,7 @@ describe('thresholds', () => {
   })
 
   it('refuses a grouping mark in a plain number rather than reading it as three digits', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'overspend')
 
     // `parseFloat('2.000')` is 2 — which would save 0,02% as if it were 20%.
     fireEvent.change(field('Warn above the norm'), { target: { value: '2.000' } })
@@ -721,7 +793,7 @@ describe('thresholds', () => {
   })
 
   it('has nothing to save once a field is typed back to what is stored', async () => {
-    await open(READS)
+    await open(READS, 'overspend')
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     expect(save().disabled).toBe(false)
@@ -731,17 +803,20 @@ describe('thresholds', () => {
   })
 
   it('says what a basis-points field will be read as, so 2000 is not mistaken for money', async () => {
-    await open(READS)
+    await open(READS, 'overspend')
     expect(screen.getByText(/reads as 20%/)).toBeTruthy()
   })
 
   it('puts a rejected field beside itself rather than at the top of the page', async () => {
-    await open({
-      ...READS,
-      '/api/settings/params': failure('invalidBody', 'That request was not valid.', 400, [
-        { path: 'overspend.baselineWarnBp', message: 'must not exceed baselineAlertBp' },
-      ]),
-    })
+    await open(
+      {
+        ...READS,
+        '/api/settings/params': failure('invalidBody', 'That request was not valid.', 400, [
+          { path: 'overspend.baselineWarnBp', message: 'must not exceed baselineAlertBp' },
+        ]),
+      },
+      'overspend',
+    )
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '9000' } })
     fireEvent.click(save())
@@ -753,10 +828,13 @@ describe('thresholds', () => {
   })
 
   it('reports a failure the server did not attribute to a field once, above the panels', async () => {
-    await open({
-      ...READS,
-      '/api/settings/params': failure('rateLimited', 'Too many requests. Try again shortly.', 429),
-    })
+    await open(
+      {
+        ...READS,
+        '/api/settings/params': failure('rateLimited', 'Too many requests. Try again shortly.', 429),
+      },
+      'overspend',
+    )
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     fireEvent.click(save())
@@ -1643,7 +1721,9 @@ describe('property', () => {
 })
 
 describe('the category table', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/benchmark')
+  /** The mapping moved to Benchmark's own subsection tab (#262), apart from Household. */
+  const open = (replies: Replies): Promise<Call[]> =>
+    openPage(replies, '/settings/benchmark/mapping', 'Categories')
 
   const picker = (name: string): HTMLSelectElement =>
     screen.getByLabelText(`COICOP division for ${name}`) as HTMLSelectElement
@@ -2299,7 +2379,8 @@ describe('a viewer', () => {
   it('can read every threshold and change none of them', async () => {
     await openPage(
       { '/api/settings': json(VIEWER), '/api/ai/estimate': json(ESTIMATE) },
-      '/settings/thresholds',
+      '/settings/thresholds/overspend',
+      'Thresholds',
     )
 
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
