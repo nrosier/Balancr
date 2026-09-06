@@ -81,6 +81,21 @@
   font-weight: var(--weight-medium);
 }
 
+/*
+ * A section's own subsection tabs (#200 nesting) — smaller and tighter than the primary
+ * strip above it, so the two rows read as two tiers of the same page rather than as a
+ * second, equally-weighted nav.
+ */
+.section-nav--sub {
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.section-nav--sub .section-nav__link {
+  padding: var(--space-1) 0;
+  font-size: var(--type-xs);
+}
+
 /* ── Cards ───────────────────────────────────────────────────────────────── */
 
 .card {

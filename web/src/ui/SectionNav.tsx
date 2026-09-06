@@ -16,14 +16,18 @@ import type { Section } from './sections.ts'
 export function SectionNav<Id extends string>({
   sections,
   ariaLabel,
+  variant,
 }: {
   sections: readonly Section<Id>[]
   ariaLabel: string
+  /** `'sub'` renders the smaller, second-tier strip a section's own subsections use. */
+  variant?: 'sub'
 }): ReactNode {
   const { t } = useT()
+  const className = variant === 'sub' ? 'section-nav section-nav--sub' : 'section-nav'
 
   return (
-    <nav className="section-nav" aria-label={ariaLabel}>
+    <nav className={className} aria-label={ariaLabel}>
       {sections.map((section) => (
         <Link key={section.id} to={section.path} exact className="section-nav__link">
           {t(section.labelKey)}

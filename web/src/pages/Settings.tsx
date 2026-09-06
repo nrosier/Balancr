@@ -53,7 +53,7 @@ import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import { AccountsPanel } from '../settings/Accounts.tsx'
-import { HouseholdPanel, MappingPanel } from '../settings/Benchmark.tsx'
+import { BenchmarkSection } from '../settings/Benchmark.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { PropertyPanel } from '../settings/Property.tsx'
@@ -62,16 +62,80 @@ import { sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
-import { ThresholdsPanel } from '../settings/Thresholds.tsx'
+import { ThresholdsSection } from '../settings/Thresholds.tsx'
 import { UpcomingPanel } from '../settings/Upcoming.tsx'
-import { useSettings } from '../settings/state.ts'
+import { useSettings, type SettingsPanelProps } from '../settings/state.ts'
 import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
+import { useSubsection, type Section } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
-export function Settings(): ReactNode {
+type GeneralSubsectionId = 'general' | 'status'
+
+const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
+  { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
+  { id: 'status', path: '/settings/status', labelKey: 'settings:status.title' },
+]
+
+/**
+ * General's own subsection tabs: the language control plus the history/build facts
+ * that come from the settings payload, versus the status panel, which reads `/api/status`
+ * on its own and is job-control-heavy enough to want its own page (see the module doc
+ * comment on why the two used to share a section).
+ */
+function GeneralSection(props: SettingsPanelProps): ReactNode {
   const { t, language } = useT()
+  const active = useSubsection(GENERAL_SUBSECTIONS)
+  const { settings } = props
+
+  return (
+    <>
+      <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
+
+      {active === 'status' ? (
+        <StatusPanel />
+      ) : (
+        <>
+          <LanguagePanel {...props} />
+
+          <section className="card panel">
+            <h2 className="card__title">{t('settings:history.title')}</h2>
+            <dl className="build">
+              <dt>{t('settings:history.months')}</dt>
+              <dd className="num">
+                {t('settings:history.monthsValue', { months: settings.history.months })}
+              </dd>
+              <dt>{t('settings:history.coverage')}</dt>
+              <dd className="num">
+                {settings.history.earliest === null || settings.history.latest === null
+                  ? t('settings:history.noneYet')
+                  : t('settings:history.coverageValue', {
+                      earliest: formatMonth(settings.history.earliest, language),
+                      latest: formatMonth(settings.history.latest, language),
+                    })}
+              </dd>
+            </dl>
+          </section>
+
+          <section className="card panel">
+            <h2 className="card__title">{t('settings:build.title')}</h2>
+            <dl className="build">
+              <dt>{t('settings:build.version')}</dt>
+              <dd className="num">{settings.build.version ?? t('empty.unknown')}</dd>
+              <dt>{t('settings:build.revision')}</dt>
+              <dd className="num">{settings.build.revision ?? t('empty.unknown')}</dd>
+            </dl>
+          </section>
+        </>
+      )}
+    </>
+  )
+}
+
+export function Settings(): ReactNode {
+  const { t } = useT()
   const state = useSettings()
   const { path } = useRouter()
   const section = sectionFor(path)
@@ -115,55 +179,13 @@ export function Settings(): ReactNode {
                 </div>
               )}
 
-              {section === 'general' && (
-                <>
-                  <LanguagePanel {...props} />
-
-                  <section className="card panel">
-                    <h2 className="card__title">{t('settings:history.title')}</h2>
-                    <dl className="build">
-                      <dt>{t('settings:history.months')}</dt>
-                      <dd className="num">
-                        {t('settings:history.monthsValue', { months: settings.history.months })}
-                      </dd>
-                      <dt>{t('settings:history.coverage')}</dt>
-                      <dd className="num">
-                        {settings.history.earliest === null || settings.history.latest === null
-                          ? t('settings:history.noneYet')
-                          : t('settings:history.coverageValue', {
-                              earliest: formatMonth(settings.history.earliest, language),
-                              latest: formatMonth(settings.history.latest, language),
-                            })}
-                      </dd>
-                    </dl>
-                  </section>
-
-                  <section className="card panel">
-                    <h2 className="card__title">{t('settings:build.title')}</h2>
-                    <dl className="build">
-                      <dt>{t('settings:build.version')}</dt>
-                      <dd className="num">{settings.build.version ?? t('empty.unknown')}</dd>
-                      <dt>{t('settings:build.revision')}</dt>
-                      <dd className="num">{settings.build.revision ?? t('empty.unknown')}</dd>
-                    </dl>
-                  </section>
-
-                  <StatusPanel />
-                </>
-              )}
+              {section === 'general' && <GeneralSection {...props} />}
 
               {section === 'prompts' && <PromptsPanel {...props} />}
               {section === 'risk' && <RiskPanel {...props} />}
-              {section === 'thresholds' && <ThresholdsPanel {...props} />}
+              {section === 'thresholds' && <ThresholdsSection {...props} />}
               {section === 'accounts' && <AccountsPanel {...props} />}
-
-              {section === 'benchmark' && (
-                <>
-                  <HouseholdPanel {...props} />
-                  <MappingPanel {...props} />
-                </>
-              )}
-
+              {section === 'benchmark' && <BenchmarkSection {...props} />}
               {section === 'property' && <PropertyPanel {...props} />}
 
               {section === 'spend' && (
