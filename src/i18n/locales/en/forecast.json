@@ -1,0 +1,21 @@
+{
+  "bills": {
+    "caption_one": "One bill lands in the next twelve months.",
+    "caption_other": "{{value}} bills land in the next twelve months.",
+    "column": {
+      "amount": "Amount",
+      "category": "Category",
+      "month": "Month"
+    },
+    "none": "Nothing outside the usual monthly rhythm is due in the next twelve months.",
+    "title": "What's due"
+  },
+  "chart": {
+    "balance": "Projected balance",
+    "summary": "Projected balance between {{from}} and {{to}}: {{start}} at the start, {{end}} at the end.",
+    "title": "Balance, twelve months out"
+  },
+  "metric": {
+    "horizon": "Balance in twelve months"
+  }
+}

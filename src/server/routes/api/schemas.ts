@@ -202,6 +202,38 @@ export const overviewSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+//  Forecast (#49)
+// ---------------------------------------------------------------------------
+
+export const forecastBillSchema = z.object({
+  categoryId: z.string(),
+  name: z.string(),
+  amountCents: cents(),
+})
+
+export const forecastMonthSchema = z.object({
+  month: monthKey(),
+  incomeCents: cents(),
+  fixedCents: cents(),
+  netCents: cents(),
+  /** No lower bound — a projected balance can legitimately go negative. */
+  balanceCents: cents(),
+  bills: z.array(forecastBillSchema),
+})
+
+export const forecastSchema = z.object({
+  freshness: freshnessSchema,
+  forecast: z
+    .object({
+      startDate: dateKey(),
+      startBalanceCents: cents(),
+      months: z.array(forecastMonthSchema),
+    })
+    .nullable(),
+})
+export type Forecast = z.infer<typeof forecastSchema>
+
+// ---------------------------------------------------------------------------
 //  Budget
 // ---------------------------------------------------------------------------
 
