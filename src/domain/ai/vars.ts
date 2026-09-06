@@ -144,6 +144,12 @@ const NUMERIC_VARS: {
       paid: money(m.paidCents),
       share: percent(m.shareBp),
     }),
+  budget_toward_savings: (m) => present({ amount: money(m.amountCents) }),
+  budget_toward_investments: (m) => present({ amount: money(m.amountCents) }),
+  // Magnitude, not signed: the sentence itself says "drawn down", the same
+  // reasoning `below_baseline` gives for its own `delta`.
+  savings_drawn_down: (m) =>
+    present({ delta: magnitudePercent(m.deltaBp), baseline: money(m.baselineCents) }),
 
   // --- the portfolio against the profile ---
   // `share` and the edge are both plain percentages and both printed, because the

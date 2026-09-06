@@ -171,6 +171,7 @@ const BENCHMARK: Payload['benchmark'] = {
       hidden: false,
       coicop: null,
       custodyShared: false,
+      nature: null,
       spentCents: 8_000,
     },
     {
@@ -180,6 +181,7 @@ const BENCHMARK: Payload['benchmark'] = {
       hidden: false,
       coicop: '04.5.1',
       custodyShared: false,
+      nature: null,
       spentCents: 120_000,
     },
     {
@@ -189,6 +191,7 @@ const BENCHMARK: Payload['benchmark'] = {
       hidden: false,
       coicop: '00',
       custodyShared: false,
+      nature: null,
       spentCents: 1_500,
     },
     {
@@ -198,6 +201,7 @@ const BENCHMARK: Payload['benchmark'] = {
       hidden: false,
       coicop: null,
       custodyShared: false,
+      nature: null,
       spentCents: 0,
     },
     // Hidden, so the co-parent box is closed for the second of the two reasons it can
@@ -209,6 +213,7 @@ const BENCHMARK: Payload['benchmark'] = {
       hidden: true,
       coicop: null,
       custodyShared: false,
+      nature: null,
       spentCents: 0,
     },
   ],
@@ -1646,6 +1651,9 @@ describe('the category table', () => {
   const shared = (name: string): HTMLInputElement =>
     screen.getByLabelText(`Shared with a co-parent: ${name}`) as HTMLInputElement
 
+  const nature = (name: string): HTMLSelectElement =>
+    screen.getByLabelText(`Savings or investments envelope for ${name}`) as HTMLSelectElement
+
   /** The payload with one envelope already flagged, for the checked state (#44). */
   const withFlagged = (categoryId: string): Payload => ({
     ...PAYLOAD,
@@ -1653,6 +1661,17 @@ describe('the category table', () => {
       ...BENCHMARK,
       categories: BENCHMARK.categories.map((category) =>
         category.categoryId === categoryId ? { ...category, custodyShared: true } : category,
+      ),
+    },
+  })
+
+  /** The payload with one envelope already tagged, for the selected state (#252). */
+  const withNature = (categoryId: string, value: 'savings' | 'investments'): Payload => ({
+    ...PAYLOAD,
+    benchmark: {
+      ...BENCHMARK,
+      categories: BENCHMARK.categories.map((category) =>
+        category.categoryId === categoryId ? { ...category, nature: value } : category,
       ),
     },
   })
@@ -1784,6 +1803,62 @@ describe('the category table', () => {
     expect(shared('Old subscription').disabled).toBe(true)
   })
 
+  it('tags a category as savings the moment it is picked (#252)', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/categories/cat-coffee/nature': json(PAYLOAD),
+    })
+
+    expect(nature('Coffee').value).toBe('')
+    fireEvent.change(nature('Coffee'), { target: { value: 'savings' } })
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-coffee/nature',
+          method: 'PATCH',
+          body: { nature: 'savings' },
+        },
+      ])
+    })
+  })
+
+  it('sends null to take a wrong tag back', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(withNature('cat-rent', 'investments')),
+      '/api/settings/categories/cat-rent/nature': json(PAYLOAD),
+    })
+
+    expect(nature('Rent').value).toBe('investments')
+    fireEvent.change(nature('Rent'), { target: { value: '' } })
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-rent/nature',
+          method: 'PATCH',
+          body: { nature: null },
+        },
+      ])
+    })
+  })
+
+  it('offers only the two tags plus "neither"', async () => {
+    await open(READS)
+
+    const options = Array.from(nature('Coffee').options, (option) => option.value)
+    expect(options).toEqual(['', 'savings', 'investments'])
+  })
+
+  it('closes the tag for income and hidden categories, same as the shared box', async () => {
+    await open(READS)
+
+    expect(nature('Coffee').disabled).toBe(false)
+    expect(nature('Salary').disabled).toBe(true)
+    expect(nature('Old subscription').disabled).toBe(true)
+  })
+
   it('says beside the boxes that no budget figure is adjusted', async () => {
     // The one thing this column has to get across. A person who read a tick as an edit
     // to their budget would be right to be alarmed, and wrong about what happens.
@@ -1800,6 +1875,7 @@ describe('the category table', () => {
 
     expect(picker('Coffee').disabled).toBe(true)
     expect(shared('Coffee').disabled).toBe(true)
+    expect(nature('Coffee').disabled).toBe(true)
   })
 })
 
