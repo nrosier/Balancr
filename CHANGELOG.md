@@ -6,6 +6,34 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.2] — 2026-09-06
+
+### Added
+
+- **Thresholds, Benchmark and General split into subsection tabs**
+  ([#262](https://github.com/nrosier/Balancr/issues/262)), the same tab-strip
+  component (#200) already used one level up, reused a level deeper.
+  Thresholds gets one subsection per threshold group, still derived from the
+  payload's own schema rather than a hand-written list, so a group added to
+  the aggregation engine still shows up with no edit here. Benchmark splits
+  into the household roster and the category mapping table; General keeps
+  the language control and build info together and moves the status panel,
+  which polls its own endpoint on its own cadence, to its own tab.
+
+### Fixed
+
+- **The narrative default named a specific household**
+  ([#261](https://github.com/nrosier/Balancr/issues/261)). The built-in
+  narrative system prompt's opening sentence described this app's own real
+  deployment instead of a household in the generic terms every other prompt
+  in the file uses — real, identifying detail hardcoded into shipped source
+  and, now that the repo is public, visible to anyone who clones it. The
+  shared-custody-cost behavior it was gesturing at is already handled
+  generically by its own rule elsewhere in the same prompt, so the sentence
+  is dropped rather than rewritten. Existing installations upgrade to the
+  new default on their next boot, the same mechanism the #183 drift-rule
+  upgrade used.
+
 ## [0.11.1] — 2026-09-06
 
 ### Fixed
