@@ -92,6 +92,7 @@
   },
   "nav": {
     "budget": "Budget",
+    "forecast": "Forecast",
     "insights": "Insights",
     "label": "Sections",
     "overview": "Overview",
@@ -106,6 +107,9 @@
   "page": {
     "budget": {
       "lede": "Where the money went this month, and whether it is on track."
+    },
+    "forecast": {
+      "lede": "The checking balance, twelve months out, from what's recurring and what's due."
     },
     "insights": {
       "lede": "What the analysis found, and what it wants you to confirm."

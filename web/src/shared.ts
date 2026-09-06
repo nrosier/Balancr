@@ -91,6 +91,7 @@ export type {
   ChangelogEntry,
   CustodyWire,
   DriftLine,
+  Forecast,
   Freshness,
   Hygiene,
   Insights,

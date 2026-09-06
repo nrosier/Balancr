@@ -27,6 +27,7 @@ import type { Db } from '../../../db/index.ts'
 import { notFound } from '../../errors.ts'
 import { buildBudget } from './budget.ts'
 import { buildChangelog } from './changelog.ts'
+import { buildForecast } from './forecast.ts'
 import { buildInsights, buildRunPayload } from './insights.ts'
 import { buildOverview } from './overview.ts'
 import { buildPortfolio } from './portfolio.ts'
@@ -66,6 +67,8 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   )
 
   app.get('/api/portfolio', () => buildPortfolio(db))
+
+  app.get('/api/forecast', () => buildForecast(db))
 
   app.get('/api/insights', (request: FastifyRequest) =>
     buildInsights(db, {

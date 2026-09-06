@@ -1,0 +1,21 @@
+{
+  "bills": {
+    "caption_one": "Er vervalt één rekening in de komende twaalf maanden.",
+    "caption_other": "{{value}} rekeningen vervallen in de komende twaalf maanden.",
+    "column": {
+      "amount": "Bedrag",
+      "category": "Categorie",
+      "month": "Maand"
+    },
+    "none": "Er vervalt niets buiten het gewone maandritme in de komende twaalf maanden.",
+    "title": "Wat vervalt"
+  },
+  "chart": {
+    "balance": "Verwacht saldo",
+    "summary": "Verwacht saldo tussen {{from}} en {{to}}: {{start}} bij de start, {{end}} op het einde.",
+    "title": "Saldo, twaalf maanden vooruit"
+  },
+  "metric": {
+    "horizon": "Saldo binnen twaalf maanden"
+  }
+}
