@@ -33,6 +33,7 @@ export const localesDir = fileURLToPath(new URL('./locales', import.meta.url))
 export const NAMESPACES = [
   'common',
   'budget',
+  'forecast',
   'portfolio',
   'ai',
   'settings',

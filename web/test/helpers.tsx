@@ -185,6 +185,10 @@ const EMPTY_READS: Record<string, unknown> = {
     holdings: [],
     history: [],
   },
+  '/api/forecast': {
+    freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
+    forecast: null,
+  },
   '/api/insights': {
     freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
     ai: { enabled: true, reason: null },

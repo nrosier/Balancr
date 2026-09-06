@@ -41,7 +41,7 @@ const OWNER: SessionUserResponse = {
   role: 'owner',
 }
 
-const SECTIONS = ['Overview', 'Budget', 'Portfolio', 'Insights', 'Settings']
+const SECTIONS = ['Overview', 'Budget', 'Portfolio', 'Forecast', 'Insights', 'Settings']
 
 beforeAll(async () => {
   await i18nReady()
