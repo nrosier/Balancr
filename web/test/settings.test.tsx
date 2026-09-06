@@ -1313,6 +1313,23 @@ describe('the household', () => {
     })
   })
 
+  it('keeps a typed name after switching to Benchmark’s other tab and back', async () => {
+    // Regression: the household roster used to live on the same page as the mapping
+    // table, so nothing unmounted it. Splitting them into subsection tabs (#262) made
+    // `BenchmarkSection` render one panel or the other, and a naive conditional threw
+    // away this exact draft the moment somebody switched to check the mapping and
+    // switched back.
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Nick' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Categories' }))
+    await screen.findByRole('heading', { level: 2, name: 'Categories' })
+    fireEvent.click(screen.getByRole('link', { name: 'Household' }))
+
+    const input = (await screen.findByLabelText('Your name')) as HTMLInputElement
+    expect(input.value).toBe('Nick')
+  })
+
   it('drops a stored name when the box is cleared, the same direction the shared-cost box takes (#215)', async () => {
     const named = {
       ...PAYLOAD,
