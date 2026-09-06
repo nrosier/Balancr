@@ -6,6 +6,21 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.1] — 2026-09-06
+
+### Fixed
+
+- **The 12-month forecast projecting a one-off as if it recurred, and ignoring
+  untagged spend entirely** ([#49](https://github.com/nrosier/Balancr/issues/49),
+  reported directly against the just-shipped forecast as "too optimistic"). An
+  `irregular`-cadence income or fixed category was being repeated forward every
+  twelve months by mistakenly borrowing `baseline.ts`'s smoothing-window map as a
+  repeat interval — a single bonus or gift read as an annual one. It's now
+  excluded from repetition entirely. Separately, spend in categories nobody has
+  tagged `fixed`/`income` contributed nothing to the forecast's cost side; the
+  household's own already-computed average total spend is now added as a flat
+  monthly floor on top of any tagged categories and detected bills.
+
 ## [0.11.0] — 2026-09-06
 
 ### Added
