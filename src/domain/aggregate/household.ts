@@ -23,6 +23,7 @@ import { capSeverity } from '../ai/codes.ts'
 import { sortSignals } from './overspend.ts'
 import { assertDenseMonths } from '../../util/month.ts'
 import type { MonthTotals } from './spend.ts'
+import type { SavingsAggregate } from './savings-context.ts'
 
 export interface HouseholdInput {
   /** The month being judged. Must be the last entry of both series. */
@@ -39,6 +40,8 @@ export interface HouseholdInput {
    * congratulating the user on a record set by having no previous record.
    */
   netWorthHistory: readonly { date: string; totalCents: number }[]
+  /** This month's savings/investments envelopes (#252). */
+  savings: SavingsAggregate
   params: AggregateParams
 }
 
@@ -124,6 +127,12 @@ export function householdSignals(input: HouseholdInput): Signal[] {
   // Needs both a cushion to measure and something to measure it against: with no
   // spend history there is no denominator, and `ewma` of nothing is an error
   // rather than a zero.
+  //
+  // `shortfallCents` is computed unconditionally (it can come out zero or
+  // negative) rather than only inside the "short" branch, because #252's
+  // budget-allocation nudge below needs it in both directions: a positive
+  // shortfall to fill, or its absence to know the fund is already covered.
+  let shortfallCents = 0
   if (input.netWorth && input.spendHistory.length > 0) {
     const typicalSpend = Math.round(
       ewma(
@@ -139,6 +148,7 @@ export function householdSignals(input: HouseholdInput): Signal[] {
       // renderer eventually prints "3 months" as "0,3%".
       const monthsBp = Math.round((input.netWorth.liquidCents / typicalSpend) * 10_000)
       const targetMonthsBp = Math.round(params.household.emergencyFundTargetMonths * 10_000)
+      shortfallCents = Math.round((typicalSpend * (targetMonthsBp - monthsBp)) / 10_000)
       if (monthsBp < targetMonthsBp) {
         signals.push(
           householdSignal('emergency_fund_short', 'alert', {
@@ -146,12 +156,56 @@ export function householdSignals(input: HouseholdInput): Signal[] {
             targetMonthsBp,
             liquidCents: input.netWorth.liquidCents,
             typicalSpendCents: typicalSpend,
-            shortfallCents: Math.round(
-              (typicalSpend * (targetMonthsBp - monthsBp)) / 10_000,
-            ),
+            shortfallCents,
           }),
         )
       }
+    }
+  }
+
+  // --- unbudgeted money, routed toward savings then investments (#252) -----
+  // The goal is that every euro of `toBudgetCents` ends up assigned to
+  // something: a spending category, savings, or investments, never left idle.
+  // The fund shortfall (above) is filled first, from whichever category the
+  // user has tagged `savings`; only what's left over — and only once the fund
+  // is covered or has nothing to address it — goes toward `investments`.
+  if (input.totals.toBudgetCents > 0) {
+    let remainingCents = input.totals.toBudgetCents
+    let savingsAllocatedCents = 0
+
+    if (shortfallCents > 0 && input.savings.hasSavings) {
+      savingsAllocatedCents = Math.min(remainingCents, shortfallCents)
+      remainingCents -= savingsAllocatedCents
+      signals.push(
+        householdSignal('budget_toward_savings', 'warn', { amountCents: savingsAllocatedCents }),
+      )
+    }
+
+    const fundCovered = shortfallCents <= 0 || savingsAllocatedCents >= shortfallCents
+    if (remainingCents > 0 && input.savings.hasInvestments && fundCovered) {
+      signals.push(
+        householdSignal('budget_toward_investments', 'info', { amountCents: remainingCents }),
+      )
+    }
+  }
+
+  // --- savings/investments drawn down (#252) -------------------------------
+  // The mirror of `income_change`, over the aggregate of every envelope tagged
+  // `savings` or `investments`: a withdrawal well above what those envelopes
+  // usually see changes what every other savings figure on the page means.
+  if (input.savings.baselineCents !== null && input.savings.baselineCents > 0) {
+    const deltaBp = Math.round(
+      ((input.savings.spentCents - input.savings.baselineCents) / input.savings.baselineCents) *
+        10_000,
+    )
+    if (deltaBp >= params.overspend.baselineWarnBp) {
+      signals.push(
+        householdSignal('savings_drawn_down', 'warn', {
+          deltaBp,
+          baselineCents: input.savings.baselineCents,
+          currentCents: input.savings.spentCents,
+        }),
+      )
     }
   }
 

@@ -72,6 +72,17 @@ export const FINDING_SPECS = {
   // that gets split. Capped at `info` for the same reason `above_benchmark` is: this is
   // context about an arrangement, not a judgement (#44).
   custody_offset: { vars: ['amount', 'paid', 'share'], maxSeverity: 'info', negative: false },
+  // Every euro of `toBudgetCents` should end up assigned to something (#252) — a
+  // spending category, savings, or investments — rather than sitting idle. Warn,
+  // not alert: an unaddressed shortfall is a nudge, not something already wrong.
+  budget_toward_savings: { vars: ['amount'], maxSeverity: 'warn', negative: false },
+  // Only ever fires once the emergency fund is covered (or there is no savings
+  // envelope to address it), so this is unambiguously good news: info, not warn.
+  budget_toward_investments: { vars: ['amount'], maxSeverity: 'info', negative: false },
+  // The mirror image of `income_change`, same threshold (`overspend.baselineWarnBp`)
+  // and the same reasoning: a withdrawal well above the envelope's own norm changes
+  // what every other savings figure on the page means.
+  savings_drawn_down: { vars: ['delta', 'baseline'], maxSeverity: 'warn', negative: true },
 
   // --- the portfolio against the profile ---
   // Two codes and not one `drift_persistent` carrying a direction: "bonds have been

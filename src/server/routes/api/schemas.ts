@@ -1279,6 +1279,14 @@ export const benchmarkSettingSchema = z.object({
        * that would otherwise have been unreachable without AI.
        */
       custodyShared: z.boolean(),
+      /**
+       * Manually tagged as a savings or investments envelope (#252), or neither.
+       *
+       * On the same row for the same reason `custodyShared` is: same table, same screen,
+       * one pass through fifty envelopes. See `mapping.ts`'s `CategoryMapping.nature` for
+       * why this is never the AI-proposal values the column also carries.
+       */
+      nature: z.enum(['savings', 'investments']).nullable(),
       spentCents: cents(),
     }),
   ),

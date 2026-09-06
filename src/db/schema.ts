@@ -243,7 +243,10 @@ export const categoryMeta = sqliteTable(
     userDescription: text('user_description'),
     /** COICOP class, for the (deferred) Statbel benchmark mapping. */
     coicopCode: text('coicop_code'),
-    nature: text({ enum: ['fixed', 'variable', 'discretionary', 'income'] }),
+    // 'savings' and 'investments' are set only through the manual Settings mapping
+    // (#252) — never proposed or clarified by AI, so `proposals.ts`'s `NATURES` and
+    // `gemini/schemas.ts`'s `nature_unknown` deliberately stay at the original four.
+    nature: text({ enum: ['fixed', 'variable', 'discretionary', 'income', 'savings', 'investments'] }),
     /** Spread across the period instead of spiking in one month. */
     expectedFrequency: text('expected_frequency', {
       enum: ['monthly', 'quarterly', 'annual', 'irregular'],

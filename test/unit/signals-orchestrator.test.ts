@@ -78,6 +78,8 @@ function input(overrides: Partial<SignalInput> = {}): SignalInput {
     benchmark: { kind: 'unavailable', reason: 'no_file', mappedShareBp: null },
     // Nothing flagged as shared, for the same reason: the split is a caller's input.
     custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
+    // No categories tagged savings/investments in a unit fixture, same reasoning.
+    savings: { hasSavings: false, hasInvestments: false, spentCents: 0, baselineCents: null },
     drift: null,
     params: DEFAULT_PARAMS,
     ...overrides,
@@ -179,6 +181,16 @@ describe('every producer is wired in', () => {
       'uncategorised',
       'unreconciled',
     ])
+  })
+
+  it('routes the savings context through to the household producers (#252)', () => {
+    const result = computeSignals(
+      input({
+        totalsHistory: [totals('2026-01'), totals('2026-02'), totals('2026-03', { toBudgetCents: 50_000 })],
+        savings: { hasSavings: false, hasInvestments: true, spentCents: 0, baselineCents: null },
+      }),
+    )
+    expect(codes(result)).toContain('budget_toward_investments')
   })
 
   it('runs the drift producer', () => {

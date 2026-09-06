@@ -54,6 +54,7 @@ import {
   formatList,
   MAX_HOUSEHOLD_MEMBERS,
   OUTSIDE_CONSUMPTION,
+  SAVINGS_NATURE_CHOICES,
   type BenchmarkSetting,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
@@ -534,6 +535,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                   <th scope="col">{t('settings:benchmark.mapping.column.division')}</th>
                   <th scope="col">{t('settings:benchmark.mapping.column.line')}</th>
                   <th scope="col">{t('settings:benchmark.mapping.column.shared')}</th>
+                  <th scope="col">{t('settings:benchmark.mapping.column.nature')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -627,6 +629,38 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                             )
                           }}
                         />
+                      </td>
+                      {/*
+                        Disabled for income categories for the same reason as the shared
+                        column: an envelope is something spent from, and income is not
+                        one. Hidden stays disabled too — an archived category is not
+                        where a new savings answer belongs.
+                      */}
+                      <td>
+                        <select
+                          className="field__input"
+                          aria-label={t('settings:benchmark.mapping.natureLabel', {
+                            name: category.categoryName,
+                          })}
+                          value={category.nature ?? ''}
+                          disabled={locked || category.isIncome || category.hidden}
+                          onChange={(event) => {
+                            const raw = event.target.value
+                            state.save(
+                              `nature:${category.categoryId}`,
+                              'PATCH',
+                              `/api/settings/categories/${category.categoryId}/nature`,
+                              { nature: raw === '' ? null : raw },
+                            )
+                          }}
+                        >
+                          <option value="">{t('settings:benchmark.mapping.natureNone')}</option>
+                          {SAVINGS_NATURE_CHOICES.map((choice) => (
+                            <option key={choice} value={choice}>
+                              {t(`settings:benchmark.mapping.nature.${choice}`)}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                     </tr>
                   )

@@ -126,19 +126,26 @@
       "you": "{{name}} — altijd de eerste persoon op de schaal, geen rij hiertussen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene."
     },
     "mapping": {
-      "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, en of ze gedeeld is",
+      "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, of ze gedeeld is, en of ze een spaar- of beleggingspot is",
       "column": {
         "category": "Categorie",
         "division": "COICOP-afdeling",
         "line": "Referentielijn",
+        "nature": "Sparen / beleggen",
         "shared": "Gedeeld",
         "spent": "Laatste maand"
       },
       "consumption": "Huishoudelijke consumptie",
       "hidden": "Verborgen",
-      "hint": "Als welke COICOP-afdeling elke categorie telt, want dat is wat de vergelijking optelt, en welke categorieën je met een co-ouder deelt. Beide worden bewaard zodra je ze instelt, en toegepast de volgende keer dat de budgetpagina gelezen wordt.",
+      "hint": "Als welke COICOP-afdeling elke categorie telt, want dat is wat de vergelijking optelt, welke categorieën je met een co-ouder deelt, en welke een spaar- of beleggingspot zijn. Alle drie worden bewaard zodra je ze instelt, en toegepast de volgende keer dat de budgetpagina gelezen wordt.",
       "income": "Inkomen",
       "inputLabel": "COICOP-afdeling voor {{name}}",
+      "nature": {
+        "investments": "Beleggingen",
+        "savings": "Sparen"
+      },
+      "natureLabel": "Spaar- of beleggingspot voor {{name}}",
+      "natureNone": "Geen van beide",
       "none": "Er zijn nog geen categorieën geaggregeerd. Doe eerst een synchronisatie.",
       "notCompared": "Niet vergeleken",
       "outside": "Buiten huishoudelijke consumptie",

@@ -159,6 +159,9 @@ export {
 } from '../../src/domain/benchmark/vocabulary.ts'
 export type { BenchmarkGroup, CoicopDivision } from '../../src/domain/benchmark/vocabulary.ts'
 
+export { SAVINGS_NATURE_CHOICES } from '../../src/domain/benchmark/mapping.ts'
+export type { SavingsNatureChoice } from '../../src/domain/benchmark/mapping.ts'
+
 export type {
   BootstrapResponse,
   LocalLoginResponse,

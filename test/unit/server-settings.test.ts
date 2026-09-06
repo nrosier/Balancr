@@ -461,6 +461,63 @@ describe('PATCH /api/settings/categories/:id/custody-shared', () => {
   })
 })
 
+describe('PATCH /api/settings/categories/:id/nature', () => {
+  const send_ = (id: string, body: object, options?: { token?: string }) =>
+    patch(`/api/settings/categories/${id}/nature`, body, options)
+
+  const natureOf = (id: string): string | null | undefined =>
+    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.nature
+
+  it('tags a category as savings, and answers with the list saying so (#252)', async () => {
+    const res = await send_('cat-groceries', { nature: 'savings' })
+
+    expect(res.statusCode).toBe(200)
+    const row = res
+      .json<Settings>()
+      .benchmark.categories.find((category) => category.categoryId === 'cat-groceries')
+    expect(row?.nature).toBe('savings')
+    expect(natureOf('cat-groceries')).toBe('savings')
+  })
+
+  it('retags a category from savings to investments', async () => {
+    await send_('cat-groceries', { nature: 'savings' })
+    const res = await send_('cat-groceries', { nature: 'investments' })
+
+    expect(res.statusCode).toBe(200)
+    expect(natureOf('cat-groceries')).toBe('investments')
+  })
+
+  it('takes the tag back, which is the correction people actually make', async () => {
+    await send_('cat-groceries', { nature: 'savings' })
+    const res = await send_('cat-groceries', { nature: null })
+
+    expect(res.statusCode).toBe(200)
+    expect(natureOf('cat-groceries')).toBe(null)
+  })
+
+  it('records the change against the category, not against settings', async () => {
+    await send_('cat-groceries', { nature: 'savings' })
+    expect(auditActions(ctx.db)).toContain('settings.nature')
+  })
+
+  it('refuses a value outside the two-choice enum, and a body with neither key nor null', async () => {
+    expect((await send_('cat-groceries', { nature: 'fixed' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', {})).statusCode).toBe(400)
+    expect(natureOf('cat-groceries')).toBe(null)
+  })
+
+  it('answers 404 for a category Balancr has never seen', async () => {
+    const res = await send_('cat-invented', { nature: 'savings' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_('cat-groceries', { nature: 'savings' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(natureOf('cat-groceries')).toBe(null)
+  })
+})
+
 describe('PATCH /api/settings/advice', () => {
   it('publishes the bands in force and every preset to choose from', async () => {
     // The presets travel on the wire because `PROFILE_PRESETS` lives on this side: the
