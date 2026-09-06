@@ -6,6 +6,19 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.10.8] — 2026-09-06
+
+### Fixed
+
+- **The monthly narrative sometimes cut off mid-sentence**
+  ([#221](https://github.com/nrosier/Balancr/issues/221)). Gemini's finish
+  reason was only read when the response came back empty, so a non-empty
+  answer truncated by the token ceiling was stored and rendered as if it
+  were complete. A truncated call now retries once at double the ceiling;
+  if it is still truncated, nothing is stored and the degraded banner
+  reports it the same way as any other failed run, rather than showing an
+  unfinished narrative as a finished one.
+
 ## [0.10.7] — 2026-09-05
 
 ### Added
