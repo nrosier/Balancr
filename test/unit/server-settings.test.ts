@@ -636,6 +636,10 @@ describe('the account mapping', () => {
     // "a rule guessed this" and "you set this" invite different actions from the
     // reader — and #124's classifier will only overwrite the former.
     expect(account?.decidedFields.sort()).toEqual(['includeInNetWorth', 'kind'])
+    // #245: the reason has to follow the toggle in the same response, not just the
+    // toggle itself — this is the field that turns "count toward net worth: off"
+    // into a visible "and that's why it's not in the total".
+    expect(account?.netWorthExclusionReason).toBe('not_included')
     // The whole payload, so the screen replaces its state rather than patching it.
     expect(settings.params).toEqual(DEFAULT_PARAMS)
     expect(settings.prompts).toHaveLength(2)
@@ -659,6 +663,10 @@ describe('the account mapping', () => {
     }
     expect(grouped.filter((row) => row.isSourceOfTruth)).toHaveLength(1)
     expect(grouped.find((row) => row.isSourceOfTruth)?.id).toBe(second)
+    // #245: the truth counts, its twin is excluded and says so — this is the exact
+    // "invested shows 0 on Overview" report made visible instead of silent.
+    expect(grouped.find((row) => row.isSourceOfTruth)?.netWorthExclusionReason).toBeNull()
+    expect(grouped.find((row) => !row.isSourceOfTruth)?.netWorthExclusionReason).toBe('deduped')
     // One entry per account touched, because the change is to both rows.
     expect(auditActions(ctx.db).filter((action) => action === 'account.map')).toHaveLength(2)
   })
@@ -678,7 +686,13 @@ describe('the account mapping', () => {
     expect(accounts.find((row) => row.id === second)?.isSourceOfTruth).toBe(false)
   })
 
-  it('takes an account back out of a group and lets it count for itself', async () => {
+  it('takes the whole pair back out of the group, not just the account named', async () => {
+    // #245: the settings panel shows a linked pair as one block with one "Unlink"
+    // button, and the id it sends is whichever member the block resolved to — so
+    // unlinking has to free both sides, not just the one whose id happened to be
+    // named. Freeing only `first` here (the non-truth side) would otherwise leave
+    // `second` as the sole member of a group with no source of truth, and its money
+    // would drop out of net worth with nothing on screen to explain why.
     const [first, second] = accountIds()
     await post('/api/settings/accounts/group', {
       accountMapIds: [first, second],
@@ -688,10 +702,15 @@ describe('the account mapping', () => {
     const res = await post(`/api/settings/accounts/${first}/ungroup`)
     expect(res.statusCode).toBe(200)
 
-    const account = res.json<Settings>().accounts.find((row) => row.id === first)
-    expect(account?.dedupeGroup).toBeNull()
-    // Money that belongs to no group and is nobody's truth would be invisible.
-    expect(account?.isSourceOfTruth).toBe(true)
+    const accounts = res.json<Settings>().accounts
+    for (const id of [first, second]) {
+      const account = accounts.find((row) => row.id === id)
+      expect(account?.dedupeGroup).toBeNull()
+      // Money that belongs to no group and is nobody's truth would be invisible.
+      expect(account?.isSourceOfTruth).toBe(true)
+    }
+    // One entry per account touched, because both sides changed.
+    expect(auditActions(ctx.db).filter((action) => action === 'account.map')).toHaveLength(4)
   })
 
   it('records a dismissal as a decision, without dropping the account', async () => {

@@ -33,6 +33,9 @@ export interface AccountValue {
   isSourceOfTruth: boolean
 }
 
+/** As a const array too, so the API schema's `z.enum` can share this vocabulary. */
+export const EXCLUSION_REASONS = ['not_included', 'deduped', 'no_source_of_truth'] as const
+
 export type ExclusionReason =
   /** `include_in_net_worth` is off for this account. */
   | 'not_included'
@@ -88,19 +91,26 @@ export interface NetWorthResult extends NetWorthSummary {
  */
 export const LIQUID: ReadonlySet<AccountKind> = new Set(['checking', 'savings', 'cash'])
 
-export function computeNetWorth(date: string, accounts: readonly AccountValue[]): NetWorthResult {
-  const excluded: Exclusion[] = []
-  const exclude = (account: AccountValue, reason: ExclusionReason): void => {
-    excluded.push({
-      accountMapId: account.accountMapId,
-      name: account.name,
-      source: account.source,
-      valueCents: account.valueCents,
-      reason,
-      dedupeGroup: account.dedupeGroup,
-    })
-  }
+/** The three `account_map` fields that decide inclusion, nothing else. */
+export interface Includable {
+  accountMapId: string
+  includeInNetWorth: boolean
+  dedupeGroup: string | null
+  isSourceOfTruth: boolean
+}
 
+/**
+ * Which accounts count and which don't, and why — from the mapping alone.
+ *
+ * No balance is read here: whether an account counts is a decision made in
+ * `account_map`, not something a value can change. That's what lets Settings show
+ * "why isn't this counted" without fetching Actual or Ghostfolio, and what lets
+ * `computeNetWorth` and that screen agree by construction rather than by copying
+ * the same three `if`s twice.
+ */
+export function resolveInclusion<T extends Includable>(
+  accounts: readonly T[],
+): { included: T[]; excluded: Map<string, ExclusionReason>; unresolvedGroups: string[] } {
   // Which dedupe groups have someone to speak for them. Computed over the
   // included accounts only: a group whose source of truth is itself excluded from
   // net worth is unresolved, not resolved-to-nothing.
@@ -116,24 +126,45 @@ export function computeNetWorth(date: string, accounts: readonly AccountValue[])
   const unresolvedGroups = [...grouped].filter((group) => !resolved.has(group)).sort()
   const unresolved = new Set(unresolvedGroups)
 
-  const contributions: AccountValue[] = []
+  const excluded = new Map<string, ExclusionReason>()
+  const kept: T[] = []
   for (const account of accounts) {
     if (!account.includeInNetWorth) {
-      exclude(account, 'not_included')
+      excluded.set(account.accountMapId, 'not_included')
       continue
     }
     if (account.dedupeGroup !== null) {
       if (unresolved.has(account.dedupeGroup)) {
-        exclude(account, 'no_source_of_truth')
+        excluded.set(account.accountMapId, 'no_source_of_truth')
         continue
       }
       if (!account.isSourceOfTruth) {
-        exclude(account, 'deduped')
+        excluded.set(account.accountMapId, 'deduped')
         continue
       }
     }
-    contributions.push(account)
+    kept.push(account)
   }
+
+  return { included: kept, excluded, unresolvedGroups }
+}
+
+export function computeNetWorth(date: string, accounts: readonly AccountValue[]): NetWorthResult {
+  const {
+    included: contributions,
+    excluded: reasons,
+    unresolvedGroups,
+  } = resolveInclusion(accounts)
+  const excluded: Exclusion[] = accounts
+    .filter((account) => reasons.has(account.accountMapId))
+    .map((account) => ({
+      accountMapId: account.accountMapId,
+      name: account.name,
+      source: account.source,
+      valueCents: account.valueCents,
+      reason: reasons.get(account.accountMapId) as ExclusionReason,
+      dedupeGroup: account.dedupeGroup,
+    }))
 
   let totalCents = 0
   let liquidCents = 0
