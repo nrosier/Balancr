@@ -70,6 +70,15 @@ export interface TokenUsage {
 
 export const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }
 
+/** Tokens spent across two calls (e.g. a retry) — both were billed, so both count. */
+export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cachedTokens: a.cachedTokens + b.cachedTokens,
+  }
+}
+
 /**
  * The price for a model id, and whether it was actually known.
  *

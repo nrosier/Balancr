@@ -50,7 +50,8 @@
       "no_facts": "That month has no aggregated figures to analyse.",
       "not_confident": "The model was not confident enough about this one to guess.",
       "ok": "Completed.",
-      "reused": "Answered from a past run with nothing new to check — no charge."
+      "reused": "Answered from a past run with nothing new to check — no charge.",
+      "truncated": "The model's answer was cut off, even after retrying — showing the last one instead."
     },
     "remaining": "Left this month",
     "rerun": {

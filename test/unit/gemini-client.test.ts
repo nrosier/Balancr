@@ -423,6 +423,35 @@ describe('callGemini', () => {
     await expect(callGemini(call)).rejects.toThrow(/SAFETY/)
   })
 
+  it('reports MAX_TOKENS on a non-empty response instead of hiding it (#221)', async () => {
+    // Text is not proof of a complete answer — the caller decides what to do about it.
+    const { client } = fakeClient({
+      text: 'This is as far as the model got before',
+      candidates: [{ finishReason: 'MAX_TOKENS' }],
+    })
+    setGeminiClient(client)
+
+    const result = await callGemini(call)
+    expect(result.text).toBe('This is as far as the model got before')
+    expect(result.finishReason).toBe('MAX_TOKENS')
+  })
+
+  it('reports a normal finish reason on a complete response', async () => {
+    const { client } = fakeClient({ text: 'ok', candidates: [{ finishReason: 'STOP' }] })
+    setGeminiClient(client)
+
+    const result = await callGemini(call)
+    expect(result.finishReason).toBe('STOP')
+  })
+
+  it('reports a null finish reason when the response carries none', async () => {
+    const { client } = fakeClient({ text: 'ok' })
+    setGeminiClient(client)
+
+    const result = await callGemini(call)
+    expect(result.finishReason).toBeNull()
+  })
+
   it('errors on whitespace-only text rather than rendering it', async () => {
     const { client } = fakeClient({ text: '   \n  ' })
     setGeminiClient(client)

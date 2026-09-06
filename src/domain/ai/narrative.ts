@@ -26,8 +26,13 @@
  * month.
  */
 import { and, desc, eq } from 'drizzle-orm'
-import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
-import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
+import { callGemini, GeminiError, type GeminiCall, type GeminiResult } from '../../adapters/gemini/client.ts'
+import {
+  addUsage,
+  costMicroEur,
+  estimateCostMicroEur,
+  type TokenUsage,
+} from '../../adapters/gemini/pricing.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiNarratives } from '../../db/schema.ts'
@@ -49,9 +54,16 @@ export type NarrativeRow = typeof aiNarratives.$inferSelect
  * Six short paragraphs, with room to finish the last sentence.
  *
  * A ceiling rather than a target: a truncated narrative is worse than a short one,
- * and the prompt already asks for brevity, so this only stops a runaway.
+ * and the prompt already asks for brevity, so this only stops a runaway. But the
+ * deep model thinks, and thinking tokens are billed against this same ceiling
+ * (#221) — so hitting it is not proof the prose itself ran long. `callNarrativeModel`
+ * checks `finishReason` and retries once at `MAX_OUTPUT_TOKENS_RETRY` before giving
+ * up, rather than trusting a non-empty response to mean a complete one.
  */
 export const MAX_OUTPUT_TOKENS = 1_800
+
+/** One escalation, not open-ended retrying, for a call that hit `MAX_OUTPUT_TOKENS`. */
+export const MAX_OUTPUT_TOKENS_RETRY = MAX_OUTPUT_TOKENS * 2
 
 /**
  * What one narrative is assumed to cost in output tokens, for the guard.
@@ -266,6 +278,7 @@ export type NarrativeReason =
   | 'estimate_exceeds_remaining'
   | 'call_failed'
   | 'empty_response'
+  | 'truncated'
 
 export interface NarrativeOutcome {
   status: NarrativeStatus
@@ -405,6 +418,32 @@ export function estimateNarrative(
   }
 }
 
+interface NarrativeCall {
+  result: GeminiResult
+  usage: TokenUsage
+  /** True only when the retry also hit `MAX_TOKENS` — the answer is unusable. */
+  truncated: boolean
+}
+
+/**
+ * One narrative call, retried once at `MAX_OUTPUT_TOKENS_RETRY` if the model ran
+ * out of room. Both attempts are billed, so the returned `usage` is their sum, not
+ * just the one that's kept.
+ */
+async function callNarrativeModel(call: Omit<GeminiCall, 'maxOutputTokens'>): Promise<NarrativeCall> {
+  const first = await callGemini({ ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
+  if (first.finishReason !== 'MAX_TOKENS') {
+    return { result: first, usage: first.usage, truncated: false }
+  }
+  log.warn({ model: call.model }, 'narrative call hit MAX_TOKENS; retrying once at a higher ceiling')
+  const retry = await callGemini({ ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
+  return {
+    result: retry,
+    usage: addUsage(first.usage, retry.usage),
+    truncated: retry.finishReason === 'MAX_TOKENS',
+  }
+}
+
 /**
  * Writes the narrative for one month, or explains why it did not.
  *
@@ -454,15 +493,14 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
 
   const prompt = resolvePrompt(db, 'narrative.system', locale)
 
-  let result
+  let call: NarrativeCall
   try {
-    result = await callGemini({
+    call = await callNarrativeModel({
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: narrativeInstruction(payload),
       payload,
       temperature: NARRATIVE_TEMPERATURE,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
@@ -483,8 +521,30 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     return failed(period, locale, 'error', 'call_failed', runId)
   }
 
-  const cost = costMicroEur(result.model, result.usage)
+  const { result, usage, truncated } = call
+  const cost = costMicroEur(result.model, usage)
   const bodyMd = result.text.trim()
+
+  if (truncated) {
+    // Cut off even after retrying at a higher ceiling — not a narrative, but the
+    // tokens were still spent, so the run is still billed for them.
+    const runId = recordRun(db, {
+      kind: 'narrative',
+      model: result.model,
+      locale,
+      period,
+      payload,
+      payloadHash,
+      status: 'error',
+      promptId: prompt.id,
+      usage,
+      durationMs: result.durationMs,
+      error: 'model output still truncated after retrying at a higher token ceiling',
+      userId: options.userId ?? null,
+    })
+    log.error({ period }, 'narrative response was truncated twice; not stored')
+    return failed(period, locale, 'error', 'truncated', runId, cost)
+  }
 
   if (isBlankMarkdown(bodyMd)) {
     // Text that renders to nothing is not a narrative. Recorded as an error with
@@ -498,7 +558,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
       payloadHash,
       status: 'error',
       promptId: prompt.id,
-      usage: result.usage,
+      usage,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
       userId: options.userId ?? null,
@@ -516,7 +576,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     payloadHash,
     status: 'ok',
     promptId: prompt.id,
-    usage: result.usage,
+    usage,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
@@ -601,15 +661,14 @@ export async function translateNarrative(
     return failed(period, to, 'capped', decision.reason, runId)
   }
 
-  let result
+  let call: NarrativeCall
   try {
-    result = await callGemini({
+    call = await callNarrativeModel({
       model,
       systemPrompt: composeSystemPrompt(TRANSLATION_SYSTEM, to),
       instruction: translationInstruction(from, to),
       payload,
       temperature: TRANSLATION_TEMPERATURE,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
@@ -629,8 +688,27 @@ export async function translateNarrative(
     return failed(period, to, 'error', 'call_failed', runId)
   }
 
-  const cost = costMicroEur(result.model, result.usage)
+  const { result, usage, truncated } = call
+  const cost = costMicroEur(result.model, usage)
   const bodyMd = result.text.trim()
+
+  if (truncated) {
+    const runId = recordRun(db, {
+      kind: 'narrative',
+      model: result.model,
+      locale: to,
+      period,
+      payload,
+      payloadHash,
+      status: 'error',
+      usage,
+      durationMs: result.durationMs,
+      error: 'model output still truncated after retrying at a higher token ceiling',
+      userId: options.userId ?? null,
+    })
+    log.error({ period, to }, 'translation was truncated twice; not stored')
+    return failed(period, to, 'error', 'truncated', runId, cost)
+  }
 
   if (isBlankMarkdown(bodyMd)) {
     const runId = recordRun(db, {
@@ -641,7 +719,7 @@ export async function translateNarrative(
       payload,
       payloadHash,
       status: 'error',
-      usage: result.usage,
+      usage,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
       userId: options.userId ?? null,
@@ -657,7 +735,7 @@ export async function translateNarrative(
     payload,
     payloadHash,
     status: 'ok',
-    usage: result.usage,
+    usage,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
