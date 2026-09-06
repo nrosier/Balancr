@@ -70,8 +70,8 @@ function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): 
 }
 
 /** Marks `ANCHOR` as the latest aggregated month, with a starting balance. */
-function seedAnchor(liquidCents = 500_000): void {
-  persistMonthTotals(ctx.db, [totals(ANCHOR)], [])
+function seedAnchor(liquidCents = 500_000, totalsOverrides: Partial<MonthTotals> = {}): void {
+  persistMonthTotals(ctx.db, [totals(ANCHOR, totalsOverrides)], [])
   persistNetWorth(
     ctx.db,
     computeNetWorth(`${ANCHOR}-28`, [
@@ -192,6 +192,42 @@ describe('projectCashflow', () => {
       expect(month.fixedCents).toBe(0)
       expect(month.bills).toEqual([])
     }
+  })
+
+  it('never repeats an irregular category forward, income or fixed', () => {
+    seedAnchor()
+    // A one-off bonus, five months before the anchor — a known cadence would
+    // place its next occurrence at 2027-01 (monthly) or later; irregular
+    // must place it nowhere.
+    const bonus = fact('2026-03', 'bonus', { isIncome: true, spentCents: 200_000 })
+    const gift = fact('2026-03', 'gift', { spentCents: 50_000 })
+    syncCategoryMeta(ctx.db, [bonus, gift])
+    persistFacts(ctx.db, [bonus, gift], ['2026-03'])
+    classify('bonus', 'income', { expectedFrequency: 'irregular' })
+    classify('gift', 'fixed', { expectedFrequency: 'irregular' })
+
+    const forecast = projectCashflow(ctx.db)
+    for (const month of forecast?.months ?? []) {
+      expect(month.incomeCents).toBe(0)
+      expect(month.bills).toEqual([])
+    }
+  })
+
+  it('adds the household average total spend as a flat cost, on top of any tagged categories', () => {
+    seedAnchor(500_000, { spentCents: 150_000 })
+    const rent = fact(ANCHOR, 'rent', {
+      baseline: { baselineCents: 90_000, currentCents: 90_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
+    })
+    syncCategoryMeta(ctx.db, [rent])
+    persistFacts(ctx.db, [rent], [ANCHOR])
+    classify('rent', 'fixed')
+
+    const forecast = projectCashflow(ctx.db)
+    for (const month of forecast?.months ?? []) {
+      // A single stored month's `ewma` is just that month's own figure.
+      expect(month.fixedCents).toBe(90_000 + 150_000)
+    }
+    expect(forecast?.months[11]?.balanceCents).toBe(500_000 - (90_000 + 150_000) * 12)
   })
 
   it('lets the running balance go negative without clamping', () => {
