@@ -9,7 +9,7 @@
  */
 import { fetchPayeeCategoryHistory, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
-import { endOfMonth, startOfMonth } from '../../util/month.ts'
+import { addMonths, endOfMonth, startOfMonth } from '../../util/month.ts'
 import { loadCategoryTrends } from '../aggregate/facts.ts'
 import type { CategoryGuessCandidate } from '../aggregate/signals-store.ts'
 import { persistCategoryGuessCandidates } from '../aggregate/signals-store.ts'
@@ -77,9 +77,17 @@ export async function generateCategoryProposals(db: Db, month: string): Promise<
 /**
  * One `budget_amount.set` proposal per category the current month's signals
  * flag as miscalibrated. `signals`/`facts` are the same values `judgeMonth`
- * already computed for `computeSignals` — nothing here re-reads them; the
- * trailing 12-month spend history that sizes the amount (#220) is read fresh,
- * since nothing upstream needed it before now.
+ * already computed for `computeSignals` — nothing here re-reads them.
+ *
+ * The trailing 12-month spend history that sizes the amount (#220) is read fresh,
+ * anchored one month *before* `month` rather than at `month` itself (#251) — `month`
+ * is normally still in progress when this runs, and its own partial `spentCents`
+ * has no business sitting in the 60%-weighted "recent" bucket of an average that is
+ * meant to describe finished months. Anchoring at the month before makes the result
+ * exactly what it should be: a forecast of `month`'s expected total, built from
+ * months that are actually over. `judgeMonth` only calls this for the current
+ * (latest) month in the first place (#251) — a closed month's budget is history,
+ * not something left to adjust.
  */
 export async function generateBudgetProposals(
   db: Db,
@@ -88,7 +96,7 @@ export async function generateBudgetProposals(
   facts: readonly MonthlyFact[],
 ): Promise<number> {
   let created = 0
-  const trends = loadCategoryTrends(db, month, 12)
+  const trends = loadCategoryTrends(db, addMonths(month, -1), 12)
 
   for (const suggestion of suggestBudgetAmounts(signals, facts, trends.byCategory)) {
     try {

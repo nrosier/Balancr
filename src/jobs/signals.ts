@@ -91,6 +91,8 @@ export async function collectReconciliations(
 /** Everything a month's signals depend on that is not the month itself. */
 interface Shared {
   today: string
+  /** The latest stored month — the only one budget-amount proposals ever target (#251). */
+  latest: string
   accounts: readonly AccountReconciliation[]
   netWorth: ReturnType<typeof loadLatestNetWorth>
   netWorthHistory: readonly { date: string; totalCents: number }[]
@@ -172,7 +174,12 @@ export async function judgeMonth(
   // any pending proposal for the same target, so a re-judged month naturally
   // keeps one live suggestion per transaction/category instead of piling up.
   await generateCategoryProposals(db, month)
-  await generateBudgetProposals(db, month, result.signals, facts)
+  // Budget-amount proposals only ever target the current month (#251): `judgeMonth`
+  // also rejudges last month (and any stale one) for its *signals*, but a proposal
+  // to change a closed month's budget has nothing left to act on.
+  if (month === shared.latest) {
+    await generateBudgetProposals(db, month, result.signals, facts)
+  }
 
   return { signals: stored.signals, scoreBp: result.hygiene.scoreBp }
 }
@@ -190,6 +197,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
   const latestSnapshot = latestSnapshotDate(db)
   const shared: Shared = {
     today: dateIn(now, config.TZ),
+    latest,
     accounts: await collectReconciliations(config.TZ),
     netWorth: loadLatestNetWorth(db),
     netWorthHistory: loadNetWorthHistory(db),

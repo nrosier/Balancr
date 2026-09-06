@@ -71,15 +71,15 @@ function signal(overrides: Partial<Signal> = {}): Signal {
 }
 
 /**
- * The 11 months before `MONTH`, seeded thinly (one category, unjudged) so
- * `loadCategoryTrends`' 12-month window — the other 9 at `olderCents`, the
- * last 2 (paired with whatever `MONTH` itself gets) at `recentCents` — has a
- * real trailing history for #220's weighted average to chew on.
+ * The 12 *finished* months before `MONTH` — never `MONTH` itself (#251) — seeded
+ * thinly (one category, unjudged) so `loadCategoryTrends`'s window, anchored one
+ * month back, has a real trailing history for #220's weighted average to chew on:
+ * the oldest 9 at `olderCents`, the most recent 3 at `recentCents`.
  */
 function seedTrailingSpend(categoryId: string, recentCents: number, olderCents: number): void {
-  const priorMonths = monthsBefore(MONTH, 11)
+  const priorMonths = monthsBefore(MONTH, 12)
   priorMonths.forEach((month, at) => {
-    const spentCents = at >= priorMonths.length - 2 ? recentCents : olderCents
+    const spentCents = at >= priorMonths.length - 3 ? recentCents : olderCents
     seedMonth(db, month, {
       facts: [fact(month, categoryId, { spentCents, budgetedCents: spentCents + 1_000 })],
       judged: false,
@@ -235,7 +235,25 @@ describe('generateBudgetProposals', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ type: 'budget_amount.set' })
     expect(decodeBudgetTarget(rows[0]!.targetRef)).toEqual({ categoryId: 'food', month: MONTH })
-    // recent 3 (last 2 seeded months + MONTH) average 20_000, older 9 average 10_000: 20_000*0.6 + 10_000*0.4
+    // Finished months only (#251): recent 3 average 20_000, older 9 average 10_000,
+    // MONTH's own (in-progress) 20_000 plays no part: 20_000*0.6 + 10_000*0.4
+    expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 16_000 })
+  })
+
+  it("does not let MONTH's own, still-accumulating spend skew the average (#251)", async () => {
+    // Same finished history as the first test, but MONTH itself — early in the
+    // month, its `spentCents` a small fraction of what it will end up at — spent
+    // almost nothing. Before #251 that tiny figure sat in the 60%-weighted
+    // "recent" bucket and dragged the suggestion down; now it is not part of the
+    // window at all, so the suggested amount is unchanged from the first test.
+    seedTrailingSpend('food', 20_000, 10_000)
+    const facts = [fact(MONTH, 'food', { spentCents: 800, budgetedCents: 12_000, baseline: baseline(15_070) })]
+    seedMonth(db, MONTH, { facts })
+
+    const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
+
+    expect(created).toBe(1)
+    const rows = pendingProposals(db)
     expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 16_000 })
   })
 
