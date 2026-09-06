@@ -27,7 +27,7 @@ import type { FastifyInstance } from 'fastify'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import type { Db } from '../../src/db/index.ts'
-import { aiFindings, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
+import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import { createPromptVersion } from '../../src/domain/ai/prompts.ts'
 import { initI18n } from '../../src/i18n/index.ts'
@@ -436,5 +436,28 @@ describe('POST /api/ai/narrative', () => {
 
     const rows = runRows(ctx.db).filter((row) => row.kind === 'narrative')
     expect(rows).toHaveLength(2)
+  })
+
+  it('rewrites a month that already has a review when force is set (#226)', async () => {
+    const fake = fakeGemini('Groceries ran hot; energy stayed put.')
+    await narrative({ period: MONTH })
+    const res = await narrative({ period: MONTH, force: true })
+
+    const outcome = res.json<AiNarrativeRun>()
+    expect(outcome.status).toBe('ok')
+    expect(fake.calls).toBe(2)
+
+    // Two calls, two logged runs — but the second call replaced the stored review
+    // rather than adding a second one, since `storeNarrative` upserts per (period, locale).
+    const rows = runRows(ctx.db).filter((row) => row.kind === 'narrative')
+    expect(rows).toHaveLength(2)
+    expect(ctx.db.select().from(aiNarratives).all()).toHaveLength(1)
+  })
+
+  it('still refuses a month that has not ended when force is set', async () => {
+    const fake = fakeGemini('Too early to say.')
+    const res = await narrative({ period: '2099-01', force: true })
+    expect(res.statusCode).toBe(409)
+    expect(fake.calls).toBe(0)
   })
 })

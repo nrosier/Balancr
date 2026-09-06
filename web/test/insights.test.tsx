@@ -665,6 +665,82 @@ describe('the narrative', () => {
       method: 'POST',
     }))
   })
+
+  it('offers to rewrite a fresh, un-stale review, and asks for force when confirmed (#226)', async () => {
+    const fetchMock = serve({
+      '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE),
+      '/api/ai/narrative': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-narrative-3',
+        period: '2026-08',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+      }),
+    })
+
+    renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
+
+    // Not the "write the first one" copy — nothing is stale or missing here.
+    await screen.findByText(
+      'Nothing about this month has changed, but you can ask for a new review anyway — ' +
+        'same price as any other run.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Rewrite it anyway' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('Written, for € 0,0021. The page has been reloaded.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/narrative',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ period: '2026-08', force: true }),
+      }),
+    )
+  })
+
+  it('does not offer a rewrite alongside the re-run already offered for a stale review', async () => {
+    serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+    renderApp(
+      <Narrative
+        narrative={FULL.narrative}
+        {...NARRATIVE_PROPS}
+        factsChangedAt="2026-09-02T00:00:00Z"
+      />,
+    )
+
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    // The stale case's own offer uses the "write" copy, not the new "rewrite anyway" one.
+    expect(screen.queryByText('Rewrite it anyway')).toBeNull()
+  })
+
+  it('does not send force when writing a review for the first time', async () => {
+    const fetchMock = serve({
+      '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE),
+      '/api/ai/narrative': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-narrative-4',
+        period: '2026-08',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+      }),
+    })
+
+    renderApp(<Narrative narrative={null} {...NARRATIVE_PROPS} />)
+
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    fireEvent.click(screen.getByRole('button', { name: 'Write the review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('Written, for € 0,0021. The page has been reloaded.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/narrative',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ period: '2026-08' }) }),
+    )
+  })
 })
 
 const NUDGE_ESTIMATE: AiEstimate = {

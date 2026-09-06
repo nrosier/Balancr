@@ -104,6 +104,10 @@
       "starting": "Writing…",
       "written": "Written, for {{cost}}. The page has been reloaded."
     },
+    "rewrite": {
+      "lede": "Nothing about this month has changed, but you can ask for a new review anyway — same price as any other run.",
+      "start": "Rewrite it anyway"
+    },
     "stale": "Based on data from {{when}}.",
     "title": "This month in words",
     "titleMonth": "{{month}} in words",
