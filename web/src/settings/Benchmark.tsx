@@ -58,6 +58,8 @@ import {
   type BenchmarkSetting,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
+import { useSubsection, type Section } from '../ui/sections.ts'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
 
@@ -671,5 +673,42 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
         </>
       )}
     </Panel>
+  )
+}
+
+// ---------------------------------------------------------------------------
+//  Subsections
+// ---------------------------------------------------------------------------
+
+type BenchmarkSubsectionId = 'household' | 'mapping'
+
+const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
+  {
+    id: 'household',
+    path: '/settings/benchmark/household',
+    labelKey: 'settings:benchmark.household.title',
+  },
+  {
+    id: 'mapping',
+    path: '/settings/benchmark/mapping',
+    labelKey: 'settings:benchmark.mapping.title',
+  },
+]
+
+/** Benchmark's own subsection tabs — the household roster and the mapping table are
+ *  already two independent panels; this only stops them showing at once. */
+export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(BENCHMARK_SUBSECTIONS)
+
+  return (
+    <>
+      <SectionNav
+        sections={BENCHMARK_SUBSECTIONS}
+        variant="sub"
+        ariaLabel={t('settings:nav.benchmark')}
+      />
+      {active === 'household' ? <HouseholdPanel {...props} /> : <MappingPanel {...props} />}
+    </>
   )
 }
