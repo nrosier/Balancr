@@ -74,8 +74,10 @@ import {
   COICOP_CHOICES,
   loadMapping,
   MappingError,
+  SAVINGS_NATURE_CHOICES,
   saveCoicop,
   saveCustodyShared,
+  saveNature,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
 import { aiAvailability } from '../../domain/ai/availability.ts'
@@ -306,6 +308,16 @@ const coicopPatchRequest = z.strictObject({ coicop: z.enum(COICOP_CHOICES).nulla
  * are only two states to express.
  */
 const custodySharedPatchRequest = z.strictObject({ custodyShared: z.boolean() })
+
+/**
+ * One category's savings/investments tag, or `null` to clear it (#252).
+ *
+ * Restricted to the two values this form may set — never the AI-proposal values
+ * `category_meta.nature` also carries — so a typo'd request can't smuggle a value
+ * only `category_meta.set` should ever write. Nullable for the same reason the
+ * COICOP division is: taking a wrong tag back is a correction, not a proposal.
+ */
+const naturePatchRequest = z.strictObject({ nature: z.enum(SAVINGS_NATURE_CHOICES).nullable() })
 
 const accountPatchRequest = z.strictObject({
   kind: z.enum(['checking', 'savings', 'credit', 'investment', 'cash', 'other']).optional(),
@@ -880,6 +892,41 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: { custodyShared: before.custodyShared },
       after: { custodyShared },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Tags a category as a savings or investments envelope, or takes the tag back (#252).
+   *
+   * Manual only, on purpose: the advisory nudge this feeds (`budget_toward_savings`,
+   * `budget_toward_investments`, `savings_drawn_down`) reads which categories carry this
+   * tag, and neither an AI proposal nor a clarification may ever set it — see the comment
+   * on `category_meta.nature` in `db/schema.ts`. Same shape as the two writers above it.
+   */
+  app.patch('/api/settings/categories/:id/nature', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const categoryId = (request.params as { id: string }).id
+    const { nature } = parseBody(naturePatchRequest, request.body)
+
+    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      saveNature(db, categoryId, nature)
+    } catch (error) {
+      if (error instanceof MappingError) throw notFound('No such category.')
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.nature',
+      entity: 'category_meta',
+      entityRef: categoryId,
+      actorId: user.id,
+      before: { nature: before.nature },
+      after: { nature },
     })
 
     return buildSettings(db, request)

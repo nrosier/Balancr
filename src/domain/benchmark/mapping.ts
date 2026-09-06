@@ -63,9 +63,22 @@ export interface CategoryMapping {
    * does nothing.
    */
   readonly custodyShared: boolean
+  /**
+   * Manually tagged as a savings or investments envelope (#252), or neither.
+   *
+   * `category_meta.nature` also carries `fixed`/`variable`/`discretionary`/`income`,
+   * but those are AI-proposal territory (`proposals.ts`'s `NATURES`) — this column
+   * shows and writes only the two values a person sets here, so a category the AI
+   * classified `fixed` reads as unset in this form rather than something to clear.
+   */
+  readonly nature: 'savings' | 'investments' | null
   /** The latest computed month, so the biggest envelope can be dealt with first. */
   readonly spentCents: number
 }
+
+/** The only two values this module's own writer may set. */
+export const SAVINGS_NATURE_CHOICES = ['savings', 'investments'] as const
+export type SavingsNatureChoice = (typeof SAVINGS_NATURE_CHOICES)[number]
 
 /**
  * Every category, ordered by how much attention it needs.
@@ -98,10 +111,15 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
       hidden: categoryMeta.hidden,
       coicop: categoryMeta.coicopCode,
       custodyShared: categoryMeta.custodyShared,
+      nature: categoryMeta.nature,
     })
     .from(categoryMeta)
     .all()
-    .map((row) => ({ ...row, spentCents: spend.get(row.categoryId) ?? 0 }))
+    .map((row) => ({
+      ...row,
+      nature: row.nature === 'savings' || row.nature === 'investments' ? row.nature : null,
+      spentCents: spend.get(row.categoryId) ?? 0,
+    }))
 
   const rank = (row: CategoryMapping): number =>
     (row.isIncome || row.hidden ? 2 : 0) + (row.coicop === null ? 0 : 1)
@@ -153,6 +171,23 @@ export function saveCustodyShared(db: Db, categoryId: string, shared: boolean): 
 
   db.update(categoryMeta)
     .set({ custodyShared: shared, updatedAt: new Date() })
+    .where(eq(categoryMeta.categoryId, categoryId))
+    .run()
+}
+
+/**
+ * Tags one category as `savings` or `investments`, or clears the tag (#252).
+ *
+ * Nullable for the same reason `saveCoicop`'s division is: a person correcting
+ * their own mistake needs to take the tag back. Only ever writes these two values
+ * (or null) — never the AI-proposal values `category_meta.nature` also carries —
+ * so this and `category_meta.set` can never contend over the same column.
+ */
+export function saveNature(db: Db, categoryId: string, nature: SavingsNatureChoice | null): void {
+  requireCategory(db, categoryId)
+
+  db.update(categoryMeta)
+    .set({ nature, updatedAt: new Date() })
     .where(eq(categoryMeta.categoryId, categoryId))
     .run()
 }

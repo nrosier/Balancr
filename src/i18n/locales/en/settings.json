@@ -126,19 +126,26 @@
       "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
     },
     "mapping": {
-      "caption": "Each category's division, the reference line it feeds, and whether it is shared",
+      "caption": "Each category's division, the reference line it feeds, whether it is shared, and whether it is a savings or investments envelope",
       "column": {
         "category": "Category",
         "division": "COICOP division",
         "line": "Reference line",
+        "nature": "Savings / investments",
         "shared": "Shared",
         "spent": "Latest month"
       },
       "consumption": "Household consumption",
       "hidden": "Hidden",
-      "hint": "Which COICOP division each category counts as, which is what the comparison sums, and which categories you split with a co-parent. Both are saved as you set them, and applied the next time the budget page is read.",
+      "hint": "Which COICOP division each category counts as, which is what the comparison sums, which categories you split with a co-parent, and which are savings or investments envelopes. All three are saved as you set them, and applied the next time the budget page is read.",
       "income": "Income",
       "inputLabel": "COICOP division for {{name}}",
+      "nature": {
+        "investments": "Investments",
+        "savings": "Savings"
+      },
+      "natureLabel": "Savings or investments envelope for {{name}}",
+      "natureNone": "Neither",
       "none": "No categories have been aggregated yet. Run a sync first.",
       "notCompared": "Not compared",
       "outside": "Outside household consumption",

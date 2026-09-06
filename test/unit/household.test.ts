@@ -4,6 +4,7 @@ import { householdSignals } from '../../src/domain/aggregate/household.ts'
 import type { NetWorthResult } from '../../src/domain/aggregate/networth.ts'
 import { DEFAULT_PARAMS } from '../../src/domain/aggregate/params.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
+import type { SavingsAggregate } from '../../src/domain/aggregate/savings-context.ts'
 import type { MonthTotals } from '../../src/domain/aggregate/spend.ts'
 import { addMonths } from '../../src/util/month.ts'
 
@@ -55,6 +56,16 @@ function netWorth(overrides: Partial<NetWorthResult> = {}): NetWorthResult {
   }
 }
 
+function savings(overrides: Partial<SavingsAggregate> = {}): SavingsAggregate {
+  return {
+    hasSavings: false,
+    hasInvestments: false,
+    spentCents: 0,
+    baselineCents: null,
+    ...overrides,
+  }
+}
+
 /** Flat, uninteresting inputs, so each test switches on the one thing it names. */
 function input(overrides: Partial<Parameters<typeof householdSignals>[0]> = {}) {
   return {
@@ -64,6 +75,7 @@ function input(overrides: Partial<Parameters<typeof householdSignals>[0]> = {}) 
     spendHistory: series('2026-03', 6, () => 240_000),
     netWorth: null,
     netWorthHistory: [],
+    savings: savings(),
     params: DEFAULT_PARAMS,
     ...overrides,
   }
@@ -210,6 +222,94 @@ describe('emergency fund', () => {
     expect(
       codes(householdSignals(input({ spendHistory: [], netWorth: netWorth() }))),
     ).not.toContain('emergency_fund_short')
+  })
+})
+
+describe('unbudgeted money routed toward savings then investments (#252)', () => {
+  it('fills the emergency-fund shortfall first, from the savings envelope', () => {
+    // 1 month of cushion against a 3-month target: a 480 000 shortfall. Only
+    // 300 000 unbudgeted, so all of it goes to savings and none is left over.
+    const signals = householdSignals(
+      input({
+        totals: totals({ toBudgetCents: 300_000 }),
+        netWorth: netWorth({ liquidCents: 240_000 }),
+        savings: savings({ hasSavings: true }),
+      }),
+    )
+    expect(find(signals, 'budget_toward_savings')?.metrics).toEqual({ amountCents: 300_000 })
+    expect(codes(signals)).not.toContain('budget_toward_investments')
+  })
+
+  it('sends the remainder to investments once the shortfall is covered', () => {
+    // 2 months of cushion against a 3-month target: a 240 000 shortfall, out of
+    // 600 000 unbudgeted. Savings takes the 240 000 it needs; investments gets
+    // the other 360 000.
+    const signals = householdSignals(
+      input({
+        totals: totals({ toBudgetCents: 600_000 }),
+        netWorth: netWorth({ liquidCents: 480_000 }),
+        savings: savings({ hasSavings: true, hasInvestments: true }),
+      }),
+    )
+    expect(find(signals, 'budget_toward_savings')?.metrics).toEqual({ amountCents: 240_000 })
+    expect(find(signals, 'budget_toward_investments')?.metrics).toEqual({ amountCents: 360_000 })
+  })
+
+  it('goes straight to investments when there is no shortfall to fill', () => {
+    const signals = householdSignals(
+      input({
+        totals: totals({ toBudgetCents: 200_000 }),
+        netWorth: null,
+        savings: savings({ hasInvestments: true }),
+      }),
+    )
+    expect(codes(signals)).not.toContain('budget_toward_savings')
+    expect(find(signals, 'budget_toward_investments')?.metrics).toEqual({ amountCents: 200_000 })
+  })
+
+  it('says nothing when no envelope is tagged either way', () => {
+    const signals = householdSignals(input({ totals: totals({ toBudgetCents: 200_000 }) }))
+    expect(codes(signals)).not.toContain('budget_toward_savings')
+    expect(codes(signals)).not.toContain('budget_toward_investments')
+  })
+
+  it('says nothing when there is no unbudgeted money at all', () => {
+    const signals = householdSignals(
+      input({
+        totals: totals({ toBudgetCents: 0 }),
+        netWorth: netWorth({ liquidCents: 240_000 }),
+        savings: savings({ hasSavings: true, hasInvestments: true }),
+      }),
+    )
+    expect(codes(signals)).not.toContain('budget_toward_savings')
+    expect(codes(signals)).not.toContain('budget_toward_investments')
+  })
+})
+
+describe('savings drawn down (#252)', () => {
+  it('flags a withdrawal well above the tagged envelopes usual baseline', () => {
+    const signals = householdSignals(
+      input({ savings: savings({ spentCents: 140_000, baselineCents: 100_000 }) }),
+    )
+    expect(find(signals, 'savings_drawn_down')?.metrics).toEqual({
+      deltaBp: 4_000,
+      baselineCents: 100_000,
+      currentCents: 140_000,
+    })
+  })
+
+  it('stays quiet under the threshold', () => {
+    const signals = householdSignals(
+      input({ savings: savings({ spentCents: 105_000, baselineCents: 100_000 }) }),
+    )
+    expect(codes(signals)).not.toContain('savings_drawn_down')
+  })
+
+  it('says nothing with no baseline yet', () => {
+    const signals = householdSignals(
+      input({ savings: savings({ spentCents: 140_000, baselineCents: null }) }),
+    )
+    expect(codes(signals)).not.toContain('savings_drawn_down')
   })
 })
 

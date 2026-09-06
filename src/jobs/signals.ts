@@ -33,6 +33,7 @@ import { loadParams } from '../domain/aggregate/params.ts'
 import { latestDriftPersistence } from '../domain/advice/latest.ts'
 import type { DriftPersistence } from '../domain/advice/persistence.ts'
 import { custodyContext, splitMonth } from '../domain/aggregate/custody-context.ts'
+import { savingsContext, splitSavingsMonth } from '../domain/aggregate/savings-context.ts'
 import { benchmarkContext, compareMonth } from '../domain/benchmark/context.ts'
 import { computeSignals } from '../domain/aggregate/signals.ts'
 import { persistSignals, staleMonths } from '../domain/aggregate/signals-store.ts'
@@ -108,6 +109,11 @@ interface Shared {
    */
   custody: ReturnType<typeof custodyContext>
   /**
+   * Which categories are tagged `savings` or `investments` (#252). Shared for the
+   * same reason `custody` is: a fact about the mapping, not about one month.
+   */
+  savings: ReturnType<typeof savingsContext>
+  /**
    * How long each portfolio class has been outside its band (#183), and the month it is
    * a statement about — the one the latest snapshot falls in.
    *
@@ -158,6 +164,7 @@ export async function judgeMonth(
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
     benchmark: compareMonth(shared.benchmark, month, facts),
     custody: splitMonth(shared.custody, month, facts),
+    savings: splitSavingsMonth(shared.savings, facts),
     drift: month === shared.driftMonth ? shared.drift : null,
     params: shared.params,
   })
@@ -197,6 +204,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     params,
     benchmark: benchmarkContext(db),
     custody: custodyContext(db),
+    savings: savingsContext(db),
     drift: latestDriftPersistence(db, params.drift.persistentMonths),
     // The snapshot's own month, not the newest month of budget facts: see `Shared`.
     driftMonth: latestSnapshot === null ? null : latestSnapshot.slice(0, 7),
