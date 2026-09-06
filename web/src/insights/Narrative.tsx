@@ -127,6 +127,17 @@ export function Narrative({
               <Offer month={month} owner={owner} onWritten={onWritten} />
             </>
           ) : null}
+          {/*
+            Nothing has moved since this review was written — no stale banner, nothing
+            wrong with it — but a reader who just switched the deep model or edited the
+            narrative prompt (#226) still has no way to ask for a new one short of the
+            server clearing the row by hand. `force` is what makes this a rewrite rather
+            than the "nothing to show yet" offer above: same two-press control, different
+            copy, and off by default the way `aiRefreshRequest.force` already is.
+          */}
+          {!stale && month !== null && aiEnabled && ended ? (
+            <Offer month={month} owner={owner} onWritten={onWritten} force />
+          ) : null}
         </>
       )}
     </section>
@@ -145,11 +156,10 @@ export function Narrative({
  *
  * **Only for a month that has ended**, which the caller enforces by not mounting this at
  * all before then — the estimate is a request, and one hook cannot be skipped by an early
- * return. `runNarrative` caches per `(period, locale)` and nothing exposes a rewrite, so a
- * review bought on the 4th would be that month's review for good, written from a tenth of
- * its facts. The server refuses it as well — this is
- * about not offering something that would be refused, and about saying why rather than
- * leaving a reader to wonder where the button went.
+ * return. `force` (#226) does not change this: the server refuses an unfinished month
+ * either way, since a review bought on the 4th would describe a tenth of its facts
+ * however it got there. This is about not offering something that would be refused, and
+ * about saying why rather than leaving a reader to wonder where the button went.
  *
  * **Owner only, and the sentence says so.** A viewer sees the same missing review and the
  * same reason it is missing; what they do not get is a control that 403s. Hiding the whole
@@ -169,9 +179,15 @@ interface OfferProps {
   month: string
   owner: boolean
   onWritten: () => void
+  /**
+   * A month that already has a narrative, offered again anyway (#226) — the lede and
+   * the unarmed button say "rewrite it anyway" instead of "write it"; everything else
+   * (price, the armed confirm/cancel pair, the outcome line) reads the same either way.
+   */
+  force?: boolean
 }
 
-function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
+function Offer({ month, owner, onWritten, force }: OfferProps): ReactNode {
   const { t, language } = useT()
   const csrf = useCsrf()
   const expired = useSessionExpiry()
@@ -191,7 +207,12 @@ function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
   const start = (): void => {
     setBusy(true)
     setFailure(null)
-    void apiSend<AiNarrativeRun>('POST', '/api/ai/narrative', { period: month }, csrf)
+    void apiSend<AiNarrativeRun>(
+      'POST',
+      '/api/ai/narrative',
+      force ? { period: month, force: true } : { period: month },
+      csrf,
+    )
       .then((outcome) => {
         setBusy(false)
         setArmed(false)
@@ -228,7 +249,7 @@ function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
 
   return (
     <div className="rerun">
-      <p className="muted">{t('ai:narrative.offer.lede')}</p>
+      <p className="muted">{t(force ? 'ai:narrative.rewrite.lede' : 'ai:narrative.offer.lede')}</p>
 
       {failure === null ? null : (
         <p className="notice notice--warn" role="status">
@@ -277,7 +298,7 @@ function Offer({ month, owner, onWritten }: OfferProps): ReactNode {
               disabled={!owner || busy}
               onClick={() => setArmed(true)}
             >
-              {t('ai:narrative.offer.start')}
+              {t(force ? 'ai:narrative.rewrite.start' : 'ai:narrative.offer.start')}
             </button>
           )}
         </>
