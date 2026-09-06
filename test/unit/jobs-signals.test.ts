@@ -15,6 +15,7 @@ import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { loadHygiene, persistSignals } from '../../src/domain/aggregate/signals-store.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
+import { decodeBudgetTarget, pendingProposals } from '../../src/domain/ai/proposals.ts'
 import { signalsJob } from '../../src/jobs/signals.ts'
 import type { JobDetail } from '../../src/jobs/runner.ts'
 import { logger } from '../../src/logger.ts'
@@ -56,7 +57,7 @@ function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotal
   }
 }
 
-function fact(month: string): MonthlyFact {
+function fact(month: string, overrides: Partial<MonthlyFact> = {}): MonthlyFact {
   return {
     month,
     categoryId: 'food',
@@ -73,13 +74,13 @@ function fact(month: string): MonthlyFact {
     committedToDateCents: 0,
     committedApproximate: false,
     baseline: null,
+    ...overrides,
   }
 }
 
 /** A month with facts and a fingerprint, exactly as a sync pass would leave it. */
-function seed(month: string, hash: string): void {
+function seed(month: string, hash: string, facts: MonthlyFact[] = [fact(month)]): void {
   persistMonthTotals(db, [totals(month)], [], new Map([[month, hash]]))
-  const facts = [fact(month)]
   syncCategoryMeta(db, facts)
   persistFacts(db, facts, [month])
 }
@@ -125,5 +126,39 @@ describe('which months get judged (#162)', () => {
 
     // Every run: the two floor months, and nothing else — 2026-01's hash never moved.
     expect(third.months).toBe(2)
+  })
+})
+
+describe('budget-amount proposals only ever target the current month (#251)', () => {
+  it('proposes nothing for a closed month, even when it is rejudged alongside the current one', async () => {
+    // Both months overspent enough to trigger `over_available`, and both carry a
+    // baseline `suggestBudgetAmounts` can size a proposal from — the floor
+    // (#162) rejudges 2026-02 right alongside 2026-03, and before #251 both
+    // would have gotten a `budget_amount.set` proposal.
+    const overspent = (month: string): MonthlyFact =>
+      fact(month, {
+        spentCents: 30_000,
+        budgetedCents: 10_000,
+        availableCents: -20_000,
+        baseline: {
+          baselineCents: 15_000,
+          currentCents: 30_000,
+          deltaBp: null,
+          monthsUsed: 12,
+          windowMonths: 1,
+          winsorEffectBp: 0,
+        },
+      })
+
+    seed('2026-02', 'hash-x', [overspent('2026-02')])
+    seed('2026-03', 'hash-y', [overspent('2026-03')])
+
+    await run(new Date('2026-03-15T02:00:00Z'))
+
+    const targets = pendingProposals(db)
+      .filter((row) => row.type === 'budget_amount.set')
+      .map((row) => decodeBudgetTarget(row.targetRef).month)
+
+    expect(targets).toEqual(['2026-03'])
   })
 })
