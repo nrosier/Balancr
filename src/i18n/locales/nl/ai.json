@@ -104,6 +104,10 @@
       "starting": "Bezig met schrijven…",
       "written": "Geschreven, voor {{cost}}. De pagina is opnieuw geladen."
     },
+    "rewrite": {
+      "lede": "Er is niets veranderd aan deze maand, maar je kunt toch een nieuw verhaal aanvragen — dezelfde prijs als elke andere run.",
+      "start": "Toch herschrijven"
+    },
     "stale": "Gebaseerd op gegevens van {{when}}.",
     "title": "Deze maand in woorden",
     "titleMonth": "{{month}} in woorden",

@@ -1445,10 +1445,9 @@ export const aiEstimateSchema = z.object({
  * and no second path that could show a review the reload would not.
  *
  * `status: 'cached'` at a cost of zero is a normal outcome and not a failure: two people
- * pressing the button, or one pressing it twice, gets the stored review back. The one
- * thing this endpoint will not do is write a second narrative for a month that has one —
- * that would need `force`, which no route exposes, because it is the only way to pay the
- * deep model twice for the same month.
+ * pressing the button, or one pressing it twice, gets the stored review back without
+ * `force` (#226) — the only way to pay the deep model twice for the same month, and off
+ * by default for exactly that reason.
  */
 export const aiNarrativeRunSchema = z.object({
   status: z.enum(['ok', 'cached', 'capped', 'error', 'skipped']),
