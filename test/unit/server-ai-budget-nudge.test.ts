@@ -18,7 +18,7 @@ import type { Db } from '../../src/db/index.ts'
 import { aiRuns, users } from '../../src/db/schema.ts'
 import { createProposal, encodeBudgetTarget, pendingBudgetProposals } from '../../src/domain/ai/proposals.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
-import { saveUpcomingNote } from '../../src/domain/ai/upcoming-note.ts'
+import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -143,7 +143,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
   })
 
   it('prices a real batch without spending anything', async () => {
-    saveUpcomingNote(ctx.db, { text: 'Dentist bill in March.' })
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
 
     const res = await estimate('')
@@ -153,7 +153,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
   })
 
   it('is visible to a viewer too, since it is free', async () => {
-    saveUpcomingNote(ctx.db, { text: 'Dentist bill in March.' })
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
     const res = await estimate('', viewer)
     expect(res.statusCode).toBe(200)
@@ -172,7 +172,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
 
 describe('POST /api/ai/budget-nudge', () => {
   it('turns a grounded adjustment into a real proposal and bills the fast model', async () => {
-    saveUpcomingNote(ctx.db, { text: 'Dentist bill in March, about 150 euros.' })
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March, about 150 euros.')
     await seedPendingProposal()
     const fake = fakeGemini('{"adjustments":[{"label":"c1","amountCents":95000}]}')
 
@@ -191,7 +191,7 @@ describe('POST /api/ai/budget-nudge', () => {
   })
 
   it('is capped once the month budget is already exceeded', async () => {
-    saveUpcomingNote(ctx.db, { text: 'Dentist bill in March.' })
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
     recordRun(ctx.db, {
       kind: 'budget_nudge',
@@ -226,7 +226,7 @@ describe('POST /api/ai/budget-nudge', () => {
   })
 
   it('is refused for a viewer', async () => {
-    saveUpcomingNote(ctx.db, { text: 'Dentist bill in March.' })
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
     const fake = fakeGemini('{"adjustments":[]}')
 

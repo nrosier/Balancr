@@ -400,6 +400,14 @@ export const custodySplitSchema = z.discriminatedUnion('kind', [
 
 export const budgetSchema = z.object({
   freshness: freshnessSchema,
+  /**
+   * Whether this reader may write the month note below the toolbar.
+   *
+   * Same reason `insightsSchema.owner` is on that payload: the browser has no
+   * session of its own to read a role off, and `PATCH /api/budget/note` is
+   * owner-gated on its own regardless of what this flag draws (#158, #270).
+   */
+  owner: z.boolean(),
   month: monthKey(),
   months: z.array(monthKey()),
   totals: z
@@ -1411,8 +1419,6 @@ export const settingsSchema = z.object({
     exceeded: z.boolean(),
     /** Newest first, so the page can show this month and the trend behind it. */
     history: z.array(spendMonthSchema),
-    /** The owner's running "what's coming up" note, or `''` when none is set (#217). */
-    upcomingNote: z.string(),
   }),
 })
 

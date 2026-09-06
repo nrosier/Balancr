@@ -49,6 +49,7 @@ import { useResource } from '../api/resource.tsx'
 import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts'
 import { Benchmark } from '../budget/Benchmark.tsx'
 import { Custody } from '../budget/Custody.tsx'
+import { MonthNotePanel } from '../budget/MonthNote.tsx'
 import { BUDGET_SECTIONS, sectionFor } from '../budget/sections.ts'
 import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
@@ -147,6 +148,7 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
     custody,
     month,
     months,
+    owner,
     signals,
     totals,
     trendMonths,
@@ -194,6 +196,8 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
           label={t('budget:picker.month')}
         />
       </div>
+
+      <MonthNotePanel initialMonth={month} owner={owner} />
 
       {section === 'overview' && (
         <>

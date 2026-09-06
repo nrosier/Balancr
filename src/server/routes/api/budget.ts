@@ -58,7 +58,7 @@ export function resolveMonth(db: Db, raw: unknown): string | null {
   return raw
 }
 
-export function buildBudget(db: Db, monthParam: unknown): Budget {
+export function buildBudget(db: Db, monthParam: unknown, owner: boolean): Budget {
   const month = resolveMonth(db, monthParam)
   // Nothing computed at all: report the empty state under the current month rather
   // than inventing one, so the client has a label for its own "no data yet" screen.
@@ -75,6 +75,7 @@ export function buildBudget(db: Db, monthParam: unknown): Budget {
 
   return budgetSchema.parse({
     freshness: freshness(db),
+    owner,
     month: resolved,
     // Every stored month, not the window `history` covers: the picker has to keep
     // offering August while July is on screen, and a month that was never computed

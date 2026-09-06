@@ -151,6 +151,17 @@
     "spent": "Spent",
     "toBudget": "Left to assign"
   },
+  "monthNote": {
+    "count": "{{count}}/{{max}} characters",
+    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. The AI budget nudge on the Insights page can use a note like this when suggesting next month's amounts.",
+    "label": "Note for {{month}}",
+    "placeholder": "e.g. Replaced the dishwasher this month, about €400. Dentist appointment in October, about €150.",
+    "stepper": {
+      "next": "Next month",
+      "previous": "Previous month"
+    },
+    "title": "Notes"
+  },
   "nav": {
     "benchmark": "Benchmark",
     "custody": "Custody",

@@ -25,7 +25,7 @@ import {
   pendingBudgetProposals,
 } from '../../src/domain/ai/proposals.ts'
 import { recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
-import { saveUpcomingNote } from '../../src/domain/ai/upcoming-note.ts'
+import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
@@ -107,7 +107,7 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('is free and refused when the note is set but nothing is pending', () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
 
     const outcome = estimateBudgetNudge(db, { month: MONTH })
 
@@ -117,7 +117,7 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('prices a real batch and allows it under budget', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
 
     const outcome = estimateBudgetNudge(db, { month: MONTH })
@@ -129,7 +129,7 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('is refused once the month budget is already exceeded', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     recordRun(db, {
       kind: 'budget_nudge',
@@ -165,7 +165,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('skips with no aiRuns row when the note is set but nothing is pending', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     const recorded = fakeGemini('never called')
 
     const outcome = await runBudgetNudge(db, { month: MONTH })
@@ -178,7 +178,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a capped run and makes no call', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     recordRun(db, {
       kind: 'budget_nudge',
@@ -203,7 +203,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a failed call without throwing', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini(new Error('socket hang up'))
 
@@ -217,7 +217,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a bad response without throwing', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('not json at all')
 
@@ -229,7 +229,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('turns a grounded adjustment into a real, superseding proposal', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March, about 150 euros.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March, about 150 euros.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":18000}]}')
 
@@ -248,7 +248,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('drops an adjustment outside the magnitude bound, rather than clamping it', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     // Ten times the suggested amount — well outside [suggested/3, suggested*3].
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":150000}]}')
@@ -265,7 +265,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('drops an adjustment for a label that candidate was never offered, rather than mapping it', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     // `c9` is not one of this batch's real labels — a hallucinated or borrowed one.
     fakeGemini('{"adjustments":[{"label":"c9","amountCents":18000}]}')
@@ -278,7 +278,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('does not let one ProposalError abort the rest of the batch', async () => {
-    saveUpcomingNote(db, { text: 'Dentist bill and car insurance both due in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill and car insurance both due in March.')
     // `food`'s current budgeted amount (12 000, from the fixture) is exactly what
     // the model answers below — a no-op `createProposal` refuses, while `rent`'s
     // adjustment is a real change and must still go through.
@@ -303,7 +303,7 @@ describe('runBudgetNudge', () => {
     db.$client.exec(
       `UPDATE category_meta SET sensitive = 1 WHERE category_id = 'food'`,
     )
-    saveUpcomingNote(db, { text: 'Dentist bill in March.' })
+    saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     const recorded = fakeGemini('{"adjustments":[]}')
 

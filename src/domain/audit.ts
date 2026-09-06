@@ -90,13 +90,13 @@ export const AUDIT_ACTIONS = [
    */
   'settings.nature',
   /**
-   * The running "what's coming up" note (#217).
+   * A month's own note on the Budget page (#217, redesigned per-month by #270).
    *
-   * Belongs on this list for the same reason as every other settings write: it is
-   * judgement — what the owner knows is coming — that nothing in Actual or
-   * Ghostfolio can regenerate.
+   * Lives on Budget rather than Settings now, but belongs on this list for the
+   * same reason as every settings write: it is judgement — what the owner knows
+   * about that month — that nothing in Actual or Ghostfolio can regenerate.
    */
-  'settings.upcomingNote',
+  'budget.monthNote',
   /**
    * The owned properties and their mortgages (#227).
    *
