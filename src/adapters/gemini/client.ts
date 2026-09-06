@@ -164,6 +164,11 @@ export interface GeminiResult {
   /** Whether the system prompt was served from a context cache. */
   cached: boolean
   durationMs: number
+  /**
+   * Why the model stopped, e.g. `'STOP'` or `'MAX_TOKENS'`. Read even on a
+   * non-empty response — text is not proof of a complete answer (#221).
+   */
+  finishReason: string | null
 }
 
 /**
@@ -330,6 +335,7 @@ export async function callGemini(call: GeminiCall): Promise<GeminiResult> {
       model: response.modelVersion ?? call.model,
       cached: cache !== null,
       durationMs: Date.now() - started,
+      finishReason: response.candidates?.[0]?.finishReason ?? null,
     }
   } catch (error) {
     if (error instanceof GeminiError) throw error

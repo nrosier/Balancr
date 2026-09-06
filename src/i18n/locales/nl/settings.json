@@ -50,7 +50,8 @@
       "no_facts": "Voor die maand zijn er geen samengevatte cijfers om te analyseren.",
       "not_confident": "Het model was hier niet zeker genoeg van om te raden.",
       "ok": "Afgerond.",
-      "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten."
+      "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten.",
+      "truncated": "Het antwoord van het model werd afgekapt, ook na een nieuwe poging — het vorige antwoord wordt getoond."
     },
     "remaining": "Nog over deze maand",
     "rerun": {

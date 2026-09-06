@@ -63,7 +63,16 @@ interface Recorded {
   models: string[]
 }
 
-function fakeGemini(reply: string | Error): Recorded {
+type Reply = string | Error | { text: string; finishReason: string }
+
+/**
+ * A single reply is returned to every call, as before. An array is consumed one
+ * reply per `generateContent` call — the last item repeats once the queue runs dry
+ * — which is what a retry-on-truncation test needs: one `finishReason` for the
+ * first attempt, another for the retry.
+ */
+function fakeGemini(reply: Reply | Reply[]): Recorded {
+  const queue = Array.isArray(reply) ? [...reply] : [reply]
   const recorded: Recorded = { prompts: [], configs: [], models: [] }
   const client = {
     models: {
@@ -75,11 +84,14 @@ function fakeGemini(reply: string | Error): Recorded {
         recorded.prompts.push(request.contents)
         recorded.configs.push(request.config)
         recorded.models.push(request.model)
-        if (reply instanceof Error) throw reply
+        const next = queue.length > 1 ? (queue.shift() as Reply) : (queue[0] as Reply)
+        if (next instanceof Error) throw next
+        const { text, finishReason } = typeof next === 'string' ? { text: next, finishReason: undefined } : next
         return {
-          text: reply,
+          text,
           usageMetadata: { promptTokenCount: 3_000, candidatesTokenCount: 600 },
           modelVersion: 'gemini-3.1-pro-preview-002',
+          ...(finishReason === undefined ? {} : { candidates: [{ finishReason }] }),
         }
       },
     },
@@ -360,6 +372,50 @@ describe('runNarrative', () => {
     expect(row?.outputTokens).toBe(600)
     expect(row?.costMicroEur).toBeGreaterThan(0)
   })
+
+  it('retries a truncated call once and stores the complete retry (#221)', async () => {
+    seedTypicalMonth()
+    const recorded = fakeGemini([
+      { text: 'Spending ran high this month, but', finishReason: 'MAX_TOKENS' },
+      { text: 'Spending ran high this month, but stayed under budget.', finishReason: 'STOP' },
+    ])
+
+    const outcome = await runNarrative(db, { period: MONTH })
+
+    expect(recorded.prompts).toHaveLength(2)
+    // The retry asked for more room than the first attempt.
+    const [first, second] = recorded.configs
+    expect(Number(second?.['maxOutputTokens'])).toBeGreaterThan(Number(first?.['maxOutputTokens']))
+    expect(outcome.status).toBe('ok')
+    expect(outcome.bodyMd).toBe('Spending ran high this month, but stayed under budget.')
+    expect(loadNarrative(db, MONTH, 'en')?.bodyMd).toBe(
+      'Spending ran high this month, but stayed under budget.',
+    )
+    // Both calls were billed, not just the one that was kept.
+    const row = recentRuns(db)[0]
+    expect(row?.status).toBe('ok')
+    expect(row?.outputTokens).toBe(1_200)
+  })
+
+  it('gives up after a second truncated attempt, storing nothing', async () => {
+    seedTypicalMonth()
+    const recorded = fakeGemini([
+      { text: 'Spending ran high this month, but', finishReason: 'MAX_TOKENS' },
+      { text: 'Spending ran high this month, but still', finishReason: 'MAX_TOKENS' },
+    ])
+
+    const outcome = await runNarrative(db, { period: MONTH })
+
+    expect(recorded.prompts).toHaveLength(2)
+    expect(outcome.status).toBe('error')
+    expect(outcome.reason).toBe('truncated')
+    expect(outcome.degraded).toBe(true)
+    expect(loadNarrative(db, MONTH, 'en')).toBeNull()
+    const row = recentRuns(db)[0]
+    expect(row?.status).toBe('error')
+    // Both attempts spent tokens, and both are billed even though nothing was kept.
+    expect(row?.outputTokens).toBe(1_200)
+  })
 })
 
 describe('translateNarrative', () => {
@@ -448,5 +504,47 @@ describe('translateNarrative', () => {
     expect(outcome.status).toBe('capped')
     expect(recorded.prompts).toHaveLength(0)
     expect(loadNarrative(db, MONTH, 'nl')).toBeNull()
+  })
+
+  it('retries a truncated translation once and stores the complete retry (#221)', async () => {
+    storeNarrative(db, {
+      runId: someRun(),
+      period: MONTH,
+      locale: 'en',
+      bodyMd: 'Spending ran high this month, but stayed under budget.',
+    })
+    const recorded = fakeGemini([
+      { text: 'De uitgaven waren hoog deze maand, maar', finishReason: 'MAX_TOKENS' },
+      { text: 'De uitgaven waren hoog deze maand, maar bleven binnen budget.', finishReason: 'STOP' },
+    ])
+
+    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+
+    expect(recorded.prompts).toHaveLength(2)
+    expect(outcome.status).toBe('ok')
+    expect(loadNarrative(db, MONTH, 'nl')?.bodyMd).toBe(
+      'De uitgaven waren hoog deze maand, maar bleven binnen budget.',
+    )
+  })
+
+  it('gives up after a second truncated translation attempt, storing nothing', async () => {
+    storeNarrative(db, {
+      runId: someRun(),
+      period: MONTH,
+      locale: 'en',
+      bodyMd: 'Spending ran high this month, but stayed under budget.',
+    })
+    const recorded = fakeGemini([
+      { text: 'De uitgaven waren hoog deze maand, maar', finishReason: 'MAX_TOKENS' },
+      { text: 'De uitgaven waren hoog deze maand, maar nog steeds', finishReason: 'MAX_TOKENS' },
+    ])
+
+    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+
+    expect(recorded.prompts).toHaveLength(2)
+    expect(outcome.status).toBe('error')
+    expect(outcome.reason).toBe('truncated')
+    expect(loadNarrative(db, MONTH, 'nl')).toBeNull()
+    expect(recentRuns(db)[0]?.status).toBe('error')
   })
 })
