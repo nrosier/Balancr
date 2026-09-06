@@ -6,6 +6,25 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.3] — 2026-09-06
+
+### Changed
+
+- **The budget note moved from Settings to Budget, and from one note to one
+  per month** ([#270](https://github.com/nrosier/Balancr/issues/270)). The
+  free-text note ([#217](https://github.com/nrosier/Balancr/issues/217)) used
+  to live on Settings' "AI usage" tab as a single running string framed as
+  "what's coming up." It is now a card above the tab strip on the Budget
+  page, keyed by month: mostly context for the current month's own spending
+  ("replaced the dishwasher this month, that's why household appliances is
+  higher than expected") rather than a forward-only heads-up, though writing
+  ahead for a known future one-off still works the same way. The budget
+  nudge on the Insights page now reads the note for the month it is actually
+  nudging, instead of one note shared across every month. The month stepper
+  on the new card is disabled while an edit is unsaved, the same guard
+  [#268](https://github.com/nrosier/Balancr/issues/268) added for
+  Benchmark's household draft.
+
 ## [0.11.2] — 2026-09-06
 
 ### Added
