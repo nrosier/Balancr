@@ -350,6 +350,13 @@
   font-size: var(--type-sm);
 }
 
+/* The linked pair's other name, under the head — same size as the source label
+   it sits beside, not the account name it's paired with. */
+.account__linked {
+  margin: 0;
+  font-size: var(--type-xs);
+}
+
 /* ---------------------------------------------------------------------------
    Prompts
    --------------------------------------------------------------------------- */

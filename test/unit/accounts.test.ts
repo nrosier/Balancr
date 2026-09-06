@@ -29,6 +29,7 @@ import {
   setSourceOfTruth,
   syncAccountMap,
   ungroupAccount,
+  unlinkGroup,
   updateAccountMap,
   type AccountBalance,
   type AccountSighting,
@@ -564,6 +565,78 @@ describe('grouping records provenance too', () => {
       'dedupeGroup',
       'isSourceOfTruth',
     ])
+  })
+})
+
+describe('unlinkGroup', () => {
+  // `ungroupAccount` frees only the row named, which is right when a group has three
+  // or more members but is the exact footgun for the common case of two: freeing the
+  // source-of-truth side alone leaves its twin as the sole member of a group with no
+  // source of truth, and its money silently stops counting. The settings panel shows
+  // a pair as one block with one "Unlink" button, so unlinking has to mean the whole
+  // pair, symmetrically, whichever id the button happens to carry.
+  it('separates both members of a pair, whichever id is passed', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Mirror'), ghostfolio('g1', 'Bolero')])
+    const [a, g] = rows()
+    if (a === undefined || g === undefined) throw new Error('expected two rows')
+    groupAccounts(ctx.db, [a.id, g.id], g.id)
+
+    const after = unlinkGroup(ctx.db, a.id)
+
+    expect(after.map((row) => row.id).sort()).toEqual([a.id, g.id].sort())
+    for (const row of rows()) {
+      expect(row.dedupeGroup).toBeNull()
+      expect(row.isSourceOfTruth).toBe(true)
+      expect([...decidedFields(row)].sort()).toEqual(['dedupeGroup', 'isSourceOfTruth'])
+    }
+  })
+
+  it('gives the same result unlinking from the source-of-truth side', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Mirror'), ghostfolio('g1', 'Bolero')])
+    const [a, g] = rows()
+    if (a === undefined || g === undefined) throw new Error('expected two rows')
+    groupAccounts(ctx.db, [a.id, g.id], g.id)
+
+    unlinkGroup(ctx.db, g.id)
+
+    for (const row of rows()) {
+      expect(row.dedupeGroup).toBeNull()
+      expect(row.isSourceOfTruth).toBe(true)
+    }
+  })
+
+  it('separates every member of a group larger than two', () => {
+    syncAccountMap(ctx.db, [
+      actual('a1', 'Mirror'),
+      ghostfolio('g1', 'Bolero'),
+      ghostfolio('g2', 'Bolero (copy)'),
+    ])
+    const [a, g1, g2] = rows()
+    if (a === undefined || g1 === undefined || g2 === undefined) {
+      throw new Error('expected three rows')
+    }
+    groupAccounts(ctx.db, [a.id, g1.id, g2.id], g1.id)
+
+    const after = unlinkGroup(ctx.db, g2.id)
+
+    expect(after).toHaveLength(3)
+    for (const row of rows()) {
+      expect(row.dedupeGroup).toBeNull()
+      expect(row.isSourceOfTruth).toBe(true)
+    }
+  })
+
+  it('does nothing to an account that was never grouped', () => {
+    syncAccountMap(ctx.db, [actual('a1', 'Mirror')])
+    const [a] = rows()
+    if (a === undefined) throw new Error('expected a row')
+
+    expect(unlinkGroup(ctx.db, a.id)).toEqual([])
+    expect(rows()[0]?.dedupeGroup).toBeNull()
+  })
+
+  it('does nothing for an unknown id', () => {
+    expect(unlinkGroup(ctx.db, 'does-not-exist')).toEqual([])
   })
 })
 

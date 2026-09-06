@@ -45,11 +45,12 @@ import {
   groupAccounts,
   loadAccountMap,
   setSourceOfTruth,
-  ungroupAccount,
+  unlinkGroup,
   updateAccountMap,
   type AccountMapRow,
 } from '../../domain/aggregate/accounts.ts'
 import { earliestStoredMonth, latestStoredMonth } from '../../domain/aggregate/month-store.ts'
+import { resolveInclusion, type ExclusionReason } from '../../domain/aggregate/networth.ts'
 import { loadLatestAccountBalances } from '../../domain/aggregate/networth-store.ts'
 import {
   DEFAULT_PARAMS,
@@ -355,7 +356,7 @@ const promptDiffRequest = z.strictObject({
 //  Reading
 // ---------------------------------------------------------------------------
 
-const toAccountSetting = (row: AccountMapRow): AccountSetting =>
+const toAccountSetting = (row: AccountMapRow, netWorthExclusionReason: ExclusionReason | null): AccountSetting =>
   accountSettingSchema.parse({
     id: row.id,
     source: row.source,
@@ -365,7 +366,26 @@ const toAccountSetting = (row: AccountMapRow): AccountSetting =>
     dedupeGroup: row.dedupeGroup,
     isSourceOfTruth: row.isSourceOfTruth,
     decidedFields: [...decidedFields(row)].sort(),
+    netWorthExclusionReason,
   })
+
+/**
+ * Why each account isn't counted in net worth, from the mapping alone (#245).
+ *
+ * `resolveInclusion` needs only `includeInNetWorth`/`dedupeGroup`/`isSourceOfTruth`
+ * — no balance, so no live Actual/Ghostfolio fetch — which is what lets this run on
+ * every settings read rather than only during the nightly job that logs the same
+ * reasons and nothing else sees.
+ */
+const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, ExclusionReason> =>
+  resolveInclusion(
+    rows.map((row) => ({
+      accountMapId: row.id,
+      includeInNetWorth: row.includeInNetWorth,
+      dedupeGroup: row.dedupeGroup,
+      isSourceOfTruth: row.isSourceOfTruth,
+    })),
+  ).excluded
 
 /**
  * One prompt's active text and its history.
@@ -475,6 +495,7 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
   const accounts = loadAccountMap(db)
+  const exclusionReasons = netWorthExclusionReasons(accounts)
   const budget = budgetState(db)
 
   return settingsSchema.parse({
@@ -510,7 +531,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
         (entry) => entry.versions.length > 0,
       ),
     ]),
-    accounts: accounts.map(toAccountSetting),
+    accounts: accounts.map((row) => toAccountSetting(row, exclusionReasons.get(row.id) ?? null)),
     dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db)).map((candidate) => ({
       ghostfolioId: candidate.ghostfolio.id,
       actualId: candidate.actual.id,
@@ -985,29 +1006,37 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   })
 
   /**
-   * Takes an account back out of its group, and back to counting for itself.
+   * Takes an account's whole group apart, and back to every member counting for
+   * itself.
    *
-   * Not the reverse of grouping: the other members keep the group. An account that
-   * belonged to no group and counted for nothing would be invisible money.
+   * The reverse of grouping, over the whole group, not just the row named: the
+   * settings panel shows a group of two as one linked block with one "Unlink"
+   * button, so an id named here stands in for its pair. `unlinkGroup` is what makes
+   * that atomic — freeing one side and leaving the other as the sole member of a
+   * group with no source of truth would drop its money out of net worth with
+   * nothing on screen to explain why.
    */
   app.post('/api/settings/accounts/:id/ungroup', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const id = (request.params as { id: string }).id
 
-    const before = loadAccountMap(db).find((row) => row.id === id)
+    const rows = loadAccountMap(db)
+    const before = rows.find((row) => row.id === id)
     if (before === undefined) throw notFound('No such account.')
 
-    const after = ungroupAccount(db, id)
-    if (after === null) throw notFound('No such account.')
+    const after = unlinkGroup(db, id)
+    if (after.length === 0) throw notFound('No such account.')
 
-    recordAudit(db, {
-      action: 'account.map',
-      entity: 'account_map',
-      entityRef: id,
-      actorId: user.id,
-      before: accountJudgement(before),
-      after: accountJudgement(after),
-    })
+    for (const row of after) {
+      recordAudit(db, {
+        action: 'account.map',
+        entity: 'account_map',
+        entityRef: row.id,
+        actorId: user.id,
+        before: accountJudgement(rows.find((candidate) => candidate.id === row.id) ?? row),
+        after: accountJudgement(row),
+      })
+    }
 
     return buildSettings(db, request)
   })

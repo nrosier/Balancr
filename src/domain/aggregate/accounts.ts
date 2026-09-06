@@ -769,3 +769,40 @@ export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
     return tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
   })
 }
+
+/**
+ * Separates every member of an account's group in one transaction, not just the row
+ * named.
+ *
+ * `ungroupAccount` frees one row and leaves the rest of the group standing, which is
+ * right for a group of three or more but is the exact footgun for the common case of
+ * a group of two: freeing the source-of-truth side alone leaves its twin as the sole
+ * member of a group with no source of truth, and its money silently stops counting.
+ * The settings panel only ever shows a whole pair as one block, so "unlink" from
+ * there has to mean the whole pair, symmetrically — every member becomes its own
+ * source of truth and keeps counting for itself, exactly like an account that was
+ * never linked.
+ */
+export function unlinkGroup(db: Db, id: string): AccountMapRow[] {
+  return db.transaction((tx) => {
+    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    if (row === undefined || row.dedupeGroup === null) return []
+
+    const group = tx
+      .select()
+      .from(accountMap)
+      .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+      .all()
+    const ids = group.map((member) => member.id)
+
+    tx.update(accountMap)
+      .set({ dedupeGroup: null, isSourceOfTruth: true })
+      .where(inArray(accountMap.id, ids))
+      .run()
+    // Same reasoning as `ungroupAccount`: unlinking is a decision, so a later sync
+    // must not silently re-propose what was just taken apart.
+    markDecided(tx, ids, ['dedupeGroup', 'isSourceOfTruth'])
+
+    return tx.select().from(accountMap).where(inArray(accountMap.id, ids)).all()
+  })
+}

@@ -10,7 +10,11 @@ import {
   type AccountMapRow,
 } from '../../src/domain/aggregate/accounts.ts'
 import { holdsInvestments } from '../../src/domain/aggregate/classify.ts'
-import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
+import {
+  computeNetWorth,
+  resolveInclusion,
+  type AccountValue,
+} from '../../src/domain/aggregate/networth.ts'
 
 /** A counted, included, ungrouped account unless the test says otherwise. */
 function account(overrides: Partial<AccountValue> & { id: string }): AccountValue {
@@ -324,5 +328,47 @@ describe('a Ghostfolio mirror of a bank account', () => {
     const result = computeNetWorth('2026-03-01', valued(loadAccountMap(db)))
     expect(result.totalCents).toBe(CURRENT_CENTS * 2 + BROKER_CENTS)
     expect(deriveMirrors(loadAccountMap(db))).toEqual([])
+  })
+})
+
+describe('resolveInclusion', () => {
+  // #245: Settings shows "why isn't this counted" from `account_map` alone, before
+  // any balance is fetched. These three reasons are the whole vocabulary
+  // `computeNetWorth` uses, so this checks the shared logic directly rather than
+  // through a full net-worth computation.
+  it('reports not_included for a row with the toggle off', () => {
+    const { excluded } = resolveInclusion([
+      { accountMapId: 'a', includeInNetWorth: false, dedupeGroup: null, isSourceOfTruth: true },
+    ])
+    expect(excluded.get('a')).toBe('not_included')
+  })
+
+  it('reports deduped for the non-truth side of a resolved group', () => {
+    const { excluded, unresolvedGroups } = resolveInclusion([
+      { accountMapId: 'truth', includeInNetWorth: true, dedupeGroup: 'g', isSourceOfTruth: true },
+      { accountMapId: 'other', includeInNetWorth: true, dedupeGroup: 'g', isSourceOfTruth: false },
+    ])
+    expect(excluded.get('truth')).toBeUndefined()
+    expect(excluded.get('other')).toBe('deduped')
+    expect(unresolvedGroups).toEqual([])
+  })
+
+  it('reports no_source_of_truth for every row in an unresolved group', () => {
+    const { excluded, unresolvedGroups } = resolveInclusion([
+      { accountMapId: 'a', includeInNetWorth: true, dedupeGroup: 'g', isSourceOfTruth: false },
+      { accountMapId: 'b', includeInNetWorth: true, dedupeGroup: 'g', isSourceOfTruth: false },
+    ])
+    expect(excluded.get('a')).toBe('no_source_of_truth')
+    expect(excluded.get('b')).toBe('no_source_of_truth')
+    expect(unresolvedGroups).toEqual(['g'])
+  })
+
+  it('does not exclude an ungrouped row regardless of isSourceOfTruth', () => {
+    // `dedupeGroup: null` bypasses the truth check entirely — an account that
+    // mirrors nothing is its own source of truth, whatever the flag says.
+    const { excluded } = resolveInclusion([
+      { accountMapId: 'a', includeInNetWorth: true, dedupeGroup: null, isSourceOfTruth: false },
+    ])
+    expect(excluded.get('a')).toBeUndefined()
   })
 })
