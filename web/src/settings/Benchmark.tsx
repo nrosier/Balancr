@@ -695,8 +695,16 @@ const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
   },
 ]
 
-/** Benchmark's own subsection tabs — the household roster and the mapping table are
- *  already two independent panels; this only stops them showing at once. */
+/**
+ * Benchmark's own subsection tabs — the household roster and the mapping table are
+ * already two independent panels; this only stops them showing at once.
+ *
+ * Both stay mounted, hidden rather than unrendered, on purpose: `HouseholdPanel` holds
+ * a typed-but-unsaved roster in its own `useState`, and unmounting it to show the
+ * mapping table would throw that draft away the moment somebody switched tabs to check
+ * something and switched back — the same failure `ThresholdsPanel` avoids by staying
+ * mounted and filtering which group it shows.
+ */
 export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const active = useSubsection(BENCHMARK_SUBSECTIONS)
@@ -708,7 +716,12 @@ export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
         variant="sub"
         ariaLabel={t('settings:nav.benchmark')}
       />
-      {active === 'household' ? <HouseholdPanel {...props} /> : <MappingPanel {...props} />}
+      <div hidden={active !== 'household'}>
+        <HouseholdPanel {...props} />
+      </div>
+      <div hidden={active !== 'mapping'}>
+        <MappingPanel {...props} />
+      </div>
     </>
   )
 }
