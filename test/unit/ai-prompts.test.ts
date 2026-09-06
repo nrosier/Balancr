@@ -211,6 +211,29 @@ describe('seedPrompts', () => {
     expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(edited)
   })
 
+  it('upgrades an install running the pre-PII-fix narrative default (v0.9.0-v0.11.1)', () => {
+    // The gap this closes: the drift rule (#183) added a second built-in body
+    // (`NARRATIVE_SYSTEM_V2`) without ever adding it to `SUPERSEDED_PROMPTS`, so
+    // every real installation that booted since then — not just a fresh or a
+    // pre-#183 database — sat on text `seedPrompts` could never recognise as
+    // superseded. `DEFAULT_PROMPTS` no longer names a specific household's own
+    // circumstances; this is the upgrade path that actually reaches an install
+    // running that text today, not just a database nobody has ever started.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'][1]
+    if (previous === undefined) throw new Error('expected a second superseded narrative body')
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: previous,
+      activate: true,
+    })
+
+    expect(seedPrompts(db)).toBeGreaterThan(0)
+    expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(
+      DEFAULT_PROMPTS['narrative.system'],
+    )
+  })
+
   it('does not touch a language override when it upgrades the shared row', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
@@ -290,6 +313,14 @@ describe('the superseded list', () => {
     const narrative = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (narrative === undefined) throw new Error('no superseded narrative prompt to test with')
     expect(supersededBuiltIn('analysis.system', narrative)).toBe(false)
+  })
+
+  it('no longer names a specific household in the narrative default', () => {
+    // Regression guard for the PII fix: the opening sentence used to describe
+    // this app's one real deployment by its actual family circumstances rather
+    // than a household in general, the way every other prompt in this file does.
+    expect(DEFAULT_PROMPTS['narrative.system']).not.toContain('single parent')
+    expect(DEFAULT_PROMPTS['narrative.system']).not.toContain('custody')
   })
 })
 

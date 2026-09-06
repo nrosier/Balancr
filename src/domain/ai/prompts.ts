@@ -137,10 +137,42 @@ Rules:
 `.trim()
 
 /**
+ * The narrative prompt as it shipped from #183 (v0.9.0) through v0.11.1, kept byte
+ * for byte for the same reason `NARRATIVE_SYSTEM_V1` is: `seedPrompts` needs to
+ * recognise it to deliver the fix below to every installation that has ever
+ * booted, not just fresh ones.
+ *
+ * It opened by describing this app's one real deployment — "a single parent in
+ * Belgium with joint custody of a teenage daughter" — rather than a household in
+ * general, the way every other prompt in this file does. That sentence carried no
+ * rule a model needed (rule 5 already states the shared-cost behaviour generically,
+ * for any household using that feature); it was narrative flavour that happened to
+ * be real, identifying information about the person running this instance, now
+ * sitting in a public repository. Superseded by `NARRATIVE_SYSTEM` below.
+ */
+const NARRATIVE_SYSTEM_V2 = `
+${NARRATIVE_SYSTEM_V1}
+8. Portfolio drift, where it is reported, is a fact to explain and never to
+   check. The share, the band edge and the number of months outside it were all
+   computed before they reached you: say what a drift of that length means and
+   leave the arithmetic alone — no distance restated, no share turned into an
+   amount, no guess at what a rebalance would cost. A band is the household's own
+   choice, so a long drift is a decision they have not acted on rather than a
+   mistake. Where few months have been observed, the run is only as long as the
+   history, and saying so beats implying a trend.
+`.trim()
+
+/**
  * The system prompt for the monthly narrative — the one place free text is
  * allowed, and therefore the one place the "no numbers" rule has to be stated
  * differently: it may *quote* the figures it was given, and may not do arithmetic
  * on them.
+ *
+ * The opening sentence describes the household the same generic way
+ * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
+ * all a run needs to handle a shared-custody household correctly, and no other
+ * rule depends on whose household this is. See `NARRATIVE_SYSTEM_V2`'s doc comment
+ * for why the previous opening sentence was replaced.
  *
  * Rule 8 is the drift rule (#183), and it exists because drift is the most tempting
  * arithmetic in the payload: a share, a ceiling and a distance are three numbers where
@@ -150,7 +182,30 @@ Rules:
  * not acted on, of a length the data can support.
  */
 const NARRATIVE_SYSTEM = `
-${NARRATIVE_SYSTEM_V1}
+You are the monthly reviewer of Balancr, a self-hosted budget and portfolio
+advisor for one household. Write the short narrative that accompanies a month of
+already-computed figures.
+
+Rules:
+
+1. Use only the figures you were given. Quote them as they are written. Never add,
+   subtract, average, annualise, project or convert anything — if a figure is not
+   in the data, the answer is that it is not known.
+2. Six short paragraphs at most, plain Markdown, no headings above level three, no
+   tables and no lists of numbers. This is the paragraph a person reads with their
+   coffee, not a report.
+3. Lead with what changed and what it means for the coming month. A month where
+   nothing notable happened is worth one honest paragraph saying so, not five
+   paragraphs of padding.
+4. Where a data-quality problem was reported, say plainly that it limits what the
+   rest of the month's figures can be trusted to say.
+5. Costs marked as shared with the other parent are shared: do not describe the
+   household as carrying the whole of one.
+6. No investment recommendations, no product names, no tax advice. Observations
+   about the portfolio's shape and cost are welcome; instructions to buy or sell
+   are not.
+7. Never address the reader by name, never speculate about their circumstances
+   beyond what the data says, and never moralise about a category.
 8. Portfolio drift, where it is reported, is a fact to explain and never to
    check. The share, the band edge and the number of months outside it were all
    computed before they reached you: say what a drift of that length means and
@@ -193,7 +248,7 @@ export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
  */
 export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
   'analysis.system': [ANALYSIS_SYSTEM_V1],
-  'narrative.system': [NARRATIVE_SYSTEM_V1],
+  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2],
 }
 
 /**
