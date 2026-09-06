@@ -6,6 +6,44 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.0] — 2026-09-06
+
+### Added
+
+- **A 12-month cashflow forecast** ([#49](https://github.com/nrosier/Balancr/issues/49)).
+  A new `/forecast` page projects the checking balance forward a year from
+  recurring income and fixed-cost baselines, plus known quarterly and annual
+  bills placed in the actual month they land rather than smeared evenly across
+  the year. A balance chart and a table of upcoming non-monthly bills sit
+  alongside the usual freshness bar; an account with no aggregated month or no
+  net-worth snapshot yet sees an empty state rather than a zeroed-out forecast.
+- **Advice on where unbudgeted money should go**
+  ([#252](https://github.com/nrosier/Balancr/issues/252)). A category can now
+  be tagged `savings` or `investments` in Settings. Three new deterministic
+  findings read that tag: unbudgeted money fills an emergency-fund shortfall
+  from a tagged savings envelope first, routes what's left toward investments
+  once the fund is covered, and a withdrawal well above a tagged envelope's
+  usual baseline is flagged the same way an income change already is. None of
+  this is ever written back to Actual.
+- **A way to force a narrative rewrite** ([#226](https://github.com/nrosier/Balancr/issues/226)).
+  The insights page now offers a "Rewrite it anyway" control under a narrative
+  that already exists and isn't stale, using the same price-then-confirm flow
+  already used for writing the first review or refreshing a stale one.
+
+### Fixed
+
+- **A budget-amount proposal skewed low by the still-accumulating current month**
+  ([#251](https://github.com/nrosier/Balancr/issues/251)). The trailing average
+  behind a proposed amount is now built only from finished months, so a partial
+  month no longer sits in the average's 60%-weighted "recent" bucket dragging
+  the suggestion down. Proposals are also now generated only for the current
+  month — a closed month has nothing left to act on.
+- **A narrative retry ceiling below the run's own cost estimate**
+  ([#248](https://github.com/nrosier/Balancr/issues/248)). The token ceiling
+  used on a truncated narrative's retry sat below the estimate the cost guard
+  itself assumes a narrative can need, so a retry that used exactly that much
+  could still be cut off. The retry ceiling now tracks the same estimate.
+
 ## [0.10.8] — 2026-09-06
 
 ### Fixed
