@@ -42,7 +42,13 @@ import { saveHousehold } from '../../src/domain/benchmark/household.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
-const ENDPOINTS = ['/api/overview', '/api/budget', '/api/portfolio', '/api/insights'] as const
+const ENDPOINTS = [
+  '/api/overview',
+  '/api/budget',
+  '/api/portfolio',
+  '/api/forecast',
+  '/api/insights',
+] as const
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -381,6 +387,25 @@ describe('GET /api/portfolio', () => {
     expect(body.totalValueCents).toBe(382_143)
     expect(body.investedValueCents).toBeNull()
     expect(body.cashValueCents).toBeNull()
+  })
+})
+
+describe('GET /api/forecast', () => {
+  it('projects twelve months forward from the latest aggregated one', async () => {
+    const body = (await get('/api/forecast')).json()
+
+    expect(body.forecast).not.toBeNull()
+    expect(body.forecast.startDate).toBe(SNAPSHOT_DATE)
+    expect(body.forecast.startBalanceCents).toBe(1_240_000)
+    expect(body.forecast.months).toHaveLength(12)
+    expect(body.forecast.months[0].month).toBe('2026-09')
+    expect(body.forecast.months.at(-1).month).toBe('2027-08')
+  })
+
+  it('is null on a deployment with a month but no net-worth snapshot', async () => {
+    ctx.db.run(sql`DELETE FROM net_worth_snapshots`)
+    const body = (await get('/api/forecast')).json()
+    expect(body.forecast).toBeNull()
   })
 })
 
@@ -933,6 +958,9 @@ describe('a deployment that has never run a job', () => {
     // No allocation is not a portfolio at every floor: it is a portfolio nobody has
     // synced yet, and four suggestions to buy would be the app's first act.
     expect(portfolio.advice).toBeNull()
+
+    const forecast = (await get('/api/forecast')).json()
+    expect(forecast.forecast).toBeNull()
   })
 
   it('does not describe an empty deployment as stale', async () => {

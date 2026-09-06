@@ -68,6 +68,18 @@ export const IconPortfolio = (props: IconProps): ReactNode =>
     props,
   )
 
+/** Forecast — a calendar with an arrow running past its edge, into the months ahead. */
+export const IconForecast = (props: IconProps): ReactNode =>
+  svg(
+    <>
+      <rect x="2.5" y="4.5" width="11" height="12" rx="1.5" />
+      <path d="M5.5 2.5v4M10 2.5v4" />
+      <path d="M5.5 10.5h4M5.5 13.5h2.5" />
+      <path d="M13.5 12.5H18M15.5 9.5 18 12.5l-2.5 3" />
+    </>,
+    props,
+  )
+
 /** Insights — a remark worth reading. */
 export const IconInsights = (props: IconProps): ReactNode =>
   svg(

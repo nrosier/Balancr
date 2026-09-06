@@ -12,6 +12,7 @@
 import type { ReactNode } from 'react'
 import {
   IconBudget,
+  IconForecast,
   IconInsights,
   IconOverview,
   IconPortfolio,
@@ -19,6 +20,7 @@ import {
   type IconProps,
 } from './shell/icons.tsx'
 import { Budget } from './pages/Budget.tsx'
+import { Forecast } from './pages/Forecast.tsx'
 import { Insights } from './pages/Insights.tsx'
 import { Overview } from './pages/Overview.tsx'
 import { Portfolio } from './pages/Portfolio.tsx'
@@ -45,6 +47,7 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/', labelKey: 'nav.overview', Icon: IconOverview, Page: Overview },
   { path: '/budget', labelKey: 'nav.budget', Icon: IconBudget, Page: Budget, nested: true },
   { path: '/portfolio', labelKey: 'nav.portfolio', Icon: IconPortfolio, Page: Portfolio, nested: true },
+  { path: '/forecast', labelKey: 'nav.forecast', Icon: IconForecast, Page: Forecast },
   { path: '/insights', labelKey: 'nav.insights', Icon: IconInsights, Page: Insights, nested: true },
   { path: '/settings', labelKey: 'nav.settings', Icon: IconSettings, Page: Settings, nested: true },
 ]
