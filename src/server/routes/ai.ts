@@ -165,6 +165,13 @@ const narrativeRequest = z.strictObject({
       message: 'unsupported locale',
     })
     .optional(),
+  /**
+   * Rewrite a month that already has a narrative, even though nothing about it has
+   * changed — e.g. after switching the deep model or editing the narrative prompt
+   * (#226). Off by default, mirroring `aiRefreshRequest.force` above: an explicit
+   * opt-in to pay the deep model again for the same month.
+   */
+  force: z.boolean().optional(),
 })
 
 /**
@@ -359,11 +366,10 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    * analysis — so it is priced by `GET /api/ai/estimate?kind=narrative` first and pressed
    * twice on the page.
    *
-   * **The month must have ended.** `runNarrative` caches per `(period, locale)` and
-   * nothing this file exposes can force a rewrite, so a review of September bought on the
-   * 4th would be September's review permanently, written from a tenth of the month, with
-   * no marker on the page to say so. A `409`: the request is well formed, the month is
-   * simply not finished, and it will work on the 1st. See `monthHasEnded`.
+   * **The month must have ended**, `force` or not: a review of September bought on the
+   * 4th would describe a tenth of the month with no marker on the page to say so. A
+   * `409`: the request is well formed, the month is simply not finished, and it will
+   * work on the 1st. See `monthHasEnded`.
    *
    * Awaited rather than queued, unlike `/api/ai/refresh`. That endpoint starts the whole
    * nightly pass and belongs behind the one-at-a-time claim; this writes one row for one
@@ -384,7 +390,12 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       throw conflict(`${body.period} has not ended yet, so there is nothing to review.`)
     }
 
-    const outcome = await runNarrative(db, { period: body.period, locale, userId: user.id })
+    const outcome = await runNarrative(db, {
+      period: body.period,
+      locale,
+      userId: user.id,
+      force: body.force ?? false,
+    })
 
     const response: AiNarrativeRun = aiNarrativeRunSchema.parse({
       status: outcome.status,
