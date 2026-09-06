@@ -1,13 +1,12 @@
 /**
  * A floor for the checking balance, twelve months out — #49.
  *
- * "Floor" rather than "prediction": this projects only income and fixed costs
- * that are already classified as such, plus a known annual/quarterly/irregular
- * bill placed in the month it actually lands. Variable and discretionary
- * spending are left out on purpose — the issue asks for recurring income,
- * fixed costs and known annual bills, not a forecast of everything, and
- * folding in noisy categories would turn a number worth trusting into one
- * that just looks precise.
+ * "Floor" rather than "prediction": this leans on income and fixed costs
+ * that are already classified as such, plus a known annual or quarterly bill
+ * placed in the month it actually lands, wherever that classification exists.
+ * Everything else a household actually spends still leaves the account, so
+ * it is covered too — see the average-spend paragraph below — just at a
+ * coarser, blended precision than a tagged category or a detected bill gets.
  *
  * Everything here is read from tables a job already wrote — `category_meta`,
  * `monthly_category_facts` and `net_worth_snapshots` — the same convention
@@ -21,22 +20,43 @@
  * already calls "usual" — reusing it here rather than a second average keeps
  * the two screens from disagreeing about what "usual" means.
  *
- * **A quarterly/annual/irregular category** is different: `baseline.ts`
- * deliberately smooths it into a monthly rate, because for judging "is this a
- * lot?" a yearly premium is not a spike. A forecast wants the opposite — the
- * whole point of showing a bill on a timeline is the month it actually hits,
- * not an averaged trickle across all twelve. So this instead finds the most
- * recent month the category actually had a non-zero spend, and repeats that
- * amount forward at the cadence's own step size (`FREQUENCY_WINDOW`, the same
- * map `baseline.ts` uses to size its averaging window) until the occurrences
- * run past the horizon.
+ * **A quarterly or annual category** is different: `baseline.ts` deliberately
+ * smooths it into a monthly rate, because for judging "is this a lot?" a
+ * yearly premium is not a spike. A forecast wants the opposite — the whole
+ * point of showing a bill on a timeline is the month it actually hits, not an
+ * averaged trickle across all twelve. So this instead finds the most recent
+ * month the category actually had a non-zero spend, and repeats that amount
+ * forward at the cadence's own step size (`FREQUENCY_WINDOW`, the same map
+ * `baseline.ts` uses to size its averaging window) until the occurrences run
+ * past the horizon.
+ *
+ * **`irregular` is excluded from that repetition on purpose.** It means "no
+ * known cadence" — `baseline.ts` borrows the annual window for it only to
+ * size its own smoothing, not as a claim that the cost recurs every twelve
+ * months. A one-off bonus or gift tagged `irregular` is real income, once;
+ * projecting its exact amount forward every year would manufacture income
+ * that was never promised to recur.
+ *
+ * **Everything else — spend not tagged `fixed` or `income` at all — still
+ * has to leave the account.** Rather than requiring every category to be
+ * tagged before it counts (most households will not have tagged more than a
+ * handful), the household's own already-computed average total spend
+ * (the same EWMA `household.ts` uses for the emergency-fund cushion) is
+ * added as a flat monthly cost on top of the tagged categories and bills
+ * above. It is a coarser number than a per-category baseline — it re-averages
+ * some of the same noisy discretionary spend a `fixed`-tagged category and a
+ * known bill already count precisely — but a floor that ignores most of a
+ * household's real spending is a worse trade than a floor that double-counts
+ * a little of it.
  */
+import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { addMonths, monthsBetween } from '../../util/month.ts'
-import { FREQUENCY_WINDOW } from './baseline.ts'
+import { ewma, FREQUENCY_WINDOW } from './baseline.ts'
 import { loadCategoryMeta, loadCategoryTrends, loadFacts } from './facts.ts'
-import { latestStoredMonth } from './month-store.ts'
+import { latestStoredMonth, loadTrailingTotals } from './month-store.ts'
 import { loadLatestNetWorth } from './networth-store.ts'
+import { loadParams } from './params.ts'
 
 /** Months projected forward from the latest aggregated month. */
 export const FORECAST_HORIZON_MONTHS = 12
@@ -113,6 +133,8 @@ export function projectCashflow(db: Db): Forecast | null {
   for (const [categoryId, row] of meta) {
     if (row.hidden) continue
     if (row.nature !== 'income' && row.nature !== 'fixed') continue
+    // No known cadence to repeat forward at — see the module doc comment.
+    if (row.expectedFrequency === 'irregular') continue
 
     if (row.expectedFrequency !== 'monthly') {
       nonMonthly.push(categoryId)
@@ -163,9 +185,21 @@ export function projectCashflow(db: Db): Forecast | null {
     }
   }
 
+  const totalsHistory = loadTrailingTotals(db, anchor, config.JOBS_HISTORY_MONTHS)
+  const typicalSpendCents =
+    totalsHistory.length > 0
+      ? Math.round(
+          ewma(
+            totalsHistory.map((entry) => entry.spentCents),
+            loadParams(db).baseline.halfLifeMonths,
+          ),
+        )
+      : 0
+
   let balanceCents = netWorth.liquidCents
   const orderedMonths = horizon.map((month) => {
     const bucket = months.get(month) as ForecastMonth
+    bucket.fixedCents += typicalSpendCents
     bucket.netCents = bucket.incomeCents - bucket.fixedCents
     balanceCents += bucket.netCents
     bucket.balanceCents = balanceCents
