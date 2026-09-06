@@ -82,6 +82,14 @@ export const AUDIT_ACTIONS = [
    */
   'settings.custodyShared',
   /**
+   * A category tagged as a savings or investments envelope, or untagged (#252).
+   *
+   * Its own action for the same reason `settings.custodyShared` has one: same
+   * table, same screen, a trail that should say which column changed rather than
+   * leaving a reader to open the payload to find out.
+   */
+  'settings.nature',
+  /**
    * The running "what's coming up" note (#217).
    *
    * Belongs on this list for the same reason as every other settings write: it is

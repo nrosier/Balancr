@@ -21,6 +21,7 @@ import { hygieneSignals, type AccountReconciliation, type HygieneScore } from '.
 import { benchmarkSignals, categorySignals, sortSignals, type Signal } from './overspend.ts'
 import type { AggregateParams } from './params.ts'
 import type { NetWorthSummary } from './networth.ts'
+import type { SavingsAggregate } from './savings-context.ts'
 import type {
   MonthlyFact,
   MonthTotals,
@@ -62,6 +63,12 @@ export interface SignalInput {
    * reads the category flags and a settings row, and this module is pure.
    */
   custody: CustodySplit
+  /**
+   * This month's savings/investments envelopes (#252), or an unavailable reason.
+   * Pre-computed by the caller for the same reason `benchmark` and `custody` are:
+   * it reads the category mapping, and this module is pure.
+   */
+  savings: SavingsAggregate
   /**
    * How long each portfolio class has been outside its band, or null (#183).
    *
@@ -127,6 +134,7 @@ export function computeSignals(input: SignalInput): SignalResult {
       spendHistory: toValues(totalsHistory, (month) => month.spentCents),
       netWorth: input.netWorth,
       netWorthHistory: input.netWorthHistory,
+      savings: input.savings,
       params: input.params,
     }),
     ...benchmarkSignals(input.benchmark, input.params),
