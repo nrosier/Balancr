@@ -62,9 +62,6 @@ export type NarrativeRow = typeof aiNarratives.$inferSelect
  */
 export const MAX_OUTPUT_TOKENS = 1_800
 
-/** One escalation, not open-ended retrying, for a call that hit `MAX_OUTPUT_TOKENS`. */
-export const MAX_OUTPUT_TOKENS_RETRY = MAX_OUTPUT_TOKENS * 2
-
 /**
  * What one narrative is assumed to cost in output tokens, for the guard.
  *
@@ -74,6 +71,17 @@ export const MAX_OUTPUT_TOKENS_RETRY = MAX_OUTPUT_TOKENS * 2
  * overstating it errs toward the banner rather than toward an overspend.
  */
 export const EXPECTED_OUTPUT_TOKENS = 6_000
+
+/**
+ * One escalation, not open-ended retrying, for a call that hit `MAX_OUTPUT_TOKENS`.
+ *
+ * At least `EXPECTED_OUTPUT_TOKENS` rather than a flat multiple of the base ceiling
+ * (#248): a plain `MAX_OUTPUT_TOKENS * 2` (3,600) sat below what the cost guard
+ * above already assumes a narrative can need, so a run whose thinking used exactly
+ * as much as `EXPECTED_OUTPUT_TOKENS` anticipated would still be truncated on the
+ * retry. Tying the two together means raising one estimate raises the other.
+ */
+export const MAX_OUTPUT_TOKENS_RETRY = EXPECTED_OUTPUT_TOKENS
 
 /**
  * Slightly above the default 0.2.
