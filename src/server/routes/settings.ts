@@ -64,11 +64,6 @@ import {
   loadHousehold,
   saveHousehold,
 } from '../../domain/benchmark/household.ts'
-import {
-  loadUpcomingNote,
-  saveUpcomingNote,
-  UPCOMING_NOTE_KEY,
-} from '../../domain/ai/upcoming-note.ts'
 import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
 import {
   COICOP_CHOICES,
@@ -242,18 +237,6 @@ const householdPatchRequest = z.strictObject({
    * how somebody ends up reading a split they thought they had removed.
    */
   sharedCostBp: z.number().int().nullable().optional(),
-})
-
-/**
- * The running "what's coming up" note (#217).
- *
- * The whole text, always: like the household roster, there is no partial-preserve
- * gesture on a single free-text field. The length bound lives in `upcomingNoteSchema`
- * and is enforced by `saveUpcomingNote`, the same division `householdPatchRequest`
- * explains.
- */
-const upcomingNotePatchRequest = z.strictObject({
-  text: z.string(),
 })
 
 /**
@@ -559,7 +542,6 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       usedBp: budget.usedBp,
       exceeded: budget.exceeded,
       history: loadSpendHistory(db),
-      upcomingNote: loadUpcomingNote(db).text,
     },
   })
 }
@@ -734,41 +716,6 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       // The whole roster both ways. It is a handful of small rows, and the question the
       // trail answers is "who was the household when that comparison was drawn".
-      before,
-      after,
-    })
-
-    return buildSettings(db, request)
-  })
-
-  /**
-   * The running "what's coming up" note the budget-amount proposal can read (#217).
-   *
-   * Takes effect immediately, for the next AI nudge run — it changes nothing about
-   * `suggestBudgetAmounts` itself, which never reads this row.
-   */
-  app.patch('/api/settings/upcoming-note', (request: FastifyRequest) => {
-    const user = requireOwner(request)
-    const patch = parseBody(upcomingNotePatchRequest, request.body)
-
-    const before = loadUpcomingNote(db)
-    let after
-    try {
-      after = saveUpcomingNote(db, patch)
-    } catch (error) {
-      // The length bound can only be checked once trimmed, so it fails here rather than
-      // in `parseBody` — same division as the household roster.
-      if (error instanceof z.ZodError) {
-        throw invalidBody('The request body was not valid.', fieldIssues(error))
-      }
-      throw error
-    }
-
-    recordAudit(db, {
-      action: 'settings.upcomingNote',
-      entity: 'settings',
-      entityRef: UPCOMING_NOTE_KEY,
-      actorId: user.id,
       before,
       after,
     })

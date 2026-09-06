@@ -4,9 +4,10 @@
  *
  * `suggestBudgetAmounts` (#45) only ever looks backward at a category's own
  * history, so it has no way to know a dentist bill or an annual renewal is
- * coming. This is the *optional*, owner-priced pass that reads the running
- * "what's coming up" note (`upcoming-note.ts`) beside those suggestions and may
- * adjust one — without touching the deterministic generator at all.
+ * coming, or that this month's own total was thrown off by a one-off. This is
+ * the *optional*, owner-priced pass that reads that month's own note
+ * (`month-note.ts`) beside those suggestions and may adjust one — without
+ * touching the deterministic generator at all.
  *
  * Same shape as `category-guess.ts`'s single-shot call: opaque labels
  * (`redactBudgetNudgeBatch`), a closed vocabulary (`nudgeJsonSchema`), and an
@@ -49,7 +50,7 @@ import {
 } from './proposals.ts'
 import { redactBudgetNudgeBatch, type NudgeCandidateInput, type NudgeRedaction } from './redact.ts'
 import { recordRun } from './runs.ts'
-import { loadUpcomingNote } from './upcoming-note.ts'
+import { loadMonthNote } from './month-note.ts'
 
 const log = logger.child({ module: 'ai.budget-nudge' })
 
@@ -191,7 +192,7 @@ function prepareNudgeBatch(db: Db, month: string, locale: string): NudgeRedactio
   }
   if (inputs.length === 0) return null
 
-  const note = loadUpcomingNote(db).text
+  const note = loadMonthNote(db, month)
   return redactBudgetNudgeBatch(inputs, categoryMetaById, month, locale, note)
 }
 
@@ -222,7 +223,7 @@ export function estimateBudgetNudge(
     reason,
   })
 
-  if (loadUpcomingNote(db).text.trim() === '') return refused('no_note')
+  if (loadMonthNote(db, options.month).trim() === '') return refused('no_note')
 
   const redaction = prepareNudgeBatch(db, options.month, locale)
   if (redaction === null) return refused('no_candidates')
@@ -256,8 +257,8 @@ export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promi
   const now = options.now ?? new Date()
   const month = options.month
 
-  if (loadUpcomingNote(db).text.trim() === '') {
-    log.info({ month }, 'no upcoming note; budget nudge skipped')
+  if (loadMonthNote(db, month).trim() === '') {
+    log.info({ month }, 'no month note; budget nudge skipped')
     return {
       status: 'skipped',
       reason: 'no_note',
