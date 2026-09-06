@@ -757,6 +757,15 @@ describe('the section tabs (#230)', () => {
     renderApp(<Budget />, { path: '/budget/nonsense' })
     await screen.findByText('€ 3.100')
   })
+
+  it('has its own Notes tab, separate from Overview (#270)', async () => {
+    serve(json(FULL))
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
+
+    expect(screen.getByRole('link', { name: 'Notes' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.queryByText('€ 3.100')).toBeNull()
+  })
 })
 
 describe('the month picker', () => {
@@ -774,11 +783,7 @@ describe('the month picker', () => {
 
     fireEvent.change(picker, { target: { value: '2026-07' } })
     await waitFor(() => {
-      expect(paths(mock)).toEqual([
-        '/api/budget',
-        '/api/budget/note?month=2026-08',
-        '/api/budget?month=2026-07',
-      ])
+      expect(paths(mock)).toEqual(['/api/budget', '/api/budget?month=2026-07'])
     })
   })
 
@@ -804,7 +809,7 @@ describe('the month note', () => {
       '/api/budget': json(FULL),
       '/api/budget/note?month=2026-08': json({ text: 'Replaced the dishwasher this month.' }),
     })
-    renderApp(<Budget />)
+    renderApp(<Budget />, { path: '/budget/notes' })
 
     expect(await screen.findByDisplayValue('Replaced the dishwasher this month.')).toBe(noteBox())
     expect(mock.mock.calls.map((call) => String(call[0]))).toContain('/api/budget/note?month=2026-08')
@@ -815,8 +820,8 @@ describe('the month note', () => {
       '/api/budget': json(FULL),
       '/api/budget/note?month=2026-08': json({ text: '' }),
     })
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
 
     expect(saveNote().disabled).toBe(true)
   })
@@ -827,8 +832,8 @@ describe('the month note', () => {
       '/api/budget/note?month=2026-08': json({ text: '' }),
       '/api/budget/note': json({ text: 'Replaced the dishwasher this month.' }),
     })
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
 
     fireEvent.change(noteBox(), { target: { value: '  Replaced the dishwasher this month.  ' } })
     expect(saveNote().disabled).toBe(false)
@@ -851,8 +856,8 @@ describe('the month note', () => {
       '/api/budget': json({ ...FULL, owner: false } satisfies BudgetPayload),
       '/api/budget/note?month=2026-08': json({ text: '' }),
     })
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
 
     expect(screen.getByText('Only the owner can change this.')).toBeTruthy()
     expect(noteBox().disabled).toBe(true)
@@ -866,8 +871,8 @@ describe('the month note', () => {
       '/api/budget/note': json({ text: 'Replaced the dishwasher this month.' }),
       '/api/budget/note?month=2026-09': json({ text: '' }),
     })
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
 
     fireEvent.change(noteBox(), { target: { value: 'Replaced the dishwasher this month.' } })
     expect(stepNext().disabled).toBe(true)
