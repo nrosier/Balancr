@@ -6,6 +6,79 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.5] — 2026-09-07
+
+### Added
+
+- **A shared cost says which side of it lands in Actual**
+  ([#289](https://github.com/nrosier/Balancr/issues/289)). A €600 line flagged as
+  shared with a co-parent is either a whole invoice you bear 60% of, or your 60%
+  of a €1.000 cost — and nothing in the data distinguishes them. Balancr assumed
+  the first, which on the other arrangement applies the share twice: €700 paid at
+  a stated 70% was reported as €490 borne with €210 owed to you, when the truth is
+  €1.000 in total, €700 yours, and nothing owed by anybody. Settings → Benchmark →
+  Household now has a picker for it, with a note quoting your share back in
+  whichever reading is selected, and the budget card's lede, caption, column
+  heading and stated assumption all change with it. A gross-up is a weaker claim
+  than a discount — one divides a figure Actual holds, the other infers one it has
+  never held — so the card says so outright. Actual's own figure is untouched in
+  both directions, and "shared costs are N% of what you spent" stays measured
+  against what the account actually holds, or a grossed-up total would push it
+  past 100%. Every roster already saved reads exactly as it did.
+
+- **The average Belgian household ships filled in, and can be corrected**
+  ([#290](https://github.com/nrosier/Balancr/issues/290)). The euro comparison was
+  built and switched off: `reference_household` shipped commented out, so a
+  configured roster changed the numbers on screen not at all, because in the
+  fallback mix basis a household's size cancels out algebraically. It now carries
+  the 2024 Household Budget Survey's figures — spending per household over twelve
+  months, and a size of 1,5066 equivalent adults derived as spending per household
+  ÷ spending per consumption unit, which is the ratio that matches the modified
+  OECD scale the file already uses rather than the mean size in people the scale
+  exists to avoid. Confirming it meant opening the spreadsheet on the ten group
+  shares too: every line moved by at most 3 basis points, so the budget card's
+  "not yet confirmed at the source" caveat is gone. Balancr cannot fetch any of
+  this itself — no API, a download URL with a publication date in it, sheet labels
+  that move between editions — so Settings can correct it: both numbers or
+  neither, with a citation you type, never marked confirmed however carefully it
+  was read, stamped server-side, and reset clears the row rather than storing a
+  copy of the shipped file.
+
+### Fixed
+
+- **The narrative stopped costing two model calls per run**
+  ([#282](https://github.com/nrosier/Balancr/issues/282)). Every narrative logged
+  `hit MAX_TOKENS; retrying once at a higher ceiling`, so every narrative was two
+  calls: one that produced nothing usable and was billed in full, and one at the
+  retry ceiling that produced the answer. The ceiling was sized for the prose the
+  reader gets, but the deep model thinks first and its thoughts are billed as
+  output — so a ceiling sized for prose alone is one the model can exhaust without
+  answering. Cost goes down, not up: roughly 7.800 billed output tokens across two
+  calls becomes at most 8.000 across one, and the pre-flight estimate stops
+  understating a run.
+
+- **The household form says which box is wrong, which is empty, and why Save is
+  greyed out** ([#283](https://github.com/nrosier/Balancr/issues/283),
+  [#287](https://github.com/nrosier/Balancr/issues/287)). Add someone gave a row
+  with no year of birth, so the row was invalid, so the panel's only Save was
+  disabled — and nothing on screen said either of those things. The row printed a
+  number-format rule, which reads as a complaint about text nobody had typed, and
+  the disabled Save gave no reason at all. Each box now gets its own sentence
+  naming the box and the mistake it is most likely to be, a wrong box carries
+  `aria-invalid` and a red border tied to that sentence, and the reason Save is
+  disabled sits beside Save. An empty box is deliberately left unmarked: a row
+  from Add someone would otherwise announce itself as an error before you had
+  touched it.
+
+- **The Notes tab no longer shows a month picker that does nothing**
+  ([#281](https://github.com/nrosier/Balancr/issues/281)). It showed two month
+  selectors and only one of them worked — the toolbar picker refetched a payload
+  that tab renders nothing from, while the note kept the month it mounted with. An
+  inert control and a wasted request per click. Hidden on that tab rather than
+  removed, because Overview, Benchmark and Custody are all views of one month and
+  it is the only control they have; picking March on Overview and opening Notes
+  still opens March's note.
+
 ## [0.11.4] — 2026-09-07
 
 ### Added

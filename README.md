@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.4-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.5-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -962,9 +962,10 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.11.4` is the current release, work on top of the
+**Where it is now** — `0.11.5` is the current release, work on top of the
 `Forecasting and on-demand insight` milestone above, which is already closed.
-`1.0.0-rc.N` has started: the documentation pass is done, and what is left is a
+`1.0.0-rc.N` has started: the documentation pass is done, and one readability
+improvement to the savings rate is still open. What remains after that is a
 security-verification checklist and a reconciliation acceptance test — both of which
 have to run against a real Actual and Ghostfolio rather than a fixture, so they wait
 on that rather than on code.
