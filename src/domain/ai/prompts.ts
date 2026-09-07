@@ -186,9 +186,10 @@ ${NARRATIVE_SYSTEM_V1}
 `.trim()
 
 /**
- * The narrative prompt as it shipped for v0.11.2 and v0.11.3, kept byte for byte for the
- * reason `NARRATIVE_SYSTEM_V1` is: `seedPrompts` recognises it to deliver the note rule
- * below to installations that have already booted.
+ * The narrative prompt as it shipped from v0.11.2 through v1.0.0-rc.1, kept byte for byte
+ * for the reason `NARRATIVE_SYSTEM_V1` is: `seedPrompts` recognises it to deliver the
+ * rules below to installations that have already booted. It is therefore the body most
+ * running installations are on, which is what makes it the one that must not be edited.
  *
  * It is `NARRATIVE_SYSTEM_V2` with the opening sentence replaced — the PII fix, whose
  * reasoning is in V2's own comment — and it is where the eight rules were complete but
