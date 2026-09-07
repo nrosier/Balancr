@@ -757,7 +757,10 @@
    `.risk__fields` makes, at a narrower floor because a year is four characters.
    --------------------------------------------------------------------------- */
 
-.household {
+.household,
+/* The average-household correction: same column of fields, its own class so a test can
+   tell the two forms in this panel apart (#290). */
+.reference-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

@@ -39,6 +39,12 @@
  *    `settings/Property.tsx` (a property's value, a mortgage's balance and payment,
  *    a rental's rent — all figures the owner types into this settings form, not a
  *    spending report).
+ *  - `settings/Benchmark.tsx` — the average Belgian household's monthly spending (#290).
+ *    Published national statistics rather than this household's money, so there is
+ *    nothing about it to blur in the first place; and both calls are unwrappable anyway,
+ *    one filling an `<input value>` and one building a `{{amount}}` for a translated
+ *    sentence. Every figure on this panel that *is* the household's own still goes
+ *    through `<Money>`.
  *  - `pages/Budget.tsx`'s `pace.summary` — an aria-label on `PaceBar`, never rendered
  *    visually.
  */
@@ -67,6 +73,7 @@ const ALLOWED = new Set(
     'settings/Thresholds.tsx',
     'settings/Risk.tsx',
     'settings/Property.tsx',
+    'settings/Benchmark.tsx',
     'pages/Budget.tsx',
   ].map((path) => join(ROOT, path)),
 )

@@ -1,9 +1,9 @@
 /**
  * Everything a benchmark comparison needs that is not a month's spending (#43).
  *
- * The file, the household composition and the COICOP mapping are read from three
- * different places — a YAML path, a settings row, and the `category_meta` table — and both
- * callers need all three: the nightly signals job, which judges two months, and
+ * The file, the household composition and the COICOP mapping are read from four different
+ * places — a YAML path, two settings rows, and the `category_meta` table — and both callers
+ * need all of them: the nightly signals job, which judges two months, and
  * `GET /api/budget`, which draws the card. Loading them here means the two cannot end up
  * reading a different mapping from each other, and means the job reads the file once per
  * pass rather than once per month.
@@ -20,6 +20,7 @@ import { loadCategoryMeta } from '../aggregate/facts.ts'
 import { compareToBenchmark, type BenchmarkComparison, type SpendRow } from './compare.ts'
 import { loadHousehold, type Household } from './household.ts'
 import { benchmarkOrNull, type Benchmark } from './model.ts'
+import { applyReferenceOverride, loadReferenceOverride } from './reference.ts'
 
 export interface BenchmarkContext {
   /** Null when no file is configured, which is a supported state. */
@@ -34,7 +35,13 @@ export function benchmarkContext(db: Db): BenchmarkContext {
   for (const [categoryId, meta] of loadCategoryMeta(db)) {
     coicop.set(categoryId, meta.coicopCode)
   }
-  return { benchmark: benchmarkOrNull(), household: loadHousehold(db), coicop }
+  // The override is applied here rather than at either caller, because this is the one
+  // seam both of them pass through — the nightly signals job and `GET /api/budget`. Applied
+  // once at either end instead, the two could disagree about which average household they
+  // were comparing to, and the stored signals would be about a different reference from the
+  // card explaining them (#290).
+  const benchmark = applyReferenceOverride(benchmarkOrNull(), loadReferenceOverride(db))
+  return { benchmark, household: loadHousehold(db), coicop }
 }
 
 /** One month compared, given a context that was loaded once. */

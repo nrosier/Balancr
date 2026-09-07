@@ -29,6 +29,7 @@ import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadHousehold } from '../../src/domain/benchmark/household.ts'
+import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
@@ -353,6 +354,78 @@ describe('PATCH /api/settings/household', () => {
     const res = await send_({ members: [], sharedCostBp: 6_000 }, { token: viewer })
     expect(res.statusCode).toBe(403)
     expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+  })
+})
+
+describe('PATCH /api/settings/benchmark-reference', () => {
+  const send_ = (body: object, options?: { token?: string }) =>
+    patch('/api/settings/benchmark-reference', body, options)
+
+  /** Invented round figures, as everything in this repo's tests is. */
+  const reference = {
+    meanMonthlyCents: 400_000,
+    equivalentAdultsBp: 16_000,
+    citation: 'Statbel, Household Budget Survey 2026 — invented figures',
+  }
+
+  it('stores a correction, answers with it, and marks it unconfirmed (#290)', async () => {
+    const res = await send_({ reference })
+
+    expect(res.statusCode).toBe(200)
+    const payload = res.json<Settings>().benchmark
+    expect(payload.referenceOverride).toMatchObject(reference)
+    // The file's own figure is still on the wire beside it — it is what reset goes back
+    // to, and a correction whose starting point is invisible is one nobody can check.
+    expect(payload.file?.referenceHousehold?.status).toBe('confirmed')
+    expect(payload.file?.transcribed).toContain('reference_household')
+    expect(loadReferenceOverride(ctx.db)).toMatchObject(reference)
+  })
+
+  it('takes null as "use the file\'s figure again"', async () => {
+    await send_({ reference })
+    const res = await send_({ reference: null })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().benchmark.referenceOverride).toBeNull()
+    // Cleared rather than stored as a copy of the file: a copy would leave a permanent
+    // "not confirmed" caveat on a confirmed figure, and would ignore the next edition.
+    expect(res.json<Settings>().benchmark.file?.transcribed).not.toContain('reference_household')
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+  })
+
+  it('refuses a household smaller than one person, naming the field', async () => {
+    // The comparison divides by this number. Below one adult it scales a national
+    // average *up*, which is not a correction anybody meant to make.
+    const res = await send_({
+      reference: { ...reference, equivalentAdultsBp: 5_000 },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual([
+      'equivalentAdultsBp',
+    ])
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+  })
+
+  it('refuses a correction with no citation, because that is the whole provenance', async () => {
+    const res = await send_({ reference: { ...reference, citation: 'HBS' } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['citation'])
+  })
+
+  it('records the change with both figures, so a moved comparison can be traced', async () => {
+    await send_({ reference })
+    const entry = ctx.db.select().from(auditLog).all().at(-1)
+    expect(entry?.action).toBe('settings.benchmarkReference')
+    // No `before` row at all, because the file's figure applied — which is itself the
+    // answer to "what average household was that comparison drawn against".
+    expect(entry?.beforeJson).toBeNull()
+    expect(JSON.parse(entry?.afterJson ?? 'null')).toMatchObject(reference)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_({ reference }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
   })
 })
 
@@ -865,7 +938,10 @@ describe('the prompt editor', () => {
     })
     expect(res.statusCode).toBe(200)
 
-    const diff = res.json<{ stat: { added: number; removed: number }; lines: unknown[] }>()
+    const diff = res.json<{
+      stat: { added: number; removed: number }
+      lines: unknown[]
+    }>()
     expect(diff.lines.length).toBeGreaterThan(0)
     expect(diff.stat.added + diff.stat.removed).toBeGreaterThan(0)
     // A POST, because a prompt does not go in a query string — but it writes nothing.

@@ -75,6 +75,13 @@ import {
   saveNature,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
+import {
+  applyReferenceOverride,
+  clearReferenceOverride,
+  loadReferenceOverride,
+  REFERENCE_OVERRIDE_KEY,
+  saveReferenceOverride,
+} from '../../domain/benchmark/reference.ts'
 import { aiAvailability } from '../../domain/ai/availability.ts'
 import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
@@ -237,6 +244,28 @@ const householdPatchRequest = z.strictObject({
    * how somebody ends up reading a split they thought they had removed.
    */
   sharedCostBp: z.number().int().nullable().optional(),
+})
+
+/**
+ * A correction to the average household the level comparison scales (#290).
+ *
+ * One nullable object rather than three fields, because the domain rule is "both numbers or
+ * neither" and null is how the form says "go back to the file's figure". A partial patch
+ * would be a third state nobody asked for: half an override, scaling a national average by
+ * a number from one source against a total from another.
+ *
+ * `savedOn` is deliberately absent. The server stamps it, because a client that could
+ * choose the date could make a typed figure look permanently fresh — the same thing
+ * `verifiedDateSchema` refuses a future date in order to prevent.
+ */
+const referencePatchRequest = z.strictObject({
+  reference: z
+    .strictObject({
+      meanMonthlyCents: z.number().int(),
+      equivalentAdultsBp: z.number().int(),
+      citation: z.string(),
+    })
+    .nullable(),
 })
 
 /**
@@ -437,8 +466,13 @@ function riskProfileSetting(db: Db): Settings['advice'] {
  * transcription warning somebody had already answered by editing the file.
  */
 function benchmarkSetting(db: Db): Settings['benchmark'] {
+  // The *file's* benchmark, not the overridden one: the panel shows what an override is
+  // replacing beside the override itself, so a mistyped correction can be spotted against
+  // the figure it corrected (#290). Everything that draws a comparison reads
+  // `benchmarkContext`, which applies the override.
   const benchmark = benchmarkOrNull()
   const household = loadHousehold(db)
+  const override = loadReferenceOverride(db)
 
   return {
     file:
@@ -469,8 +503,21 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
               shareBp: group.share_bp,
               coicop: group.coicop,
             })),
-            hasReferenceHousehold: benchmark.referenceHousehold !== null,
-            transcribed: [...transcribedBlocks(benchmark)],
+            referenceHousehold:
+              benchmark.referenceHousehold === null
+                ? null
+                : {
+                    meanMonthlyCents: benchmark.referenceHousehold.mean_monthly_cents,
+                    equivalentAdultsBp: benchmark.referenceHousehold.equivalent_adults_bp,
+                    citation: benchmark.referenceHousehold.citation,
+                    sourceUrl: benchmark.referenceHousehold.source_url ?? null,
+                    lastVerified: benchmark.referenceHousehold.last_verified,
+                    status: benchmark.referenceHousehold.status,
+                  },
+            // Which blocks carry a caveat *as read*, so the panel and the budget card agree:
+            // an override is never confirmed, so overriding a confirmed figure adds
+            // `reference_household` to this list.
+            transcribed: [...transcribedBlocks(applyReferenceOverride(benchmark, override))],
           },
     household: {
       members: household.members.map((member) => ({
@@ -481,6 +528,15 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
       ...(household.selfLabel === undefined ? {} : { selfLabel: household.selfLabel }),
       sharedCostBp: household.sharedCostBp,
     },
+    referenceOverride:
+      override === null
+        ? null
+        : {
+            meanMonthlyCents: override.meanMonthlyCents,
+            equivalentAdultsBp: override.equivalentAdultsBp,
+            citation: override.citation,
+            savedOn: override.savedOn,
+          },
     outsideCode: '00',
     categories: loadMapping(db, latestStoredMonth(db)),
   }
@@ -716,6 +772,54 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       // The whole roster both ways. It is a handful of small rows, and the question the
       // trail answers is "who was the household when that comparison was drawn".
+      before,
+      after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * A correction to the average household the level comparison scales (#290).
+   *
+   * Takes effect immediately, like the roster and for the same reason: the comparison is
+   * computed per request, so the budget card scales against the new figure on its next
+   * load. Stored signals are not rewritten — a signal is a judgement made at a time — and
+   * the next nightly pass restates them against the corrected reference.
+   *
+   * Sending `reference: null` clears the override rather than storing an empty one, so the
+   * file's figure applies again. That is the only way back, and it is why the field is
+   * nullable rather than three optional numbers.
+   */
+  app.patch('/api/settings/benchmark-reference', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const { reference } = parseBody(referencePatchRequest, request.body)
+
+    const before = loadReferenceOverride(db)
+    let after: typeof before = null
+    if (reference !== null) {
+      try {
+        after = saveReferenceOverride(db, reference)
+      } catch (error) {
+        // The bounds — a positive total, a household of at least one on the scale, a
+        // citation long enough to name something — are checked against the parsed object
+        // rather than in `parseBody`, the same division as the roster and the bands.
+        if (error instanceof z.ZodError) {
+          throw invalidBody('The request body was not valid.', fieldIssues(error))
+        }
+        throw error
+      }
+    } else {
+      clearReferenceOverride(db)
+    }
+
+    recordAudit(db, {
+      action: 'settings.benchmarkReference',
+      entity: 'settings',
+      entityRef: REFERENCE_OVERRIDE_KEY,
+      actorId: user.id,
+      // Both figures both ways, and null for "the file's figure applies". The question the
+      // trail answers is "what average household was that comparison drawn against".
       before,
       after,
     })
