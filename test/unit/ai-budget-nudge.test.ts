@@ -11,7 +11,7 @@
  * a per-item `ProposalError` — a no-op amount — does not fail the rest of the
  * batch.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
@@ -23,9 +23,13 @@ import {
   createProposal,
   encodeBudgetTarget,
   pendingBudgetProposals,
+  renderProposal,
+  storedWhy,
+  type ProposalRow,
 } from '../../src/domain/ai/proposals.ts'
 import { recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
+import { initI18n } from '../../src/i18n/index.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
@@ -34,6 +38,11 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
 }))
 
 const MONTH = '2026-03'
+
+/** `renderProposal` reads the catalogues, and `t()` throws on a missing key outside production. */
+beforeAll(async () => {
+  await initI18n()
+})
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
@@ -275,6 +284,72 @@ describe('runBudgetNudge', () => {
     expect(outcome.status).toBe('ok')
     expect(outcome.dropped).toEqual([{ label: 'c9', amountCents: 18_000, reason: 'unknown_label' }])
     expect(outcome.adjusted).toBe(0)
+  })
+
+  /**
+   * #273 — the reason the model gives for moving an amount.
+   *
+   * Two rules, and both matter more than the sentence itself: a reason is never
+   * worth an amount (an unusable one is blanked, the adjustment still stands), and
+   * the fallback is deterministic, so no adjusted card is ever left with nothing to
+   * say for itself.
+   */
+  describe('the reason it stores', () => {
+    const nudgeWithReason = async (reason: string): Promise<ProposalRow> => {
+      saveMonthNote(db, MONTH, 'Replacing the washing machine in March, about 400 euros.')
+      await seedBudgetProposal('food', MONTH, 15_000)
+      fakeGemini(
+        JSON.stringify({ adjustments: [{ label: 'c1', amountCents: 18_000, reason }] }),
+      )
+
+      const outcome = await runBudgetNudge(db, { month: MONTH })
+      expect(outcome.adjusted).toBe(1)
+      return pendingBudgetProposals(db, MONTH)[0] as ProposalRow
+    }
+
+    it("keeps the model's own sentence, tagged with the locale it was written in", async () => {
+      const row = await nudgeWithReason('Your note mentions replacing the washing machine.')
+
+      expect(storedWhy(row)).toEqual({
+        source: 'ai',
+        text: 'Your note mentions replacing the washing machine.',
+        locale: 'en',
+      })
+    })
+
+    it('collapses the whitespace the model wrapped its sentence in', async () => {
+      const row = await nudgeWithReason('  A new\n  washing machine.  ')
+
+      expect(storedWhy(row)).toMatchObject({ source: 'ai', text: 'A new washing machine.' })
+    })
+
+    it.each([
+      ['no reason at all', ''],
+      ['a reason that is only whitespace', '   '],
+      ['a reason past the character bound', 'x'.repeat(200)],
+      ['a reason that leaks a redaction label', 'c1 needs more this month.'],
+    ])('falls back to the deterministic sentence given %s, and still adjusts', async (_label, reason) => {
+      const row = await nudgeWithReason(reason)
+
+      expect(storedWhy(row)).toEqual({
+        source: 'rule',
+        code: 'note_adjusted',
+        params: { month: MONTH },
+      })
+      expect(renderProposal(db, row, 'en').explanation).toBe(
+        'Adjusted after reading your note for March 2026.',
+      )
+    })
+
+    it('asks the model for a reason, and says how long it may be', async () => {
+      saveMonthNote(db, MONTH, 'Dentist bill in March.')
+      await seedBudgetProposal('food', MONTH, 15_000)
+      const recorded = fakeGemini('{"adjustments":[]}')
+
+      await runBudgetNudge(db, { month: MONTH })
+
+      expect(recorded.prompts[0]).toMatch(/Keep each reason under 160 characters/)
+    })
   })
 
   it('does not let one ProposalError abort the rest of the batch', async () => {

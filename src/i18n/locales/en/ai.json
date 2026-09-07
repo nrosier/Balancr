@@ -14,7 +14,7 @@
   "budgetNudge": {
     "cancel": "Not now",
     "confirm": "Spend {{cost}} and check the note",
-    "lede": "Reads your “what's coming up” note alongside next month's suggested budgets, and may adjust one of them for something the trailing average couldn't know about.",
+    "lede": "Reads this month's note alongside next month's suggested budgets, and may adjust one of them for something the trailing average couldn't know about.",
     "owner": "Only the owner can run this.",
     "price": "Checking {{month}} against the note would cost about {{cost}}.",
     "reason": {
@@ -23,7 +23,7 @@
       "estimate_exceeds_remaining": "A run would cost more than this month has left.",
       "month_budget_exceeded": "This month's AI budget is already spent.",
       "no_candidates": "There is no suggested budget for this month to adjust yet.",
-      "no_note": "The “what's coming up” note is empty, so there is nothing to check it against.",
+      "no_note": "This month's note is empty, so there is nothing to check the budgets against.",
       "ok": "Completed."
     },
     "resultOk": "Done. Check the suggested budgets below for what changed.",
@@ -196,6 +196,13 @@
     },
     "warn": {
       "privacy": "Applying this starts sending the category name to the AI."
+    },
+    "why": {
+      "above_norm_trailing": "Spending here has been running above your 12-month norm, so the amount is what the last {{months}} average out to.",
+      "note_adjusted": "Adjusted after reading your note for {{month}}.",
+      "overspent_trailing": "This envelope is already overspent, so the amount is what the last {{months}} of spending average out to.",
+      "owner_edit": "You set this amount yourself.",
+      "short_history": "There is not enough history here to average, so this is the envelope's 12-month norm."
     }
   },
   "title": "Insights",

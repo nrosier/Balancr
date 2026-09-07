@@ -104,6 +104,11 @@ export async function generateBudgetProposals(
         type: 'budget_amount.set',
         targetRef: encodeBudgetTarget(suggestion.categoryId, month),
         payload: { amountCents: suggestion.amountCents },
+        why: {
+          source: 'rule',
+          code: suggestion.why.code,
+          params: { months: suggestion.why.months },
+        },
       })
       created += 1
     } catch (error) {

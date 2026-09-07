@@ -102,13 +102,17 @@ describe('suggestBudgetAmounts', () => {
   it('falls back to the rounded baseline when there is no trailing spend history', () => {
     const facts = [fact({ id: 'c1', budgeted: 5_000, baseline: { baselineCents: 8_070 } })]
     const signals = [signal({ code: 'over_available', categoryId: 'c1' })]
-    expect(suggestBudgetAmounts(signals, facts, noHistory)).toEqual([{ categoryId: 'c1', amountCents: 8_100 }])
+    expect(suggestBudgetAmounts(signals, facts, noHistory)).toEqual([
+      { categoryId: 'c1', amountCents: 8_100, why: { code: 'short_history', months: 0 } },
+    ])
   })
 
   it('also triggers on above_baseline', () => {
     const facts = [fact({ id: 'c1', budgeted: 5_000, baseline: { baselineCents: 8_070 } })]
     const signals = [signal({ code: 'above_baseline', categoryId: 'c1' })]
-    expect(suggestBudgetAmounts(signals, facts, noHistory)).toEqual([{ categoryId: 'c1', amountCents: 8_100 }])
+    expect(suggestBudgetAmounts(signals, facts, noHistory)).toEqual([
+      { categoryId: 'c1', amountCents: 8_100, why: { code: 'short_history', months: 0 } },
+    ])
   })
 
   it('ignores signal codes that are not about budget calibration', () => {
@@ -156,7 +160,9 @@ describe('suggestBudgetAmounts', () => {
     // 9 older months at 10_000, 3 recent months at 20_000: 20_000*0.6 + 10_000*0.4 = 16_000.
     const history = [...Array(9).fill(10_000), ...Array(3).fill(20_000)]
     const trends = new Map([['c1', history]])
-    expect(suggestBudgetAmounts(signals, facts, trends)).toEqual([{ categoryId: 'c1', amountCents: 16_000 }])
+    expect(suggestBudgetAmounts(signals, facts, trends)).toEqual([
+      { categoryId: 'c1', amountCents: 16_000, why: { code: 'overspent_trailing', months: 12 } },
+    ])
   })
 
   it('averages the recent months alone when there is not yet 12 months of history', () => {
@@ -164,6 +170,42 @@ describe('suggestBudgetAmounts', () => {
     const signals = [signal({ code: 'over_available', categoryId: 'c1' })]
     // Only 2 months of history at all, both within the 3-month "recent" window.
     const trends = new Map([['c1', [12_000, 18_000]]])
-    expect(suggestBudgetAmounts(signals, facts, trends)).toEqual([{ categoryId: 'c1', amountCents: 15_000 }])
+    expect(suggestBudgetAmounts(signals, facts, trends)).toEqual([
+      { categoryId: 'c1', amountCents: 15_000, why: { code: 'overspent_trailing', months: 2 } },
+    ])
+  })
+
+  // The explanation on the card (#273) has to describe the amount beside it, so each
+  // of the three reasons is pinned to the path that actually produces it.
+  describe('the reason it reports (#273)', () => {
+    const facts = [fact({ id: 'c1', budgeted: 5_000, baseline: { baselineCents: 8_070 } })]
+
+    it('reports above_norm_trailing when the above_baseline signal fired and there was history', () => {
+      const signals = [signal({ code: 'above_baseline', categoryId: 'c1' })]
+      const trends = new Map([['c1', [12_000, 18_000]]])
+      expect(suggestBudgetAmounts(signals, facts, trends)[0]?.why).toEqual({
+        code: 'above_norm_trailing',
+        months: 2,
+      })
+    })
+
+    it('counts only the months the average looks at, not everything on file', () => {
+      const signals = [signal({ code: 'over_available', categoryId: 'c1' })]
+      // Three years of history: the weighting slices the last 12, so that is what
+      // the sentence may claim.
+      const trends = new Map([['c1', Array(36).fill(9_000) as number[]]])
+      expect(suggestBudgetAmounts(signals, facts, trends)[0]?.why).toEqual({
+        code: 'overspent_trailing',
+        months: 12,
+      })
+    })
+
+    it('reports months: 0 for short_history, since no month was averaged at all', () => {
+      const signals = [signal({ code: 'over_available', categoryId: 'c1' })]
+      expect(suggestBudgetAmounts(signals, facts, new Map([['c1', [] as number[]]]))[0]?.why).toEqual({
+        code: 'short_history',
+        months: 0,
+      })
+    })
   })
 })

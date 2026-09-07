@@ -22,6 +22,7 @@ import { and, eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, proposals, users } from '../../src/db/schema.ts'
+import { PROPOSAL_WHY_CODES } from '../../src/domain/ai/codes.ts'
 import { loadAuditTrail } from '../../src/domain/audit.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import {
@@ -40,6 +41,7 @@ import {
   rejectProposal,
   renderProposal,
   storedDiff,
+  storedWhy,
   type ProposalRow,
 } from '../../src/domain/ai/proposals.ts'
 import { formatMoney } from '../../src/i18n/format.ts'
@@ -286,6 +288,173 @@ describe('renderProposal', () => {
 
     expect(renderProposal(db, budgetRow, 'en').amountCents).toBe(15_000)
     expect(renderProposal(db, metaRow, 'en').amountCents).toBeNull()
+  })
+})
+
+/**
+ * #273 — the line that says why the proposal proposes that number.
+ *
+ * A rule-sourced reason is stored as a code and its numbers, so the same row has to
+ * read correctly in either language; a model-sourced one is prose and stays as
+ * written. Everything unreadable renders as no line at all, never as a throw: these
+ * rows are 30 days deep and a card that cannot say why must still be reviewable.
+ */
+describe('a proposal reason', () => {
+  const budgetProposal = (
+    why?: Parameters<typeof createProposal>[1]['why'],
+  ): Promise<ProposalRow> =>
+    createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: encodeBudgetTarget('food', MONTH),
+      payload: { amountCents: 15_000 },
+      runId,
+      now: NOW,
+      ...(why === undefined ? {} : { why }),
+    })
+
+  const rawExplanation = (id: string): string | null =>
+    (ctx.sqlite.prepare('select explanation_json as j from proposals where id = ?').get(id) as {
+      j: string | null
+    }).j
+
+  it('is stored on the row as the values it was given, not as a sentence', async () => {
+    const row = await budgetProposal({
+      source: 'rule',
+      code: 'overspent_trailing',
+      params: { months: 12 },
+    })
+
+    expect(storedWhy(row)).toEqual({
+      source: 'rule',
+      code: 'overspent_trailing',
+      params: { months: 12 },
+    })
+    expect(rawExplanation(row.id)).not.toMatch(/overspent,/)
+  })
+
+  it('reads the same stored reason back in either language', async () => {
+    const row = await budgetProposal({
+      source: 'rule',
+      code: 'overspent_trailing',
+      params: { months: 12 },
+    })
+
+    expect(renderProposal(db, row, 'en').explanation).toBe(
+      'This envelope is already overspent, so the amount is what the last 12 months of spending average out to.',
+    )
+    expect(renderProposal(db, row, 'nl').explanation).toBe(
+      'Deze envelope is al overschreden, dus het bedrag is het gemiddelde van de uitgaven van de laatste 12 maanden.',
+    )
+  })
+
+  it('pluralises the month count rather than printing a bare number', async () => {
+    const row = await budgetProposal({
+      source: 'rule',
+      code: 'above_norm_trailing',
+      params: { months: 1 },
+    })
+
+    expect(renderProposal(db, row, 'en').explanation).toMatch(/last 1 month\b/)
+  })
+
+  it('names the month in the reader language for a note-driven adjustment', async () => {
+    const row = await budgetProposal({
+      source: 'rule',
+      code: 'note_adjusted',
+      params: { month: MONTH },
+    })
+
+    expect(renderProposal(db, row, 'en').explanation).toBe(
+      'Adjusted after reading your note for March 2026.',
+    )
+    expect(renderProposal(db, row, 'nl').explanation).toBe(
+      'Aangepast na het lezen van je notitie voor maart 2026.',
+    )
+  })
+
+  it('leaves a model-written reason exactly as written, whatever language the reader picks', async () => {
+    const text = 'Your note mentions replacing the washing machine this month.'
+    const row = await budgetProposal({ source: 'ai', text, locale: 'en' })
+
+    expect(renderProposal(db, row, 'en').explanation).toBe(text)
+    expect(renderProposal(db, row, 'nl').explanation).toBe(text)
+  })
+
+  it('is null on a proposal nobody wrote a reason for', async () => {
+    const row = await propose({ nature: 'variable' })
+
+    expect(rawExplanation(row.id)).toBeNull()
+    expect(renderProposal(db, row, 'en').explanation).toBeNull()
+  })
+
+  // Each of these is a row already in the table when the code that reads it changed.
+  it.each([
+    ['unreadable JSON', '{not json'],
+    ['an unknown source', '{"source":"telepathy"}'],
+    ['a code this build has no sentence for', '{"source":"rule","code":"vibes"}'],
+    ['model prose that is empty once trimmed', '{"source":"ai","text":"   ","locale":"en"}'],
+    ['model prose with no locale', '{"source":"ai","text":"Because."}'],
+  ])('renders no line at all for %s, rather than throwing', async (_label, stored) => {
+    const row = await budgetProposal({ source: 'rule', code: 'short_history' })
+    ctx.sqlite.prepare('update proposals set explanation_json = ? where id = ?').run(stored, row.id)
+
+    const reloaded = loadProposal(db, row.id) as ProposalRow
+    expect(storedWhy(reloaded)).toBeNull()
+    expect(renderProposal(db, reloaded, 'en').explanation).toBeNull()
+  })
+
+  /**
+   * The whole catalogue, walked rather than sampled — the same reasoning as
+   * `ai-render.test.ts`'s finding walk. `check-i18n` proves every code has a sentence
+   * using the variable names its spec declares; it cannot see whether `WHY_VARS`
+   * actually produces those names from the params a producer stores. A mismatch there
+   * renders as `null`, and a missing explanation is a thing nobody notices.
+   */
+  describe('every code in the catalogue', () => {
+    // One bag for all codes: each reads only the params it declares, so a superset
+    // exercises them all, and a param no code reads shows up as a `null` render.
+    const ALL_PARAMS = { months: 6, month: MONTH }
+
+    for (const code of PROPOSAL_WHY_CODES) {
+      it(`${code} renders a real sentence in both languages`, async () => {
+        const row = await budgetProposal({ source: 'rule', code, params: ALL_PARAMS })
+
+        for (const lang of ['en', 'nl']) {
+          const text = renderProposal(db, row, lang).explanation
+          expect(text, `${code} [${lang}] did not render`).not.toBeNull()
+          // A `{{var}}` left in the output means the catalogue and `WHY_VARS`
+          // disagree about a variable name.
+          expect(text).not.toMatch(/\{\{/)
+          expect((text ?? '').length).toBeGreaterThan(0)
+        }
+      })
+    }
+  })
+
+  /**
+   * A structurally valid reason whose sentence needs a number it was not given.
+   * `storedWhy` still reads it — the row is not corrupt — and the rendering step is
+   * what declines, on the same rule the two signal renderers follow: no sentence
+   * beats a sentence with a hole in it.
+   */
+  it('reads a rule reason missing its number, but renders no line from it', async () => {
+    const row = await budgetProposal({ source: 'rule', code: 'short_history' })
+    ctx.sqlite
+      .prepare('update proposals set explanation_json = ? where id = ?')
+      .run('{"source":"rule","code":"overspent_trailing"}', row.id)
+
+    const reloaded = loadProposal(db, row.id) as ProposalRow
+    expect(storedWhy(reloaded)).toEqual({ source: 'rule', code: 'overspent_trailing' })
+    expect(renderProposal(db, reloaded, 'en').explanation).toBeNull()
+  })
+
+  it('drops model prose longer than the bound the nudge enforces', async () => {
+    const row = await budgetProposal({ source: 'rule', code: 'short_history' })
+    ctx.sqlite
+      .prepare('update proposals set explanation_json = ? where id = ?')
+      .run(JSON.stringify({ source: 'ai', text: 'x'.repeat(161), locale: 'en' }), row.id)
+
+    expect(renderProposal(db, loadProposal(db, row.id) as ProposalRow, 'en').explanation).toBeNull()
   })
 })
 
@@ -581,6 +750,25 @@ describe('adjustProposal', () => {
 
     expect(result).toEqual({ id: original.id, status: 'rejected' })
     expect(loadProposal(db, original.id)?.status).toBe('rejected')
+  })
+
+  it('says the owner set this amount, replacing whatever explained the old one (#273)', async () => {
+    const original = await createProposal(db, {
+      type: 'budget_amount.set',
+      targetRef: target,
+      payload: { amountCents: 15_000 },
+      runId,
+      now: NOW,
+      // A reason that describes the *suggested* amount. It must not survive onto a
+      // figure the owner typed themselves — that would be a card telling a lie.
+      why: { source: 'ai', text: 'Your note mentions a dentist visit.', locale: 'en' },
+    })
+
+    const result = await adjustProposal(db, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
+
+    const adjusted = loadProposal(db, result.id) as ProposalRow
+    expect(storedWhy(adjusted)).toEqual({ source: 'rule', code: 'owner_edit' })
+    expect(renderProposal(db, adjusted, 'en').explanation).toBe('You set this amount yourself.')
   })
 
   it('refuses a proposal that is not budget_amount.set', async () => {

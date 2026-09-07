@@ -14,7 +14,7 @@
   "budgetNudge": {
     "cancel": "Niet nu",
     "confirm": "{{cost}} uitgeven en de notitie nakijken",
-    "lede": "Leest je notitie “wat er nog aankomt” naast de voorgestelde budgetten voor volgende maand, en kan er één aanpassen voor iets waar het lopend gemiddelde geen weet van kon hebben.",
+    "lede": "Leest de notitie van deze maand naast de voorgestelde budgetten voor volgende maand, en kan er één aanpassen voor iets waar het lopend gemiddelde geen weet van kon hebben.",
     "owner": "Alleen de eigenaar kan dit uitvoeren.",
     "price": "{{month}} nakijken tegen de notitie zou ongeveer {{cost}} kosten.",
     "reason": {
@@ -23,7 +23,7 @@
       "estimate_exceeds_remaining": "Een run zou meer kosten dan er deze maand nog over is.",
       "month_budget_exceeded": "Het AI-budget van deze maand is al besteed.",
       "no_candidates": "Er is nog geen voorgesteld budget voor deze maand om aan te passen.",
-      "no_note": "De notitie “wat er nog aankomt” is leeg, dus er is niets om tegen te controleren.",
+      "no_note": "De notitie van deze maand is leeg, dus er is niets om de budgetten tegen te controleren.",
       "ok": "Afgerond."
     },
     "resultOk": "Klaar. Bekijk de voorgestelde budgetten hieronder voor wat er is aangepast.",
@@ -196,6 +196,13 @@
     },
     "warn": {
       "privacy": "Hierdoor wordt de naam van de categorie naar de AI gestuurd."
+    },
+    "why": {
+      "above_norm_trailing": "De uitgaven hier liggen boven je 12-maandsgemiddelde, dus het bedrag is het gemiddelde van de laatste {{months}}.",
+      "note_adjusted": "Aangepast na het lezen van je notitie voor {{month}}.",
+      "overspent_trailing": "Deze envelope is al overschreden, dus het bedrag is het gemiddelde van de uitgaven van de laatste {{months}}.",
+      "owner_edit": "Je hebt dit bedrag zelf ingesteld.",
+      "short_history": "Er is hier te weinig historiek om een gemiddelde te nemen, dus dit is het 12-maandsgemiddelde van de envelope."
     }
   },
   "title": "Inzichten",

@@ -240,6 +240,17 @@
   font-size: var(--type-xs);
 }
 
+/*
+ * Why the proposal proposes this (#273). Muted and small: it explains the diff above
+ * rather than competing with it, and it is the same `--text-muted` on `--surface` pair
+ * `.change__field` already uses, so `contrast:check` has nothing new to weigh.
+ */
+.queue__why {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+}
+
 /* The editable amount on a `budget_amount.set` card (#220) sits below the diff it edits. */
 .proposal__amount {
   max-width: 12rem;

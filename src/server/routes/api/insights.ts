@@ -142,6 +142,7 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
         createdAt: card.createdAt.toISOString(),
         expiresAt: card.expiresAt?.toISOString() ?? null,
         amountCents: card.amountCents,
+        explanation: card.explanation,
       }
     }),
     // Reported on every read rather than only once exceeded, so the number is

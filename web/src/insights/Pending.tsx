@@ -373,6 +373,14 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
                         </div>
                       ))}
                     </dl>
+                    {/*
+                      What changes, then why, then the box you can edit (#273). Already
+                      localised server-side, and a plain text child, so React escapes
+                      whatever the model wrote — no sanitising step of its own.
+                    */}
+                    {proposal.explanation === null ? null : (
+                      <p className="queue__why">{proposal.explanation}</p>
+                    )}
                     {proposal.type === 'budget_amount.set' && proposal.amountCents !== null ? (
                       <div className="field proposal__amount">
                         <label className="field__label" htmlFor={`proposal-amount-${proposal.id}`}>

@@ -17,7 +17,7 @@ import {
   generateBudgetProposals,
   generateCategoryProposals,
 } from '../../src/domain/ai/proposal-generators.ts'
-import { decodeBudgetTarget, pendingProposals } from '../../src/domain/ai/proposals.ts'
+import { decodeBudgetTarget, pendingProposals, storedWhy } from '../../src/domain/ai/proposals.ts'
 import { loadCategoryGuessCandidates } from '../../src/domain/aggregate/signals-store.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
@@ -238,6 +238,13 @@ describe('generateBudgetProposals', () => {
     // Finished months only (#251): recent 3 average 20_000, older 9 average 10_000,
     // MONTH's own (in-progress) 20_000 plays no part: 20_000*0.6 + 10_000*0.4
     expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 16_000 })
+    // The reason travels with it (#273), as values rather than a sentence, so the
+    // card reads correctly in whichever language it is eventually reviewed in.
+    expect(storedWhy(rows[0]!)).toEqual({
+      source: 'rule',
+      code: 'overspent_trailing',
+      params: { months: 12 },
+    })
   })
 
   it("does not let MONTH's own, still-accumulating spend skew the average (#251)", async () => {
