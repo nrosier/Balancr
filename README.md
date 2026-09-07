@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.1-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.2-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -986,19 +986,22 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.1` |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.2` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0-rc.1` is the current release, and every feature issue
-in the list above is closed. What remains before `1.0.0` is testing rather than
-building: two boxes of the security-verification checklist are unwalked — the cost
-cap's degrade path against a real key, and the rate limits under a deliberate burst —
-and the break-glass local login is unreachable in the topology this repo ships, which
-is safe in the security direction and a recovery path that does not work. The two boxes
-wait on somebody's own deployment rather than on code; the third waits on a choice
-between documenting the limitation and building a way around it.
+**Where it is now** — `1.0.0-rc.2` is the current release, and every feature issue in
+the list above is closed. It carries what walking `rc.1` against a real deployment
+turned up: five places the app knew something and did not say it, a rewrite button that
+returned the paragraph it was replacing, and a third answer for what an envelope sends
+to the AI — nothing in the request at all. What remains before `1.0.0` is still testing
+rather than building: two boxes of the security-verification checklist are unwalked —
+the cost cap's degrade path against a real key, and the rate limits under a deliberate
+burst — and the break-glass local login is unreachable in the topology this repo ships,
+which is safe in the security direction and a recovery path that does not work. The two
+boxes wait on somebody's own deployment rather than on code; the third waits on a
+choice between documenting the limitation and building a way around it.
 
 `docker pull` still resolves `latest` to the last stable release; a candidate is
 published under its own tag only.

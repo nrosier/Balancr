@@ -6,6 +6,86 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.2] — 2026-09-07
+
+Six fixes from walking `rc.1` against a real deployment, and one new setting. Four
+are places the app knew something and did not say it; one is a button that did
+nothing; the setting is a question the AI boundary could not previously answer.
+
+### Added
+
+- **A third answer per envelope: keep it out of the payload entirely**
+  ([#278](https://github.com/nrosier/Balancr/issues/278)). An envelope could be
+  ordinary or flagged sensitive, where sensitive still sent the figures under an
+  opaque label — on the argument that a number with no name attached is not private.
+  That argument is sound and it is not the whole of what somebody means when they ask
+  for a category to be left out of the AI. Settings → Benchmark → Categories now has
+  a "Sent to the AI" column with three choices, and the third excludes the envelope
+  from the request altogether: no name, no class, no amounts of its own, and no
+  finding, narrative sentence or budget suggestion about it. The month's totals are
+  *not* recomputed to hide it — a month whose figures do not add up is worse than a
+  labelled envelope — so what crosses instead is a count and one combined figure
+  saying how much was withheld, and both prompts are told the gap is a deliberate
+  choice rather than a data error, so no pass tries to work back to it. The cost is
+  stated rather than buried: an excluded envelope gets no advice of any kind.
+
+### Fixed
+
+- **The month in words reads the month's note**
+  ([#298](https://github.com/nrosier/Balancr/issues/298)). The note was collected,
+  stored, and read by the budget nudge, and never put in front of the narrative — so a
+  movement the household had already explained in writing came back described as
+  unexplained drift. The note now crosses on the narrative call and on no other: one
+  redaction produces two payloads differing in exactly that field, and the findings
+  pass is sent none of it, because the question of whether *it* should read a note is
+  one this issue deliberately left open and answering it silently would be worse than
+  leaving it open. A new prompt rule is the mirror of the one above it — the note
+  licenses an explanation and is never a source of figures — so a note saying "about
+  €400" cannot put €400 in a paragraph no computation produced, and a broken
+  dishwasher explains one month rather than starting a trend. Because a narrative is
+  cached per month, a reader who wrote the note *after* reading the review would have
+  got the same paragraph back; the page now compares the note a review was written
+  from with the note there is, and offers a rewrite the way it does for a moved fact. A
+  deleted note counts as changed, which matters more than an added one. And the one
+  field where what reaches Google is the owner's decision rather than the redactor's is
+  now said as much, in the panel hint and in the README.
+- **The stale-review rewrite handed back the paragraph it was replacing**
+  ([#306](https://github.com/nrosier/Balancr/issues/306)). The banner saying the facts
+  have moved since a review was written offered to re-run it, and posted without the
+  flag that replaces a cached row — so the button returned the very paragraph the
+  banner was complaining about, with no error and no clue that nothing had happened.
+  One prop was choosing both what the request sends and how the button reads.
+- **The custody tab says why there is no split**
+  ([#280](https://github.com/nrosier/Balancr/issues/280)). Two of the reasons a split
+  is unavailable drew an empty pane, which reads as a bug rather than as an answer.
+  That was defensible while the figures shared a page with an empty-month notice, and
+  stopped being so when the comparison moved behind a tab of its own. Each reason now
+  says its own thing, because two of them are somebody's own arrangement rather than a
+  fault and they do not deserve the same sentence.
+- **The Benchmark tab says why there is no comparison, for all four reasons**
+  ([#300](https://github.com/nrosier/Balancr/issues/300)). The same gap in the same
+  kind of pane one tab over, found by going looking for the first one's siblings.
+- **Overview's savings rate can be read over a period**
+  ([#296](https://github.com/nrosier/Balancr/issues/296)). The Budget page's card got
+  a period chooser in `0.11.6` and Overview's did not, because the server was not
+  sending the flows it needed. One calendar month is the reading most distorted by when
+  a salary or a large bill happened to land, so two cards disagreeing about the same
+  household was the confusing half of shipping it in one place first.
+
+### Known before 1.0.0
+
+Unchanged from `rc.1`, and both waiting on a decision rather than on code:
+
+- **The break-glass local login is unreachable in the shipped topology**
+  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  publishes no host port, the peer address is always the reverse proxy — so the
+  credential documented as existing "for when nobody can sign in" can be enrolled and
+  never used. Fail-safe in the security direction, and a recovery path that does not
+  work.
+- **Two verification boxes are unwalked**
+  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  against a real key, and the rate limits under a deliberate burst.
+
 ## [1.0.0-rc.1] — 2026-09-07
 
 The first release candidate. **No functional change from `0.11.6`** — nothing to
