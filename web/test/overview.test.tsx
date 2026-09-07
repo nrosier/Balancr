@@ -53,6 +53,13 @@ const FULL: OverviewPayload = {
     { date: '2026-07-31', totalCents: 11_800_000 },
     { date: '2026-08-31', totalCents: 12_345_678 },
   ],
+  // Two months of flows, so the savings card has a period to sum over and a span to
+  // name. Deliberately fewer than the twelve `twelve_months` asks for: the card has to
+  // print the span it actually covered rather than the one it was asked for (#288, #296).
+  flows: [
+    { month: '2026-07', incomeCents: 400_000, spentCents: 320_000, budgetedCents: 330_000, savingsRateBp: 2_000 },
+    { month: '2026-08', incomeCents: 420_000, spentCents: 310_000, budgetedCents: 350_000, savingsRateBp: 2_619 },
+  ],
   month: '2026-08',
   totals: {
     incomeCents: 420_000,
@@ -69,6 +76,7 @@ const EMPTY: OverviewPayload = {
   freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
   netWorth: null,
   history: [],
+  flows: [],
   month: null,
   totals: null,
   emergencyFundCentimonths: null,
@@ -210,15 +218,38 @@ describe('when the server answers with a month', () => {
     expect(screen.getByText('Updated 31/08/2026')).toBeTruthy()
   })
 
-  it('prints the savings rate as a percentage of basis points, over the month it covers', async () => {
+  it('opens the savings card on twelve months, summed, and names the span it covered', async () => {
+    // The point of #296: this used to print `totals.savingsRateBp` — August alone, 26,2% —
+    // while the same card on the Budget page offered four windows. The default is now the
+    // trailing twelve, so € 8.200 came in against € 6.300 out across both months on file.
     renderApp(<Overview />)
 
+    expect(await screen.findByText('23,2%')).toBeTruthy()
+    expect(screen.getByText('Over 2 months, July 2026 to August 2026')).toBeTruthy()
+    expect(screen.getByText('€ 8.200')).toBeTruthy()
+    expect(screen.getByText('€ 6.300')).toBeTruthy()
+    // The month's assigned figure is gone with the month: an envelope total has no
+    // meaning summed over a period, so it does not belong under a period's rate.
+    expect(screen.queryByText('Assigned')).toBeNull()
+  })
+
+  it('re-reads the same flows for another window without asking the server again', async () => {
+    const mock = serve(json(FULL))
+    renderApp(<Overview />)
+    await screen.findByText('23,2%')
+    const calls = mock.mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'this_month' } })
+
+    // August on its own is the reading the card used to be stuck on, and it is a fair bit
+    // higher than the twelve-month one — which is the whole argument for the chooser.
     expect(await screen.findByText('26,2%')).toBeTruthy()
-    expect(screen.getByText('August 2026')).toBeTruthy()
+    expect(screen.getByText('Over August 2026')).toBeTruthy()
     expect(screen.getByText('€ 4.200')).toBeTruthy()
     expect(screen.getByText('€ 3.100')).toBeTruthy()
-    expect(screen.getByText('€ 3.500')).toBeTruthy()
+    expect(mock.mock.calls.length).toBe(calls)
   })
+
 
   it('turns centimonths of cover into a pluralised month count', async () => {
     renderApp(<Overview />)
@@ -285,6 +316,10 @@ describe('when a figure is absent', () => {
     expect(screen.getAllByText('Not known yet')).toHaveLength(2)
     expect(screen.getByText('Savings rate')).toBeTruthy()
     expect(screen.getByText('Emergency buffer')).toBeTruthy()
+    // And no period chooser: with no month to anchor on there is nothing any of the four
+    // windows could sum, so a select offering four readings of nothing is worse than the
+    // plain placeholder (#296).
+    expect(screen.queryByLabelText('Period')).toBeNull()
   })
 })
 

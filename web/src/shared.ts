@@ -142,7 +142,7 @@ export {
   SAVINGS_PERIODS,
   TRAILING_MONTHS,
 } from '../../src/domain/aggregate/savings.ts'
-export type { PeriodSavings, SavingsPeriod } from '../../src/domain/aggregate/savings.ts'
+export type { PeriodSavings, SavingsMonth, SavingsPeriod } from '../../src/domain/aggregate/savings.ts'
 
 export {
   grossYieldBp,
