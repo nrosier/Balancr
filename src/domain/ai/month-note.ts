@@ -3,8 +3,13 @@
  * can't — "the dishwasher broke, that's why household appliances is high this month"
  * as much as a heads-up about next month. `suggestBudgetAmounts` (#45) only ever
  * looks backward, so an irregular cost reads as ordinary drift the month it lands.
- * The note is the owner's side of that gap; `budget-nudge.ts` is the AI pass that
- * reads the note for the month it's nudging.
+ * The note is the owner's side of that gap. Two AI passes read it: `budget-nudge.ts`,
+ * which the note was collected for, and since #298 the monthly narrative — which was
+ * describing the movement the note already explained. It is deliberately *not* sent to
+ * the findings pass; `RedactedPayload.note` has the argument.
+ *
+ * Whoever adds a third reader should widen `settings.monthNote.hint` in the same commit:
+ * somebody writing in that box is entitled to know where the sentence ends up.
  *
  * Storage is one row in the generic `settings` key/value table (`household.ts`'s own
  * division), holding a map of month to note text rather than a single string, so

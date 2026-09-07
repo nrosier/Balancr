@@ -926,6 +926,16 @@ export const insightsSchema = z.object({
        * run_id` cascades) but is on the wire as nullable rather than as a lie.
        */
       model: z.string().nullable(),
+      /**
+       * The month's note has been edited since this review was written (#298), so the
+       * page offers a rewrite the way it does for an edited fact.
+       *
+       * A boolean rather than a timestamp: the comparison is by content, and there is
+       * nothing useful to print about *when* — the sentence the reader needs is "this
+       * predates your note", not a clock reading. Always false for a review written
+       * before #298, whose payload has no note to compare against.
+       */
+      noteChanged: z.boolean(),
     })
     .nullable(),
   /**

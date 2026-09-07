@@ -58,6 +58,22 @@ describe('built-in prompts', () => {
     expect(DEFAULT_PROMPTS['analysis.system']).toMatch(/[Nn]ever state, derive/)
   })
 
+  it('tells the narrative pass what a note is for, and what it is not (#298)', () => {
+    // The rule has to do two opposite things — license the note as an explanation and
+    // refuse it as a source — so both halves are asserted. A rule that only said "you may
+    // use the note" is how a narrative ends up quoting "about €400" as a figure.
+    // Collapsed, because the rules are hard-wrapped in the source and a phrase that
+    // straddles a line break is still the same instruction to the model.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/no figure in the narrative may come from the note/i)
+    expect(body).toMatch(/context and never data/i)
+    // And it is genuinely new text, not a rule the previous default already had: without
+    // this, an installation seeded before #298 would never be upgraded to it.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).toBeDefined()
+    expect(previous).not.toMatch(/come from the note/i)
+  })
+
   it('tells the narrative pass not to do arithmetic on the figures it quotes', () => {
     expect(DEFAULT_PROMPTS['narrative.system']).toMatch(/Never add,\s*\n?\s*subtract/)
   })
@@ -232,6 +248,37 @@ describe('seedPrompts', () => {
     expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(
       DEFAULT_PROMPTS['narrative.system'],
     )
+  })
+
+  it('upgrades from every superseded body in the chain, not just the two it names', () => {
+    // The two tests above pin index 0 and index 1 by hand, which is how the chain came to
+    // have an entry nobody upgraded from: #183 added a body and no test noticed. This walks
+    // the whole chain instead, so a version added later is covered on the day it is added
+    // rather than on the day somebody remembers to write the test (#298).
+    for (const key of PROMPT_KEYS) {
+      for (const [index, previous] of SUPERSEDED_PROMPTS[key].entries()) {
+        const fresh = createTestDb()
+        applyMigrations(fresh.db as never)
+        createPromptVersion(fresh.db, { key, locale: SHARED_LOCALE, body: previous, activate: true })
+
+        expect(seedPrompts(fresh.db), `${key}[${index}]`).toBeGreaterThan(0)
+        expect(loadActivePrompt(fresh.db, key, SHARED_LOCALE)?.body, `${key}[${index}]`).toBe(
+          DEFAULT_PROMPTS[key],
+        )
+      }
+    }
+  })
+
+  it('holds each superseded body once, and never the current default', () => {
+    // Two ways the chain goes wrong that no upgrade test would catch: a body appended
+    // twice, and a body that is *also* the current default — which would make `seedPrompts`
+    // treat an install already on the newest text as one needing an upgrade, writing a new
+    // version on every startup forever.
+    for (const key of PROMPT_KEYS) {
+      const chain = SUPERSEDED_PROMPTS[key]
+      expect(new Set(chain).size, key).toBe(chain.length)
+      expect(chain, key).not.toContain(DEFAULT_PROMPTS[key])
+    }
   })
 
   it('does not touch a language override when it upgrades the shared row', () => {

@@ -32,6 +32,7 @@ import {
   prepareMonth,
   runAnalysis,
 } from '../../src/domain/ai/analysis.ts'
+import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { recordRun, recentRuns, loadRunPayload } from '../../src/domain/ai/runs.ts'
 import type { RedactedPayload } from '../../src/domain/ai/redact.ts'
 import { initI18n } from '../../src/i18n/index.ts'
@@ -166,6 +167,58 @@ describe('prepareMonth', () => {
     expect(prepared?.ranked).toHaveLength(2)
     expect(prepared?.sendable).toHaveLength(1)
     expect(prepared?.payload.signals).toHaveLength(1)
+  })
+
+  describe('the two payloads, and the one field they disagree about (#298)', () => {
+    const NOTE = 'The dishwasher died, so appliances is a one-off this month.'
+
+    it('gives the narrative the note and the findings pass none of it', () => {
+      // The decision #298 turns on, in two assertions. The findings pass ranks signals
+      // the aggregation layer computed; a note cannot create or resize one, and the
+      // analysis prompt already invites lowering a severity that context makes
+      // unremarkable — so sending the note there and asking the model to disregard it
+      // would contradict the prompt it arrived in. Withholding is the only version of
+      // "left open" that does not quietly answer the question.
+      seedTypicalMonth()
+      saveMonthNote(db, MONTH, NOTE)
+      const prepared = prepareMonth(db, MONTH, 'en')
+
+      expect(prepared?.narrativePayload.note).toBe(NOTE)
+      expect(prepared?.payload.note).toBeNull()
+    })
+
+    it('differs in nothing else, because both come out of one redaction', () => {
+      // Two `redact` calls would drift, and the drift would be invisible: both payloads
+      // would still be well-formed and the pass nobody reads closely would be the one
+      // carrying the stale shape. So the findings payload is the narrative's with one
+      // field overwritten, and this pins that — including for a field added later, which
+      // is the case the assertion is really for.
+      seedTypicalMonth()
+      saveMonthNote(db, MONTH, NOTE)
+      const prepared = prepareMonth(db, MONTH, 'en')
+      if (prepared === undefined || prepared === null) throw new Error('no month')
+
+      expect({ ...prepared.payload, note: NOTE }).toEqual(prepared.narrativePayload)
+    })
+
+    it('sends null on both when nobody wrote a note, which is the ordinary month', () => {
+      seedTypicalMonth()
+      const prepared = prepareMonth(db, MONTH, 'en')
+
+      expect(prepared?.narrativePayload.note).toBeNull()
+      expect(prepared?.payload.note).toBeNull()
+    })
+
+    it('treats a note of only whitespace as none, not as an empty explanation', () => {
+      // The panel saves what was typed, and clearing a note leaves `''` behind. A blank
+      // string in the payload would tell the narrative a note exists and says nothing,
+      // which rule 9 has no answer for.
+      seedTypicalMonth()
+      saveMonthNote(db, MONTH, '   \n  ')
+      const prepared = prepareMonth(db, MONTH, 'en')
+
+      expect(prepared?.narrativePayload.note).toBeNull()
+    })
   })
 })
 

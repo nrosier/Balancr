@@ -147,6 +147,9 @@ const FULL: InsightsPayload = {
     html: '<p>Spending held steady, with <strong>Groceries</strong> the exception.</p>',
     generatedAt: '2026-09-01T04:12:00Z',
     model: 'gemini-3.1-pro-preview',
+    // The default state, and the one most reviews are in: the note it was written from is
+    // still the note there is. The cases that set it true say so at the call site (#298).
+    noteChanged: false,
   },
   questions: [
     {
@@ -713,8 +716,68 @@ describe('the narrative', () => {
     )
 
     await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
-    // The stale case's own offer uses the "write" copy, not the new "rewrite anyway" one.
+    // The stale case's own offer uses the "write" copy, not the "rewrite anyway" one: the
+    // banner above the button has already said the review is behind its month, so the
+    // sentence a reader needs is the one a first write gives. It *does* post `force` since
+    // #298 — copy and request were one prop, which is what made this button hand back
+    // the very paragraph the banner was complaining about.
     expect(screen.queryByText('Rewrite it anyway')).toBeNull()
+  })
+
+  it('offers a rewrite for a review written before the month\u2019s note (#298)', async () => {
+    // The reporter's own sequence, and the reason the flag exists: the review called a
+    // movement unexplained, they explained it in the note panel, and a narrative is cached
+    // per month and locale — so without this the page hands back the same paragraph for
+    // as long as they keep looking at it.
+    serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+    renderApp(
+      <Narrative narrative={{ ...FULL.narrative!, noteChanged: true }} {...NARRATIVE_PROPS} />,
+    )
+
+    await screen.findByText(
+      'This review was written before your note for this month. Rewriting it will take the note into account.',
+    )
+    // The review itself stays on screen: it is not wrong, only written without something the
+    // reader has since said. The same treatment a moved fact gets (#162).
+    await screen.findByText(/Spending held steady/)
+  })
+
+  it('sends force for a stale review, or the rewrite hands back what it replaces', async () => {
+    // One prop doing two jobs is the bug this pins: `force` chose the wording *and* the
+    // request, so the branch that wanted first-write wording also sent no force — and
+    // `runNarrative` answers `cached` for a month that already has a row. Pressing the
+    // button under the stale banner returned the very paragraph the banner complained
+    // about. Asserted on the note branch because that is the one #298 adds, and it covers
+    // the facts branch with it: both mount the same control the same way.
+    const fetchMock = serve({
+      '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE),
+      '/api/ai/narrative': json({
+        status: 'ok',
+        reason: 'ok',
+        runId: 'run-narrative-5',
+        period: '2026-08',
+        locale: 'en',
+        degraded: false,
+        costMicroEur: 2_100,
+      }),
+    })
+
+    renderApp(
+      <Narrative narrative={{ ...FULL.narrative!, noteChanged: true }} {...NARRATIVE_PROPS} />,
+    )
+
+    await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    fireEvent.click(screen.getByRole('button', { name: 'Write the review' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Spend € 0,0021' }))
+
+    await screen.findByText('Written, for € 0,0021. The page has been reloaded.')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/narrative',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ period: '2026-08', force: true }),
+      }),
+    )
   })
 
   it('does not send force when writing a review for the first time', async () => {

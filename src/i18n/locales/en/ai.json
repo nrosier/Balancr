@@ -113,6 +113,7 @@
       "start": "Rewrite it anyway"
     },
     "stale": "Based on data from {{when}}.",
+    "staleNote": "This review was written before your note for this month. Rewriting it will take the note into account.",
     "title": "This month in words",
     "titleMonth": "{{month}} in words",
     "translate": "Write this in {{language}}",

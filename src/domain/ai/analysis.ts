@@ -212,6 +212,12 @@ function sourceIndex(
  * Shared by the findings pass and the narrative so that both send the same
  * payload for the same month — two collectors would drift, and the second one to
  * drift would be the one nobody reads the output of closely.
+ *
+ * One collector, and since #298 two payloads that differ in exactly one named field: the
+ * month's note. `payload` is what the findings pass sends and has none;
+ * `narrativePayload` is the same object with the owner's own words in it. Both come out
+ * of the same `redact` call, so nothing can drift between them but the field that is
+ * meant to.
  */
 export interface PreparedMonth {
   bundle: AnalysisBundle
@@ -219,7 +225,22 @@ export interface PreparedMonth {
   ranked: Signal[]
   /** The subset that was sent: everything in `ranked` the payload can explain. */
   sendable: Signal[]
+  /**
+   * What the findings pass sends: no note (#298).
+   *
+   * The narrative reads the month's note to explain a movement; whether the findings pass
+   * should is a question #298 deliberately left open, and until it is settled the text
+   * does not cross on this call. Rule 4 of the analysis prompt already invites the model
+   * to lower a severity that context makes unremarkable — which is what a note often is —
+   * so letting the note through here would be answering that question rather than
+   * deferring it, and no prompt rule could un-answer it afterwards.
+   *
+   * Also the safe default for a third pass that has not been written yet: a new consumer
+   * reaching for `payload` gets the smaller disclosure and has to ask for the other.
+   */
   payload: RedactedPayload
+  /** The same payload with the month's note in it — what the narrative sends (#298). */
+  narrativePayload: RedactedPayload
   /** `(code, label)` → the signal a producer emitted. The source of every figure. */
   sources: Map<string, Signal>
   categoryIdFor: ReadonlyMap<string, string>
@@ -259,7 +280,17 @@ export function prepareMonth(
     (signal) => signal.categoryId === null || known.has(signal.categoryId),
   )
 
-  const { payload, labelFor, categoryIdFor } = redact({ ...bundle, signals: sendable })
+  const { payload: narrativePayload, labelFor, categoryIdFor } = redact({
+    ...bundle,
+    signals: sendable,
+  })
+  // The one field the two passes disagree about, taken back out rather than left out of
+  // `redact` — so the redactor keeps one answer for what a month may say, and this is a
+  // decision about one *caller*, written where that caller can be read. Spreading a
+  // `RedactedPayload` is safe in a way spreading a bundle is not: everything in it has
+  // already been through the redactor, so a field added later crosses on both calls
+  // unless somebody makes the same explicit choice again here.
+  const payload: RedactedPayload = { ...narrativePayload, note: null }
   const nameFor = new Map(
     bundle.categories.map((entry) => [entry.fact.categoryId, entry.fact.categoryName]),
   )
@@ -276,6 +307,7 @@ export function prepareMonth(
     ranked,
     sendable,
     payload,
+    narrativePayload,
     sources: sourceIndex(sendable, labelFor),
     categoryIdFor,
     nameFor,

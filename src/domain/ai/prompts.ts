@@ -163,25 +163,16 @@ ${NARRATIVE_SYSTEM_V1}
 `.trim()
 
 /**
- * The system prompt for the monthly narrative — the one place free text is
- * allowed, and therefore the one place the "no numbers" rule has to be stated
- * differently: it may *quote* the figures it was given, and may not do arithmetic
- * on them.
+ * The narrative prompt as it shipped for v0.11.2 and v0.11.3, kept byte for byte for the
+ * reason `NARRATIVE_SYSTEM_V1` is: `seedPrompts` recognises it to deliver the note rule
+ * below to installations that have already booted.
  *
- * The opening sentence describes the household the same generic way
- * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
- * all a run needs to handle a shared-custody household correctly, and no other
- * rule depends on whose household this is. See `NARRATIVE_SYSTEM_V2`'s doc comment
- * for why the previous opening sentence was replaced.
- *
- * Rule 8 is the drift rule (#183), and it exists because drift is the most tempting
- * arithmetic in the payload: a share, a ceiling and a distance are three numbers where
- * two would do, and a model that notices the third is a subtraction will eventually
- * produce its own version of it. The instruction is therefore not "do not calculate"
- * again — rule 1 already says that — but what a drift *is*: a decision the household has
- * not acted on, of a length the data can support.
+ * It is `NARRATIVE_SYSTEM_V2` with the opening sentence replaced — the PII fix, whose
+ * reasoning is in V2's own comment — and it is where the eight rules were complete but
+ * the payload had nothing in it the household had written. Superseded by
+ * `NARRATIVE_SYSTEM` below, which adds rule 9.
  */
-const NARRATIVE_SYSTEM = `
+const NARRATIVE_SYSTEM_V3 = `
 You are the monthly reviewer of Balancr, a self-hosted budget and portfolio
 advisor for one household. Write the short narrative that accompanies a month of
 already-computed figures.
@@ -216,6 +207,47 @@ Rules:
    history, and saying so beats implying a trend.
 `.trim()
 
+/**
+ * The system prompt for the monthly narrative — the one place free text is
+ * allowed, and therefore the one place the "no numbers" rule has to be stated
+ * differently: it may *quote* the figures it was given, and may not do arithmetic
+ * on them.
+ *
+ * The opening sentence describes the household the same generic way
+ * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
+ * all a run needs to handle a shared-custody household correctly, and no other
+ * rule depends on whose household this is. See `NARRATIVE_SYSTEM_V2`'s doc comment
+ * for why the previous opening sentence was replaced.
+ *
+ * Rule 8 is the drift rule (#183), and it exists because drift is the most tempting
+ * arithmetic in the payload: a share, a ceiling and a distance are three numbers where
+ * two would do, and a model that notices the third is a subtraction will eventually
+ * produce its own version of it. The instruction is therefore not "do not calculate"
+ * again — rule 1 already says that — but what a drift *is*: a decision the household has
+ * not acted on, of a length the data can support.
+ *
+ * Rule 9 is the month note (#298), and it is the mirror image of rule 8. Rule 1 says a
+ * figure not in the data is not known, which is exactly the pressure that made this pass
+ * describe a movement the household had already explained in writing — the note was
+ * collected for the nudge and never reached here. So the rule has to do two opposite
+ * things at once: license the note as an *explanation*, and refuse it as a *source*. A
+ * note reading "about €400" is the failure mode: rule 1 forbids arithmetic, and without
+ * rule 9 nothing forbids quoting a figure out of prose, which would put a number in a
+ * narrative that no computation produced. It also bounds the note to its own month, so a
+ * broken dishwasher does not become a trend.
+ */
+const NARRATIVE_SYSTEM = `
+${NARRATIVE_SYSTEM_V3}
+9. A note written by the household may accompany the month, in their own words.
+   Where it explains something the figures show, say so, and attribute the
+   movement to what they told you instead of describing it as unexplained drift.
+   It is context and never data: no figure in the narrative may come from the
+   note, however precise the note sounds, and where it mentions something the
+   figures do not show, leave it alone rather than looking for it. Treat it as
+   this month's explanation only — it says nothing about the months around it, and
+   nothing about whether the same thing will happen again.
+`.trim()
+
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
   'analysis.system': ANALYSIS_SYSTEM,
   'narrative.system': NARRATIVE_SYSTEM,
@@ -248,7 +280,7 @@ export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
  */
 export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
   'analysis.system': [ANALYSIS_SYSTEM_V1],
-  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2],
+  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2, NARRATIVE_SYSTEM_V3],
 }
 
 /**

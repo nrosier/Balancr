@@ -36,6 +36,7 @@ import { SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { TREND_MONTHS } from '../../src/server/routes/api/budget.ts'
 import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.ts'
 import { initI18n } from '../../src/i18n/index.ts'
+import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { saveHousehold } from '../../src/domain/benchmark/household.ts'
@@ -807,6 +808,32 @@ describe('GET /api/insights', () => {
     // month's facts reads as a phrase, never as an identifier.
     expect(body.narrative.html).toContain('an unnamed category')
     expect(body.narrative.html).not.toMatch(/\bc999\b/)
+    // This run's payload has no `note` key, which is every narrative written before #298:
+    // unknowable, and reported as false rather than as "your note changed".
+    expect(body.narrative.noteChanged).toBe(false)
+  })
+
+  it('flags a narrative written before the month\u2019s note was edited (#298)', async () => {
+    // The wire half of the fix. The page cannot work out that the review predates the note
+    // on its own — it has neither the payload nor the note — so the server answers it.
+    storeNarrative(ctx.db, {
+      runId: recordRun(ctx.db, {
+        kind: 'narrative',
+        model: 'gemini-3.1-pro-preview',
+        locale: 'en',
+        payload: { categories: [], note: 'The boiler was replaced.' },
+        payloadHash: 'narrative-note-hash',
+        status: 'ok',
+      }),
+      period: MONTH,
+      locale: 'en',
+      bodyMd: 'A month with an explanation.',
+    })
+
+    expect((await get('/api/insights')).json().narrative.noteChanged).toBe(true)
+
+    saveMonthNote(ctx.db, MONTH, 'The boiler was replaced.')
+    expect((await get('/api/insights')).json().narrative.noteChanged).toBe(false)
   })
 })
 

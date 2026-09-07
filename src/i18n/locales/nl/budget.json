@@ -171,7 +171,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} tekens",
-    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. De AI-budgetbijstelling op de Inzichten-pagina kan zo'n notitie gebruiken bij het voorstellen van bedragen voor volgende maand.",
+    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. Twee AI-stappen lezen ze: de budgetbijstelling op de Inzichten-pagina, wanneer die bedragen voor volgende maand voorstelt, en de maand in woorden, zodat die een verschuiving kan toeschrijven aan wat jij vertelde in plaats van het drift te noemen. Ze gaat naar het model zoals je ze schreef, en ze gaat niet naar de bevindingen.",
     "label": "Notitie voor {{month}}",
     "placeholder": "bv. Wasmachine vervangen deze maand, ongeveer €400. Tandartsafspraak in oktober, ongeveer €150.",
     "stepper": {

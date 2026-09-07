@@ -42,9 +42,10 @@ import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
 import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
 import { checkBudget, spendMonthOf } from './budget.ts'
 import { hashPayload } from './payload-hash.ts'
+import { loadMonthNote } from './month-note.ts'
 import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
 import type { RedactedPayload } from './redact.ts'
-import { recordRun } from './runs.ts'
+import { loadRunPayload, recordRun } from './runs.ts'
 
 const log = logger.child({ module: 'ai.narrative' })
 
@@ -161,6 +162,37 @@ export function loadNarrative(db: Db, period: string, locale: string): Narrative
       .where(and(eq(aiNarratives.period, period), eq(aiNarratives.locale, locale)))
       .get() ?? null
   )
+}
+
+/**
+ * True when the month's note has been edited since this review was written (#298).
+ *
+ * The reader's own flow is what makes this necessary: they read a review that calls a
+ * movement unexplained drift, write the note that explains it, and — because a narrative
+ * is cached per period and locale — see the same paragraph again. So the note now has to
+ * do to a review what an edited fact already does: mark it as describing something that
+ * has moved.
+ *
+ * Compared by content rather than by a timestamp, and the payload is where the comparison
+ * comes from: since #298 a narrative run stores the note it was written with, so this asks
+ * the only question that matters — is the text this review saw the text there is now? A
+ * `noteUpdatedAt` beside the note would have been a second authority for the same fact, and
+ * would call a review stale for an edit that changed a comma.
+ *
+ * False, not true, for a review written before #298: its payload has no `note` key at all,
+ * so there is nothing to compare and "we cannot tell" must not read as "it is wrong". Those
+ * reviews are already offered the plain rewrite control.
+ */
+export function noteChangedSince(db: Db, narrative: NarrativeRow): boolean {
+  const payload = loadRunPayload(db, narrative.runId)
+  if (payload === null || typeof payload !== 'object') return false
+  if (!('note' in payload)) return false
+
+  const written = (payload as { note: unknown }).note
+  if (written !== null && typeof written !== 'string') return false
+
+  const current = loadMonthNote(db, narrative.period).trim()
+  return (current === '' ? null : current) !== written
 }
 
 /**
@@ -423,7 +455,7 @@ export function estimateNarrative(
   const prepared = prepareMonth(db, options.period, locale)
   if (prepared === null) return refused('no_facts')
 
-  const payloadChars = JSON.stringify(prepared.payload).length
+  const payloadChars = JSON.stringify(prepared.narrativePayload).length
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, estimateMicroEur, now)
 
@@ -489,7 +521,8 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
     log.info({ period }, 'no facts for the month; narrative skipped')
     return failed(period, locale, 'skipped', 'no_facts')
   }
-  const { payload, nameForLabel } = prepared
+  // `narrativePayload`, not `payload`: the note is read by this pass and no other (#298).
+  const { narrativePayload: payload, nameForLabel } = prepared
   const payloadHash = hashPayload(payload)
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)

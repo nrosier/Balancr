@@ -61,7 +61,7 @@ import {
 import { aiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
-import { loadNarrative, renderNarrative } from '../../../domain/ai/narrative.ts'
+import { loadNarrative, noteChangedSince, renderNarrative } from '../../../domain/ai/narrative.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
 import { resolveMonth } from './budget.ts'
@@ -118,6 +118,7 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
             html: renderNarrative(db, narrative),
             generatedAt: narrative.createdAt.toISOString(),
             model: loadRun(db, narrative.runId)?.model ?? null,
+            noteChanged: noteChangedSince(db, narrative),
           },
     questions: openQuestions(db, locale).map((card) => ({
       id: card.id,
