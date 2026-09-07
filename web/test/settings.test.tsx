@@ -161,6 +161,9 @@ const BENCHMARK: Payload['benchmark'] = {
     // Null, so the panel prints the share it derives from the roster above rather than
     // a stated one — the default, and the state worth having in the fixture (#44).
     sharedCostBp: null,
+    // The stored default, so the picker has a current value and Save stays disabled
+    // until somebody actually changes something (#289).
+    sharedCostDirection: 'whole_invoice',
   },
   outsideCode: '00',
   categories: [
@@ -1238,6 +1241,9 @@ describe('the household', () => {
   const sharedCost = (): HTMLInputElement =>
     screen.getByLabelText('Your share of shared costs') as HTMLInputElement
 
+  const directionPicker = (): HTMLSelectElement =>
+    screen.getByLabelText('Which side lands in Actual') as HTMLSelectElement
+
   it('says what each row reads as on the scale, and as of when', async () => {
     // Only `Date` is faked, so the testing library's own waiting still uses real timers.
     // The year has to be pinned at all: the panel classifies a member by their age *now*,
@@ -1306,6 +1312,7 @@ describe('the household', () => {
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             selfLabel: 'Nick',
             sharedCostBp: null,
+            sharedCostDirection: 'whole_invoice',
           },
         },
       ])
@@ -1354,6 +1361,7 @@ describe('the household', () => {
           body: {
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: null,
+            sharedCostDirection: 'whole_invoice',
           },
         },
       ])
@@ -1382,6 +1390,7 @@ describe('the household', () => {
             // row written wholesale, so a patch that omitted it would drop a stated share
             // on every roster edit without saying so (#44).
             sharedCostBp: null,
+            sharedCostDirection: 'whole_invoice',
           },
         },
       ])
@@ -1423,6 +1432,56 @@ describe('the household', () => {
     ).toBeTruthy()
   })
 
+  it('shows the stored direction and what it will make the budget page say (#289)', async () => {
+    await open(READS)
+
+    // A picker with no current value silently changes the answer the first time somebody
+    // touches it, so the stored default is selected rather than a blank option — and the
+    // note under it quotes the share above, which is what makes it a reading of the form
+    // rather than a second claim about the arrangement.
+    expect(directionPicker().value).toBe('whole_invoice')
+    expect(
+      within(household()).getByText(
+        /The budget page will print 50\s?% of every shared cost as yours, and the rest as the other household's\./,
+      ),
+    ).toBeTruthy()
+    // Nothing typed yet, so there is nothing to save.
+    expect(saveHousehold().disabled).toBe(true)
+  })
+
+  it('sends the other direction, and says what that one will read as', async () => {
+    const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
+
+    fireEvent.change(directionPicker(), { target: { value: 'my_share' } })
+    // The same 50% now describes a different figure, and the note has to change with it or
+    // the picker looks decorative.
+    expect(
+      within(household()).getByText(
+        /read every shared cost as 50\s?% of a larger one and print that larger figure, which Actual has never held\./,
+      ),
+    ).toBeTruthy()
+
+    expect(saveHousehold().disabled).toBe(false)
+    fireEvent.click(saveHousehold())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/household',
+          method: 'PATCH',
+          body: {
+            members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
+            // Sent on every save, not only when it changed: the household row is written
+            // wholesale, so omitting it would quietly take a stated direction back to the
+            // default on any unrelated roster edit (#289).
+            sharedCostBp: null,
+            sharedCostDirection: 'my_share',
+          },
+        },
+      ])
+    })
+  })
+
   it('reads back a typed share, and sends it with the roster', async () => {
     const calls = await open({ ...READS, '/api/settings/household': json(PAYLOAD) })
 
@@ -1440,6 +1499,7 @@ describe('the household', () => {
           body: {
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: 6_000,
+            sharedCostDirection: 'whole_invoice',
           },
         },
       ])
@@ -1472,6 +1532,7 @@ describe('the household', () => {
           body: {
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: null,
+            sharedCostDirection: 'whole_invoice',
           },
         },
       ])

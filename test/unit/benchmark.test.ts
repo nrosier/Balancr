@@ -54,6 +54,9 @@ const SHIPPED = loadBenchmark('config/statbel-benchmark.yaml')
 const HOUSEHOLD = (members: Household['members'] = []): Household => ({
   members,
   sharedCostBp: null,
+  // Irrelevant to the equivalence scale — nothing here reads it — but `Household` is a
+  // whole roster and the benchmark is fed the real thing (#289).
+  sharedCostDirection: 'whole_invoice',
 })
 
 /** One category's month. Consumption unless a test says otherwise. */
@@ -510,15 +513,34 @@ describe('householdSchema', () => {
   it('defaults to one person, which cannot be wrong about anybody', () => {
     // And to a null shared-cost share, which is not zero: null means "work it out from
     // the roster", and zero would be a stated claim that none of a shared cost is yours
-    // (#44).
-    expect(DEFAULT_HOUSEHOLD).toEqual({ members: [], sharedCostBp: null })
-    expect(householdSchema.parse(undefined)).toEqual({ members: [], sharedCostBp: null })
+    // (#44). The direction defaults instead of being nullable, because there is no
+    // "unknown" reading of a share — every roster on disk already has one, and
+    // `whole_invoice` is the one they were all saved under (#289).
+    const one = { members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' }
+    expect(DEFAULT_HOUSEHOLD).toEqual(one)
+    expect(householdSchema.parse(undefined)).toEqual(one)
+  })
+
+  it('reads a roster saved before the direction existed as a whole invoice (#289)', () => {
+    // The migration, such as it is: the field arrives by default, so every stored roster
+    // keeps meaning exactly what it meant when it was written.
+    expect(
+      householdSchema.parse({ members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+        .sharedCostDirection,
+    ).toBe('whole_invoice')
+  })
+
+  it('refuses a direction that is not one of the two', () => {
+    expect(
+      householdSchema.safeParse({ members: [], sharedCostDirection: 'split' }).success,
+    ).toBe(false)
   })
 
   it('treats a member as full time unless told otherwise', () => {
     expect(householdSchema.parse({ members: [{ birthYear: 2013 }] })).toEqual({
       members: [{ birthYear: 2013, custodyBp: 10_000 }],
       sharedCostBp: null,
+      sharedCostDirection: 'whole_invoice',
     })
   })
 
@@ -549,6 +571,7 @@ describe('householdSchema', () => {
       members: [],
       selfLabel: 'Nick',
       sharedCostBp: null,
+      sharedCostDirection: 'whole_invoice',
     })
   })
 
@@ -575,15 +598,27 @@ describe('the stored household', () => {
     expect(loadHousehold(ctx.db)).toEqual(DEFAULT_HOUSEHOLD)
   })
 
-  it('round-trips a roster and the share that travels with it', () => {
+  it('round-trips a roster, the share, and which way the share reads', () => {
     saveHousehold(ctx.db, {
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
+      sharedCostDirection: 'my_share',
     })
     expect(loadHousehold(ctx.db)).toEqual({
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
+      sharedCostDirection: 'my_share',
     })
+  })
+
+  it('takes the direction back to the whole invoice when a patch omits it (#289)', () => {
+    // Wholesale, like every other field here (#215). Omission reverting to the reading
+    // the app had before the field existed is the safe half of that trade: it under-claims
+    // rather than inventing a total nothing has held.
+    saveHousehold(ctx.db, { members: [], sharedCostDirection: 'my_share' })
+    expect(loadHousehold(ctx.db).sharedCostDirection).toBe('my_share')
+    saveHousehold(ctx.db, { members: [] })
+    expect(loadHousehold(ctx.db).sharedCostDirection).toBe('whole_invoice')
   })
 
   it('round-trips a name for the first person, and drops it when the patch omits it (#215)', () => {

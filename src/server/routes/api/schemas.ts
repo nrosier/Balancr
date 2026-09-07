@@ -34,6 +34,7 @@ import {
   BENCHMARK_GROUPS,
   COICOP_DIVISIONS,
   OUTSIDE_CONSUMPTION,
+  SHARED_COST_DIRECTIONS,
 } from '../../../domain/benchmark/vocabulary.ts'
 import { AI_OFF_REASONS } from '../../../domain/ai/availability.ts'
 import { ASSUMPTIONS, UNKNOWN_REASONS } from '../../../domain/tax/estimate.ts'
@@ -366,7 +367,10 @@ export const benchmarkComparisonSchema = z.discriminatedUnion('kind', [
  * a borne figure whose provenance is missing is a number nobody can check.
  *
  * `paidCents` is Actual's own figure and is never adjusted anywhere: the split is an extra
- * column beside it, not a correction to it.
+ * column beside it, not a correction to it. `direction` says how it relates to the other
+ * three — under `whole_invoice` it is the total, under `my_share` it is your part of one —
+ * and travels with them because the same three numbers support two different sentences
+ * (#289).
  */
 export const custodySplitSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -374,6 +378,8 @@ export const custodySplitSchema = z.discriminatedUnion('kind', [
     month: monthKey(),
     basis: z.enum(CUSTODY_BASES),
     shareBp: basisPoints(),
+    /** Which way the share was read (#289). */
+    direction: z.enum(SHARED_COST_DIRECTIONS),
     /** Part-time members the derived share averaged. Zero when the share was stated. */
     members: z.int().nonnegative(),
     lines: z.array(
@@ -381,13 +387,18 @@ export const custodySplitSchema = z.discriminatedUnion('kind', [
         categoryId: z.string(),
         categoryName: z.string(),
         paidCents: cents(),
-        borneCents: cents(),
+        totalCents: cents(),
+        yoursCents: cents(),
+        otherCents: cents(),
       }),
     ),
     paidCents: cents(),
-    borneCents: cents(),
-    /** `paidCents − borneCents`: the co-parent's share of what you paid. */
-    offsetCents: cents(),
+    /** What the flagged categories cost in total, both households together. */
+    totalCents: cents(),
+    /** Your part of that. */
+    yoursCents: cents(),
+    /** `totalCents − yoursCents`: the co-parent's part, owed to you or never yours. */
+    otherCents: cents(),
     shareOfSpendBp: basisPoints(),
   }),
   z.object({
@@ -1264,6 +1275,15 @@ export const benchmarkSettingSchema = z.object({
      * clearing the box means "go back to deriving it", which absent could not express.
      */
     sharedCostBp: basisPoints().nullable(),
+    /**
+     * Which way that share reads (#289): is what Actual holds the whole bill, or already
+     * only your part of it?
+     *
+     * Never absent, even though the stored default makes it inferable, because the panel
+     * draws a picker and a picker with no current value is a picker that silently changes
+     * the answer the first time somebody touches it.
+     */
+    sharedCostDirection: z.enum(SHARED_COST_DIRECTIONS),
   }),
   /** The code that means "not household consumption", for the picker's own entry. */
   outsideCode: z.literal(OUTSIDE_CONSUMPTION),
