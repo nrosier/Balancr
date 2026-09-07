@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.5-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.6-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -970,13 +970,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.11.5` is the current release, work on top of the
+**Where it is now** — `0.11.6` is the current release, work on top of the
 `Forecasting and on-demand insight` milestone above, which is already closed.
-`1.0.0-rc.N` has started: the documentation pass is done, and one readability
-improvement to the savings rate is still open. What remains after that is a
-security-verification checklist and a reconciliation acceptance test — both of which
-have to run against a real Actual and Ghostfolio rather than a fixture, so they wait
-on that rather than on code.
+`1.0.0-rc.N` has started: the documentation pass is done, the savings rate now reads
+over a period rather than one month, and `npm run probe` is the reconciliation
+acceptance test. What remains is the security-verification checklist, which has to be
+walked against a real deployment rather than a fixture — so it waits on that rather
+than on code.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and
