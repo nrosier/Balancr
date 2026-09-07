@@ -142,7 +142,10 @@ describe('GET /api/settings', () => {
     expect(res.statusCode).toBe(200)
 
     const settings = res.json<Settings>()
-    expect(settings.build.version).toMatch(/^\d+\.\d+\.\d+$/)
+    // A prerelease suffix is allowed because the versioning scheme in README calls for
+    // one: a feature-complete build ships as `1.0.0-rc.N` while the testing happens. A
+    // three-number-only pattern would fail every release candidate.
+    expect(settings.build.version).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/)
     expect(settings.profile.role).toBe('owner')
     expect(settings.locales.supported).toContain('nl')
     expect(settings.params).toEqual(DEFAULT_PARAMS)
