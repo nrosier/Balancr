@@ -190,6 +190,20 @@
   "picker": {
     "month": "Month"
   },
+  "savings": {
+    "period": {
+      "previous_month": "Previous month",
+      "this_month": "This month",
+      "twelve_months": "12 months",
+      "year_to_date": "Since January"
+    },
+    "periodLabel": "Period",
+    "span": {
+      "month": "Over {{month}}",
+      "none": "No month with figures in this window",
+      "range": "Over {{months}}, {{from}} to {{to}}"
+    }
+  },
   "title": "Budget",
   "uncategorised": {
     "notice_one": "{{value}} transaction worth <money>{{amount}}</money> has no category, so the figures below are incomplete.",
