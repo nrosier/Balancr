@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.4-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -957,15 +957,17 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | ⬜ |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `0.11.x` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.11.3` is the current release, a fix on top of the
+**Where it is now** — `0.11.4` is the current release, work on top of the
 `Forecasting and on-demand insight` milestone above, which is already closed.
-`1.0.0-rc.N` is next and has not started: a documentation pass, a
-security-verification checklist, and a reconciliation acceptance test.
+`1.0.0-rc.N` has started: the documentation pass is done, and what is left is a
+security-verification checklist and a reconciliation acceptance test — both of which
+have to run against a real Actual and Ghostfolio rather than a fixture, so they wait
+on that rather than on code.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and

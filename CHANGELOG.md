@@ -6,6 +6,63 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.4] — 2026-09-07
+
+### Added
+
+- **Every proposal card says why it proposes that number**
+  ([#273](https://github.com/nrosier/Balancr/issues/273)). A budget-amount
+  proposal used to show a before → after diff, an editable amount, and nothing
+  about where the figure came from — while the reasoning existed at every stage
+  and was discarded at every stage. A card now carries one line: which envelope
+  signal fired and how many months the trailing average used, that there was too
+  little history to average, that the budget nudge moved it after reading the
+  month's note, or that you set the amount yourself. Stored as a code and its
+  numbers rather than a sentence, so a proposal explained in Dutch today reads
+  correctly in English tomorrow; the nudge's own reason is the one that cannot be
+  a code, so the model writes it, bounded and grounded, with a mechanical
+  sentence taking over whenever what it wrote is unusable. A bad sentence never
+  costs a good amount its proposal.
+
+### Fixed
+
+- **The month note has its own Budget tab instead of appearing above every one**
+  ([#272](https://github.com/nrosier/Balancr/pull/272)). The per-month note
+  [#270](https://github.com/nrosier/Balancr/issues/270) introduced was rendered
+  above the tab strip, so it followed you onto Envelopes, Trend and every other
+  subsection whether or not you were thinking about it. It is now a tab of its
+  own.
+
+### Documentation
+
+- **What leaves the machine, and how to copy the database**
+  ([#48](https://github.com/nrosier/Balancr/issues/48)). Two questions the source
+  answers only if you are willing to read `redact.ts` and `jobs/ai.ts` first, which
+  is not a fair thing to ask of someone deciding whether to point this at their own
+  money. The README now states which four hosts are ever contacted and that only
+  one of them is a third party, which Google endpoint and why a free-tier key is
+  the configuration to avoid, that the nightly pass is the only unattended spend
+  and a page load never calls a model, and where in the app to read back the exact
+  payload of every call ever made. It also says plainly what marking a category
+  sensitive does *not* withhold — the amounts and the classification stay, so a
+  broad category is still inferable — because a privacy claim with an unstated
+  exception is worse than no claim
+  ([#278](https://github.com/nrosier/Balancr/issues/278) tracks a real
+  per-envelope exclusion). And, for the reader who legitimately runs without
+  `BACKUP_PASSPHRASE` because a host snapshot covers the volume: which two files
+  that snapshot has to catch, and why the app should be stopped first.
+
+### Changed
+
+- **Renovate's weekly lockfile refresh merges itself on green**
+  ([#275](https://github.com/nrosier/Balancr/issues/275)). A
+  `lockFileMaintenance` pull request has nothing reviewable in it: `package.json`
+  does not change, so only transitive versions move, and only inside the ranges
+  their parents already allow. CI passing is the whole review. GitHub's own
+  auto-merge stays off, because it waits for *required* status checks and this
+  repository has no branch protection to require any — Renovate polls the checks
+  itself instead.
+
 ## [0.11.3] — 2026-09-06
 
 ### Changed
