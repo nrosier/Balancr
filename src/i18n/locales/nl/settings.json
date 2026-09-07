@@ -97,11 +97,13 @@
       "asAdult": "tegen het gewicht van een volwassene",
       "asChild": "tegen het kindgewicht",
       "birthYear": "Geboortejaar",
+      "blocked_one": "De gegevens van één persoon zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rij hierboven aan of verwijder ze.",
+      "blocked_other": "De gegevens van {{value}} personen zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rijen hierboven aan of verwijder ze.",
       "custody": "Tijd hier",
       "hint": "Wie hier woont, want dat is wat jouw uitgaven vergelijkbaar maakt met een nationaal gemiddelde. Een wijziging geldt voor de volgende vergelijking; niets op deze pagina wordt hier herrekend.",
       "label": "Naam",
+      "needs": "Nog in te vullen: {{fields}}.",
       "none": "Alleen jij, tegen het volle gewicht. Voeg iedereen toe die hier verder woont.",
-      "notANumber": "Een geboortejaar van vier cijfers, en een geheel aantal basispunten tot 10000.",
       "reads": "Telt {{weight}}, {{share}} van de tijd.",
       "readsShare": "Hier {{share}} van de tijd.",
       "remove": "Verwijderen",
@@ -116,7 +118,9 @@
       "sharedCostNotANumber": "Een geheel getal in basispunten tot 10000, of leeg om het af te leiden.",
       "sharedCostReads": "{{share}} van elke gedeelde kost geldt als jouw deel.",
       "title": "Huishouden",
-      "you": "{{name}} — altijd de eerste persoon op de schaal, geen rij hiertussen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene."
+      "you": "{{name}} — altijd de eerste persoon op de schaal, geen rij hiertussen. Voeg iedereen daarnaast toe. De gewichten hieronder gelden voor {{year}}, want de schaal zet een kind op een verjaardag over naar het gewicht van een volwassene.",
+      "wrongShare": "{{field}} moet een geheel getal tot 10000 zijn, zonder scheidingsteken.",
+      "wrongYear": "{{field}} moet vier cijfers zijn — bijvoorbeeld 1998, niet een volledige datum."
     },
     "mapping": {
       "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, of ze gedeeld is, en of ze een spaar- of beleggingspot is",

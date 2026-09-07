@@ -97,7 +97,7 @@ const draftOf = (member: BenchmarkSetting['household']['members'][number]): Draf
 // ---------------------------------------------------------------------------
 
 export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const { benchmark } = settings
   const { file } = benchmark
 
@@ -257,12 +257,64 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             {rows.map((row, index) => {
               const birthYear = parseYear(row.birthYear)
               const custodyBp = parseBp(row.custodyBp)
+              // What each box is waiting for, per box. Empty and wrong are different
+              // mistakes and want different sentences (#283, #287): a box nobody has typed
+              // in yet is not a complaint, and a box holding a date rather than a year is
+              // not answered by the format rule for a box the reader got right. `label` is
+              // absent from both lists on purpose — a member with no name is saved as one,
+              // and the roster prints a weight rather than a name, so requiring it would be
+              // inventing a rule the server does not have.
+              const yearState =
+                row.birthYear.trim() === '' ? 'blank' : birthYear === null ? 'wrong' : 'ok'
+              const shareState =
+                row.custodyBp.trim() === '' ? 'blank' : custodyBp === null ? 'wrong' : 'ok'
+              const blank = [
+                yearState === 'blank' ? t('settings:benchmark.household.birthYear') : null,
+                shareState === 'blank' ? t('settings:benchmark.household.custody') : null,
+              ].filter((field): field is string => field !== null)
+              // One sentence per wrong box, each naming its own box and the mistake it is
+              // most likely to be. The box name is interpolated from the label rather than
+              // written into the sentence, so renaming a box cannot leave the explanation
+              // pointing at a box that no longer exists under that name.
+              const wrong = [
+                yearState === 'wrong'
+                  ? t('settings:benchmark.household.wrongYear', {
+                      field: t('settings:benchmark.household.birthYear'),
+                    })
+                  : null,
+                shareState === 'wrong'
+                  ? t('settings:benchmark.household.wrongShare', {
+                      field: t('settings:benchmark.household.custody'),
+                    })
+                  : null,
+              ].filter((sentence): sentence is string => sentence !== null)
+              const problems =
+                blank.length === 0
+                  ? wrong
+                  : [
+                      t('settings:benchmark.household.needs', {
+                        fields: formatList(blank, language),
+                      }),
+                      ...wrong,
+                    ]
+              const hintId = `member-reads-${String(index)}`
               const weight =
                 birthYear === null || childAgeBelow === null
                   ? null
                   : thisYear - birthYear < childAgeBelow
                     ? 'asChild'
                     : 'asAdult'
+              // Only meaningful once both boxes parse, which is exactly when the hint
+              // prints it; `null` for the rest is what lets the branch above stay flat.
+              const reads =
+                custodyBp === null
+                  ? null
+                  : weight === null
+                    ? t('settings:benchmark.household.readsShare', { share: formatBp(custodyBp) })
+                    : t('settings:benchmark.household.reads', {
+                        weight: t(`settings:benchmark.household.${weight}`),
+                        share: formatBp(custodyBp),
+                      })
               return (
                 // The index is the key because a row has no id: it is a position in a
                 // list that is replaced whole, and two members can be identical.
@@ -288,12 +340,23 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                       <label className="field__label" htmlFor={`member-year-${String(index)}`}>
                         {t('settings:benchmark.household.birthYear')}
                       </label>
+                      {/*
+                        `aria-invalid` for a box holding the wrong thing, but never for one
+                        that is merely still empty (#287): a row added by `Add someone`
+                        would otherwise announce itself as an error before the reader has
+                        touched it. The red border is not the only signal — the line below
+                        names the box, and `aria-describedby` points at it, so a reader who
+                        cannot see the border still gets the reason on the field itself
+                        rather than having to go looking for a paragraph.
+                      */}
                       <input
                         id={`member-year-${String(index)}`}
-                        className="field__input num"
+                        className={`field__input num${yearState === 'wrong' ? ' field__input--bad' : ''}`}
                         type="text"
                         inputMode="numeric"
                         autoComplete="off"
+                        aria-invalid={yearState === 'wrong' ? true : undefined}
+                        aria-describedby={hintId}
                         value={row.birthYear}
                         disabled={locked}
                         onChange={(event) => edit(index, 'birthYear', event.target.value)}
@@ -306,10 +369,12 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                       </label>
                       <input
                         id={`member-custody-${String(index)}`}
-                        className="field__input num"
+                        className={`field__input num${shareState === 'wrong' ? ' field__input--bad' : ''}`}
                         type="text"
                         inputMode="numeric"
                         autoComplete="off"
+                        aria-invalid={shareState === 'wrong' ? true : undefined}
+                        aria-describedby={hintId}
                         value={row.custodyBp}
                         disabled={locked}
                         onChange={(event) => edit(index, 'custodyBp', event.target.value)}
@@ -317,17 +382,22 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                     </div>
                   </div>
 
-                  <p className="member__reads muted">
-                    {birthYear === null || custodyBp === null
-                      ? t('settings:benchmark.household.notANumber')
-                      : weight === null
-                        ? t('settings:benchmark.household.readsShare', {
-                            share: formatBp(custodyBp),
-                          })
-                        : t('settings:benchmark.household.reads', {
-                            weight: t(`settings:benchmark.household.${weight}`),
-                            share: formatBp(custodyBp),
-                          })}
+                  {/*
+                    One line, three jobs: what the row reads as when it is right, what is
+                    still to fill in when it is empty (#283), and what is wrong with it when
+                    it is wrong (#287). It used to do only the first and a joint format rule
+                    for the other two — a sentence about both boxes whichever one had
+                    failed, printed in the muted grey a correct row prints in, so a row that
+                    blocked the panel's only Save looked exactly like a row that would save.
+                    A problem now wears `--negative`, the colour `field__issue` already uses
+                    for the same purpose, and `aria-describedby` on both boxes ties it back
+                    to the field it is about.
+                  */}
+                  <p
+                    id={hintId}
+                    className={problems.length === 0 ? 'member__reads muted' : 'member__reads member__reads--bad'}
+                  >
+                    {problems.length === 0 ? reads : problems.join(' ')}
                   </p>
 
                   <button
@@ -372,6 +442,21 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
 
         <Issue message={state.issue('members')} />
         <Issue message={state.issue('sharedCostBp')} />
+
+        {/*
+          Why Save is greyed out, beside the greyed-out button (#283). A row has no save
+          of its own — the household is PATCHed whole, which is what makes a removal a
+          removal — so a reader who has filled in one row and cannot commit it has no way
+          to discover that an unrelated row is the reason. `Issue`'s `role="alert"` is
+          right here: it appears in response to something the reader just did.
+        */}
+        <Issue
+          message={
+            invalid.size === 0
+              ? undefined
+              : t('settings:benchmark.household.blocked', { count: invalid.size })
+          }
+        />
 
         <div className="members__actions">
           <button
