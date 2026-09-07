@@ -167,7 +167,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} characters",
-    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. The AI budget nudge on the Insights page can use a note like this when suggesting next month's amounts.",
+    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. Two AI passes read it: the budget nudge on the Insights page, when it suggests next month's amounts, and the month in words, so it can attribute a movement to what you told it instead of calling it drift. It is sent to the model as you wrote it, and it is not sent to the findings pass.",
     "label": "Note for {{month}}",
     "placeholder": "e.g. Replaced the dishwasher this month, about €400. Dentist appointment in October, about €150.",
     "stepper": {

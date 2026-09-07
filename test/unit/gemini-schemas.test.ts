@@ -83,6 +83,9 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
     portfolio: null,
     drift: null,
     signals: [signal('over_available', 'c1'), signal('savings_rate_low', null, 'warn')],
+    // Null here on purpose: this file is about the *response* schemas, and the findings
+    // pass is sent no note at all (#298). A fixture with one would suggest otherwise.
+    note: null,
     ...overrides,
   }
 }

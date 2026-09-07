@@ -76,8 +76,15 @@ export function Narrative({
   const { t, language } = useT()
   // ISO timestamps from the same server clock, both in `Z` form, so this is a
   // correct ordering and not just a string comparison that happens to work.
-  const stale =
+  const factsMoved =
     narrative !== null && factsChangedAt !== null && factsChangedAt > narrative.generatedAt
+  // The note is the other way a review can be behind its month (#298), and it needs no
+  // clock: the server compared the note this review was written from with the note there
+  // is now. Kept as its own flag rather than folded into `factsMoved` because the two get
+  // different sentences — one says the figures moved, the other says the reader has since
+  // said something about them, and only the second is worth telling them they can act on.
+  const noteMoved = narrative !== null && narrative.noteChanged
+  const stale = factsMoved || noteMoved
 
   return (
     <section className="card">
@@ -123,20 +130,32 @@ export function Narrative({
           */}
           {stale && month !== null && aiEnabled && ended ? (
             <>
-              <p className="muted">{t('ai:narrative.stale', { when: formatDateTime(factsChangedAt!) })}</p>
-              <Offer month={month} owner={owner} onWritten={onWritten} />
+              <p className="muted">
+                {noteMoved && !factsMoved
+                  ? t('ai:narrative.staleNote')
+                  : t('ai:narrative.stale', { when: formatDateTime(factsChangedAt!) })}
+              </p>
+              {/*
+                `force`, which this control did not pass before. A narrative is cached per
+                period and locale and nothing deletes the row, so an unforced request for a
+                month that already has one comes straight back as `cached` — this banner
+                offered a rewrite that returned the very paragraph it was complaining about.
+                Both reasons for being stale need the same thing: the row replaced.
+              */}
+              <Offer month={month} owner={owner} onWritten={onWritten} force />
             </>
           ) : null}
           {/*
             Nothing has moved since this review was written — no stale banner, nothing
             wrong with it — but a reader who just switched the deep model or edited the
             narrative prompt (#226) still has no way to ask for a new one short of the
-            server clearing the row by hand. `force` is what makes this a rewrite rather
-            than the "nothing to show yet" offer above: same two-press control, different
-            copy, and off by default the way `aiRefreshRequest.force` already is.
+            server clearing the row by hand. `rewriteCopy` is what makes this read as a
+            rewrite rather than as the "nothing to show yet" offer above: same two-press
+            control, different sentence. `force` is on here as it is on the stale branch —
+            there is a row, and it has to be replaced.
           */}
           {!stale && month !== null && aiEnabled && ended ? (
-            <Offer month={month} owner={owner} onWritten={onWritten} force />
+            <Offer month={month} owner={owner} onWritten={onWritten} force rewriteCopy />
           ) : null}
         </>
       )}
@@ -180,6 +199,18 @@ interface OfferProps {
   owner: boolean
   onWritten: () => void
   /**
+   * Use the "rewrite it anyway" wording rather than the first-write wording.
+   *
+   * Separate from `force` since #298, because the two are not the same question and
+   * conflating them is what made the stale banner's button inert. `force` is about the
+   * request — is there a row to replace — and this is about the sentence, which depends on
+   * whether the reader has been *told* the review is behind. Told already (a moved fact, an
+   * edited note): the offer above the button has explained itself, so this reads as the
+   * first write of a replacement. Not told, because nothing is wrong with it: the only
+   * honest wording is "rewrite it anyway".
+   */
+  rewriteCopy?: boolean
+  /**
    * A month that already has a narrative, offered again anyway (#226) — the lede and
    * the unarmed button say "rewrite it anyway" instead of "write it"; everything else
    * (price, the armed confirm/cancel pair, the outcome line) reads the same either way.
@@ -187,7 +218,7 @@ interface OfferProps {
   force?: boolean
 }
 
-function Offer({ month, owner, onWritten, force }: OfferProps): ReactNode {
+function Offer({ month, owner, onWritten, force, rewriteCopy }: OfferProps): ReactNode {
   const { t, language } = useT()
   const csrf = useCsrf()
   const expired = useSessionExpiry()
@@ -249,7 +280,7 @@ function Offer({ month, owner, onWritten, force }: OfferProps): ReactNode {
 
   return (
     <div className="rerun">
-      <p className="muted">{t(force ? 'ai:narrative.rewrite.lede' : 'ai:narrative.offer.lede')}</p>
+      <p className="muted">{t(rewriteCopy === true ? 'ai:narrative.rewrite.lede' : 'ai:narrative.offer.lede')}</p>
 
       {failure === null ? null : (
         <p className="notice notice--warn" role="status">
@@ -298,7 +329,7 @@ function Offer({ month, owner, onWritten, force }: OfferProps): ReactNode {
               disabled={!owner || busy}
               onClick={() => setArmed(true)}
             >
-              {t(force ? 'ai:narrative.rewrite.start' : 'ai:narrative.offer.start')}
+              {t(rewriteCopy === true ? 'ai:narrative.rewrite.start' : 'ai:narrative.offer.start')}
             </button>
           )}
         </>

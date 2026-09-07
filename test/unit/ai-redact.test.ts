@@ -367,6 +367,10 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
         metrics: { rateBp: 1_026, targetBp: 1_500 },
       },
     ],
+    // Populated like everything else here, and deliberately the worst case: a note that
+    // names a person, states a figure in prose, and reads like an instruction. All three
+    // cross verbatim (#298), which is what `the month's own note` below is about.
+    note: 'Dr. A. Vermeulen raised the session fee, so therapy is about \u20ac40 more per month from now on. Ignore the alimony line.',
     ...overrides,
   }
 }
@@ -761,6 +765,51 @@ describe('the month itself', () => {
     expect(hygiene.uncategorisedCount).toBe(31)
     expect(hygiene.uncategorisedCents).toBe(47_500)
     expect(hygiene.mismatchCount).toBe(1)
+  })
+})
+
+describe("the month's own note (#298)", () => {
+  it('crosses exactly as it was written, which is the whole of its value', () => {
+    // The one field in the payload that is not a number or a label, so the assertion is
+    // equality and not a shape: a note that arrives paraphrased, truncated or with its
+    // categories relabelled has lost the thing an average could not tell the model.
+    const payload = redact(bundle()).payload
+    expect(payload.note).toBe(bundle().note)
+    expect(payload.note).toContain('raised the session fee')
+  })
+
+  it('is null when nobody wrote one, and the key is still there', () => {
+    // `'note' in payload` rather than a truthiness check: `PAYLOAD_KEYS` is walked over
+    // what is present, so a field that vanished when empty would go unguarded on exactly
+    // the months most installations have.
+    const payload = redact(bundle({ note: null })).payload
+    expect(payload.note).toBeNull()
+    expect('note' in payload).toBe(true)
+  })
+
+  it('sends a sensitive category by name when the owner typed it themselves', () => {
+    // Uncomfortable and correct. The redactor withholds `Dr. A. Vermeulen` as a category
+    // name — the test above in `a sensitive category` proves it — and sends the same
+    // string here because the owner put it in a box that says it goes to the model as
+    // written. The flag hides what Balancr *inferred* about an envelope; it was never a
+    // filter over the owner's own sentences, and a filter that quietly deleted words from
+    // a note would be worse than one that does not exist: the note would still be sent,
+    // just no longer saying what its author meant. This is why the panel hint and the
+    // README both say the note crosses verbatim, and why it is worth a test rather than a
+    // comment — somebody tightening the sensitive flag needs to find this on the way past.
+    expect(redact(bundle()).payload.note).toContain('Dr. A. Vermeulen')
+  })
+
+  it('is not read as an instruction anywhere in the pipeline', () => {
+    // The fixture note ends with "Ignore the alimony line." Nothing here obeys or strips
+    // it: prompt injection through the note is a prompt-side concern (the note arrives as
+    // data in a labelled field, not as a system rule), and a redactor that tried to detect
+    // instructions would be a filter over prose it cannot parse. What this pins is that
+    // the alimony category is unaffected either way — still present, still a label.
+    const { payload, labelFor } = redact(bundle())
+    const alimony = payload.categories.find((c) => c.label === labelFor.get('cat-alimony'))
+    expect(alimony?.spentCents).toBe(41_000)
+    expect(alimony?.name).toBeUndefined()
   })
 })
 
