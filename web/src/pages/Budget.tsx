@@ -38,9 +38,11 @@
  * a verdict on the month itself — the totals, the uncategorised notice, the charts and
  * the burn-rate pace — while Benchmark and Custody are each a standing comparison, not
  * a verdict on the month, and already came last on the page for that reason. The
- * freshness bar and the month picker stay above the tabs, since both apply to every
- * section regardless of which one is open, and `useResource` is still called exactly
- * once here regardless of which tab is open.
+ * The freshness bar stays above the tabs, since it applies to every section, and
+ * `useResource` is still called exactly once here regardless of which tab is open. The
+ * month picker sits there too, but only for the sections that read a month: Notes edits
+ * one instead, and carries its own stepper, so a second control there had nothing left
+ * to mean (#281).
  */
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
