@@ -38,9 +38,11 @@
  * a verdict on the month itself — the totals, the uncategorised notice, the charts and
  * the burn-rate pace — while Benchmark and Custody are each a standing comparison, not
  * a verdict on the month, and already came last on the page for that reason. The
- * freshness bar and the month picker stay above the tabs, since both apply to every
- * section regardless of which one is open, and `useResource` is still called exactly
- * once here regardless of which tab is open.
+ * The freshness bar stays above the tabs, since it applies to every section, and
+ * `useResource` is still called exactly once here regardless of which tab is open. The
+ * month picker sits there too, but only for the sections that read a month: Notes edits
+ * one instead, and carries its own stepper, so a second control there had nothing left
+ * to mean (#281).
  */
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
@@ -187,15 +189,26 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
     <>
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
-      <div className="toolbar">
-        <MonthPicker
-          month={month}
-          months={months}
-          onSelect={onSelect}
-          id="budget-month"
-          label={t('budget:picker.month')}
-        />
-      </div>
+      {/*
+        Every section but Notes is a view of one month, and this is the only control
+        that chooses it. Notes is the exception (#281): the note card carries its own
+        stepper, because there the month is the thing being edited rather than a filter
+        being read, and two controls for one concept means one of them looks broken —
+        this one did, since `MonthNotePanel` only takes the month as an *initial* value
+        and never follows it afterwards. That handoff is deliberate and stays: pick
+        March on Overview, open Notes, and March's note is what opens.
+      */}
+      {section !== 'notes' && (
+        <div className="toolbar">
+          <MonthPicker
+            month={month}
+            months={months}
+            onSelect={onSelect}
+            id="budget-month"
+            label={t('budget:picker.month')}
+          />
+        </div>
+      )}
 
       {section === 'overview' && (
         <>

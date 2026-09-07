@@ -794,6 +794,43 @@ describe('the month picker', () => {
 
     expect(screen.queryByLabelText('Month')).toBeNull()
   })
+
+  it('stands aside on the Notes tab, which has a month control of its own (#281)', async () => {
+    // Two controls for one concept, and this one could only ever look broken: the panel
+    // takes the month as an initial value and does not follow it afterwards, so choosing
+    // here left the note on screen untouched.
+    serve(json(FULL))
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
+
+    expect(screen.queryByLabelText('Month')).toBeNull()
+    expect(screen.getByLabelText('Previous month')).toBeTruthy()
+  })
+
+  it('still hands the month it chose to the Notes tab as the note that opens (#281)', async () => {
+    // The handoff the initial-value prop exists for, and the reason the picker is hidden
+    // on that tab rather than the two months decoupled: pick July here, open Notes, and
+    // July's note is what is being edited.
+    serve({
+      '/api/budget': json(FULL),
+      '/api/budget?month=2026-07': json({ ...FULL, month: '2026-07' } satisfies BudgetPayload),
+      '/api/budget/note?month=2026-07': json({ text: 'Two annual bills landed together.' }),
+    })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '2026-07' } })
+    // The month on screen is the server's answer, not the select's own value, so the
+    // refetch has to land before the tab switch means anything.
+    await waitFor(() => {
+      expect((screen.getByLabelText('Month') as HTMLSelectElement).value).toBe('2026-07')
+    })
+    fireEvent.click(screen.getByRole('link', { name: 'Notes' }))
+
+    expect(await screen.findByLabelText('Note for July 2026')).toBeTruthy()
+    expect(screen.getByDisplayValue('Two annual bills landed together.')).toBeTruthy()
+    expect(screen.queryByLabelText('Month')).toBeNull()
+  })
 })
 
 describe('the month note', () => {
