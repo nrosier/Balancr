@@ -199,11 +199,31 @@ export const portfolioDetailsSchema = z
     holdings: holdingsSchema,
     summary: z
       .object({
+        /**
+         * The **investments** only, despite the name — a live 2026 instance returns
+         * the value of the positions here and keeps the broker's cash out of it.
+         * `totalValueInBaseCurrency` below is the figure that includes both, and
+         * `npm run probe` reconciles each against its own half rather than reading
+         * this one as a portfolio total (#46).
+         */
         currentValueInBaseCurrency: money.nullish(),
+        /**
+         * Everything the broker holds, cash included — what Ghostfolio's dashboard
+         * prints as net worth, and the comparand for `totalValueCents`.
+         */
+        totalValueInBaseCurrency: money.nullish(),
+        /** Cash sitting at the broker, and the comparand for `cashValueCents`. */
+        totalCashInBaseCurrency: money.nullish(),
         totalInvestment: money.nullish(),
         netPerformance: money.nullish(),
         netPerformancePercent: money.nullish(),
         netPerformancePercentWithCurrencyEffect: money.nullish(),
+        /**
+         * Not the cash balance, whatever the name suggests: on the reporting instance
+         * it came back negative while `totalCashInBaseCurrency` held the figure the
+         * dashboard shows. Kept because it has always been declared here, and
+         * documented so that nobody reconciles against it.
+         */
         cash: money.nullish(),
       })
       .loose()

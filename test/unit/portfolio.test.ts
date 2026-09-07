@@ -12,6 +12,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import {
   portfolioDetailsSchema,
+  toCents,
   type GhostfolioAccounts,
   type PortfolioDetails,
   type PortfolioPerformance,
@@ -596,6 +597,91 @@ describe('computePortfolioMetrics with cash at the broker', () => {
     expect(metrics.totalValueCents).toBe(0)
     expect(metrics.investedValueCents).toBe(0)
     expect(metrics.cashValueCents).toBe(0)
+  })
+})
+
+/**
+ * The reconciliation `npm run probe` performs, held true on a fixture (#46).
+ *
+ * The acceptance test itself needs a real Ghostfolio; this is the part of it that
+ * can be pinned without one — that the three figures Balancr derives line up with
+ * the three summary fields meaning the same thing, and that the obvious field is
+ * not one of them. `currentValueInBaseCurrency` reads like the portfolio total and
+ * is the invested half: on a live instance it came back exactly the broker cash
+ * short, which is the mistake these cases exist to keep out of the probe.
+ *
+ * Every figure below is invented and round. The real ones stay on the machine that
+ * ran the probe.
+ */
+describe('the Ghostfolio summary, as the probe reconciles against it', () => {
+  /** Shaped like a live payload: one position, one cash row, a summary of both. */
+  const LIVE_SHAPE = {
+    holdings: [
+      {
+        symbol: 'IWDA.AS',
+        currency: 'EUR',
+        quantity: 10,
+        marketPrice: 700,
+        valueInBaseCurrency: 7_000,
+        assetClass: 'EQUITY',
+      },
+      {
+        symbol: 'EUR',
+        currency: 'EUR',
+        quantity: 7_500,
+        marketPrice: 1,
+        valueInBaseCurrency: 7_500,
+        assetClass: 'LIQUIDITY',
+      },
+    ],
+    summary: {
+      currentValueInBaseCurrency: 7_000,
+      totalValueInBaseCurrency: 14_500,
+      totalCashInBaseCurrency: 7_500,
+      totalInvestment: 6_500,
+      // Not the cash balance, and negative here for the same reason it was on the
+      // instance this fixture is shaped after.
+      cash: -2_500,
+    },
+  }
+
+  const summary = () => portfolioDetailsSchema.parse(LIVE_SHAPE).summary
+  const metrics = () =>
+    computePortfolioMetrics(
+      '2026-03-01',
+      toHoldingSnapshots('2026-03-01', portfolioDetailsSchema.parse(LIVE_SHAPE), 'EUR'),
+      null,
+    )
+
+  it('keeps the three totals a reconciliation needs', () => {
+    // Declared rather than merely surviving `.loose()`: the probe reads them, so a
+    // Ghostfolio release that renames one has to fail here and not in a terminal.
+    expect(summary()?.totalValueInBaseCurrency).toBe(14_500)
+    expect(summary()?.totalCashInBaseCurrency).toBe(7_500)
+    expect(summary()?.currentValueInBaseCurrency).toBe(7_000)
+  })
+
+  it('derives each half as the figure Ghostfolio reports for it', () => {
+    const ours = metrics()
+    const theirs = summary()
+    expect(ours.totalValueCents).toBe(toCents(theirs?.totalValueInBaseCurrency ?? 0))
+    expect(ours.investedValueCents).toBe(toCents(theirs?.currentValueInBaseCurrency ?? 0))
+    expect(ours.cashValueCents).toBe(toCents(theirs?.totalCashInBaseCurrency ?? 0))
+  })
+
+  it('comes out exactly the cash short when the invested figure is read as the total', () => {
+    // The trap, as an equation: a probe comparing our total against
+    // `currentValueInBaseCurrency` reports every instance holding cash as broken by
+    // precisely the cash, which looks like a dropped holding and is not one.
+    const ours = metrics()
+    expect(ours.totalValueCents - toCents(summary()?.currentValueInBaseCurrency ?? 0)).toBe(
+      ours.cashValueCents,
+    )
+  })
+
+  it('never reconciles the broker cash against `cash`', () => {
+    expect(summary()?.cash).toBe(-2_500)
+    expect(metrics().cashValueCents).toBe(750_000)
   })
 })
 
