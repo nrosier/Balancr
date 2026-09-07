@@ -73,8 +73,8 @@ half-English, and costs a fraction of what shipping raw transactions would.
 ## Privacy
 
 - **No payees, no memos, no transactions ever leave the machine.** Only
-  aggregates and category names, and categories you mark sensitive are sent as an
-  opaque label plus their class.
+  aggregates and category names — and per envelope you choose one of three answers:
+  name and amounts, amounts only (an opaque label plus its class), or nothing at all.
 - **Every call is logged verbatim.** `ai_runs.payload_json` holds exactly what was
   sent, so you can check the claim above by hand rather than trusting it.
 - **A golden test enforces it** — the redaction test fails if any payee string
@@ -121,14 +121,27 @@ rather than reviewed.
   available figures, the signals derived from them, and for the household comparison a
   survey line, a share and a euro figure. No payee, no memo, no individual transaction,
   no account number, and nobody's name or year of birth.
-- **What "sensitive" actually withholds.** The name and the description you wrote — the
-  two fields that say what the envelope is. It keeps the amounts, and it keeps the
-  classification: the COICOP code, `fixed`/`variable`/`discretionary`, and how often it
-  is expected. That is deliberate rather than an oversight — an envelope with no amounts
-  and no class is one the model can say nothing useful about — but it does mean a broad
-  category (`06`, health) is inferable from a flagged envelope. There is no per-envelope
-  opt-out beyond the flag today: if even the class is too much, the honest answers are
-  `AI_ENABLED=false`, or keeping that spending out of the budget Balancr reads.
+- **Three answers per envelope, and you pick each one.** Settings → Benchmark →
+  Categories has a "Sent to the AI" column with one control per envelope:
+  - **Name and amounts** — the default, and what every envelope did before this column
+    existed.
+  - **Amounts only** — withholds the name and the description you wrote, the two fields
+    that say what the envelope *is*. It keeps the amounts and the classification: the
+    COICOP code, `fixed`/`variable`/`discretionary`, and how often it is expected. That
+    is deliberate rather than an oversight — an envelope with no amounts and no class is
+    one the model can say nothing useful about — but it does mean a broad category (`06`,
+    health) stays inferable.
+  - **Nothing** — the envelope is not in the request at all: no name, no class, no
+    amounts of its own, and no finding, narrative sentence or budget suggestion about it.
+    Its money stays inside the month's totals, which are *not* recomputed to hide it —
+    a month whose figures do not add up is worse than a labelled envelope — so what
+    crosses instead is a count and one combined figure saying how much was withheld. The
+    prompts are told the gap is a deliberate choice, so a model does not report the
+    difference as a data error or try to work back to it. The cost is real: an excluded
+    envelope gets no advice of any kind.
+
+  If even a count is too much, the answers are still `AI_ENABLED=false`, or keeping that
+  spending out of the budget Balancr reads.
 - **How to check it without reading the source.** Insights → Ledger lists every call
   ever made — when, which model, tokens in and out, what it cost, how it ended — and
   "Show the exact payload" prints what was sent, from `ai_runs.payload_json`. Nothing

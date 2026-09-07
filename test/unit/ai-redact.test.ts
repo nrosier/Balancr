@@ -55,6 +55,11 @@ const NEVER_SENT = [
   'psychotherapy',
   'Alimentatie ex-partner',
   'alimony transfer March',
+  // An excluded category (#278), whose class and amounts are withheld on top of
+  // its name — so its own text belongs on the same list as the two above it.
+  'Kliniek Sint-Amand — opname',
+  'inpatient stay',
+  'cat-withheld',
   // Account names, which carry the bank, the product and the last digits.
   'KBC Zichtrekening ...6703',
   'ARGENTA BANK CARD 6703',
@@ -135,6 +140,7 @@ const meta = (overrides: Partial<CategoryMetaRow> = {}): CategoryMetaRow => ({
   expectedFrequency: 'monthly',
   custodyShared: false,
   sensitive: false,
+  aiExcluded: false,
   confidence: 100,
   updatedAt: new Date('2026-08-01T00:00:00.000Z'),
   ...overrides,
@@ -206,6 +212,38 @@ const ALIMONY: BundleCategory = {
   }),
 }
 
+/**
+ * The third state: an envelope that does not cross at all (#278).
+ *
+ * `sensitive` withholds the name and keeps the rest, which for a category like this
+ * one is most of the disclosure: `06` is health whatever the label says, and a class
+ * plus a monthly amount plus a transaction count is a readable account of something
+ * nobody agreed to send. `aiExcluded` is the answer for those — no label, no class,
+ * no amounts of its own, and no signal about it either.
+ *
+ * `sensitive` is true alongside it because that is what `saveAiVisibility` writes: the
+ * weaker flag under the stronger one, so a path that reads only one column still
+ * withholds. Keeping it false here would test a state the writer cannot produce.
+ */
+const WITHHELD: BundleCategory = {
+  fact: fact({
+    categoryId: 'cat-withheld',
+    categoryName: 'Kliniek Sint-Amand — opname',
+    spentCents: 31_000,
+    budgetedCents: 30_000,
+    txnCount: 3,
+  }),
+  meta: meta({
+    categoryId: 'cat-withheld',
+    nameSnapshot: 'Kliniek Sint-Amand — opname',
+    userDescription: 'The inpatient stay, the self-paid part, and the appointments after it',
+    coicopCode: '06.3',
+    nature: 'fixed',
+    sensitive: true,
+    aiExcluded: true,
+  }),
+}
+
 function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
   return {
     month: '2026-08',
@@ -222,6 +260,7 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
       },
       THERAPY,
       ALIMONY,
+      WITHHELD,
       {
         fact: fact({ categoryId: 'cat-salary', categoryName: 'Salary', isIncome: true }),
         meta: meta({ categoryId: 'cat-salary', nature: 'income', coicopCode: null }),
@@ -366,6 +405,16 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
         severity: 'warn',
         metrics: { rateBp: 1_026, targetBp: 1_500 },
       },
+      // A finding about the excluded envelope, which must be dropped rather than sent
+      // with a null label — null means household, and the household did not overspend
+      // (#278). Last in the list on purpose: the assertions above index into this array.
+      {
+        code: 'over_available',
+        categoryId: 'cat-withheld',
+        categoryName: 'Kliniek Sint-Amand — opname',
+        severity: 'warn',
+        metrics: { overspendCents: 1_000 },
+      },
     ],
     ...overrides,
   }
@@ -498,6 +547,142 @@ describe('a sensitive category', () => {
     expect(signal?.code).toBe('above_baseline')
     expect(signal?.label).toMatch(/^c\d+$/)
     expect(JSON.stringify(signal)).not.toContain('Vermeulen')
+  })
+})
+
+describe('an excluded category (#278)', () => {
+  /** The bundle without its one excluded envelope: the pre-feature payload. */
+  const nothingExcluded = () =>
+    bundle({
+      categories: bundle().categories.filter((c) => c.fact.categoryId !== 'cat-withheld'),
+      signals: bundle().signals.filter((s) => s.categoryId !== 'cat-withheld'),
+    })
+
+  it('contributes no entry, no label and no id mapping', () => {
+    const { payload, labelFor, categoryIdFor } = redact(bundle())
+    expect(labelFor.has('cat-withheld')).toBe(false)
+    expect([...categoryIdFor.values()]).not.toContain('cat-withheld')
+    // Nothing of it under any label, which is the assertion the denylist cannot make:
+    // a name it happened to share with another envelope would pass a string search.
+    expect(payload.categories.map((c) => c.name)).toEqual([
+      // `cat-alimony` and `cat-therapy` are sensitive, so they have no name at all.
+      undefined,
+      'Groceries',
+      'Salary',
+      undefined,
+      'Misc 2',
+    ])
+    expect(payload.categories.map((c) => c.coicop)).not.toContain('06.3')
+  })
+
+  it('leaves the labels contiguous over the gap it makes', () => {
+    // `cat-withheld` sorts between `cat-therapy` and nothing, but the point holds
+    // wherever it lands: a hole in `c1`…`cN` would itself say an envelope was withheld
+    // and how many, which is the one thing the block below is allowed to say.
+    const payload = redact(bundle()).payload
+    expect(payload.categories.map((c) => c.label)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5'])
+  })
+
+  it('declares itself as a count and three figures, and nothing else', () => {
+    const excluded = redact(bundle()).payload.excluded
+    expect(excluded).toEqual({
+      count: 1,
+      spentCents: 31_000,
+      budgetedCents: 30_000,
+      incomeCents: 0,
+    })
+  })
+
+  it('is still inside the month totals, so the figures reconcile', () => {
+    // The deliberate half of the design: nothing is recomputed to hide the envelope,
+    // because a month whose totals do not add up is worse than a labelled one. So the
+    // sum of what was sent plus what was withheld is the total that was also sent, and
+    // the block is what makes that difference read as a decision rather than an error.
+    const payload = redact(
+      bundle({
+        categories: [
+          { fact: fact({ spentCents: 52_000 }), meta: meta() },
+          WITHHELD,
+          {
+            fact: fact({
+              categoryId: 'cat-salary',
+              categoryName: 'Salary',
+              isIncome: true,
+              spentCents: 380_000,
+            }),
+            meta: meta({ categoryId: 'cat-salary', nature: 'income' }),
+          },
+        ],
+        totals: { ...totals('2026-08'), spentCents: 83_000, incomeCents: 380_000 },
+        signals: [],
+      }),
+    ).payload
+    const listed = payload.categories
+      .filter((category) => !category.income)
+      .reduce((sum, category) => sum + category.spentCents, 0)
+    expect(listed).toBe(52_000)
+    expect(payload.totals.spentCents).toBe(83_000)
+    expect(listed + (payload.excluded?.spentCents ?? 0)).toBe(payload.totals.spentCents)
+  })
+
+  it('drops a finding about it rather than sending it as the household own', () => {
+    // `toSignal` reads a missing label as household level, so an unlabelled
+    // `over_available` would report one envelope's overspend as the whole month's.
+    const payload = redact(bundle()).payload
+    expect(payload.signals.map((s) => s.code)).toEqual([
+      'above_baseline',
+      'unreconciled_account',
+      'savings_rate_low',
+    ])
+    for (const signal of payload.signals) {
+      if (signal.label === null) expect(signal.code).toBe('savings_rate_low')
+    }
+  })
+
+  it('counts an excluded income envelope under incomeCents, not under spentCents', () => {
+    const payload = redact(
+      bundle({
+        categories: [
+          {
+            fact: fact({
+              categoryId: 'cat-side',
+              categoryName: 'Side work',
+              isIncome: true,
+              spentCents: 60_000,
+              budgetedCents: 0,
+            }),
+            meta: meta({ categoryId: 'cat-side', nature: 'income', sensitive: true, aiExcluded: true }),
+          },
+          WITHHELD,
+        ],
+        signals: [],
+      }),
+    ).payload
+    expect(payload.categories).toEqual([])
+    expect(payload.excluded).toEqual({
+      count: 2,
+      spentCents: 31_000,
+      budgetedCents: 30_000,
+      incomeCents: 60_000,
+    })
+  })
+
+  it('sends null, and none of the block keys, when nothing is excluded', () => {
+    const payload = redact(nothingExcluded()).payload
+    expect(payload.excluded).toBeNull()
+    expect(keysIn(payload)).not.toContain('count')
+    expect(payload.categories.map((c) => c.label)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5'])
+  })
+
+  it('is not what sensitive means: a sensitive envelope still crosses', () => {
+    // The two flags are stored separately and the pair is written together. This is the
+    // assertion that says they are not the same question: `cat-therapy` is sensitive and
+    // present, `cat-withheld` is both and absent.
+    const { payload, labelFor } = redact(bundle())
+    expect(labelFor.has('cat-therapy')).toBe(true)
+    expect(payload.categories.find((c) => c.label === labelFor.get('cat-therapy'))?.spentCents).toBe(
+      24_000,
+    )
   })
 })
 
@@ -775,12 +960,14 @@ describe('the month itself', () => {
 const GUESS_CATEGORY_META = new Map<string, CategoryMetaRow | null>([
   ['cat-groceries', meta()],
   ['cat-therapy', meta({ categoryId: 'cat-therapy', sensitive: true, coicopCode: '06.2', nature: 'fixed' })],
+  ['cat-withheld', meta({ categoryId: 'cat-withheld', sensitive: true, aiExcluded: true, coicopCode: '06.3', nature: 'fixed' })],
   ['cat-unknown', null],
 ])
 
 const GUESS_CATEGORY_NAME = new Map<string, string>([
   ['cat-groceries', 'Groceries'],
   ['cat-therapy', 'Therapy — Dr. A. Vermeulen'],
+  ['cat-withheld', 'Kliniek Sint-Amand — opname'],
 ])
 
 function guessCandidate(overrides: Partial<GuessCandidateInput> = {}): GuessCandidateInput {
@@ -850,6 +1037,46 @@ describe('redactCategoryGuessBatch sends only an opaque batch', () => {
     expect(labelA).toBe(labelB)
   })
 
+  it('drops an excluded category from the vocabulary and from every history (#278)', () => {
+    const { payload, categoryIdFor } = guessBatch([
+      guessCandidate({
+        history: [
+          { categoryId: 'cat-groceries', count: 3 },
+          { categoryId: 'cat-withheld', count: 5 },
+        ],
+      }),
+    ])
+    expect([...categoryIdFor.values()]).toEqual(['cat-groceries'])
+    expect(payload.candidates[0]?.history.map((h) => h.count)).toEqual([3])
+    expect(payload.candidates[0]?.history.map((h) => h.label)).toEqual(['c1'])
+    expect(JSON.stringify(payload)).not.toContain('06.3')
+  })
+
+  it('drops a candidate whose only history is excluded, rather than sending it bare', () => {
+    // A candidate with an empty history is not a cheaper question, it is a worse one:
+    // it invites a guess at whichever categories *are* visible. The cost — that
+    // transaction never being proposed into the excluded envelope — is what the flag
+    // asked for, and the deterministic payee-majority route still handles it locally.
+    const { payload, transactionIdFor } = guessBatch([
+      guessCandidate({ transactionId: 'txn-a', history: [{ categoryId: 'cat-withheld', count: 4 }] }),
+      guessCandidate({ transactionId: 'txn-b', history: [{ categoryId: 'cat-groceries', count: 2 }] }),
+    ])
+    // `t1`, not `t2`: the ids are contiguous over what was sent, or the gap would say
+    // a candidate was removed and the model would be answering about a list it cannot see.
+    expect(payload.candidates.map((c) => c.clientId)).toEqual(['t1'])
+    expect(transactionIdFor.get('t1')).toBe('txn-b')
+    expect(transactionIdFor.has('t2')).toBe(false)
+    expect(JSON.stringify(payload)).not.toContain('txn-a')
+  })
+
+  it('sends no batch at all when every candidate is excluded', () => {
+    const { payload } = guessBatch([
+      guessCandidate({ history: [{ categoryId: 'cat-withheld', count: 4 }] }),
+    ])
+    expect(payload.candidates).toEqual([])
+    expect(payload.categories).toEqual([])
+  })
+
   it('falls back to no name or class for a category the sync knows nothing about', () => {
     const { payload, categoryIdFor } = guessBatch([
       guessCandidate({ history: [{ categoryId: 'cat-unknown', count: 1 }] }),
@@ -869,6 +1096,7 @@ describe('redactCategoryGuessBatch sends only an opaque batch', () => {
 const NUDGE_CATEGORY_META = new Map<string, CategoryMetaRow | null>([
   ['cat-groceries', meta()],
   ['cat-therapy', meta({ categoryId: 'cat-therapy', sensitive: true, nameSnapshot: 'Therapy — Dr. A. Vermeulen' })],
+  ['cat-withheld', meta({ categoryId: 'cat-withheld', sensitive: true, aiExcluded: true })],
 ])
 
 function nudgeCandidate(overrides: Partial<NudgeCandidateInput> = {}): NudgeCandidateInput {
@@ -930,5 +1158,17 @@ describe('redactBudgetNudgeBatch sends only an opaque batch', () => {
     ])
     expect(categoryIdFor.get(payload.candidates[0]!.label)).toBe('cat-groceries')
     expect(categoryIdFor.get(payload.candidates[1]!.label)).toBe('cat-therapy')
+  })
+
+  it('drops an excluded candidate before labelling, so the labels stay contiguous (#278)', () => {
+    // The amount for an excluded envelope is left to the deterministic rule that
+    // proposed it. Nothing about it goes out with the note.
+    const { payload, categoryIdFor } = nudgeBatch([
+      nudgeCandidate({ categoryId: 'cat-withheld', suggestedCents: 31_000 }),
+      nudgeCandidate({ categoryId: 'cat-groceries' }),
+    ])
+    expect(payload.candidates.map((c) => c.label)).toEqual(['c1'])
+    expect(categoryIdFor.get('c1')).toBe('cat-groceries')
+    expect(JSON.stringify(payload)).not.toContain('31000')
   })
 })

@@ -29,6 +29,7 @@ import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
 import { BENCHMARK_BASES, BENCHMARK_UNAVAILABLE } from '../../../domain/benchmark/compare.ts'
+import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
   BENCHMARK_BLOCKS,
   BENCHMARK_GROUPS,
@@ -1349,6 +1350,17 @@ export const benchmarkSettingSchema = z.object({
        * why this is never the AI-proposal values the column also carries.
        */
       nature: z.enum(['savings', 'investments']).nullable(),
+      /**
+       * How much of this envelope the AI layer may see (#278).
+       *
+       * The three-state answer, not the two `category_meta` columns behind it — see
+       * `mapping.ts`'s `aiVisibility`. On this list for the third time the same argument
+       * has been made: same table, same screen, one pass through fifty envelopes. And
+       * for one more reason the other two do not have — until this field, the only way
+       * to keep an envelope out of a payload was to turn the whole AI layer off or to
+       * stop keeping the spending in the budget Balancr reads.
+       */
+      aiVisibility: z.enum(AI_VISIBILITY_CHOICES),
       spentCents: cents(),
     }),
   ),

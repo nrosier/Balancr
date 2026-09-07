@@ -234,6 +234,47 @@ describe('seedPrompts', () => {
     )
   })
 
+  it('upgrades an install running the v1.0.0-rc.1 built-ins to the exclusion rule (#278)', () => {
+    // The entry that matters is the newest one, because it is the text every install
+    // that booted before this release is actually running. The tests above index [0],
+    // which would keep passing while the newest addition reached fresh databases only —
+    // the exact failure `SUPERSEDED_PROMPTS` was written for, one release later.
+    for (const key of PROMPT_KEYS) {
+      const list = SUPERSEDED_PROMPTS[key]
+      const newest = list[list.length - 1]
+      if (newest === undefined) throw new Error(`no superseded body for ${key}`)
+      createPromptVersion(db, { key, locale: SHARED_LOCALE, body: newest, activate: true })
+    }
+
+    expect(seedPrompts(db)).toBe(PROMPT_KEYS.length)
+    for (const key of PROMPT_KEYS) {
+      expect(loadActivePrompt(db, key, SHARED_LOCALE)?.body).toBe(DEFAULT_PROMPTS[key])
+    }
+    // And the rule is in there rather than only the version having changed: an
+    // `excluded` block in the payload is meaningless if nothing tells the model
+    // what to do about the difference it makes (#278).
+    expect(DEFAULT_PROMPTS['narrative.system']).toContain('withheld from you on purpose')
+    expect(DEFAULT_PROMPTS['analysis.system']).toContain('"excluded"')
+  })
+
+  it('leaves an edit of the v1.0.0-rc.1 narrative built-in alone', () => {
+    // The same guarantee as the [0] case above, at the end of the chain: somebody who
+    // added their own rule 9 keeps it, and does not silently get ours instead.
+    const list = SUPERSEDED_PROMPTS['narrative.system']
+    const newest = list[list.length - 1]
+    if (newest === undefined) throw new Error('no superseded narrative body')
+    const edited = `${newest}\n9. Always mention the weather.`
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: edited,
+      activate: true,
+    })
+
+    expect(seedPrompts(db)).toBe(1) // the analysis prompt only
+    expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(edited)
+  })
+
   it('does not touch a language override when it upgrades the shared row', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
@@ -290,6 +331,28 @@ describe('the superseded list', () => {
     // dropped that instance stops receiving improvements with nothing reporting it.
     for (const key of PROMPT_KEYS) {
       expect(SUPERSEDED_PROMPTS[key].length).toBeGreaterThan(0)
+    }
+  })
+
+  it('recognises every past built-in, not only the first', () => {
+    // One entry per shipped default, and each one is an install somewhere. A chain that
+    // recognises its oldest link and not its newest leaves behind exactly the instances
+    // that are most current — which is the wrong half to lose.
+    for (const key of PROMPT_KEYS) {
+      for (const previous of SUPERSEDED_PROMPTS[key]) {
+        expect(supersededBuiltIn(key, previous), key).toBe(true)
+      }
+    }
+  })
+
+  it('holds every entry exactly once, so an upgrade cannot loop between two of them', () => {
+    // A duplicate would not be caught by the "never contains the current text" check
+    // above and is the shape a copy-paste mistake takes: the chain is written by hand,
+    // one constant per shipped release, and two identical links in it would make the
+    // version list on somebody's install unreadable rather than wrong.
+    for (const key of PROMPT_KEYS) {
+      const bodies = SUPERSEDED_PROMPTS[key]
+      expect(new Set(bodies).size, key).toBe(bodies.length)
     }
   })
 

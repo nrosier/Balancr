@@ -16,6 +16,14 @@
  * crosses as an opaque label plus its COICOP class and nature, so the model can
  * still reason about the amount without learning it is a therapist or a lawyer.
  *
+ * A category flagged `aiExcluded` does not cross at all (#278) — no label, no class,
+ * no amounts, and no signal about it either. Its money is left where it already was,
+ * inside the month's totals, and is declared as a count and a combined figure in
+ * `excluded`: the totals then still reconcile, and a model that would otherwise
+ * subtract its way to the same difference is told the gap is deliberate rather than
+ * left to report it as a data error. The three states are one control in Settings —
+ * shown, name withheld, absent — read through `mapping.ts`'s `aiVisibility`.
+ *
  * Two rules of construction, both deliberate:
  *
  *  1. **Every field is written out by hand.** No object spreads, no `...rest`, no
@@ -262,6 +270,28 @@ export interface RedactedMonthTotals {
   savingsRateBp: number | null
 }
 
+/**
+ * What was left out, as two counts and three figures. Never a label, never a class.
+ *
+ * The same shape of answer `BundleDrift.unmappedCount`/`unmappedShareBp` gives for a
+ * class with no band: enough to say something is missing and nothing to say what.
+ *
+ * Each cent figure exists because `totals` carries its counterpart. `totals.spentCents`
+ * is the month's spending including the excluded envelopes — nothing is recomputed to
+ * hide them, because a month whose figures do not reconcile is worse than a labelled
+ * envelope — so the difference from the sum of `categories` is computable either way.
+ * Stating it is therefore not a disclosure; it is the difference between a model that
+ * knows a gap is a choice and one that files it as an error.
+ */
+export interface RedactedExcluded {
+  /** How many envelopes were left out. */
+  count: number
+  spentCents: number
+  budgetedCents: number
+  /** Income envelopes can be excluded too, and `totals.incomeCents` still holds them. */
+  incomeCents: number
+}
+
 export interface RedactedNetWorth {
   date: string
   totalCents: number
@@ -280,6 +310,15 @@ export interface RedactedPayload {
   netWorth: RedactedNetWorth | null
   hygiene: BundleHygiene
   categories: RedactedCategory[]
+  /**
+   * Null when nothing is excluded, rather than a zeroed block (#278).
+   *
+   * A zeroed block would put four figures in front of the model on every installation
+   * that uses none of this, and invite a sentence about the nothing they describe. Null
+   * is the stated absence, and none of the block's own keys then reach the wire — which
+   * is what keeps `PAYLOAD_KEYS` honest too: the fixture has to opt in to reach them.
+   */
+  excluded: RedactedExcluded | null
   accounts: RedactedAccount[]
   portfolio: RedactedPortfolio | null
   drift: RedactedDrift | null
@@ -449,18 +488,59 @@ function toSignal(signal: Signal, labelFor: ReadonlyMap<string, string>): Redact
 }
 
 /**
+ * Reduces the excluded envelopes to the block that stands in for them (#278).
+ *
+ * Null for an empty list rather than a zeroed block, per `RedactedPayload.excluded`.
+ * Income is summed separately from spending because `totals` reports the two
+ * separately, and one combined figure would reconcile against neither.
+ */
+function toExcluded(entries: readonly BundleCategory[]): RedactedExcluded | null {
+  if (entries.length === 0) return null
+  let spentCents = 0
+  let budgetedCents = 0
+  let incomeCents = 0
+  for (const entry of entries) {
+    if (entry.fact.isIncome) incomeCents += entry.fact.spentCents
+    else spentCents += entry.fact.spentCents
+    budgetedCents += entry.fact.budgetedCents
+  }
+  return { count: entries.length, spentCents, budgetedCents, incomeCents }
+}
+
+/**
  * Everything the aggregation layer computed → exactly what may be sent.
  *
  * Labels are assigned in id order, not in the bundle's order, so the same
  * category is `c7` in every run. That keeps a stored payload readable against
  * today's data and lets the stable half of the prompt be cached; sorting by
  * salience instead would renumber everything whenever spending moved.
+ *
+ * An `aiExcluded` envelope is partitioned off before any of that (#278), so labels
+ * stay contiguous: a gap in `c1…cN` would itself say an envelope had been withheld,
+ * and how many. Its signals go with it — see below.
  */
 export function redact(bundle: AnalysisBundle): Redaction {
   const labelFor = new Map<string, string>()
   const categoryIdFor = new Map<string, string>()
 
-  const categories = [...bundle.categories].sort((a, b) =>
+  // Partitioned here rather than in the collector, though `bundle.ts` is the layer
+  // that decides what is *in* the bundle. The excluded envelope's amounts are needed
+  // to state the block below, so they cannot be un-collected; and this file is the one
+  // whose review is a review of everything that leaves, so the one place that drops a
+  // row is the one place a reader has to check.
+  const excludedIds = new Set<string>()
+  const excludedEntries: BundleCategory[] = []
+  const visible: BundleCategory[] = []
+  for (const entry of bundle.categories) {
+    if (entry.meta?.aiExcluded === true) {
+      excludedIds.add(entry.fact.categoryId)
+      excludedEntries.push(entry)
+    } else {
+      visible.push(entry)
+    }
+  }
+
+  const categories = [...visible].sort((a, b) =>
     a.fact.categoryId < b.fact.categoryId ? -1 : a.fact.categoryId > b.fact.categoryId ? 1 : 0,
   )
   const redactedCategories = categories.map((entry, index) => {
@@ -496,10 +576,18 @@ export function redact(bundle: AnalysisBundle): Redaction {
         mismatchCount: bundle.hygiene.mismatchCount,
       },
       categories: redactedCategories,
+      excluded: toExcluded(excludedEntries),
       accounts: redactedAccounts,
       portfolio: bundle.portfolio === null ? null : toPortfolio(bundle.portfolio),
       drift: bundle.drift === null ? null : toDrift(bundle.drift),
-      signals: bundle.signals.map((signal) => toSignal(signal, labelFor)),
+      // A signal about an excluded envelope is dropped rather than sent unlabelled.
+      // `toSignal` reads a missing label as household level, which is what null has
+      // always meant there — so forwarding one would report a category's overspend as
+      // the household's, attributing it to everything else in the month. That is worse
+      // than losing the finding, and losing it is what exclusion was asked for.
+      signals: bundle.signals
+        .filter((signal) => signal.categoryId === null || !excludedIds.has(signal.categoryId))
+        .map((signal) => toSignal(signal, labelFor)),
     },
     labelFor,
     categoryIdFor,
@@ -564,6 +652,14 @@ export interface GuessRedaction {
  * Categories are collected across every candidate in the batch and labelled
  * once, in id order, so a category shared by two candidates is the same label
  * in both rather than two unrelated ones.
+ *
+ * An `aiExcluded` category is dropped from the vocabulary and from every candidate's
+ * history (#278), and a candidate left with no history at all is dropped with it —
+ * there is nothing to guess from, and a candidate sent with an empty history would
+ * invite a guess at one of the categories that *are* visible. The cost is real and is
+ * what the flag asks for: a transaction that belongs in an excluded envelope will not
+ * be proposed into it. The deterministic payee-majority rule (#216's threshold path)
+ * is untouched, so that route still categorises it locally with no model involved.
  */
 export function redactCategoryGuessBatch(
   candidates: readonly GuessCandidateInput[],
@@ -571,8 +667,20 @@ export function redactCategoryGuessBatch(
   categoryNameById: ReadonlyMap<string, string>,
   locale: string,
 ): GuessRedaction {
+  const isExcluded = (categoryId: string): boolean =>
+    categoryMetaById.get(categoryId)?.aiExcluded === true
+
+  // Filtered before anything is labelled, so `t1…tN` and `c1…cN` are both contiguous
+  // over what is actually sent rather than carrying a gap that says one was removed.
+  const kept = candidates
+    .map((candidate) => ({
+      ...candidate,
+      history: candidate.history.filter((sample) => !isExcluded(sample.categoryId)),
+    }))
+    .filter((candidate) => candidate.history.length > 0)
+
   const categoryIds = new Set<string>()
-  for (const candidate of candidates) {
+  for (const candidate of kept) {
     for (const sample of candidate.history) categoryIds.add(sample.categoryId)
   }
   const sortedCategoryIds = [...categoryIds].sort()
@@ -600,7 +708,7 @@ export function redactCategoryGuessBatch(
   })
 
   const transactionIdFor = new Map<string, string>()
-  const redactedCandidates: RedactedGuessCandidate[] = candidates.map((candidate, index) => {
+  const redactedCandidates: RedactedGuessCandidate[] = kept.map((candidate, index) => {
     const clientId = `t${index + 1}`
     transactionIdFor.set(clientId, candidate.transactionId)
     return {
@@ -658,6 +766,7 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'netWorth',
   'hygiene',
   'categories',
+  'excluded',
   'accounts',
   'portfolio',
   'drift',
@@ -693,6 +802,9 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'baselineCents',
   'deltaBp',
   'baselineMonths',
+  // excluded (#278) — `count` and nothing else new: the three cent figures are the
+  // same keys `totals` already declares, which is the point of stating them.
+  'count',
   // accounts
   'source',
   'kind',
@@ -776,6 +888,12 @@ export interface NudgeRedaction {
  * for a nudge (#217). Same two rules as `redact`: every field written out by
  * hand, and every category addressed only by an opaque label — assigned in
  * sorted-id order, same discipline as `redactCategoryGuessBatch`.
+ *
+ * An `aiExcluded` candidate is dropped entirely (#278). Its `budget_amount.set`
+ * proposal was computed locally by `suggestBudgetAmounts` and still exists — the
+ * envelope keeps its trailing-average suggestion, it just does not get read against
+ * the month's note. Which is the feature working: exclusion costs the model's judgement
+ * on that envelope and nothing else.
  */
 export function redactBudgetNudgeBatch(
   candidates: readonly NudgeCandidateInput[],
@@ -784,7 +902,9 @@ export function redactBudgetNudgeBatch(
   locale: string,
   note: string,
 ): NudgeRedaction {
-  const sorted = [...candidates].sort((a, b) => a.categoryId.localeCompare(b.categoryId))
+  const sorted = [...candidates]
+    .filter((candidate) => categoryMetaById.get(candidate.categoryId)?.aiExcluded !== true)
+    .sort((a, b) => a.categoryId.localeCompare(b.categoryId))
 
   const categoryIdFor = new Map<string, string>()
   const redactedCandidates: RedactedNudgeCandidate[] = sorted.map((candidate, index) => {

@@ -23,6 +23,7 @@
  * unconfirmed reference household — are built by hand, which is also what proves those
  * branches are reachable.
  */
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
@@ -43,8 +44,11 @@ import {
   type Household,
 } from '../../src/domain/benchmark/household.ts'
 import {
+  aiVisibilityOf,
+  AI_VISIBILITY_CHOICES,
   loadMapping,
   MappingError,
+  saveAiVisibility,
   saveCoicop,
 } from '../../src/domain/benchmark/mapping.ts'
 import {
@@ -935,5 +939,57 @@ describe('the COICOP mapping', () => {
     // `category_meta` rows come from what Actual actually has. One conjured here would
     // sit in the mapping table for ever with nothing to tell it from a real one.
     expect(() => saveCoicop(ctx.db, 'ghost', '01')).toThrow(MappingError)
+  })
+
+  describe('what the AI may see of an envelope (#278)', () => {
+    /** The stored pair, read straight off the column rather than through the mapping. */
+    const columns = (id: string) => {
+      const row = ctx.db
+        .select({ sensitive: categoryMeta.sensitive, aiExcluded: categoryMeta.aiExcluded })
+        .from(categoryMeta)
+        .where(eq(categoryMeta.categoryId, id))
+        .get()
+      return { sensitive: row?.sensitive, aiExcluded: row?.aiExcluded }
+    }
+
+    it('collapses the two columns into the three answers there are', () => {
+      expect(aiVisibilityOf({ sensitive: false, aiExcluded: false })).toBe('shown')
+      expect(aiVisibilityOf({ sensitive: true, aiExcluded: false })).toBe('label_only')
+      expect(aiVisibilityOf({ sensitive: true, aiExcluded: true })).toBe('absent')
+      // The fourth pair should not exist, because `saveAiVisibility` never writes it.
+      // It reads as `absent` rather than as `shown`: exclusion is the stronger answer,
+      // so a pair that has somehow been half-written fails towards withholding.
+      expect(aiVisibilityOf({ sensitive: false, aiExcluded: true })).toBe('absent')
+    })
+
+    it('writes both columns together, so the pair is never contradictory', () => {
+      seed([{ id: 'therapy', name: 'Health' }])
+      expect(loadMapping(ctx.db, null)[0]?.aiVisibility).toBe('shown')
+
+      saveAiVisibility(ctx.db, 'therapy', 'label_only')
+      expect(columns('therapy')).toEqual({ sensitive: true, aiExcluded: false })
+
+      // `sensitive` comes along, because exclusion is strictly stronger and anything
+      // that reads only the older column must still withhold.
+      saveAiVisibility(ctx.db, 'therapy', 'absent')
+      expect(columns('therapy')).toEqual({ sensitive: true, aiExcluded: true })
+
+      // And back, in one write: going to `shown` clears both, or an envelope somebody
+      // un-excluded would keep sending no name with no control left saying why.
+      saveAiVisibility(ctx.db, 'therapy', 'shown')
+      expect(columns('therapy')).toEqual({ sensitive: false, aiExcluded: false })
+    })
+
+    it('reports every state back through the mapping the panel reads', () => {
+      seed([{ id: 'therapy', name: 'Health' }])
+      for (const visibility of AI_VISIBILITY_CHOICES) {
+        saveAiVisibility(ctx.db, 'therapy', visibility)
+        expect(loadMapping(ctx.db, null)[0]?.aiVisibility).toBe(visibility)
+      }
+    })
+
+    it('refuses to invent a category here too', () => {
+      expect(() => saveAiVisibility(ctx.db, 'ghost', 'absent')).toThrow(MappingError)
+    })
   })
 })

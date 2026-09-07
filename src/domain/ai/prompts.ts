@@ -77,6 +77,26 @@ your side of it. Household-level findings use the label "household".
 `.trim()
 
 /**
+ * The analysis prompt as it shipped from #183 (v0.9.0) through v1.0.0-rc.1, kept byte
+ * for byte for the same reason `ANALYSIS_SYSTEM_V1` is.
+ *
+ * The added paragraph is about the labels, and it is a correction rather than a feature:
+ * a signal about a benchmark group or an asset class now carries that group's or class's
+ * own id instead of arriving as "household" (#183), and a prompt that still called every
+ * label opaque would be describing a boundary that has moved.
+ *
+ * Superseded by `ANALYSIS_SYSTEM` below, which adds the excluded-envelope rule (#278).
+ */
+const ANALYSIS_SYSTEM_V2 = `
+${ANALYSIS_SYSTEM_V1}
+
+Some findings are about a benchmark group or an asset class rather than an
+envelope, and those carry the group's or the class's own id (housing, EQUITY, …).
+Those ids are a fixed set built into Balancr, not anybody's wording, and two of
+them are two different findings: refer to each by its own id.
+`.trim()
+
+/**
  * The system prompt for the structured pass.
  *
  * Note what it does *not* ask for: no amounts, no percentages, no sentences. The
@@ -84,18 +104,21 @@ your side of it. Household-level findings use the label "household".
  * decide what a person should read first, which is the one judgement a language
  * model is genuinely better at than a threshold.
  *
- * The added paragraph is about the labels, and it is a correction rather than a feature:
- * a signal about a benchmark group or an asset class now carries that group's or class's
- * own id instead of arriving as "household" (#183), and a prompt that still called every
- * label opaque would be describing a boundary that has moved.
+ * The last paragraph is the excluded-envelope rule (#278). Rule 1 already forbids
+ * arithmetic and rule 2 already confines findings to the signals list, so this pass
+ * cannot invent a finding about the gap — but "there is a gap and it is a choice" is
+ * still something the model has to be told, or the honest reading of a month whose
+ * categories do not sum to its total is that the data is broken.
  */
 const ANALYSIS_SYSTEM = `
-${ANALYSIS_SYSTEM_V1}
+${ANALYSIS_SYSTEM_V2}
 
-Some findings are about a benchmark group or an asset class rather than an
-envelope, and those carry the group's or the class's own id (housing, EQUITY, …).
-Those ids are a fixed set built into Balancr, not anybody's wording, and two of
-them are two different findings: refer to each by its own id.
+Where an "excluded" block is present, some envelopes were deliberately withheld and
+are reported only as a count and a combined figure. The month's totals still include
+their money, so the categories you can see will not add up to it. That difference is
+the household's own privacy decision, not a data-quality problem and not something to
+comment on, guess at or work back to: treat the visible envelopes as the whole of what
+you were given to judge.
 `.trim()
 
 /**
@@ -163,10 +186,11 @@ ${NARRATIVE_SYSTEM_V1}
 `.trim()
 
 /**
- * The system prompt for the monthly narrative — the one place free text is
- * allowed, and therefore the one place the "no numbers" rule has to be stated
- * differently: it may *quote* the figures it was given, and may not do arithmetic
- * on them.
+ * The narrative prompt as it shipped in v0.11.2 and v1.0.0-rc.1, kept byte for byte.
+ *
+ * This is the one place free text is allowed, and therefore the one place the "no
+ * numbers" rule has to be stated differently: it may *quote* the figures it was given,
+ * and may not do arithmetic on them.
  *
  * The opening sentence describes the household the same generic way
  * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
@@ -180,8 +204,10 @@ ${NARRATIVE_SYSTEM_V1}
  * produce its own version of it. The instruction is therefore not "do not calculate"
  * again — rule 1 already says that — but what a drift *is*: a decision the household has
  * not acted on, of a length the data can support.
+ *
+ * Superseded by `NARRATIVE_SYSTEM` below, which adds rule 9 (#278).
  */
-const NARRATIVE_SYSTEM = `
+const NARRATIVE_SYSTEM_V3 = `
 You are the monthly reviewer of Balancr, a self-hosted budget and portfolio
 advisor for one household. Write the short narrative that accompanies a month of
 already-computed figures.
@@ -216,6 +242,29 @@ Rules:
    history, and saying so beats implying a trend.
 `.trim()
 
+/**
+ * The narrative prompt, with rule 9: the excluded-envelope rule (#278).
+ *
+ * It needs its own rule here more than the analysis prompt does, because this is the
+ * one pass that writes free text. Rule 1 says a figure not in the data is not known —
+ * and a model that spots that the visible envelopes fall short of the month's spending
+ * would be following rule 1 by reporting the residue, which is both a false alarm and a
+ * pointer at the thing the household asked to keep out. So the rule names what the gap
+ * is and closes the two ways of writing about it: no arithmetic on it, and no guessing.
+ *
+ * `NARRATIVE_SYSTEM_V3` is the text this replaces, kept byte for byte so `seedPrompts`
+ * can recognise an unedited installation and deliver this.
+ */
+const NARRATIVE_SYSTEM = `
+${NARRATIVE_SYSTEM_V3}
+9. Some envelopes may have been withheld from you on purpose, reported only as a
+   count and a combined figure. The month's totals still contain their money, so
+   what you can see will not add up to them. Say nothing about the difference:
+   it is a privacy choice, not a gap in the data, and neither the amount nor what
+   the envelopes might be is yours to reconstruct. Write the month from the
+   envelopes you were given.
+`.trim()
+
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
   'analysis.system': ANALYSIS_SYSTEM,
   'narrative.system': NARRATIVE_SYSTEM,
@@ -247,8 +296,8 @@ export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
  * alone" that is not also hand-written SQL.
  */
 export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
-  'analysis.system': [ANALYSIS_SYSTEM_V1],
-  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2],
+  'analysis.system': [ANALYSIS_SYSTEM_V1, ANALYSIS_SYSTEM_V2],
+  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2, NARRATIVE_SYSTEM_V3],
 }
 
 /**

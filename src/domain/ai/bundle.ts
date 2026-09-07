@@ -18,6 +18,14 @@
  * through `latestDriftPersistence`, which is the function the page itself goes through —
  * so this is a second *reading* of one authority rather than a second authority (#183).
  *
+ * One thing this layer deliberately does *not* drop: an envelope flagged `aiExcluded`
+ * (#278). It looks like exactly the case for the paragraph above — but the excluded
+ * envelope's amounts are what `redact.ts` needs to state the combined figure that keeps
+ * the month's totals reconciling, so they cannot be un-collected without either sending
+ * a month that does not add up or recomputing the totals to hide it. The bundle is
+ * in-process and never stored, and the row is dropped at the one boundary a reviewer
+ * reads. See `RedactedExcluded`.
+ *
  * `collectBundle` returns null rather than an empty bundle when a month has not
  * been judged yet. An analysis of a month whose facts do not exist would be an
  * analysis of zero, and the model has no way to tell the difference.
