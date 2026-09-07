@@ -395,10 +395,41 @@ export function groundGuessResponse(
 /** How far a nudge may move a candidate from its own suggested amount, either way. */
 export const NUDGE_MAX_RATIO = 3
 
+/**
+ * A reason is one line under a proposal card (#273), not an argument. A thousand-word
+ * "reason" is a prompt-injection payload wearing a hat, so it never reaches storage —
+ * but unlike `GUESS_MAX_CHARS` the bound is enforced in `groundNudgeResponse` and not
+ * on the schema. A `.max()` here would reject the whole response, and one runaway
+ * sentence would cost every amount in the batch its proposal; a reason is never worth
+ * an amount.
+ */
+export const NUDGE_REASON_MAX_CHARS = 160
+
+/**
+ * A payload label as the model was given it — `c` or `a` and a small number.
+ *
+ * A reason mentioning one is useless to the reader and leaks the redaction scheme,
+ * and unlike the narrative there is nothing to substitute it back into: the card
+ * already names the category on the line above. So such a reason is blanked, and
+ * the deterministic sentence takes over. Kept local to this pass rather than shared
+ * with `narrative.ts`'s `LABEL`, which is a global-flagged replace pattern.
+ */
+const NUDGE_REASON_LABEL = /\b[ca]\d{1,4}\b/i
+
 /** One candidate's adjusted amount, by the opaque label it was sent. */
 export const nudgeSelectionSchema = z.object({
   label: z.string().min(1).max(16),
   amountCents: z.number().int(),
+  /**
+   * Why the note moved this amount, in the household's own language (#273). A
+   * defaulted empty string rather than `.optional()`, following `guess` above:
+   * `''` means the model had nothing to say, which is a normal answer.
+   *
+   * Deliberately unbounded here, unlike `guess`: the length bound is applied in
+   * `groundNudgeResponse`, so an over-long reason is blanked and the amount it came
+   * with still stands. See `NUDGE_REASON_MAX_CHARS`.
+   */
+  reason: z.string().default(''),
 })
 
 export const nudgeResponseSchema = z.object({
@@ -441,9 +472,17 @@ export function parseNudgeResponse(text: string): NudgeResponse {
 export interface GroundedNudge {
   label: string
   amountCents: number
+  /** The model's one-line reason, normalised, or `''` when it gave none worth keeping. */
+  reason: string
 }
 
-/** Why a returned adjustment was thrown away. Recorded, so a hallucinated figure is visible. */
+/**
+ * Why a returned adjustment was thrown away. Recorded, so a hallucinated figure is visible.
+ *
+ * `reason` here is the *drop cause*, which is not the same `reason` a `NudgeSelection`
+ * carries — that one is the model's own prose. The two are built field by field below
+ * rather than by spreading the selection, so the model can never write over this one.
+ */
 export interface DroppedNudge {
   label: string
   amountCents: number
@@ -479,23 +518,33 @@ export function groundNudgeResponse(
   const seen = new Set<string>()
 
   for (const adjustment of response.adjustments) {
-    if (seen.has(adjustment.label)) {
-      out.dropped.push({ ...adjustment, reason: 'duplicate' })
+    const { label, amountCents } = adjustment
+    if (seen.has(label)) {
+      out.dropped.push({ label, amountCents, reason: 'duplicate' })
       continue
     }
-    const suggested = suggestedCentsFor.get(adjustment.label)
+    const suggested = suggestedCentsFor.get(label)
     if (suggested === undefined) {
-      out.dropped.push({ ...adjustment, reason: 'unknown_label' })
+      out.dropped.push({ label, amountCents, reason: 'unknown_label' })
       continue
     }
     const min = Math.min(suggested, suggested / NUDGE_MAX_RATIO)
     const max = Math.max(suggested, suggested * NUDGE_MAX_RATIO)
-    if (adjustment.amountCents < min || adjustment.amountCents > max) {
-      out.dropped.push({ ...adjustment, reason: 'out_of_range' })
+    if (amountCents < min || amountCents > max) {
+      out.dropped.push({ label, amountCents, reason: 'out_of_range' })
       continue
     }
-    seen.add(adjustment.label)
-    out.adjustments.push(adjustment)
+    seen.add(label)
+    // A reason is never worth an amount: an unusable one is blanked and the
+    // adjustment stands, because `budget-nudge.ts` has a deterministic sentence
+    // ready and no sentence at all is better than a leaked label.
+    const reason = adjustment.reason.replace(/\s+/g, ' ').trim()
+    out.adjustments.push({
+      label,
+      amountCents,
+      reason:
+        reason.length > NUDGE_REASON_MAX_CHARS || NUDGE_REASON_LABEL.test(reason) ? '' : reason,
+    })
   }
 
   return out

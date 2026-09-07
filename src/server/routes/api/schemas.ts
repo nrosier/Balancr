@@ -966,6 +966,11 @@ export const insightsSchema = z.object({
       expiresAt: z.string().nullable(),
       /** The raw proposed amount for a `budget_amount.set` card (#220); null otherwise. */
       amountCents: z.int().nullable(),
+      /**
+       * One line saying why this proposal proposes what it does (#273), already in
+       * the reader's language. Null where nothing has written a reason yet.
+       */
+      explanation: z.string().nullable(),
     }),
   ),
   spend: z.object({

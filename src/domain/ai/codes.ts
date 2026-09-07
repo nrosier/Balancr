@@ -137,21 +137,56 @@ export type ClarificationCode = keyof typeof CLARIFICATION_SPECS
 export const CLARIFICATION_CODES = Object.keys(CLARIFICATION_SPECS) as ClarificationCode[]
 
 /**
+ * Why a proposal proposes what it does (#273).
+ *
+ * Named for what the sentence says rather than for the signal that triggered it:
+ * `over_available` already means one thing in `FINDING_SPECS`, and a proposal's
+ * explanation is a different claim from the finding that prompted it — the finding
+ * says the envelope is overspent, this says where the number came from.
+ *
+ * Deliberately small. A reason nobody can state mechanically has no code here; the
+ * budget nudge writes that one itself, and `proposals.ts` stores it as prose.
+ */
+export const PROPOSAL_WHY_SPECS = {
+  /** Already overspent, sized from the trailing average. */
+  overspent_trailing: { vars: ['months'] },
+  /** Running above the 12-month norm, sized from the trailing average. */
+  above_norm_trailing: { vars: ['months'] },
+  /** Too little history to average, so the 12-month norm stands in. */
+  short_history: { vars: [] },
+  /** The nudge moved it after reading the month's note, with no reason of its own. */
+  note_adjusted: { vars: ['month'] },
+  /** The owner typed this amount themselves (#220). */
+  owner_edit: { vars: [] },
+} as const satisfies Record<string, { readonly vars: readonly string[] }>
+
+export type ProposalWhyCode = keyof typeof PROPOSAL_WHY_SPECS
+export const PROPOSAL_WHY_CODES = Object.keys(PROPOSAL_WHY_SPECS) as ProposalWhyCode[]
+
+/** Whether a string off a stored proposal is a reason this build has a sentence for. */
+export function isProposalWhyCode(code: string): code is ProposalWhyCode {
+  return code in PROPOSAL_WHY_SPECS
+}
+
+/**
  * Variables a code's sentence needs but the caller did not supply.
  *
  * Here rather than beside the renderer because it is a fact about the specs above,
- * and both renderers need it: the server's, which turns a signal into a sentence for
- * the insights payload, and the browser's, which does the same for the signals
- * `/api/budget` hands over as codes. This file imports nothing, so both can have it.
+ * and every renderer needs it: the server's, which turns a signal into a sentence for
+ * the insights payload, the browser's, which does the same for the signals
+ * `/api/budget` hands over as codes, and `proposals.ts`, which renders a proposal's
+ * reason from stored numbers. This file imports nothing, so all three can have it.
  */
 export function missingVars(
-  code: FindingCode | ClarificationCode,
+  code: FindingCode | ClarificationCode | ProposalWhyCode,
   vars: Readonly<Record<string, string | number>>,
 ): string[] {
   const spec =
     code in FINDING_SPECS
       ? FINDING_SPECS[code as FindingCode]
-      : CLARIFICATION_SPECS[code as ClarificationCode]
+      : code in CLARIFICATION_SPECS
+        ? CLARIFICATION_SPECS[code as ClarificationCode]
+        : PROPOSAL_WHY_SPECS[code as ProposalWhyCode]
   const declared: readonly string[] = spec.vars
   return declared.filter((name) => vars[name] === undefined)
 }

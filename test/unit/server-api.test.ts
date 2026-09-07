@@ -737,6 +737,37 @@ describe('GET /api/insights', () => {
     expect(july.proposals).toEqual(august.proposals)
   })
 
+  it('sends each proposal its reason, already in the reader language (#273)', async () => {
+    ctx.db
+      .insert(proposals)
+      .values({
+        type: 'budget_amount.set',
+        targetRef: 'cat-groceries:2026-08',
+        payloadJson: '{"amountCents":15000}',
+        explanationJson: '{"source":"rule","code":"short_history"}',
+      })
+      .run()
+    // A second row with nothing stored, to prove the field is present-and-null rather
+    // than absent — the client contract has it as `string | null`.
+    ctx.db
+      .insert(proposals)
+      .values({ type: 'category_meta.set', targetRef: 'cat-rent', payloadJson: '{}' })
+      .run()
+
+    const body = (await get(`/api/insights?month=${MONTH}`)).json()
+    const byTarget = new Map<string, string | null>(
+      body.proposals.map((p: { targetRef: string; explanation: string | null }) => [
+        p.targetRef,
+        p.explanation,
+      ]),
+    )
+
+    expect(byTarget.get('cat-groceries:2026-08')).toBe(
+      "There is not enough history here to average, so this is the envelope's 12-month norm.",
+    )
+    expect(byTarget.get('cat-rent')).toBeNull()
+  })
+
   it('renders the narrative, rather than shipping the labels the model wrote', async () => {
     // The bug this pins: `bodyMd` addresses the month as `c1`, `c2`, because that is
     // what the model was given, and only the server can resolve those. Sending it raw

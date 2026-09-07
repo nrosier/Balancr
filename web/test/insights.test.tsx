@@ -203,6 +203,8 @@ const FULL: InsightsPayload = {
       createdAt: '2026-09-01T04:13:00Z',
       expiresAt: '2026-09-08T04:13:00Z',
       amountCents: null,
+      // A `category_meta` card has no reason written for it yet (#273).
+      explanation: null,
     },
   ],
   categoryGuessCandidates: [
@@ -795,7 +797,7 @@ describe('the budget nudge', () => {
     renderApp(<BudgetNudge month="2026-08" owner={true} onAdjusted={() => {}} />)
 
     await screen.findByText(
-      "The “what's coming up” note is empty, so there is nothing to check it against.",
+      "This month's note is empty, so there is nothing to check the budgets against.",
     )
   })
 
@@ -1009,6 +1011,7 @@ const BUDGET_PROPOSAL: InsightsPayload['proposals'][number] = {
   createdAt: '2026-09-01T04:13:00Z',
   expiresAt: '2026-09-08T04:13:00Z',
   amountCents: 15_000,
+  explanation: 'This envelope is already overspent, so the amount is what the last 12 months of spending average out to.',
 }
 
 describe('the proposal queue', () => {
@@ -1036,6 +1039,21 @@ describe('the proposal queue', () => {
     const arrows = [...document.querySelectorAll('.change__arrow')]
     expect(arrows).toHaveLength(2)
     expect(arrows.every((a) => a.getAttribute('aria-hidden') === 'true')).toBe(true)
+  })
+
+  it('says why the proposal proposes that number, under the diff (#273)', () => {
+    renderApp(
+      <Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={vi.fn()} />,
+    )
+
+    const why = document.querySelector('.queue__why')
+    expect(why?.textContent).toBe(BUDGET_PROPOSAL.explanation)
+  })
+
+  it('renders nothing extra for a proposal with no reason written for it', () => {
+    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+
+    expect(document.querySelector('.queue__why')).toBeNull()
   })
 
   it('drops the expiry from the meta line when there is none', () => {

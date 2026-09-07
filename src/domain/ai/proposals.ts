@@ -27,7 +27,10 @@
  *
  * Like `ai_findings`, the stored diff holds values rather than sentences: field
  * names, before, after. A change approved in a Dutch session has to read
- * correctly in English later, so labels are translated at display time.
+ * correctly in English later, so labels are translated at display time. A
+ * proposal's stored *reason* (#273) follows the same rule wherever it can — a code
+ * plus its numbers — and breaks it only for the budget nudge, which reads a note
+ * nobody could anticipate and so has no code to offer. See `ProposalWhy`.
  */
 import { and, asc, desc, eq, isNotNull, lte } from 'drizzle-orm'
 import { z } from 'zod'
@@ -39,11 +42,12 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, proposals } from '../../db/schema.ts'
-import { formatMoney } from '../../i18n/format.ts'
+import { formatMoney, formatMonth } from '../../i18n/format.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { recordAudit, type AuditWriter } from '../audit.ts'
 import { MAX_DESCRIPTION_CHARS, normaliseDescription } from './clarify.ts'
+import { isProposalWhyCode, missingVars, type ProposalWhyCode } from './codes.ts'
 
 const log = logger.child({ module: 'ai.proposals' })
 
@@ -436,6 +440,8 @@ export interface CreateProposalOptions {
   targetRef: string
   payload: unknown
   runId?: string | null
+  /** Why this amount, for the card (#273). Omitted where nobody has written a reason yet. */
+  why?: ProposalWhy
   /** Defaults to `PROPOSAL_TTL_DAYS` after `now`. */
   expiresAt?: Date
   now?: Date
@@ -497,6 +503,7 @@ export async function createProposal(db: Db, options: CreateProposalOptions): Pr
         targetRef: options.targetRef,
         payloadJson: JSON.stringify(payload),
         renderedDiffJson: JSON.stringify(diff),
+        explanationJson: options.why === undefined ? null : JSON.stringify(options.why),
         runId: options.runId ?? null,
         status: 'pending',
         createdAt: now,
@@ -572,6 +579,111 @@ export function storedDiff(row: ProposalRow): RenderedDiff | null {
   return null
 }
 
+/**
+ * Why a proposal proposes what it does (#273).
+ *
+ * Two shapes, and the split is the one this file's header draws. A `rule` reason is
+ * values — a code from `PROPOSAL_WHY_SPECS` and its numbers — so it reads correctly
+ * in whichever language someone opens the queue in, months later, exactly as the
+ * diff's own labels do. An `ai` reason is the one thing here that cannot be a code:
+ * the budget nudge read a note nobody anticipated and wrote a sentence about it.
+ * That sentence is stored as written, with the language it was written in, on the
+ * same terms the monthly narrative already accepts.
+ */
+export type ProposalWhy =
+  | { source: 'rule'; code: ProposalWhyCode; params?: Record<string, string | number> }
+  | { source: 'ai'; text: string; locale: string }
+
+/** The longest model-authored reason worth storing. Matches the nudge's own bound. */
+const WHY_TEXT_MAX_CHARS = 160
+
+/**
+ * The stored reason, or null when the row has none or it is unreadable.
+ *
+ * As defensive as `storedDiff`, and for a stronger version of the same reason: this
+ * column outlives the build that wrote it, so a code retired in a later version, a
+ * hand-edited row, or prose that grew past its bound all have to degrade into a card
+ * with no reason rather than a card that will not render.
+ */
+export function storedWhy(row: ProposalRow): ProposalWhy | null {
+  if (row.explanationJson === null) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(row.explanationJson)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('source' in parsed)) return null
+
+  if (parsed.source === 'rule') {
+    if (!('code' in parsed) || typeof parsed.code !== 'string') return null
+    if (!isProposalWhyCode(parsed.code)) return null
+    const params: unknown = 'params' in parsed ? parsed.params : undefined
+    return {
+      source: 'rule',
+      code: parsed.code,
+      ...(typeof params === 'object' && params !== null && !Array.isArray(params)
+        ? { params: params as Record<string, string | number> }
+        : {}),
+    }
+  }
+
+  if (parsed.source === 'ai') {
+    if (!('text' in parsed) || typeof parsed.text !== 'string') return null
+    if (!('locale' in parsed) || typeof parsed.locale !== 'string') return null
+    const text = parsed.text.trim()
+    if (text.length === 0 || text.length > WHY_TEXT_MAX_CHARS) return null
+    return { source: 'ai', text, locale: parsed.locale }
+  }
+
+  return null
+}
+
+/** `{{months}}` for the two reasons sized from a trailing average. */
+function trailingVars(
+  params: Record<string, string | number>,
+  locale: string,
+): Record<string, string> {
+  return typeof params.months === 'number' && params.months > 0
+    ? { months: t(locale, 'common:time.monthCount', { count: params.months }) }
+    : {}
+}
+
+/**
+ * How each reason's numbers read — exhaustive over the codes by type, for the same
+ * reason `vars.ts`'s own table is: a new code cannot compile without a decision
+ * about how its numbers are worded. Durations go through the catalogue, because "1
+ * month" and "12 months" are different keys, and a month is formatted rather than
+ * interpolated raw, because `2026-08` is not a thing to show anybody.
+ */
+const WHY_VARS: {
+  readonly [C in ProposalWhyCode]: (
+    params: Record<string, string | number>,
+    locale: string,
+  ) => Record<string, string>
+} = {
+  overspent_trailing: trailingVars,
+  above_norm_trailing: trailingVars,
+  short_history: () => ({}),
+  note_adjusted: (params, locale) =>
+    typeof params.month === 'string' ? { month: formatMonth(params.month, locale) } : {},
+  owner_edit: () => ({}),
+}
+
+/**
+ * A stored reason as one sentence, or null when this build cannot state it faithfully.
+ *
+ * The same two refusals both signal renderers make: an unknown code and a missing
+ * variable each yield null rather than a sentence with a hole in it. A model-authored
+ * reason has no variables to check, so it passes through as written.
+ */
+function renderWhy(why: ProposalWhy, locale: string): string | null {
+  if (why.source === 'ai') return why.text
+  const vars = WHY_VARS[why.code](why.params ?? {}, locale)
+  if (missingVars(why.code, vars).length > 0) return null
+  return t(locale, `ai:proposal.why.${why.code}`, vars)
+}
+
 export interface RenderedField {
   field: string
   /** The field name as the user reads it. */
@@ -595,6 +707,12 @@ export interface ProposalCard {
   status: ProposalRow['status']
   /** The raw proposed amount for a `budget_amount.set` card (#220); null for every other type. */
   amountCents: number | null
+  /**
+   * One sentence saying why, in `locale` (#273). Null when the proposal has no stored
+   * reason — which every `category_meta.set` and `transaction_category.set` card
+   * still does, along with anything created before the column existed.
+   */
+  explanation: string | null
 }
 
 /**
@@ -624,6 +742,7 @@ export function renderProposal(
   locale: string = config.DEFAULT_LOCALE,
 ): ProposalCard {
   const diff = storedDiff(row)
+  const why = storedWhy(row)
   let payload: unknown
   try {
     payload = JSON.parse(row.payloadJson)
@@ -660,6 +779,7 @@ export function renderProposal(
       typeof payload.amountCents === 'number'
         ? payload.amountCents
         : null,
+    explanation: why === null ? null : renderWhy(why, locale),
   }
 }
 
@@ -803,6 +923,10 @@ export interface AdjustResult {
  * diff empty, which `createProposal` refuses as a no-op. Here that refusal means
  * "the owner declined the suggestion", so it is turned into a rejection of the
  * *original* proposal instead of an error.
+ *
+ * The reason (#273) is replaced rather than carried over: whatever explained the
+ * suggested amount does not explain this one, and a card reading "adjusted after
+ * reading your note" above a figure the owner typed themselves would be a lie.
  */
 export async function adjustProposal(db: Db, options: AdjustProposalOptions): Promise<AdjustResult> {
   const now = options.now ?? new Date()
@@ -822,6 +946,7 @@ export async function adjustProposal(db: Db, options: AdjustProposalOptions): Pr
       targetRef: original.targetRef,
       payload: { amountCents: options.amountCents },
       runId: original.runId,
+      why: { source: 'rule', code: 'owner_edit' },
       now,
     })
     return { id: row.id, status: 'pending' }

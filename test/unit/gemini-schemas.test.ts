@@ -12,18 +12,24 @@ import {
   analysisJsonSchema,
   groundResponse,
   GeminiResponseError,
+  groundNudgeResponse,
   GUESS_MAX_CHARS,
+  nudgeJsonSchema,
+  NUDGE_REASON_MAX_CHARS,
+  parseNudgeResponse,
   RESPONSE_LIMITS,
   HOUSEHOLD_LABEL,
   parseAnalysisResponse,
   type AnalysisResponse,
+  type NudgeResponse,
+  type NudgeSelection,
 } from '../../src/adapters/gemini/schemas.ts'
 import { FINDING_CODES } from '../../src/domain/ai/codes.ts'
 import {
   GEMINI_SCHEMA_KEYWORDS,
   toGeminiSchema,
 } from '../../src/adapters/gemini/json-schema.ts'
-import type { RedactedPayload, RedactedSignal } from '../../src/domain/ai/redact.ts'
+import type { RedactedNudgeBatch, RedactedPayload, RedactedSignal } from '../../src/domain/ai/redact.ts'
 
 function signal(
   code: RedactedSignal['code'],
@@ -476,5 +482,118 @@ describe('groundResponse', () => {
       payload({ signals: [] }),
     )
     expect(grounded.findings).toEqual([])
+  })
+})
+
+/**
+ * The nudge's own grounding, and specifically the one asymmetry #273 introduces: a
+ * `NudgeSelection.reason` is the model's prose, while a `DroppedNudge.reason` is the
+ * drop cause. They share a name and mean opposite things, so the tests below pin that
+ * the model's text can never end up in the second one — and that a reason is never
+ * worth an amount.
+ */
+describe('groundNudgeResponse', () => {
+  const batch = (): RedactedNudgeBatch => ({
+    month: '2026-03',
+    locale: 'en',
+    note: 'Replacing the washing machine in March.',
+    candidates: [{ label: 'c1', name: 'Groceries', suggestedCents: 15_000, currentCents: 12_000 }],
+  })
+
+  const adjust = (over: Partial<NudgeSelection> = {}): NudgeResponse => ({
+    adjustments: [{ label: 'c1', amountCents: 18_000, reason: '', ...over }],
+  })
+
+  it('keeps a usable reason alongside the amount', () => {
+    const grounded = groundNudgeResponse(adjust({ reason: 'A new washing machine.' }), batch())
+
+    expect(grounded.adjustments).toEqual([
+      { label: 'c1', amountCents: 18_000, reason: 'A new washing machine.' },
+    ])
+    expect(grounded.dropped).toEqual([])
+  })
+
+  it('collapses the whitespace a model wrapped its sentence in', () => {
+    const grounded = groundNudgeResponse(adjust({ reason: ' A new\n\n machine.  ' }), batch())
+
+    expect(grounded.adjustments[0]?.reason).toBe('A new machine.')
+  })
+
+  it.each([
+    ['nothing at all', ''],
+    ['only whitespace', '   '],
+    ['a leaked redaction label', 'c1 needs more this month.'],
+    ['a leaked account label', 'Paid from a2 as usual.'],
+  ])('blanks a reason that is %s, and keeps the adjustment', (_label, reason) => {
+    const grounded = groundNudgeResponse(adjust({ reason }), batch())
+
+    expect(grounded.adjustments).toEqual([{ label: 'c1', amountCents: 18_000, reason: '' }])
+    expect(grounded.dropped).toEqual([])
+  })
+
+  it('does not mistake an ordinary word ending in a digit for a label', () => {
+    const grounded = groundNudgeResponse(adjust({ reason: 'The COICOP 04 bill doubled.' }), batch())
+
+    expect(grounded.adjustments[0]?.reason).toBe('The COICOP 04 bill doubled.')
+  })
+
+  it.each([
+    // Ten times the suggested amount, outside [suggested/3, suggested*3].
+    ['out_of_range', { label: 'c1', amountCents: 150_000 }],
+    // A label this batch never offered.
+    ['unknown_label', { label: 'c9', amountCents: 18_000 }],
+  ])('reports %s as the drop cause, never the sentence the model wrote', (cause, over) => {
+    const grounded = groundNudgeResponse(
+      adjust({ ...over, reason: 'The note says so, honestly.' }),
+      batch(),
+    )
+
+    expect(grounded.adjustments).toEqual([])
+    expect(grounded.dropped).toEqual([{ ...over, reason: cause }])
+  })
+
+  it('reports duplicate as the drop cause on the second of two answers for one label', () => {
+    const grounded = groundNudgeResponse(
+      {
+        adjustments: [
+          { label: 'c1', amountCents: 18_000, reason: 'First answer.' },
+          { label: 'c1', amountCents: 19_000, reason: 'Second answer.' },
+        ],
+      },
+      batch(),
+    )
+
+    expect(grounded.adjustments).toHaveLength(1)
+    expect(grounded.dropped).toEqual([{ label: 'c1', amountCents: 19_000, reason: 'duplicate' }])
+  })
+
+  it('treats an omitted reason as none, rather than refusing the response', () => {
+    // `.default('')` and not `.optional()`: a model that says nothing is normal.
+    const parsed = parseNudgeResponse('{"adjustments":[{"label":"c1","amountCents":18000}]}')
+
+    expect(parsed.adjustments[0]?.reason).toBe('')
+    expect(groundNudgeResponse(parsed, batch()).adjustments).toHaveLength(1)
+  })
+
+  it('blanks a reason past the character bound rather than refusing the whole response', () => {
+    // The bound lives in grounding, not on the schema, precisely so one runaway
+    // sentence cannot cost the other 49 amounts in the batch their proposals.
+    const long = JSON.stringify({
+      adjustments: [
+        { label: 'c1', amountCents: 18_000, reason: 'x'.repeat(NUDGE_REASON_MAX_CHARS + 1) },
+      ],
+    })
+
+    const parsed = parseNudgeResponse(long)
+    const grounded = groundNudgeResponse(parsed, batch())
+
+    expect(grounded.adjustments).toEqual([{ label: 'c1', amountCents: 18_000, reason: '' }])
+    expect(grounded.dropped).toEqual([])
+  })
+
+  it('does not send the length bound to the model as a schema keyword', () => {
+    // Same two-layer contract as every other pass: `toGeminiSchema` drops what the
+    // provider does not support, so the bound is stated in the instruction instead.
+    expect(JSON.stringify(nudgeJsonSchema())).not.toMatch(/maxLength|default/)
   })
 })
