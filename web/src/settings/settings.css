@@ -798,6 +798,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * A row that blocks the panel's only Save should not print in the same grey as a row
+ * that will save (#287). The same token `.field__issue` uses, for the same reason.
+ */
+.member__reads--bad {
+  color: var(--negative);
+}
+
 .members__actions {
   display: flex;
   flex-wrap: wrap;

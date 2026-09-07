@@ -216,6 +216,15 @@
   border-color: var(--accent);
 }
 
+/*
+ * A box holding the wrong kind of thing (#287). Never the only signal — the sentence
+ * below the field names the box, and `aria-invalid` says the same to a screen reader —
+ * so this is the glance-level cue, not the message.
+ */
+.field__input--bad {
+  border-color: var(--negative);
+}
+
 /* One-time codes are read digit by digit off a phone screen. */
 .field__input--code {
   font-family: var(--font-mono);
