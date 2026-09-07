@@ -15,10 +15,13 @@
  *  - The household is aged at the year of the month being compared, not at today.
  *
  * The realistic cases run against the shipped `config/statbel-benchmark.yaml`, so a
- * transposed digit in it fails here rather than on a page. The two shapes that file
- * deliberately does not have — a group the survey puts nothing in, and a transcribed
- * reference household — are built by hand, which is also what proves those branches are
- * reachable at all.
+ * transposed digit in it fails here rather than on a page. Since #290 that file carries
+ * the reference household, so the shipped basis is `level` — the cases that assert *mix*
+ * arithmetic strip the reference explicitly rather than relying on the file to lack it,
+ * because "which basis is shipped" is one decision and "what the mix does" is another.
+ * The two shapes the file still does not have — a group the survey puts nothing in, and an
+ * unconfirmed reference household — are built by hand, which is also what proves those
+ * branches are reachable.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
@@ -44,12 +47,32 @@ import {
   MappingError,
   saveCoicop,
 } from '../../src/domain/benchmark/mapping.ts'
-import { loadBenchmark, type Benchmark } from '../../src/domain/benchmark/model.ts'
+import {
+  loadBenchmark,
+  transcribedBlocks,
+  type Benchmark,
+} from '../../src/domain/benchmark/model.ts'
+import {
+  applyReferenceOverride,
+  clearReferenceOverride,
+  loadReferenceOverride,
+  REFERENCE_OVERRIDE_KEY,
+  saveReferenceOverride,
+} from '../../src/domain/benchmark/reference.ts'
 import type { Equivalence } from '../../src/domain/benchmark/schema.ts'
 import { MAX_HOUSEHOLD_MEMBERS } from '../../src/domain/benchmark/vocabulary.ts'
 
 /** The file Balancr ships, read from disk. Every realistic case below compares to this. */
 const SHIPPED = loadBenchmark('config/statbel-benchmark.yaml')
+
+/**
+ * The shipped file with its euro figures taken away, which is what it was before #290.
+ *
+ * Used by the cases that are about the mix basis. Their expected numbers are shares of the
+ * month's own spending, and reading them against a file that now scales a national average
+ * would assert the wrong arithmetic while still passing for the wrong reason.
+ */
+const SHIPPED_MIX: Benchmark = { ...SHIPPED, referenceHousehold: null }
 
 const HOUSEHOLD = (members: Household['members'] = []): Household => ({
   members,
@@ -70,7 +93,11 @@ function row(overrides: Partial<SpendRow> & { categoryId: string }): SpendRow {
 function compare(
   rows: readonly SpendRow[],
   coicop: Record<string, string | null>,
-  options: { benchmark?: Benchmark | null; household?: Household; month?: string } = {},
+  options: {
+    benchmark?: Benchmark | null
+    household?: Household
+    month?: string
+  } = {},
 ): BenchmarkComparison {
   return compareToBenchmark({
     benchmark: options.benchmark === undefined ? SHIPPED : options.benchmark,
@@ -103,8 +130,43 @@ describe('the shipped benchmark file', () => {
     expect(SHIPPED.groupByDivision.get('08')).toBe('other')
     expect(SHIPPED.groupByDivision.get('10')).toBe('other')
     expect(SHIPPED.groupByDivision.get('12')).toBe('other')
-    // Ships without the euro figures, which is why `mix` is the basis anybody gets.
-    expect(SHIPPED.referenceHousehold).toBeNull()
+    // Ships with the euro figures since #290, which is why `level` is the basis anybody
+    // gets. Asserted literally: these two numbers are derived from a spreadsheet by hand,
+    // and a transposed digit in either is invisible on the page it prints.
+    expect(SHIPPED.referenceHousehold).toMatchObject({
+      mean_monthly_cents: 368_919,
+      equivalent_adults_bp: 15_066,
+      status: 'confirmed',
+    })
+    // The reference size only means anything on the same scale the household is measured
+    // on, since the comparison divides one by the other. Statbel derives its
+    // per-consumption-unit column on the modified OECD scale, so the file has to say the
+    // same — a reference computed on some other scale would be silently incomparable.
+    expect(SHIPPED.equivalence.scale).toBe('modified_oecd')
+    expect(SHIPPED.equivalence.first_person_bp).toBe(10_000)
+    expect(SHIPPED.equivalence.additional_person_bp).toBe(5_000)
+    expect(SHIPPED.equivalence.child_bp).toBe(3_000)
+    expect(SHIPPED.equivalence.child_age_below).toBe(14)
+    // And nothing in it is unconfirmed any more, so no comparison carries a caveat.
+    expect(transcribedBlocks(SHIPPED)).toEqual([])
+  })
+
+  it('scales the national average down to a one-and-a-bit-person household', () => {
+    // The point of shipping the euro figures at all. 368919 at 1,5066 on the scale, read
+    // by a household of one adult and a half-time twelve-year-old — 1,0 + 0,3 × 0,5 =
+    // 1,15 — gives 368919 × 11500 / 15066 = 281599, and housing's 30,58% of that.
+    const result = ok(
+      compare(
+        [row({ categoryId: 'rent', spentCents: 120_000 })],
+        { rent: '04' },
+        { household: HOUSEHOLD([{ birthYear: 2014, custodyBp: 5_000 }]) },
+      ),
+    )
+    expect(result.basis).toBe('level')
+    expect(result.household.bp).toBe(11_500)
+    expect(result.household.prorated).toBe(true)
+    expect(result.referenceHouseholdBp).toBe(15_066)
+    expect(line(result, 'housing')?.benchmarkCents).toBe(86_113)
   })
 })
 
@@ -193,7 +255,7 @@ describe('compareToBenchmark: what counts and what does not', () => {
   }
 
   it('compares only mapped consumption, and discloses the rest', () => {
-    const result = ok(compare(ROWS, CODES))
+    const result = ok(compare(ROWS, CODES, { benchmark: SHIPPED_MIX }))
 
     // 120000 + 65000. Income is out because the reference is expenditure; the hidden
     // envelope because somebody already decided not to look at it; the refund because a
@@ -204,6 +266,8 @@ describe('compareToBenchmark: what counts and what does not', () => {
     // suppress the whole comparison for anybody who saves seriously.
     expect(result.outsideCents).toBe(30_000)
     expect(result.unmapped).toEqual([])
+    // With the euro figures taken away there is nothing to scale, so the reference for
+    // each line is a share of this month. Which exclusions apply does not depend on that.
     expect(result.basis).toBe('mix')
   })
 
@@ -216,33 +280,39 @@ describe('compareToBenchmark: what counts and what does not', () => {
   })
 
   it('states each line as a share of compared spending, with the published share beside it', () => {
-    const result = ok(compare(ROWS, CODES))
+    const result = ok(compare(ROWS, CODES, { benchmark: SHIPPED_MIX }))
 
     // Literal, because these are the figures a page prints: 65000/185000 against the
-    // survey's 14,00%, and 185000 × 14,00% as the reference in euros.
+    // survey's 13,97%, and 185000 × 13,97% as the reference in euros.
     expect(line(result, 'food')).toEqual({
       group: 'food',
       yourCents: 65_000,
       yourShareBp: 3_514,
-      referenceShareBp: 1_400,
-      benchmarkCents: 25_900,
-      deltaBp: 15_097,
-      deltaCents: 39_100,
+      referenceShareBp: 1_397,
+      benchmarkCents: 25_845,
+      deltaBp: 15_150,
+      deltaCents: 39_155,
       categories: 1,
     })
     expect(line(result, 'housing')).toEqual({
       group: 'housing',
       yourCents: 120_000,
       yourShareBp: 6_486,
-      referenceShareBp: 3_060,
-      benchmarkCents: 56_610,
-      deltaBp: 11_198,
-      deltaCents: 63_390,
+      referenceShareBp: 3_058,
+      benchmarkCents: 56_573,
+      deltaBp: 11_212,
+      deltaCents: 63_427,
       categories: 1,
     })
     // The reference lines add up to the compared total, so the mix comparison is a
-    // division of the same money on both sides.
-    expect(result.groups.reduce((sum, group) => sum + group.benchmarkCents, 0)).toBe(185_000)
+    // division of the same money on both sides — to within the rounding, which is where
+    // the bound comes from rather than from tolerance for a wrong answer. Each of the ten
+    // lines is rounded independently, so the sum can miss by up to half a cent per line;
+    // with the shares as published it misses by one. Apportioning by largest remainder
+    // would close that and would also make every line's figure depend on the other nine,
+    // which is a worse trade for a card that prints no total to disagree with.
+    const referenceTotal = result.groups.reduce((sum, group) => sum + group.benchmarkCents, 0)
+    expect(Math.abs(referenceTotal - 185_000)).toBeLessThanOrEqual(5)
   })
 
   it('distinguishes a group nothing maps to from a group nothing was spent on', () => {
@@ -313,7 +383,7 @@ describe('compareToBenchmark: what counts and what does not', () => {
   })
 
   it('carries the provenance of the file it compared against', () => {
-    const result = ok(compare(ROWS, CODES))
+    const result = ok(compare(ROWS, CODES, { benchmark: SHIPPED_MIX }))
     expect(result.source).toEqual({
       survey: SHIPPED.source.survey,
       year: SHIPPED.source.year,
@@ -322,8 +392,10 @@ describe('compareToBenchmark: what counts and what does not', () => {
       lastVerified: SHIPPED.source.last_verified,
       status: SHIPPED.source.status,
     })
-    // Both blocks of the shipped file are transcribed, and the card says which.
-    expect(result.transcribed).toEqual(['source', 'equivalence'])
+    // Every block of the shipped file is confirmed at its source since #290, so a
+    // comparison drawn from it carries no caveat. `transcribedBlocks` above asserts the
+    // same about the file; this asserts that the comparison passes it through.
+    expect(result.transcribed).toEqual([])
     expect(result.referenceHouseholdBp).toBeNull()
   })
 })
@@ -405,7 +477,9 @@ describe('compareToBenchmark: the two bases', () => {
     // Shares still divide the month, so the two halves of the card answer different
     // questions on purpose.
     expect(line(result, 'food')?.yourShareBp).toBe(8_000)
-    expect(result.transcribed).toEqual(['source', 'equivalence', 'reference_household'])
+    // The shipped source and scale are confirmed, this hand-built reference is not, and
+    // the caveat names only the block it applies to rather than casting doubt on all three.
+    expect(result.transcribed).toEqual(['reference_household'])
   })
 
   it('falls back to the mix when the reference household has no size', () => {
@@ -617,6 +691,121 @@ describe('the stored household', () => {
 
   it('refuses to store what it could not read back', () => {
     expect(() => saveHousehold(ctx.db, { members: [{ birthYear: 12 }] })).toThrow()
+  })
+})
+
+describe('the stored correction to the average household (#290)', () => {
+  let ctx: ReturnType<typeof createTestDb>
+
+  beforeEach(() => {
+    ctx = createTestDb()
+    applyMigrations(ctx.db as never)
+  })
+
+  const patch = {
+    meanMonthlyCents: 400_000,
+    equivalentAdultsBp: 16_000,
+    citation: 'Statbel, Household Budget Survey 2026 — invented figures',
+  }
+
+  it('is absent until somebody types one, and then round-trips', () => {
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+
+    saveReferenceOverride(ctx.db, patch, new Date('2026-09-07T10:00:00Z'))
+    expect(loadReferenceOverride(ctx.db)).toEqual({
+      ...patch,
+      savedOn: '2026-09-07',
+    })
+  })
+
+  it('stamps the day it was typed rather than trusting a sent one', () => {
+    // The whole point of `last_verified` is that it expires. The request has no field for
+    // it, and a figure whose freshness cannot be wrong is not freshness — `verifiedDate`
+    // refuses a future day for exactly that reason, so the stamp can only ever be today
+    // or, in this test, a day that has already happened.
+    saveReferenceOverride(ctx.db, patch, new Date('2026-03-01T23:30:00Z'))
+    expect(loadReferenceOverride(ctx.db)?.savedOn).toBe('2026-03-01')
+  })
+
+  it('is replaced rather than merged, and cleared back to nothing', () => {
+    saveReferenceOverride(ctx.db, patch)
+    saveReferenceOverride(ctx.db, { ...patch, meanMonthlyCents: 380_000 })
+    expect(loadReferenceOverride(ctx.db)?.meanMonthlyCents).toBe(380_000)
+
+    clearReferenceOverride(ctx.db)
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+  })
+
+  it('degrades to the file rather than throwing, for either kind of damage', () => {
+    // Same contract as the roster: reading degrades, writing throws. A correction nobody
+    // can parse should cost the correction, not the budget page.
+    ctx.db.insert(settings).values({ key: REFERENCE_OVERRIDE_KEY, valueJson: '{ not json' }).run()
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+
+    ctx.db.delete(settings).run()
+    ctx.db
+      .insert(settings)
+      .values({
+        key: REFERENCE_OVERRIDE_KEY,
+        valueJson: JSON.stringify({ ...patch }),
+      })
+      .run()
+    expect(loadReferenceOverride(ctx.db)).toBeNull()
+  })
+
+  it('refuses to store what it could not read back', () => {
+    expect(() => saveReferenceOverride(ctx.db, { ...patch, meanMonthlyCents: 0 })).toThrow()
+    expect(() => saveReferenceOverride(ctx.db, { ...patch, equivalentAdultsBp: 9_999 })).toThrow()
+    expect(() => saveReferenceOverride(ctx.db, { ...patch, citation: 'HBS' })).toThrow()
+  })
+})
+
+describe('applyReferenceOverride', () => {
+  const override = {
+    meanMonthlyCents: 400_000,
+    equivalentAdultsBp: 16_000,
+    citation: 'Statbel, Household Budget Survey 2026 — invented figures',
+    savedOn: '2026-09-07',
+  }
+
+  it('leaves the file alone when there is nothing to apply', () => {
+    expect(applyReferenceOverride(SHIPPED, null)).toBe(SHIPPED)
+    expect(applyReferenceOverride(null, override)).toBeNull()
+  })
+
+  it('replaces both figures and drops the block to unconfirmed', () => {
+    const applied = applyReferenceOverride(SHIPPED, override)
+    expect(applied.referenceHousehold).toEqual({
+      mean_monthly_cents: 400_000,
+      equivalent_adults_bp: 16_000,
+      citation: override.citation,
+      last_verified: '2026-09-07',
+      status: 'transcribed',
+    })
+    // However carefully it was read off the publication, nobody checked it here — so the
+    // budget card gains the caveat the shipped file had just retired.
+    expect(transcribedBlocks(applied)).toEqual(['reference_household'])
+    // The rest of the file is untouched, shares included.
+    expect(applied.groups).toEqual(SHIPPED.groups)
+    expect(applied.source).toEqual(SHIPPED.source)
+  })
+
+  it('switches the euro comparison on for a file that carries no euro figures', () => {
+    // 400000 at 1,6 read by a household of one is 400000 × 10000 / 16000 = 250000, and
+    // housing's 30,58% of that.
+    const applied = applyReferenceOverride(SHIPPED_MIX, override)
+    const result = ok(
+      compare(
+        [row({ categoryId: 'rent', spentCents: 120_000 })],
+        { rent: '04' },
+        {
+          benchmark: applied,
+        },
+      ),
+    )
+    expect(result.basis).toBe('level')
+    expect(result.referenceHouseholdBp).toBe(16_000)
+    expect(line(result, 'housing')?.benchmarkCents).toBe(76_450)
   })
 })
 

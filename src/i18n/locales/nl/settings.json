@@ -158,6 +158,24 @@
       "title": "Waar deze cijfers vandaan komen",
       "transcribed": "Overgenomen van de gepubliceerde samenvatting en nog niet bij de bron bevestigd: {{blocks}}.",
       "weights": "De eerste persoon telt {{first}}, elke verdere persoon van {{age}} jaar of ouder telt {{adult}}, en elk kind onder {{age}} telt {{child}}."
+    },
+    "reference": {
+      "caveat": "Een bedrag dat je hier typt wordt nooit als bevestigd bij de bron gemarkeerd, hoe zorgvuldig je het ook overnam: het wordt een voorbehoud op de budgetkaart, net als al het andere dat niemand tegen de publicatie heeft gecontroleerd.",
+      "citation": "Waar je het vond",
+      "citationHint": "Volledig benoemd, want deze zin maakt de vergelijking later navolgbaar. Bijvoorbeeld \"Statbel, Huishoudbudgetonderzoek 2026 — gemiddelde uitgaven per huishouden en per consumptie-eenheid\".",
+      "file": "Het bestand zegt {{amount}} per maand voor een huishouden van {{size}} op de schaal. Laatst gecontroleerd {{verified}}.",
+      "fileNone": "Het bestand bevat geen eurobedrag voor het gemiddelde huishouden, dus de vergelijking kan alleen verdelingen naast verdelingen zetten. Typ er hier een en de vergelijking in euro's gaat aan.",
+      "hint": "Wat het gemiddelde huishouden per maand uitgeeft, en hoe groot dat huishouden is op de schaal hierboven. Balancr deelt het eerste door het tweede en schaalt het resultaat naar jouw huishouden, dus beide moeten uit dezelfde editie van het onderzoek komen. Balancr kan ze niet zelf ophalen: het onderzoek heeft er geen koppeling voor, en de grootte is een verhouding van twee kolommen in plaats van een gepubliceerd cijfer.",
+      "mean": "Uitgaven van het gemiddelde huishouden per maand",
+      "meanHint": "Totale consumptieve uitgaven van het gemiddelde huishouden, per maand. Het onderzoek publiceert een jaar, dus deel door twaalf.",
+      "meanNotANumber": "Een bedrag boven nul, zoals 3689,19.",
+      "overridden": "Jouw eigen cijfer geldt in plaats van dat van het bestand, getypt op {{savedOn}}.",
+      "reset": "Weer het cijfer uit het bestand gebruiken",
+      "size": "Grootte van het gemiddelde huishouden op de schaal",
+      "sizeHint": "In basispunten: 15066 is 1,5066 equivalente volwassenen. De totale uitgaven per huishouden uit het onderzoek gedeeld door de totale uitgaven per consumptie-eenheid, dezelfde schaal als de gewichten hierboven.",
+      "sizeNotANumber": "Een heel getal in basispunten tussen 10000 en 200000.",
+      "sizeReads": "{{size}} equivalente volwassenen op de schaal.",
+      "title": "Het gemiddelde huishouden waarmee vergeleken wordt"
     }
   },
   "build": {
