@@ -104,7 +104,6 @@
       "label": "Name",
       "needs": "Still to fill in: {{fields}}.",
       "none": "Just you, at full weight. Add anybody else who lives here.",
-      "notANumber": "A four-digit year, and a whole number of basis points up to 10000.",
       "reads": "Counts {{weight}}, {{share}} of the time.",
       "readsShare": "Here {{share}} of the time.",
       "remove": "Remove",
@@ -119,7 +118,9 @@
       "sharedCostNotANumber": "A whole number of basis points up to 10000, or empty to derive it.",
       "sharedCostReads": "{{share}} of every shared cost counts as yours.",
       "title": "Household",
-      "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
+      "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday.",
+      "wrongShare": "{{field}} should be a whole number up to 10000, with no separator.",
+      "wrongYear": "{{field}} should be four digits — 1998, say, rather than a full date."
     },
     "mapping": {
       "caption": "Each category's division, the reference line it feeds, whether it is shared, and whether it is a savings or investments envelope",

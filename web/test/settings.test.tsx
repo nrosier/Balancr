@@ -1393,7 +1393,7 @@ describe('the household', () => {
 
     fireEvent.change(memberField('Year of birth'), { target: { value: '20' } })
 
-    expect(screen.getByText(/A four-digit year/)).toBeTruthy()
+    expect(screen.getByText(/Year of birth should be four digits/)).toBeTruthy()
     expect(saveHousehold().disabled).toBe(true)
     expect(writes(calls)).toEqual([])
   })
@@ -1407,7 +1407,7 @@ describe('the household', () => {
     // A name is not what is missing, and the row says which box is — printing the format
     // rule here instead read as a complaint about text nobody had typed.
     expect(screen.getByText('Still to fill in: Year of birth.')).toBeTruthy()
-    expect(screen.queryByText(/A four-digit year/)).toBeNull()
+    expect(screen.queryByText(/should be four digits/)).toBeNull()
     // The row has no save of its own, so the reason the only Save is disabled has to be
     // beside that Save rather than left to be inferred.
     expect(saveHousehold().disabled).toBe(true)
@@ -1420,6 +1420,45 @@ describe('the household', () => {
     fireEvent.change(memberField('Time here', 1), { target: { value: '5000' } })
     expect(saveHousehold().disabled).toBe(false)
     expect(screen.queryByText(/details are not complete yet/)).toBeNull()
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('marks the box holding a date and says what that box wants (#287)', async () => {
+    const calls = await open(READS)
+
+    // A date is a reasonable thing to type into a box labelled "Year of birth", and the
+    // panel's answer to it used to be one sentence about both boxes, in the same grey a
+    // correct row prints in, with nothing on the box itself.
+    fireEvent.change(memberField('Year of birth', 0), { target: { value: '1998-05-12' } })
+
+    expect(
+      screen.getByText('Year of birth should be four digits — 1998, say, rather than a full date.'),
+    ).toBeTruthy()
+    expect(memberField('Year of birth', 0).getAttribute('aria-invalid')).toBe('true')
+    // The seen cue and the announced one are separate wirings, so both are held: a border
+    // that quietly stopped being applied would leave a sighted reader back where they were.
+    expect(memberField('Year of birth', 0).className).toContain('field__input--bad')
+    // The box the reader got right is not marked, and is not named in the complaint.
+    expect(memberField('Time here', 0).getAttribute('aria-invalid')).toBeNull()
+    expect(memberField('Time here', 0).className).not.toContain('field__input--bad')
+    expect(screen.queryByText(/whole number up to 10000/)).toBeNull()
+    expect(saveHousehold().disabled).toBe(true)
+
+    // Both wrong: one sentence each, so neither box is left to be guessed at.
+    fireEvent.change(memberField('Time here', 0), { target: { value: '50%' } })
+    expect(screen.getByText(/whole number up to 10000/)).toBeTruthy()
+    expect(memberField('Time here', 0).getAttribute('aria-invalid')).toBe('true')
+
+    // An empty box is still a different sentence from a wrong one, and both can be true
+    // of one row at once.
+    fireEvent.change(memberField('Year of birth', 0), { target: { value: '' } })
+    expect(screen.getByText(/^Still to fill in: Year of birth\./)).toBeTruthy()
+    expect(memberField('Year of birth', 0).getAttribute('aria-invalid')).toBeNull()
+
+    fireEvent.change(memberField('Year of birth', 0), { target: { value: '1998' } })
+    fireEvent.change(memberField('Time here', 0), { target: { value: '5000' } })
+    expect(screen.getByText('Counts at the adult weight, 50% of the time.')).toBeTruthy()
+    expect(saveHousehold().disabled).toBe(false)
     expect(writes(calls)).toEqual([])
   })
 
