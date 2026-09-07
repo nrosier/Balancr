@@ -133,6 +133,17 @@ export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe
 export { custodyShare } from '../../src/domain/aggregate/custody.ts'
 export type { CustodyBasis } from '../../src/domain/aggregate/custody.ts'
 
+// The savings card reads its own period (#288). Re-exported for the same reason
+// `custodyShare` is: a second copy is a second chance to average the monthly
+// percentages instead of summing the flows first.
+export {
+  DEFAULT_SAVINGS_PERIOD,
+  periodSavings,
+  SAVINGS_PERIODS,
+  TRAILING_MONTHS,
+} from '../../src/domain/aggregate/savings.ts'
+export type { PeriodSavings, SavingsPeriod } from '../../src/domain/aggregate/savings.ts'
+
 export {
   grossYieldBp,
   MAX_PROPERTIES,

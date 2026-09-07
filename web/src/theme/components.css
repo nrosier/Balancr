@@ -371,6 +371,27 @@
   color: var(--text-muted);
 }
 
+/*
+ * Label left, chooser right, wrapping to two lines when the card is narrow (#288).
+ *
+ * `align-items: baseline` would look right on one line and wrong on two, because a
+ * wrapped select's baseline is its own, not the heading's — so the two are centred
+ * against each other instead and the heading gives up its bottom margin to the
+ * wrapper, which owns the spacing for both.
+ */
+.metric__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.metric__head-title {
+  margin-bottom: 0;
+}
+
 .metric__note {
   margin: var(--space-2) 0 0;
   font-size: var(--type-sm);
