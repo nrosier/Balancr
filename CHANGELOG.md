@@ -6,6 +6,69 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [0.11.6] — 2026-09-07
+
+### Added
+
+- **The savings rate reads over a period, not one calendar month**
+  ([#288](https://github.com/nrosier/Balancr/issues/288)). One month is the reading
+  most distorted by when a salary or a large bill happened to land: a quarterly
+  insurance premium can turn a perfectly ordinary month into a rate somebody worries
+  about. The Budget page's savings card now carries a chooser — this month, the
+  previous month, since January, or the trailing twelve — and opens on twelve, the
+  reading least sensitive to a calendar boundary. It sums before it divides: a
+  period rate is total income minus total spending over total income, never the
+  average of the monthly rates, because that average carries every boundary
+  distortion into itself and on a month that earned nothing is arbitrarily wrong. A
+  negative rate is not clamped and a window with no income says "not known yet"
+  rather than 0%, since both are facts worth printing as themselves. The card also
+  names the span it used, so a period reaching further back than the data does not
+  quietly read as twelve months of figures. No extra request: `/api/budget` already
+  ships two years of monthly flows, so switching periods is arithmetic on what the
+  page is holding. The Overview page's own savings card still shows one month —
+  giving it a period needs the server to send flows it does not send yet
+  ([#296](https://github.com/nrosier/Balancr/issues/296)).
+
+### Changed
+
+- **`npm run probe` is now the reconciliation acceptance test**
+  ([#46](https://github.com/nrosier/Balancr/issues/46)). It reconciled one month —
+  and on a real budget file that was `months.at(-1)`, a month the calendar has not
+  reached, so it reconciled zero against zero and proved nothing. It now takes the
+  last three months that have *started*, because the failures worth catching only
+  show over a span: a month containing a transfer, a carryover that drifts as it
+  rolls forward, a category renamed mid-quarter. A category total that disagrees
+  with Actual's own now fails the probe rather than printing beside it. The
+  Ghostfolio side was shape-level only, so the number a household would actually
+  check was the one number nothing checked; it now compares the portfolio figures
+  Balancr would store against Ghostfolio's own, through the same functions the
+  nightly job uses, split into total, invested and cash at the broker — because a
+  cash position counted as an investment leaves the total right and every allocation
+  share wrong, and a single comparison would pass. Net worth against the portfolio
+  page warns rather than fails: only somebody looking at both can say whether the
+  difference is cash the two views count differently. The tolerance is derived from
+  how many times the cent conversion rounds, not chosen.
+
+### Fixed
+
+- **The probe stopped warning that an envelope budget is not an envelope budget**
+  ([#293](https://github.com/nrosier/Balancr/issues/293)). It tested for the budget
+  type Actual stopped calling `rollover`, so a healthy envelope budget was reported
+  as suspect while `tracking` — the one budget type whose carryover figures really
+  are not what the budget means — passed in silence. It now asks the same shared
+  vocabulary the server side already used. Found by the new acceptance test against
+  a live Actual 26.9.0.
+
+- **`currentValueInBaseCurrency` is documented as the trap it is.** It reads like
+  the Ghostfolio portfolio total and holds the *invested* half, so anything
+  comparing a total against it reports every instance holding cash as broken by
+  precisely the amount of cash. The two fields the dashboard actually prints are now
+  declared rather than merely surviving a loose schema, and `cash` — which came back
+  negative on the reporting instance while the real broker cash was positive — is
+  documented as not being the cash. Pinned by tests on an invented fixture,
+  including the equation of the trap itself, so CI catches the class of bug without
+  a real Ghostfolio.
+
 ## [0.11.5] — 2026-09-07
 
 ### Added
