@@ -77,10 +77,11 @@ export type CustodyBasis = (typeof CUSTODY_BASES)[number]
 /**
  * Why there is no split to report.
  *
- * `no_shared` is the ordinary state of most budgets and draws nothing at all — the flag
- * is opt-in, and a card explaining an absence nobody asked about is noise. `no_basis` is
- * the one that needs saying: categories are flagged, so somebody meant this to work, and
- * the share it needs is missing.
+ * `no_shared` is the ordinary state of most budgets: the flag is opt-in, so nothing here
+ * is wrong. `no_basis` is the one somebody is waiting on — categories are flagged, so they
+ * meant this to work, and the share it needs is missing. The split lives behind a tab of
+ * its own since #230, so both get a sentence in the browser now (#280); the distinction
+ * survives here because it is the difference between an absence and an omission.
  *
  * `zero_share` is its own reason rather than a fourth cause of `no_basis` (#289): a stated
  * 0% under `my_share` is not a missing share, it is a share that cannot be divided by, and

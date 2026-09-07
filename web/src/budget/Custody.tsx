@@ -25,11 +25,16 @@
  *  - **No colour and no severity**, for the reason the benchmark card gives: nobody has
  *    done anything wrong by paying a bill that gets split, and a red cell is an alert
  *    whatever the payload calls it. The matching findings are capped at `info`.
- *  - **Two of the four unavailable reasons draw nothing.** `no_shared` is the ordinary
- *    state of most budgets — the flag is opt-in, and a card explaining an absence nobody
- *    asked about is noise — and `no_month` already has its own notice above. `no_basis`
- *    and `zero_share` are the two worth a box: categories are flagged, so somebody meant
- *    this to work, and the second one has a different fix from the first.
+ *  - **Every unavailable reason draws something (#280).** This once returned `null` for
+ *    `no_shared` and `no_month`, and that was right while the split was a card at the
+ *    bottom of the Budget page: the flag is opt-in, and a card explaining an absence
+ *    nobody asked about is noise on a page already full of content. Then #230 put the
+ *    card behind a tab of its own, which inverted the reasoning — a reader who clicked
+ *    the label asked about exactly this absence, and an empty pane leaves them guessing
+ *    between unimplemented, broken and opt-in. So all four reasons get a box, and each
+ *    names its own way out: `no_shared` the two things to set, `no_basis` the share,
+ *    `zero_share` a share it cannot divide by, `no_month` the month itself — whose
+ *    notice on the Overview section is not on screen from here.
  *
  * Nothing here is computed. Every figure arrives as an integer, including the co-parent's
  * part, which is a subtraction the server did.
@@ -48,18 +53,27 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
   const captionId = useId()
 
   if (custody.kind === 'unavailable') {
-    if (custody.reason !== 'no_basis' && custody.reason !== 'zero_share') return null
+    // Two of the four reasons name the flagged total, and can: something was flagged, so
+    // there is a figure to report. The other two have nothing to put in a sentence —
+    // `no_shared` because nothing is flagged and `no_month` because nothing was
+    // aggregated — so they are plain `t()` rather than a `Trans` around a euro that would
+    // print as nought.
+    const withFigure = custody.reason === 'no_basis' || custody.reason === 'zero_share'
     return (
       <div className="notice notice--info" role="status">
         <p className="notice__lead">
-          <Trans
-            i18nKey={`budget:custody.unavailable.${custody.reason}`}
-            // Both of these reasons always carry the flagged total; the nullable type is
-            // the union's, not this branch's.
-            components={{
-              money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
-            }}
-          />
+          {withFigure ? (
+            <Trans
+              i18nKey={`budget:custody.unavailable.${custody.reason}`}
+              // Both of these reasons always carry the flagged total; the nullable type is
+              // the union's, not this branch's.
+              components={{
+                money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
+              }}
+            />
+          ) : (
+            t(`budget:custody.unavailable.${custody.reason}`)
+          )}
         </p>
         <p className="notice__hint">{t(`budget:custody.unavailable.hint.${custody.reason}`)}</p>
       </div>

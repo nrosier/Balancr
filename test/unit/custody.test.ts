@@ -17,8 +17,7 @@
  *
  * The rest is the refusals: no month, nothing flagged, a roster the share cannot be
  * derived from, and a stated 0% there is nothing to divide by. Four different answers,
- * because the card draws nothing for two of them and says a different thing for each of
- * the other two.
+ * because each says a different thing, and only two of them have a figure to name.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
@@ -233,8 +232,9 @@ describe('splitting a month', () => {
   })
 
   it('says no_shared when nothing is flagged, without a figure', () => {
-    // The ordinary state of most budgets, and the card draws nothing: there is no
-    // number to withhold, so `paidCents` stays null rather than reporting the month.
+    // The ordinary state of most budgets. Nothing was flagged, so there is no number to
+    // report: `paidCents` stays null rather than standing in the month's own total, and
+    // the card's sentence for this reason is the one that names no figure (#280).
     expect(split([fact('rent', 100_000)], [])).toEqual({
       kind: 'unavailable',
       reason: 'no_shared',
@@ -244,7 +244,7 @@ describe('splitting a month', () => {
 
   it('says no_basis with the unsplit total when the roster cannot imply a share', () => {
     // Somebody flagged the categories, so they meant this to work — which is why this
-    // reason carries the figure and is the only one the card explains.
+    // reason carries the figure — every reason draws a box, but only two can print one.
     expect(split([fact('school', 40_000)], ['school'], DEFAULT_HOUSEHOLD)).toEqual({
       kind: 'unavailable',
       reason: 'no_basis',

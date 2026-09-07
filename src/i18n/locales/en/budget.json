@@ -122,9 +122,13 @@
     "unavailable": {
       "hint": {
         "no_basis": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
+        "no_month": "Pick another month, or run a sync to aggregate this one.",
+        "no_shared": "Tick Shared beside the categories a co-parent pays part of, under Settings, Categories — then say what share of them is yours under Settings, Household.",
         "zero_share": "Raise the share under Settings, Household to the part of these costs that is yours — or, if the whole invoice really does land here, switch the direction there instead."
       },
       "no_basis": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but nothing says what share of them is yours.",
+      "no_month": "Nothing has been computed for this month yet, so there is nothing to split.",
+      "no_shared": "No category is flagged as shared with a co-parent, so there is nothing to split.",
       "zero_share": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but your stated share is 0% — there is nothing to work the total back up from."
     }
   },
