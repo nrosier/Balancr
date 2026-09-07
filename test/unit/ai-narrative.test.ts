@@ -27,14 +27,16 @@ import {
   loadNarrative,
   narrativeInstruction,
   narrativeLocales,
+  noteChangedSince,
   renderNarrative,
   runNarrative,
   storeNarrative,
   substituteLabels,
   translateNarrative,
 } from '../../src/domain/ai/narrative.ts'
+import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import type { RedactedPayload } from '../../src/domain/ai/redact.ts'
-import { recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
+import { loadRunPayload, recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
@@ -239,6 +241,109 @@ describe('renderNarrative', () => {
       bodyMd: 'c1 was the largest category.',
     })
     expect(renderNarrative(db, row)).toBe('<p>an unnamed category was the largest category.</p>')
+  })
+})
+
+describe("the month's note reaches this pass and no other (#298)", () => {
+  const NOTE = 'The boiler was replaced this month, which is the whole of appliances.'
+
+  it('sends the note to the model, in the payload the run is billed for', async () => {
+    seedTypicalMonth()
+    saveMonthNote(db, MONTH, NOTE)
+    const recorded = fakeGemini('A month with an explanation.')
+
+    await runNarrative(db, { period: MONTH, locale: 'en' })
+
+    // The prompt is where it has to be, not merely the bundle: #298 was reported because
+    // the note was collected, stored, read by the nudge, and never put in front of this
+    // pass. So the assertion is on what was sent.
+    expect(recorded.prompts[0]).toContain(NOTE)
+  })
+
+  it('stores what it sent, so the ledger can be checked against this claim', () => {
+    // The README says Insights → Ledger prints the exact payload and that a claim about
+    // what crosses is checkable there. That is only true if the note is in the stored row.
+    seedTypicalMonth()
+    saveMonthNote(db, MONTH, NOTE)
+    fakeGemini('A month with an explanation.')
+
+    return runNarrative(db, { period: MONTH, locale: 'en' }).then(() => {
+      const run = recentRuns(db, 10).find((r) => r.kind === 'narrative')
+      expect(run).toBeDefined()
+      expect(JSON.stringify(loadRunPayload(db, run!.id))).toContain(NOTE)
+    })
+  })
+})
+
+describe('noteChangedSince (#298)', () => {
+  const NOTE = 'The boiler was replaced this month.'
+
+  /** Writes a review for the month, which is what the comparison is against. */
+  async function review(): Promise<void> {
+    fakeGemini('A quiet month.')
+    await runNarrative(db, { period: MONTH, locale: 'en' })
+  }
+
+  it('is false when the note has not moved since the review was written', async () => {
+    seedTypicalMonth()
+    saveMonthNote(db, MONTH, NOTE)
+    await review()
+
+    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(false)
+  })
+
+  it('is true for a note written after the review, which is the reported bug', async () => {
+    seedTypicalMonth()
+    await review()
+    saveMonthNote(db, MONTH, NOTE)
+
+    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+  })
+
+  it('is true when the note is edited, and false again once rewritten', async () => {
+    seedTypicalMonth()
+    saveMonthNote(db, MONTH, NOTE)
+    await review()
+    saveMonthNote(db, MONTH, 'The boiler was replaced, and so was the dishwasher.')
+    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+
+    fakeGemini('A month with two appliances in it.')
+    await runNarrative(db, { period: MONTH, locale: 'en', force: true })
+    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(false)
+  })
+
+  it('is true when the note is deleted, because the review still leans on it', async () => {
+    // Deleting a note is a correction — the explanation was wrong, or was about the wrong
+    // month — and a review that attributed a movement to it is now saying something its
+    // author has withdrawn. That is more worth flagging than an addition, not less.
+    seedTypicalMonth()
+    saveMonthNote(db, MONTH, NOTE)
+    await review()
+    saveMonthNote(db, MONTH, '')
+
+    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+  })
+
+  it('says nothing about a review written before the note ever crossed', async () => {
+    // A payload with no `note` key at all: pre-#298, and unknowable rather than stale. The
+    // wrong answer here would put a banner under every review a deployment already had,
+    // claiming a note had changed when none was ever compared.
+    seedTypicalMonth()
+    await review()
+    const narrative = loadNarrative(db, MONTH, 'en')!
+    const rewritten = { ...narrative, runId: recordRun(db, {
+      kind: 'narrative',
+      model: 'gemini-test',
+      locale: 'en',
+      period: MONTH,
+      payload: { month: MONTH } as unknown as RedactedPayload,
+      payloadHash: 'no-note',
+      status: 'ok',
+      userId: null,
+    }) }
+    saveMonthNote(db, MONTH, NOTE)
+
+    expect(noteChangedSince(db, rewritten)).toBe(false)
   })
 })
 
