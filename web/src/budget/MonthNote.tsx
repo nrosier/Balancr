@@ -1,6 +1,6 @@
 /**
- * A month's own note, above the tabs on the Budget page (#217, redesigned per-month
- * by #270).
+ * A month's own note, its own tab on the Budget page (#217, redesigned per-month by
+ * #270, moved off the shared toolbar into its own section per follow-up feedback).
  *
  * Not a warning about the future — context for a specific month, most often the
  * current one: "the dishwasher broke, that's why household appliances is high this

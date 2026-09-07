@@ -197,8 +197,6 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
         />
       </div>
 
-      <MonthNotePanel initialMonth={month} owner={owner} />
-
       {section === 'overview' && (
         <>
           {uncategorised === null || uncategorised.txnCount === 0 ? null : (
@@ -263,6 +261,8 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
       {section === 'benchmark' && categories.length > 0 && <Benchmark benchmark={benchmark} />}
 
       {section === 'custody' && categories.length > 0 && <Custody custody={custody} />}
+
+      {section === 'notes' && <MonthNotePanel initialMonth={month} owner={owner} />}
     </>
   )
 }
