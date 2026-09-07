@@ -20,6 +20,7 @@ import { SAVINGS_PERIODS } from '../src/domain/aggregate/savings.ts'
 import {
   BENCHMARK_BLOCKS,
   BENCHMARK_GROUPS,
+  BENCHMARK_UNAVAILABLE,
   COICOP_DIVISIONS,
   OUTSIDE_CONSUMPTION,
 } from '../src/domain/benchmark/vocabulary.ts'
@@ -191,6 +192,14 @@ const vocabularies: Array<[string, readonly string[], string]> = [
   // The four windows the savings card can be read over (#288). A period with no name
   // is an empty option in a select, which is worse than no chooser at all.
   ['budget:savings.period.', SAVINGS_PERIODS, 'savings period'],
+  // Why there is no comparison, and what to do about it — one of each per reason since
+  // #300. The guard is here because the failure it catches already happened once: the
+  // hint was a single shared string, and it went stale the moment a reason arrived that
+  // it was not written for. A reason with no sentence at all renders `too_unmapped` as
+  // the notice's entire text, which reads as a bug in the page rather than a gap in the
+  // catalogue.
+  ['budget:benchmark.unavailable.', BENCHMARK_UNAVAILABLE, 'benchmark unavailable reason'],
+  ['budget:benchmark.unavailable.hint.', BENCHMARK_UNAVAILABLE, 'benchmark unavailable hint'],
 ]
 for (const [prefix, ids, what] of vocabularies) {
   for (const id of ids) {

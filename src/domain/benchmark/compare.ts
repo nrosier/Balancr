@@ -44,11 +44,8 @@ import {
   MIN_MAPPED_BP,
   type BenchmarkBlock,
   type BenchmarkGroup,
+  type BenchmarkUnavailable,
 } from './vocabulary.ts'
-
-/** Why there is no comparison. Enumerated, because each one needs a different action. */
-export const BENCHMARK_UNAVAILABLE = ['no_file', 'no_month', 'no_mapping', 'too_unmapped'] as const
-export type BenchmarkUnavailable = (typeof BENCHMARK_UNAVAILABLE)[number]
 
 /** What the comparison is measuring — see the module comment. */
 export const BENCHMARK_BASES = ['mix', 'level'] as const

@@ -22,10 +22,17 @@
  *    `overspend.ts` emits a finding at, so the words in the last column mark exactly the
  *    rows that produced one and the card cannot start disagreeing with the insights page.
  *    Below is treated symmetrically at the same magnitude — it is a word, not a finding.
- *  - **Two of the four unavailability reasons render nothing at all.** `no_file` is a
- *    deployment that ships no benchmark, which is supported and not worth a box on every
- *    budget page; `no_month` is a month with no spending, which already has its own notice
- *    above. The other two are things the reader can fix, and say what and where.
+ *  - **Every unavailability reason draws a notice (#300).** Two of them returned `null`
+ *    while this was a card on a long page, and that was right then: `no_file` is a
+ *    deployment that ships no benchmark, which is supported and not worth a box under a
+ *    month's figures, and `no_month` already had its own notice above it. #230 put the
+ *    comparison behind a tab, which inverted both — a reader who clicked *Benchmark* asked
+ *    about exactly this absence, and the empty-month notice lives inside the overview
+ *    section and is not on screen from here. The hint is therefore per reason rather than
+ *    shared: two of the four are the reader's to fix, `no_month` is the month, and
+ *    `no_file` is neither — it is a config and log question, so the box says the
+ *    comparison is off and sends whoever can act on it to the panel that already explains
+ *    it, rather than restating an operator's file path in a budget pane.
  *  - **The basis is a sentence, not a badge.** A `mix` comparison is about how spending is
  *    *divided* and a `level` one about how much is *spent* — see `compare.ts` — and the
  *    euro column means something different in each. A card that did not say which would
@@ -99,18 +106,23 @@ export function Benchmark({ benchmark }: { benchmark: BenchmarkWire }): ReactNod
   const captionId = useId()
 
   if (benchmark.kind === 'unavailable') {
-    if (benchmark.reason === 'no_file' || benchmark.reason === 'no_month') return null
     return (
       <div className="notice notice--info" role="status">
         <p className="notice__lead">
           {t(`budget:benchmark.unavailable.${benchmark.reason}`, {
-            // Both remaining reasons carry a share — `no_mapping` is zero by
-            // construction — and the nullable type is the union's, not this branch's.
+            // Only `too_unmapped` prints either of these, and it always has the share —
+            // `no_mapping` is zero by construction, and the two reasons that predate any
+            // mapping have nothing to report, so the nullable type is the union's rather
+            // than this branch's. Passed for all four because an unused variable costs a
+            // `t()` call nothing, and a fifth reason that needs one should not have to
+            // find its way back in here.
             share: formatBp(benchmark.mappedShareBp ?? 0),
             floor: formatBp(MIN_MAPPED_BP),
           })}
         </p>
-        <p className="notice__hint">{t('budget:benchmark.unavailable.hint')}</p>
+        <p className="notice__hint">
+          {t(`budget:benchmark.unavailable.hint.${benchmark.reason}`)}
+        </p>
       </div>
     )
   }

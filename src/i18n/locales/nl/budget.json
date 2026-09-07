@@ -51,8 +51,15 @@
     "title": "Vergeleken met Belgische huishoudens",
     "transcribed": "Nog niet bij de bron bevestigd: {{blocks}}.",
     "unavailable": {
-      "hint": "Wijs je categorieën een COICOP-afdeling toe bij Instellingen en de vergelijking verschijnt hier.",
+      "hint": {
+        "no_file": "Onder Instellingen, Vergelijking staat welk bestand verwacht wordt en wat je nakijkt als het niet gelezen kan worden.",
+        "no_mapping": "Wijs je categorieën een COICOP-afdeling toe bij Instellingen en de vergelijking verschijnt hier.",
+        "no_month": "Kies een andere maand of start een sync om deze maand te berekenen.",
+        "too_unmapped": "Wijs meer van je categorieën een COICOP-afdeling toe bij Instellingen en de vergelijking verschijnt hier."
+      },
+      "no_file": "Deze installatie heeft geen referentie om mee te vergelijken, dus nergens wordt een vergelijking gemaakt.",
       "no_mapping": "Geen enkele uitgave van deze maand is aan een referentiegroep toegewezen, dus er is nog niets om mee te vergelijken.",
+      "no_month": "Voor deze maand is nog niets berekend, dus er is niets om te vergelijken.",
       "too_unmapped": "Slechts {{share}} van de uitgaven van deze maand is aan een referentiegroep toegewezen, onder de {{floor}} die een vergelijking nodig heeft. Wat ze over huisvesting zou zeggen, zou eigenlijk een uitspraak over de toewijzing zijn."
     },
     "unmapped": {
