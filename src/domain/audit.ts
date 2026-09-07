@@ -70,6 +70,15 @@ export const AUDIT_ACTIONS = [
    * matters.
    */
   'settings.household',
+  /**
+   * A hand-typed correction to the average household the comparison scales (#290).
+   *
+   * Its own action rather than `settings.household`, though both land in `settings` from
+   * the same panel: one says who lives here and the other says what the national average
+   * is, and a benchmark figure that moved is the first thing to look for when a euro
+   * comparison changed without the roster changing.
+   */
+  'settings.benchmarkReference',
   'settings.coicop',
   /**
    * A category flagged as shared with a co-parent, or unflagged (#44).

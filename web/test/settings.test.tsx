@@ -120,48 +120,53 @@ const ADVICE: Payload['advice'] = {
  * counts it under housing. `Bank charges` is `00`, which is mapped and deliberately
  * feeds no reference line. `Coffee` is unmapped, and `Salary` is income.
  */
-const BENCHMARK: Payload['benchmark'] = {
-  file: {
-    source: {
-      survey: 'Household Budget Survey (HBS)',
-      year: 2024,
-      citation: 'Statbel, Household Budget Survey 2024 — structure of household expenditure',
-      sourceUrl: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs',
-      lastVerified: '2026-09-03',
-      status: 'transcribed',
-    },
-    equivalence: {
-      scale: 'modified_oecd',
-      firstPersonBp: 10_000,
-      additionalPersonBp: 5_000,
-      childBp: 3_000,
-      childAgeBelow: 14,
-      citation: 'Eurostat — equivalised disposable income, modified OECD scale',
-      sourceUrl: null,
-      lastVerified: '2026-09-03',
-      status: 'transcribed',
-    },
-    groups: [
-      { id: 'food', shareBp: 1_400, coicop: ['01'] },
-      { id: 'alcohol_tobacco', shareBp: 170, coicop: ['02'] },
-      { id: 'clothing', shareBp: 370, coicop: ['03'] },
-      { id: 'housing', shareBp: 3_060, coicop: ['04'] },
-      { id: 'furnishings', shareBp: 500, coicop: ['05'] },
-      { id: 'health', shareBp: 480, coicop: ['06'] },
-      { id: 'transport', shareBp: 1_170, coicop: ['07'] },
-      { id: 'recreation', shareBp: 790, coicop: ['09'] },
-      { id: 'hotels_restaurants', shareBp: 730, coicop: ['11'] },
-      { id: 'other', shareBp: 1_330, coicop: ['08', '10', '12'] },
-    ],
-    hasReferenceHousehold: false,
-    transcribed: ['source', 'equivalence'],
+const BENCHMARK_FILE: NonNullable<Payload['benchmark']['file']> = {
+  source: {
+    survey: 'Household Budget Survey (HBS)',
+    year: 2024,
+    citation: 'Statbel, Household Budget Survey 2024 — structure of household expenditure',
+    sourceUrl: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs',
+    lastVerified: '2026-09-03',
+    status: 'transcribed',
   },
+  equivalence: {
+    scale: 'modified_oecd',
+    firstPersonBp: 10_000,
+    additionalPersonBp: 5_000,
+    childBp: 3_000,
+    childAgeBelow: 14,
+    citation: 'Eurostat — equivalised disposable income, modified OECD scale',
+    sourceUrl: null,
+    lastVerified: '2026-09-03',
+    status: 'transcribed',
+  },
+  groups: [
+    { id: 'food', shareBp: 1_400, coicop: ['01'] },
+    { id: 'alcohol_tobacco', shareBp: 170, coicop: ['02'] },
+    { id: 'clothing', shareBp: 370, coicop: ['03'] },
+    { id: 'housing', shareBp: 3_060, coicop: ['04'] },
+    { id: 'furnishings', shareBp: 500, coicop: ['05'] },
+    { id: 'health', shareBp: 480, coicop: ['06'] },
+    { id: 'transport', shareBp: 1_170, coicop: ['07'] },
+    { id: 'recreation', shareBp: 790, coicop: ['09'] },
+    { id: 'hotels_restaurants', shareBp: 730, coicop: ['11'] },
+    { id: 'other', shareBp: 1_330, coicop: ['08', '10', '12'] },
+  ],
+  referenceHousehold: null,
+  transcribed: ['source', 'equivalence'],
+}
+
+const BENCHMARK: Payload['benchmark'] = {
+  file: BENCHMARK_FILE,
   household: {
     members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
     // Null, so the panel prints the share it derives from the roster above rather than
     // a stated one — the default, and the state worth having in the fixture (#44).
     sharedCostBp: null,
   },
+  // No file figure and no correction, which is the state the "shares only" caveat is
+  // about — the panel's own tests type one in (#290).
+  referenceOverride: null,
   outsideCode: '00',
   categories: [
     {
@@ -1238,6 +1243,42 @@ describe('the household', () => {
   const sharedCost = (): HTMLInputElement =>
     screen.getByLabelText('Your share of shared costs') as HTMLInputElement
 
+  const reference = (): HTMLElement => form('reference-form')
+
+  const saveReference = (): HTMLButtonElement =>
+    within(reference()).getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement
+
+  /** The citation the fixture's file carries, which the boxes prefill from (#290). */
+  const FILE_CITATION =
+    'Statbel, Household Budget Survey 2024 — mean expenditure per household and per consumption unit'
+
+  /**
+   * The same payload with the survey's euro figures filled in.
+   *
+   * Invented round-ish numbers, like every figure in these tests: € 3.689,19 a month for a
+   * household of 1,5066 on the scale. The default fixture deliberately has none, because
+   * "only the mix is compared" is the state the provenance list is about.
+   */
+  const withReference = {
+    ...PAYLOAD,
+    benchmark: {
+      ...PAYLOAD.benchmark,
+      file: {
+        ...BENCHMARK_FILE,
+        referenceHousehold: {
+          meanMonthlyCents: 368_919,
+          equivalentAdultsBp: 15_066,
+          citation: FILE_CITATION,
+          sourceUrl: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs',
+          lastVerified: '2026-09-07',
+          status: 'confirmed' as const,
+        },
+      },
+    },
+  }
+
   it('says what each row reads as on the scale, and as of when', async () => {
     // Only `Date` is faked, so the testing library's own waiting still uses real timers.
     // The year has to be pinned at all: the panel classifies a member by their age *now*,
@@ -1572,6 +1613,150 @@ describe('the household', () => {
     // No euro total was transcribed, so the panel says which comparison is impossible
     // rather than leaving the budget page to be mysteriously share-only.
     expect(screen.getByText(/only the mix is compared/)).toBeTruthy()
+  })
+
+  it('offers the average household as a correction, starting from the file (#290)', async () => {
+    // The fixture's file carries no euro figure, so the panel says so and the boxes start
+    // empty — typing a pair here is what switches the euro comparison on at all.
+    await open(READS)
+
+    expect(screen.getByText(/The file carries no euro figure/)).toBeTruthy()
+    expect(
+      (screen.getByLabelText('Average household spending per month') as HTMLInputElement).value,
+    ).toBe('')
+    expect(saveReference().disabled).toBe(true)
+  })
+
+  it('prefills all three boxes from the file when it has the figures (#290)', async () => {
+    await open({ ...READS, '/api/settings': json(withReference) })
+
+    expect(
+      (screen.getByLabelText('Average household spending per month') as HTMLInputElement).value,
+    ).toBe(eur('3.689,19'))
+    expect(
+      (screen.getByLabelText('Average household size on the scale') as HTMLInputElement).value,
+    ).toBe('15066')
+    expect(screen.getByText(/1,5066 equivalent adults on the scale/)).toBeTruthy()
+    // The file's figure applies, so there is nothing to reset to.
+    expect(within(reference()).queryByRole('button', { name: /Use the file/ })).toBeNull()
+    // And with a euro figure in play the panel no longer says only the mix is compared.
+    expect(screen.queryByText(/only the mix is compared/)).toBeNull()
+  })
+
+  it('sends both figures and the citation together (#290)', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(withReference),
+      '/api/settings/benchmark-reference': json(withReference),
+    })
+
+    fireEvent.change(screen.getByLabelText('Average household spending per month'), {
+      target: { value: '4000,00' },
+    })
+    fireEvent.change(screen.getByLabelText('Average household size on the scale'), {
+      target: { value: '16000' },
+    })
+    fireEvent.click(saveReference())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/benchmark-reference',
+          method: 'PATCH',
+          body: {
+            reference: {
+              meanMonthlyCents: 400_000,
+              equivalentAdultsBp: 16_000,
+              // Carried over from the file rather than retyped: whoever corrects one
+              // number should not have to restate the source of the other two.
+              citation: FILE_CITATION,
+            },
+          },
+        },
+      ])
+    })
+  })
+
+  it('refuses a size the scale could not use, and a citation that names nothing (#290)', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(withReference),
+    })
+
+    // 5000 would be half a person: the comparison divides by this, so below one adult it
+    // scales the national average *up*. 1000000 is six digits and outside the schema too.
+    for (const typed of ['5000', '1000000', '1,5']) {
+      fireEvent.change(screen.getByLabelText('Average household size on the scale'), {
+        target: { value: typed },
+      })
+      expect(saveReference().disabled, typed).toBe(true)
+    }
+    expect(screen.getByText(/A whole number of basis points between 10000 and 200000/)).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Average household size on the scale'), {
+      target: { value: '16000' },
+    })
+    fireEvent.change(screen.getByLabelText('Where you got it'), {
+      target: { value: 'HBS' },
+    })
+    expect(saveReference().disabled).toBe(true)
+    expect(writes(calls)).toEqual([])
+  })
+
+  it('offers a way back to the file once a correction is stored (#290)', async () => {
+    const overridden = {
+      ...withReference,
+      benchmark: {
+        ...withReference.benchmark,
+        referenceOverride: {
+          meanMonthlyCents: 400_000,
+          equivalentAdultsBp: 16_000,
+          citation: 'Statbel, Household Budget Survey 2026 — invented figures',
+          savedOn: '2026-09-07',
+        },
+      },
+    }
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(overridden),
+      '/api/settings/benchmark-reference': json(withReference),
+    })
+
+    // The correction applies, and the file's own figure is still printed beside it.
+    expect(screen.getByText(/Your own figure applies instead of the file/)).toBeTruthy()
+    expect(screen.getByText(/The file says .* a month for a household of 1,5066/)).toBeTruthy()
+    expect(
+      (screen.getByLabelText('Average household size on the scale') as HTMLInputElement).value,
+    ).toBe('16000')
+
+    fireEvent.click(within(reference()).getByRole('button', { name: /Use the file/ }))
+
+    await waitFor(() => {
+      // Null rather than the file's numbers sent back: storing a copy would ignore the
+      // next edition of the file while looking like it should not.
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/benchmark-reference',
+          method: 'PATCH',
+          body: { reference: null },
+        },
+      ])
+    })
+  })
+
+  it('leaves the average household read-only for a viewer (#290)', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...withReference,
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect(
+      (screen.getByLabelText('Average household size on the scale') as HTMLInputElement).disabled,
+    ).toBe(true)
+    expect(saveReference().disabled).toBe(true)
   })
 
   it('leaves the roster read-only for a viewer', async () => {
