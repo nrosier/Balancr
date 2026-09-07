@@ -16,6 +16,12 @@
  * The breakdown is a `<dl>` rather than a table because it is label-and-value pairs
  * with no columns to align across rows, and `.num` on the values is what keeps the
  * digits in a straight line.
+ *
+ * `control` is the one slot that takes markup rather than a finished string, for the
+ * one card that has something to choose: the savings rate can be read over four
+ * periods (#288) and the chooser belongs beside the label it changes the meaning of.
+ * The slot stays deliberately dumb — this component neither knows nor cares what the
+ * control does, so a card without one renders exactly as it did before.
  */
 import type { ReactNode } from 'react'
 
@@ -36,6 +42,8 @@ export interface MetricProps {
   unknown: string
   /** One line under the figure: the month it covers, the date it was taken. */
   note?: string
+  /** Beside the label: a chooser that changes what the figure means. See above. */
+  control?: ReactNode
   tone?: Tone
   rows?: readonly MetricRow[]
 }
@@ -43,11 +51,29 @@ export interface MetricProps {
 const toneClass = (tone: Tone | undefined): string =>
   tone === undefined ? '' : ` metric__value--${tone}`
 
-export function Metric({ label, value, unknown, note, tone, rows }: MetricProps): ReactNode {
+export function Metric({
+  label,
+  value,
+  unknown,
+  note,
+  tone,
+  rows,
+  control,
+}: MetricProps): ReactNode {
   const known = value !== null
   return (
     <div className="card metric">
-      <h2 className="card__title">{label}</h2>
+      {control === undefined ? (
+        <h2 className="card__title">{label}</h2>
+      ) : (
+        // The title keeps its own margin in the plain case, so the wrapper carries the
+        // spacing here instead of the heading — otherwise a card with a control sits a
+        // step lower than the four beside it.
+        <div className="metric__head">
+          <h2 className="card__title metric__head-title">{label}</h2>
+          {control}
+        </div>
+      )}
       <p className={`metric__value num${known ? toneClass(tone) : ' metric__value--unknown'}`}>
         {known ? value : unknown}
       </p>

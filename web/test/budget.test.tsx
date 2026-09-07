@@ -390,7 +390,9 @@ describe('a month with figures in it', () => {
 
     expect(await screen.findByText('€ 3.100')).toBeTruthy()
     expect(screen.getByText('€ 4.200')).toBeTruthy()
-    expect(screen.getByText('26,2%')).toBeTruthy()
+    // The savings rate opens on twelve months (#288), which for this fixture is the two
+    // months of history summed — € 8.400 in, € 6.100 out — and not August's own 26,2%.
+    expect(screen.getByText('27,4%')).toBeTruthy()
     // Over-assigned, which is a state to act on rather than a smaller number.
     expect(screen.getByText('€ -250')).toBeTruthy()
 
@@ -850,6 +852,93 @@ describe('the shared-cost split', () => {
     await screen.findByLabelText('Month')
     expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
     expect(screen.queryByText(/are flagged as shared with a co-parent/)).toBeNull()
+  })
+})
+
+describe('the savings rate over a period (#288)', () => {
+  const show = (): void => {
+    serve(json(FULL))
+    renderApp(<Budget />)
+  }
+
+  /** The rate the card is currently showing, off the one card that has a chooser. */
+  const rate = (): string => {
+    const card = document.querySelector('.metric__head')?.closest('.metric')
+    return (card?.querySelector('.metric__value')?.textContent ?? '').replaceAll('\u00a0', ' ')
+  }
+
+  const note = (): string => {
+    const card = document.querySelector('.metric__head')?.closest('.metric')
+    return (card?.querySelector('.metric__note')?.textContent ?? '').replaceAll('\u00a0', ' ')
+  }
+
+  it('opens on twelve months, and says the span it actually covered', async () => {
+    show()
+    await screen.findByText('€ 3.100')
+
+    const select = screen.getByLabelText('Period') as HTMLSelectElement
+    expect(select.value).toBe('twelve_months')
+    // Two months exist, twelve were asked for, and the card says two — the whole reason
+    // the span is printed rather than the period name alone.
+    expect(note()).toBe('Over 2 months, July 2026 to August 2026')
+    expect(rate()).toBe('27,4%')
+  })
+
+  it('re-reads the same history for another period without asking the server again', async () => {
+    const mock = serve(json(FULL))
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+    const before = mock.mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'this_month' } })
+
+    // August alone, which is the figure `totals.savingsRateBp` also holds: one code
+    // path, and the shortest period agreeing with the stored quantity.
+    expect(rate()).toBe('26,2%')
+    expect(note()).toBe('Over August 2026')
+    // The period is a slice of a payload the page already has (#288 — no server work).
+    expect(mock.mock.calls.length).toBe(before)
+  })
+
+  it('reads the calendar month before the one on screen', async () => {
+    show()
+    await screen.findByText('€ 3.100')
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'previous_month' } })
+    expect(rate()).toBe('28,6%')
+    expect(note()).toBe('Over July 2026')
+  })
+
+  it('says the window is empty rather than printing a figure for no months', async () => {
+    // August alone in the history, so "previous month" has nothing — and a 0% would be
+    // a number somebody would act on.
+    serve(json({ ...FULL, history: FULL.history.slice(-1) }))
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'previous_month' } })
+    expect(rate()).toBe('Not known yet')
+    expect(note()).toBe('No month with figures in this window')
+  })
+
+  it('offers all four windows, translated', async () => {
+    show()
+    await screen.findByText('€ 3.100')
+
+    const labels = [...screen.getByLabelText('Period').querySelectorAll('option')].map(
+      (option) => option.textContent,
+    )
+    expect(labels).toEqual(['This month', 'Previous month', 'Since January', '12 months'])
+  })
+
+  it('is the only card with a chooser, because it is the only ratio of flows', async () => {
+    show()
+    await screen.findByText('€ 3.100')
+
+    // Assigned, available and left-to-assign are states of one month's envelopes;
+    // "available across twelve months" is not a figure.
+    expect(document.querySelectorAll('.metric__head').length).toBe(1)
+    expect(document.querySelectorAll('.metric select').length).toBe(1)
   })
 })
 

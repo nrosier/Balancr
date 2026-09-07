@@ -190,6 +190,20 @@
   "picker": {
     "month": "Maand"
   },
+  "savings": {
+    "period": {
+      "previous_month": "Vorige maand",
+      "this_month": "Deze maand",
+      "twelve_months": "12 maanden",
+      "year_to_date": "Sinds januari"
+    },
+    "periodLabel": "Periode",
+    "span": {
+      "month": "Over {{month}}",
+      "none": "Geen maand met cijfers in dit venster",
+      "range": "Over {{months}}, van {{from}} tot {{to}}"
+    }
+  },
   "title": "Budget",
   "uncategorised": {
     "notice_one": "{{value}} transactie van <money>{{amount}}</money> heeft geen categorie, dus de cijfers hieronder zijn onvolledig.",
