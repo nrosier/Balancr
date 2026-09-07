@@ -27,7 +27,9 @@
  * `history` and divides once. The second is arithmetic the server could not do for it —
  * the period is a reading the reader picks after the payload has arrived — so it lives in
  * `domain/aggregate/savings.ts` and is re-exported through `shared.ts`, which is how it
- * stays one implementation with tests rather than a sum written out in JSX. The sentences
+ * stays one implementation with tests rather than a sum written out in JSX. The card
+ * itself is `budget/SavingsRate.tsx`, shared with the Overview page since #296 for the
+ * same reason one level up: two copies read two ways. The sentences
  * beside the figures come from `ai/signals.ts`, out of the same catalogue the server's
  * digest uses, so a finding reads the same in an email and on this screen.
  *
@@ -57,6 +59,7 @@ import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts
 import { Benchmark } from '../budget/Benchmark.tsx'
 import { Custody } from '../budget/Custody.tsx'
 import { MonthNotePanel } from '../budget/MonthNote.tsx'
+import { SavingsRate } from '../budget/SavingsRate.tsx'
 import { BUDGET_SECTIONS, sectionFor } from '../budget/sections.ts'
 import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
@@ -64,16 +67,11 @@ import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import {
-  DEFAULT_SAVINGS_PERIOD,
   formatBp,
   formatDecimal,
   formatMonth,
   formatMoney,
-  periodSavings,
-  SAVINGS_PERIODS,
   type Budget as BudgetPayload,
-  type PeriodSavings,
-  type SavingsPeriod,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
@@ -295,37 +293,6 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
 const extent = (category: CategoryFact): number =>
   Math.max(category.spentCents, category.budgetedCents)
 
-/**
- * Which of the four windows the select is on, narrowed at the boundary.
- *
- * `event.target.value` is a `string`, and a value matching no period can only mean the
- * option list and this union have drifted apart — which the i18n check would have caught
- * first. Falling back to the default is the reading that still shows a figure.
- */
-const asPeriod = (value: string): SavingsPeriod =>
-  (SAVINGS_PERIODS as readonly string[]).includes(value)
-    ? (value as SavingsPeriod)
-    : DEFAULT_SAVINGS_PERIOD
-
-/**
- * The span a period actually covered, in words.
- *
- * Always printed, because a selectable window makes a bare percentage ambiguous, and a
- * fresh install asked for twelve months has three — naming the real span is the same
- * honesty rule `committedApproximate` and the custody `basis` already follow (#288).
- */
-function spanNote(savings: PeriodSavings, t: TFunction, language: string): string {
-  if (savings.from === null || savings.to === null) return t('budget:savings.span.none')
-  if (savings.from === savings.to) {
-    return t('budget:savings.span.month', { month: formatMonth(savings.from, language) })
-  }
-  return t('budget:savings.span.range', {
-    months: t('time.monthCount', { count: savings.months }),
-    from: formatMonth(savings.from, language),
-    to: formatMonth(savings.to, language),
-  })
-}
-
 interface TotalsProps {
   totals: NonNullable<BudgetPayload['totals']>
   /** The contiguous run of months ending at `month`, for the savings period (#288). */
@@ -334,13 +301,8 @@ interface TotalsProps {
 }
 
 function Totals({ totals, history, month }: TotalsProps): ReactNode {
-  const { t, language } = useT()
+  const { t } = useT()
   const unknown = t('empty.unknown')
-
-  // Component state, not persisted: a reload returns to twelve months. Storing a UI
-  // preference is a separate concern and there is no existing place for one.
-  const [period, setPeriod] = useState<SavingsPeriod>(DEFAULT_SAVINGS_PERIOD)
-  const savings = useMemo(() => periodSavings(history, month, period), [history, month, period])
 
   const spentRows: MetricRow[] = [
     { label: t('budget:metric.assigned'), value: euro(totals.budgetedCents) },
@@ -412,36 +374,14 @@ function Totals({ totals, history, month }: TotalsProps): ReactNode {
         The one card on this page that is a ratio of flows rather than a state of the
         month's envelopes, which is why it is the one that suffers from the calendar
         boundary and the only one that gets a period (#288). Assigned, available and
-        left-to-assign have no meaning summed over twelve months.
+        left-to-assign have no meaning summed over twelve months. Shared with the Overview
+        page since #296, so the same figure cannot read two ways on two pages.
+
+        `showFlows={false}`: the Spent and Income cards two positions to the left already
+        print the month's own pair, and a period's pair repeated here would put four
+        figures under two labels.
       */}
-      <Metric
-        label={t('budget:metric.savingsRate')}
-        value={savings.rateBp === null ? null : formatBp(savings.rateBp)}
-        unknown={unknown}
-        note={spanNote(savings, t, language)}
-        control={
-          <div className="field field--inline">
-            <label className="field__label" htmlFor="savings-period">
-              {t('budget:savings.periodLabel')}
-            </label>
-            <select
-              id="savings-period"
-              className="field__input"
-              value={period}
-              onChange={(event) => setPeriod(asPeriod(event.target.value))}
-            >
-              {SAVINGS_PERIODS.map((option) => (
-                <option key={option} value={option}>
-                  {t(`budget:savings.period.${option}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-        {...(savings.rateBp === null
-          ? {}
-          : { tone: savings.rateBp < 0 ? ('negative' as const) : ('positive' as const) })}
-      />
+      <SavingsRate history={history} month={month} showFlows={false} />
     </div>
   )
 }

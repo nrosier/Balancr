@@ -921,6 +921,18 @@ describe('the savings rate over a period (#288)', () => {
     expect(note()).toBe('No month with figures in this window')
   })
 
+  it('leaves the flow pair off this page, where two cards already print the month\u2019s', async () => {
+    // The same component draws this card on the Overview page *with* the period's summed
+    // income and spend, because nothing else there carries a flow. Here the Spent and
+    // Income cards are two positions to the left, and a period's pair inside this card
+    // would put four figures under two labels covering two different spans (#296).
+    show()
+    await screen.findByText('€ 3.100')
+
+    const card = document.querySelector('.metric__head')?.closest('.metric')
+    expect(card?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
+  })
+
   it('offers all four windows, translated', async () => {
     show()
     await screen.findByText('€ 3.100')
