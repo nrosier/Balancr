@@ -187,15 +187,26 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
     <>
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
-      <div className="toolbar">
-        <MonthPicker
-          month={month}
-          months={months}
-          onSelect={onSelect}
-          id="budget-month"
-          label={t('budget:picker.month')}
-        />
-      </div>
+      {/*
+        Every section but Notes is a view of one month, and this is the only control
+        that chooses it. Notes is the exception (#281): the note card carries its own
+        stepper, because there the month is the thing being edited rather than a filter
+        being read, and two controls for one concept means one of them looks broken —
+        this one did, since `MonthNotePanel` only takes the month as an *initial* value
+        and never follows it afterwards. That handoff is deliberate and stays: pick
+        March on Overview, open Notes, and March's note is what opens.
+      */}
+      {section !== 'notes' && (
+        <div className="toolbar">
+          <MonthPicker
+            month={month}
+            months={months}
+            onSelect={onSelect}
+            id="budget-month"
+            label={t('budget:picker.month')}
+          />
+        </div>
+      )}
 
       {section === 'overview' && (
         <>
