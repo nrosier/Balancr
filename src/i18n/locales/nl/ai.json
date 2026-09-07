@@ -113,6 +113,7 @@
       "start": "Toch herschrijven"
     },
     "stale": "Gebaseerd op gegevens van {{when}}.",
+    "staleNote": "Deze samenvatting is geschreven vóór je notitie voor deze maand. Als je ze opnieuw laat schrijven, wordt de notitie meegenomen.",
     "title": "Deze maand in woorden",
     "titleMonth": "{{month}} in woorden",
     "translate": "Dit in het {{language}} schrijven",

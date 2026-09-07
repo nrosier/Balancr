@@ -186,26 +186,14 @@ ${NARRATIVE_SYSTEM_V1}
 `.trim()
 
 /**
- * The narrative prompt as it shipped in v0.11.2 and v1.0.0-rc.1, kept byte for byte.
+ * The narrative prompt as it shipped for v0.11.2 and v0.11.3, kept byte for byte for the
+ * reason `NARRATIVE_SYSTEM_V1` is: `seedPrompts` recognises it to deliver the note rule
+ * below to installations that have already booted.
  *
- * This is the one place free text is allowed, and therefore the one place the "no
- * numbers" rule has to be stated differently: it may *quote* the figures it was given,
- * and may not do arithmetic on them.
- *
- * The opening sentence describes the household the same generic way
- * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
- * all a run needs to handle a shared-custody household correctly, and no other
- * rule depends on whose household this is. See `NARRATIVE_SYSTEM_V2`'s doc comment
- * for why the previous opening sentence was replaced.
- *
- * Rule 8 is the drift rule (#183), and it exists because drift is the most tempting
- * arithmetic in the payload: a share, a ceiling and a distance are three numbers where
- * two would do, and a model that notices the third is a subtraction will eventually
- * produce its own version of it. The instruction is therefore not "do not calculate"
- * again — rule 1 already says that — but what a drift *is*: a decision the household has
- * not acted on, of a length the data can support.
- *
- * Superseded by `NARRATIVE_SYSTEM` below, which adds rule 9 (#278).
+ * It is `NARRATIVE_SYSTEM_V2` with the opening sentence replaced — the PII fix, whose
+ * reasoning is in V2's own comment — and it is where the eight rules were complete but
+ * the payload had nothing in it the household had written. Superseded by
+ * `NARRATIVE_SYSTEM_V4`, which adds rule 9.
  */
 const NARRATIVE_SYSTEM_V3 = `
 You are the monthly reviewer of Balancr, a self-hosted budget and portfolio
@@ -243,7 +231,53 @@ Rules:
 `.trim()
 
 /**
- * The narrative prompt, with rule 9: the excluded-envelope rule (#278).
+ * The narrative prompt with the note rule (#298) and without the exclusion rule, kept
+ * byte for byte.
+ *
+ * This body was never released: it was the default on `main` for the few commits between
+ * #298 and #278, which ship in the same version. It is in the chain anyway, because an
+ * installation tracking `main` rather than a tag seeded it and is entitled to the next
+ * rule — and one array entry is cheaper than reasoning about who deployed what and when.
+ *
+ * The opening sentence describes the household the same generic way
+ * `ANALYSIS_SYSTEM_V1` does — "one household", nothing more — because rule 5 is
+ * all a run needs to handle a shared-custody household correctly, and no other
+ * rule depends on whose household this is. See `NARRATIVE_SYSTEM_V2`'s doc comment
+ * for why the previous opening sentence was replaced.
+ *
+ * Rule 8 is the drift rule (#183), and it exists because drift is the most tempting
+ * arithmetic in the payload: a share, a ceiling and a distance are three numbers where
+ * two would do, and a model that notices the third is a subtraction will eventually
+ * produce its own version of it. The instruction is therefore not "do not calculate"
+ * again — rule 1 already says that — but what a drift *is*: a decision the household has
+ * not acted on, of a length the data can support.
+ *
+ * Rule 9 is the month note (#298), and it is the mirror image of rule 8. Rule 1 says a
+ * figure not in the data is not known, which is exactly the pressure that made this pass
+ * describe a movement the household had already explained in writing — the note was
+ * collected for the nudge and never reached here. So the rule has to do two opposite
+ * things at once: license the note as an *explanation*, and refuse it as a *source*. A
+ * note reading "about €400" is the failure mode: rule 1 forbids arithmetic, and without
+ * rule 9 nothing forbids quoting a figure out of prose, which would put a number in a
+ * narrative that no computation produced. It also bounds the note to its own month, so a
+ * broken dishwasher does not become a trend.
+ *
+ * Superseded by `NARRATIVE_SYSTEM` below, which adds rule 10 (#278).
+ */
+const NARRATIVE_SYSTEM_V4 = `
+${NARRATIVE_SYSTEM_V3}
+9. A note written by the household may accompany the month, in their own words.
+   Where it explains something the figures show, say so, and attribute the
+   movement to what they told you instead of describing it as unexplained drift.
+   It is context and never data: no figure in the narrative may come from the
+   note, however precise the note sounds, and where it mentions something the
+   figures do not show, leave it alone rather than looking for it. Treat it as
+   this month's explanation only — it says nothing about the months around it, and
+   nothing about whether the same thing will happen again.
+`.trim()
+
+/**
+ * The narrative prompt, with rule 10: the excluded-envelope rule (#278).
  *
  * It needs its own rule here more than the analysis prompt does, because this is the
  * one pass that writes free text. Rule 1 says a figure not in the data is not known —
@@ -252,17 +286,23 @@ Rules:
  * pointer at the thing the household asked to keep out. So the rule names what the gap
  * is and closes the two ways of writing about it: no arithmetic on it, and no guessing.
  *
- * `NARRATIVE_SYSTEM_V3` is the text this replaces, kept byte for byte so `seedPrompts`
+ * It sits after the note rule for a reason beyond arithmetic: rule 9 invites the model to
+ * take the household's own words as an explanation, and a note may well mention an
+ * envelope that is not in the payload at all. Rule 10 answers what to do then — leave it
+ * alone — which is what rule 9 already says for anything the figures do not show, said
+ * again where the gap is deliberate rather than incidental.
+ *
+ * `NARRATIVE_SYSTEM_V4` is the text this replaces, kept byte for byte so `seedPrompts`
  * can recognise an unedited installation and deliver this.
  */
 const NARRATIVE_SYSTEM = `
-${NARRATIVE_SYSTEM_V3}
-9. Some envelopes may have been withheld from you on purpose, reported only as a
-   count and a combined figure. The month's totals still contain their money, so
-   what you can see will not add up to them. Say nothing about the difference:
-   it is a privacy choice, not a gap in the data, and neither the amount nor what
-   the envelopes might be is yours to reconstruct. Write the month from the
-   envelopes you were given.
+${NARRATIVE_SYSTEM_V4}
+10. Some envelopes may have been withheld from you on purpose, reported only as a
+    count and a combined figure. The month's totals still contain their money, so
+    what you can see will not add up to them. Say nothing about the difference:
+    it is a privacy choice, not a gap in the data, and neither the amount nor what
+    the envelopes might be is yours to reconstruct. Write the month from the
+    envelopes you were given.
 `.trim()
 
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
@@ -297,7 +337,12 @@ export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
  */
 export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
   'analysis.system': [ANALYSIS_SYSTEM_V1, ANALYSIS_SYSTEM_V2],
-  'narrative.system': [NARRATIVE_SYSTEM_V1, NARRATIVE_SYSTEM_V2, NARRATIVE_SYSTEM_V3],
+  'narrative.system': [
+    NARRATIVE_SYSTEM_V1,
+    NARRATIVE_SYSTEM_V2,
+    NARRATIVE_SYSTEM_V3,
+    NARRATIVE_SYSTEM_V4,
+  ],
 }
 
 /**

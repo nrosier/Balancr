@@ -113,6 +113,7 @@ const EMPTY_READS: Record<string, unknown> = {
     freshness: { stale: false, asOf: null, jobsEnabled: true, jobs: [] },
     netWorth: null,
     history: [],
+    flows: [],
     month: null,
     totals: null,
     emergencyFundCentimonths: null,

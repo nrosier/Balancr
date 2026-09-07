@@ -121,6 +121,14 @@ rather than reviewed.
   available figures, the signals derived from them, and for the household comparison a
   survey line, a share and a euro figure. No payee, no memo, no individual transaction,
   no account number, and nobody's name or year of birth.
+- **The one exception is a note you wrote yourself.** A month's note (Budget → Notes)
+  crosses verbatim, because prose is the whole of what it is for: a trailing average
+  cannot know the dishwasher broke. Two passes see it — the budget nudge, when it sizes
+  next month's envelopes, and the month in words, so it attributes a movement to your
+  explanation instead of calling it unexplained drift. The findings pass is sent none of
+  it. Whatever you type there is sent as typed, so it is the one field where what reaches
+  Google is your decision rather than the redactor's; leave the box empty and nothing
+  about the month is described in anyone's words but the figures'.
 - **Three answers per envelope, and you pick each one.** Settings → Benchmark →
   Categories has a "Sent to the AI" column with one control per envelope:
   - **Name and amounts** — the default, and what every envelope did before this column

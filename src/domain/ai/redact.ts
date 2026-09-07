@@ -78,6 +78,19 @@ export interface AnalysisBundle {
   accounts: readonly AccountMapRow[]
   /** Deterministic findings, already computed. The model prioritises, not detects. */
   signals: readonly Signal[]
+  /**
+   * The owner's own note for this month, or null when they wrote none (#298).
+   *
+   * Null rather than `''`, all the way through, so "nobody wrote one" and "somebody
+   * wrote one and it came to nothing" stay distinguishable — the second is a bug worth
+   * finding and the first is the ordinary case.
+   *
+   * The one field in the bundle that is deliberately *not* reduced to numbers, which is
+   * the whole of its value: a trailing average cannot know the dishwasher broke. It is
+   * also the only place a person's own sentences enter a payload, so it is the field to
+   * be most careful about downstream — see `RedactedPayload.note`.
+   */
+  note: string | null
 }
 
 export interface BundleCategory {
@@ -323,6 +336,32 @@ export interface RedactedPayload {
   portfolio: RedactedPortfolio | null
   drift: RedactedDrift | null
   signals: RedactedSignal[]
+  /**
+   * The owner's note for this month, verbatim, or null when there is none (#298).
+   *
+   * **Verbatim is the point, and it is the exception to this file's whole discipline.**
+   * Everything else here is a number or an opaque label; this is a person's own prose
+   * about their own month, crossing unmodified. Substituting labels into it — the
+   * treatment a category name gets — would destroy the only thing it is good for, which
+   * is saying *why* a figure moved in words no aggregate contains. The precedent is
+   * `RedactedNudgeBatch.note`, which has crossed this way since #217; this adds a second
+   * path for the same text rather than a new kind of disclosure.
+   *
+   * Two consequences. The first is a prompt rule; the second is not, and is enforced by
+   * simply not filling this field in:
+   *
+   *  - It is **not** a source of figures. A note saying "about €400" must not become
+   *    €400 in a narrative — only the payload's own integers may be quoted. That is
+   *    narrative rule 9, because nothing here can tell prose from a price.
+   *  - It is **not** evidence. Findings come from the signals the aggregation layer
+   *    produced, and the note cannot create, remove or resize one. Whether the findings
+   *    pass should read it at all is a question #298 deliberately left open — so it is
+   *    sent null there rather than sent with a rule telling the model to disregard it.
+   *    See `PreparedMonth.payload`, which is where that choice is made and argued.
+   *
+   * Null rather than `''` for the reason `AnalysisBundle.note` gives.
+   */
+  note: string | null
 }
 
 export interface Redaction {
@@ -588,6 +627,9 @@ export function redact(bundle: AnalysisBundle): Redaction {
       signals: bundle.signals
         .filter((signal) => signal.categoryId === null || !excludedIds.has(signal.categoryId))
         .map((signal) => toSignal(signal, labelFor)),
+      // Verbatim, and the only free text in the payload that is not a category name —
+      // see `RedactedPayload.note` for why nothing is done to it here (#298).
+      note: bundle.note,
     },
     labelFor,
     categoryIdFor,
@@ -771,6 +813,10 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'portfolio',
   'drift',
   'signals',
+  // The owner's own words (#298), and the one payload key whose value is neither a
+  // number nor a label. Always present, null when nobody wrote one — like `netWorth` and
+  // `drift`, so a reader of a stored payload can tell "no note" from an older shape.
+  'note',
   // totals & history
   'incomeCents',
   'spentCents',

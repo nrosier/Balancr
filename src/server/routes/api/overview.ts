@@ -5,6 +5,11 @@
  * of cover the liquid balance represents, and the hygiene score. All of it read
  * from tables a job wrote; nothing here touches Actual, Ghostfolio or Gemini.
  *
+ * Two arrays, and they are not the same kind of thing. `history` is net-worth points —
+ * a balance on a date — and `flows` is income and spend per month. The savings card was
+ * stuck on one calendar month until #296 precisely because only the first existed here,
+ * so there was nothing on the wire to sum over a period.
+ *
  * Every field is nullable, and that is the design rather than defensiveness. A
  * fresh deployment has run no jobs, so it has no net worth and no month — and the
  * honest answer to "what is my net worth" before the first sync is "not known yet",
@@ -20,6 +25,7 @@
 import type { Db } from '../../../db/index.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../../../domain/aggregate/networth-store.ts'
 import { latestStoredMonth, loadMonthTotals, loadTrailingTotals } from '../../../domain/aggregate/month-store.ts'
+import { TRAILING_MONTHS } from '../../../domain/aggregate/savings.ts'
 import { loadHygiene } from '../../../domain/aggregate/signals-store.ts'
 import {
   loadProperties,
@@ -56,11 +62,24 @@ export function emergencyFundCentimonths(
 /** How many months of spend the cover figure averages over. A year, seasonality and all. */
 export const COVER_WINDOW_MONTHS = 12
 
+/**
+ * How many months of flows the response carries, for the savings card's periods (#296).
+ *
+ * `Math.max` rather than the bare `12` both constants happen to be: the cover window is a
+ * statement about seasonality and `TRAILING_MONTHS` is the longest window the card offers,
+ * and they agree today by coincidence. Deriving one from the other would make a change to
+ * either silently shorten the other's data.
+ */
+export const FLOW_HISTORY_MONTHS = Math.max(COVER_WINDOW_MONTHS, TRAILING_MONTHS)
+
 export function buildOverview(db: Db): Overview {
   const month = latestStoredMonth(db)
   const totals = month === null ? null : (loadMonthTotals(db, [month])[0] ?? null)
   const netWorth = loadLatestNetWorth(db)
-  const history = month === null ? [] : loadTrailingTotals(db, month, COVER_WINDOW_MONTHS)
+  const flows = month === null ? [] : loadTrailingTotals(db, month, FLOW_HISTORY_MONTHS)
+  // The cover figure keeps its own, shorter window even when the two lengths agree — see
+  // `FLOW_HISTORY_MONTHS`. `slice(-n)` on an ascending run takes the newest n.
+  const coverWindow = flows.slice(-COVER_WINDOW_MONTHS)
   // Priced as of right now, not as of `netWorth.date`: a mortgage amortizes with the
   // calendar, not with whatever night the net-worth job last ran (#227).
   const today = new Date().toISOString().slice(0, 10)
@@ -89,6 +108,13 @@ export function buildOverview(db: Db): Overview {
               : null,
           },
     history: loadNetWorthHistory(db),
+    flows: flows.map((entry) => ({
+      month: entry.month,
+      incomeCents: entry.incomeCents,
+      spentCents: entry.spentCents,
+      budgetedCents: entry.budgetedCents,
+      savingsRateBp: entry.savingsRateBp,
+    })),
     month,
     totals:
       totals === null
@@ -100,7 +126,7 @@ export function buildOverview(db: Db): Overview {
             savingsRateBp: totals.savingsRateBp,
           },
     emergencyFundCentimonths:
-      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, history),
+      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, coverWindow),
     hygiene: month === null ? null : loadHygiene(db, month),
   })
 }

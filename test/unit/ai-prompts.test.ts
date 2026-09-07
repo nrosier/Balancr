@@ -58,6 +58,38 @@ describe('built-in prompts', () => {
     expect(DEFAULT_PROMPTS['analysis.system']).toMatch(/[Nn]ever state, derive/)
   })
 
+  it('tells the narrative pass what a note is for, and what it is not (#298)', () => {
+    // The rule has to do two opposite things — license the note as an explanation and
+    // refuse it as a source — so both halves are asserted. A rule that only said "you may
+    // use the note" is how a narrative ends up quoting "about €400" as a figure.
+    // Collapsed, because the rules are hard-wrapped in the source and a phrase that
+    // straddles a line break is still the same instruction to the model.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/no figure in the narrative may come from the note/i)
+    expect(body).toMatch(/context and never data/i)
+    // And it is genuinely new text rather than a rule the prompt always had: the oldest
+    // body in the chain predates it. This anchored on `.at(-1)` until #278 appended a body
+    // that has this rule too — that every install running *any* chain entry reaches the
+    // current default is `seedPrompts`' own chain walk, not this test's job.
+    const oldest = SUPERSEDED_PROMPTS['narrative.system'].at(0)?.replace(/\s+/g, ' ')
+    expect(oldest).toBeDefined()
+    expect(oldest).not.toMatch(/come from the note/i)
+  })
+
+  it('tells both passes what an excluded envelope is, and what not to say about it (#278)', () => {
+    // The `excluded` block is meaningless on its own: a payload whose envelopes fall short
+    // of the month's totals invites exactly the sentence the exclusion was asked to
+    // prevent, and rule 1 — report only what you were given — is what makes reporting the
+    // residue look correct. So both passes are told, and the narrative is told twice as
+    // much, because it is the one that writes prose.
+    expect(DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')).toMatch(
+      /withheld from you on purpose/i,
+    )
+    expect(DEFAULT_PROMPTS['analysis.system']).toContain('"excluded"')
+    const oldest = SUPERSEDED_PROMPTS['narrative.system'].at(0)?.replace(/\s+/g, ' ')
+    expect(oldest).not.toMatch(/withheld from you on purpose/i)
+  })
+
   it('tells the narrative pass not to do arithmetic on the figures it quotes', () => {
     expect(DEFAULT_PROMPTS['narrative.system']).toMatch(/Never add,\s*\n?\s*subtract/)
   })
@@ -234,32 +266,40 @@ describe('seedPrompts', () => {
     )
   })
 
-  it('upgrades an install running the v1.0.0-rc.1 built-ins to the exclusion rule (#278)', () => {
-    // The entry that matters is the newest one, because it is the text every install
-    // that booted before this release is actually running. The tests above index [0],
-    // which would keep passing while the newest addition reached fresh databases only —
-    // the exact failure `SUPERSEDED_PROMPTS` was written for, one release later.
+  it('upgrades from every superseded body in the chain, not just the two it names', () => {
+    // The two tests above pin index 0 and index 1 by hand, which is how the chain came to
+    // have an entry nobody upgraded from: #183 added a body and no test noticed. This walks
+    // the whole chain instead, so a version added later is covered on the day it is added
+    // rather than on the day somebody remembers to write the test (#298).
     for (const key of PROMPT_KEYS) {
-      const list = SUPERSEDED_PROMPTS[key]
-      const newest = list[list.length - 1]
-      if (newest === undefined) throw new Error(`no superseded body for ${key}`)
-      createPromptVersion(db, { key, locale: SHARED_LOCALE, body: newest, activate: true })
-    }
+      for (const [index, previous] of SUPERSEDED_PROMPTS[key].entries()) {
+        const fresh = createTestDb()
+        applyMigrations(fresh.db as never)
+        createPromptVersion(fresh.db, { key, locale: SHARED_LOCALE, body: previous, activate: true })
 
-    expect(seedPrompts(db)).toBe(PROMPT_KEYS.length)
-    for (const key of PROMPT_KEYS) {
-      expect(loadActivePrompt(db, key, SHARED_LOCALE)?.body).toBe(DEFAULT_PROMPTS[key])
+        expect(seedPrompts(fresh.db), `${key}[${index}]`).toBeGreaterThan(0)
+        expect(loadActivePrompt(fresh.db, key, SHARED_LOCALE)?.body, `${key}[${index}]`).toBe(
+          DEFAULT_PROMPTS[key],
+        )
+      }
     }
-    // And the rule is in there rather than only the version having changed: an
-    // `excluded` block in the payload is meaningless if nothing tells the model
-    // what to do about the difference it makes (#278).
-    expect(DEFAULT_PROMPTS['narrative.system']).toContain('withheld from you on purpose')
-    expect(DEFAULT_PROMPTS['analysis.system']).toContain('"excluded"')
   })
 
-  it('leaves an edit of the v1.0.0-rc.1 narrative built-in alone', () => {
+  it('holds each superseded body once, and never the current default', () => {
+    // Two ways the chain goes wrong that no upgrade test would catch: a body appended
+    // twice, and a body that is *also* the current default — which would make `seedPrompts`
+    // treat an install already on the newest text as one needing an upgrade, writing a new
+    // version on every startup forever.
+    for (const key of PROMPT_KEYS) {
+      const chain = SUPERSEDED_PROMPTS[key]
+      expect(new Set(chain).size, key).toBe(chain.length)
+      expect(chain, key).not.toContain(DEFAULT_PROMPTS[key])
+    }
+  })
+
+  it('leaves an edit of the newest superseded narrative built-in alone', () => {
     // The same guarantee as the [0] case above, at the end of the chain: somebody who
-    // added their own rule 9 keeps it, and does not silently get ours instead.
+    // added their own last rule keeps it, and does not silently get ours instead.
     const list = SUPERSEDED_PROMPTS['narrative.system']
     const newest = list[list.length - 1]
     if (newest === undefined) throw new Error('no superseded narrative body')

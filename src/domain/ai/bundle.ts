@@ -5,7 +5,9 @@
  * decides what leaves the machine. Both matter, and this one comes first — a
  * field never collected cannot leak, whatever anyone adds downstream later.
  *
- * Reads only the fact tables. No Actual call, no Ghostfolio call, and no
+ * Reads the fact tables, and one row of `settings` — the month's note (#298), which is
+ * the only thing here a job did not compute, because it is the only thing a person wrote.
+ * No Actual call, no Ghostfolio call, and no
  * recomputation of anything a job already computed: opening the insights page must not
  * download a budget, and a figure the model explains must be the same figure the page
  * shows. That is also why the hygiene score is read rather than recalculated — the
@@ -43,6 +45,7 @@ import { loadLatestNetWorth } from '../aggregate/networth-store.ts'
 import { loadHygiene, loadSignals } from '../aggregate/signals-store.ts'
 import { countSnapshotHoldings, latestSnapshotDate, loadPortfolioMetrics } from '../portfolio/store.ts'
 import { latestAdvice, latestDriftPersistence } from '../advice/latest.ts'
+import { loadMonthNote } from './month-note.ts'
 import { loadParams } from '../aggregate/params.ts'
 import type { MonthlyFact } from '../aggregate/spend.ts'
 import type { AnalysisBundle, BundleCategory, BundleDrift, BundlePortfolio } from './redact.ts'
@@ -159,5 +162,15 @@ export function collectBundle(
     drift: collectDrift(db),
     accounts: loadAccountMap(db),
     signals: loadSignals(db, month),
+    // The owner's own explanation of the month (#298). `loadMonthNote` reports "none" as
+    // `''` because that is what the panel saves; the bundle keeps null for it, so nothing
+    // downstream has to decide whether an empty string is a note.
+    note: monthNote(db, month),
   }
+}
+
+/** The month's note, or null. Reading degrades to "none" and never throws — see `month-note.ts`. */
+function monthNote(db: Db, month: string): string | null {
+  const text = loadMonthNote(db, month).trim()
+  return text === '' ? null : text
 }

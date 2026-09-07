@@ -122,9 +122,13 @@
     "unavailable": {
       "hint": {
         "no_basis": "Voeg onder Instellingen, Huishouden toe wie hier een deel van de tijd is, of geef het aandeel rechtstreeks op — dan verschijnt de verdeling hier.",
+        "no_month": "Kies een andere maand of start een sync om deze maand te berekenen.",
+        "no_shared": "Vink Gedeeld aan bij de categorieën waarvan een co-ouder een deel betaalt, onder Instellingen, Categorieën — geef daarna onder Instellingen, Huishouden op welk aandeel daarvan voor jou is.",
         "zero_share": "Verhoog het aandeel onder Instellingen, Huishouden tot het deel van deze kosten dat voor jou is — of, als de volledige factuur hier wel binnenkomt, verander daar de richting."
       },
       "no_basis": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is.",
+      "no_month": "Voor deze maand is nog niets berekend, dus er is niets te verdelen.",
+      "no_shared": "Geen enkele categorie is aangeduid als gedeeld met een co-ouder, dus er is niets te verdelen.",
       "zero_share": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar jouw opgegeven aandeel is 0% — er is niets om het totaal uit terug te rekenen."
     }
   },
@@ -167,7 +171,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} tekens",
-    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. De AI-budgetbijstelling op de Inzichten-pagina kan zo'n notitie gebruiken bij het voorstellen van bedragen voor volgende maand.",
+    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. Twee AI-stappen lezen ze: de budgetbijstelling op de Inzichten-pagina, wanneer die bedragen voor volgende maand voorstelt, en de maand in woorden, zodat die een verschuiving kan toeschrijven aan wat jij vertelde in plaats van het drift te noemen. Ze gaat naar het model zoals je ze schreef, en ze gaat niet naar de bevindingen.",
     "label": "Notitie voor {{month}}",
     "placeholder": "bv. Wasmachine vervangen deze maand, ongeveer €400. Tandartsafspraak in oktober, ongeveer €150.",
     "stepper": {
