@@ -97,7 +97,7 @@ const draftOf = (member: BenchmarkSetting['household']['members'][number]): Draf
 // ---------------------------------------------------------------------------
 
 export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const { benchmark } = settings
   const { file } = benchmark
 
@@ -257,6 +257,16 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             {rows.map((row, index) => {
               const birthYear = parseYear(row.birthYear)
               const custodyBp = parseBp(row.custodyBp)
+              // The boxes that are empty rather than wrong, by their own labels, so the
+              // line under the row can name them. `label` is absent on purpose: a member
+              // with no name is saved as one, and the roster prints a weight rather than
+              // a name, so requiring it would be inventing a rule the server does not have.
+              const blank = [
+                row.birthYear.trim() === ''
+                  ? t('settings:benchmark.household.birthYear')
+                  : null,
+                row.custodyBp.trim() === '' ? t('settings:benchmark.household.custody') : null,
+              ].filter((field): field is string => field !== null)
               const weight =
                 birthYear === null || childAgeBelow === null
                   ? null
@@ -317,17 +327,29 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                     </div>
                   </div>
 
+                  {/*
+                    An empty box is not a malformed one (#283). A row added by `Add
+                    someone` starts with no year of birth, so it starts invalid, so the
+                    only save button on the panel starts disabled — and the format rule
+                    this line used to print reads as a complaint about what was typed
+                    rather than as the thing still to type. Naming the empty boxes is
+                    what turns a form that looks broken into one with a next step.
+                  */}
                   <p className="member__reads muted">
-                    {birthYear === null || custodyBp === null
-                      ? t('settings:benchmark.household.notANumber')
-                      : weight === null
-                        ? t('settings:benchmark.household.readsShare', {
-                            share: formatBp(custodyBp),
-                          })
-                        : t('settings:benchmark.household.reads', {
-                            weight: t(`settings:benchmark.household.${weight}`),
-                            share: formatBp(custodyBp),
-                          })}
+                    {blank.length > 0
+                      ? t('settings:benchmark.household.needs', {
+                          fields: formatList(blank, language),
+                        })
+                      : birthYear === null || custodyBp === null
+                        ? t('settings:benchmark.household.notANumber')
+                        : weight === null
+                          ? t('settings:benchmark.household.readsShare', {
+                              share: formatBp(custodyBp),
+                            })
+                          : t('settings:benchmark.household.reads', {
+                              weight: t(`settings:benchmark.household.${weight}`),
+                              share: formatBp(custodyBp),
+                            })}
                   </p>
 
                   <button
@@ -372,6 +394,21 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
 
         <Issue message={state.issue('members')} />
         <Issue message={state.issue('sharedCostBp')} />
+
+        {/*
+          Why Save is greyed out, beside the greyed-out button (#283). A row has no save
+          of its own — the household is PATCHed whole, which is what makes a removal a
+          removal — so a reader who has filled in one row and cannot commit it has no way
+          to discover that an unrelated row is the reason. `Issue`'s `role="alert"` is
+          right here: it appears in response to something the reader just did.
+        */}
+        <Issue
+          message={
+            invalid.size === 0
+              ? undefined
+              : t('settings:benchmark.household.blocked', { count: invalid.size })
+          }
+        />
 
         <div className="members__actions">
           <button

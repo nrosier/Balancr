@@ -1398,6 +1398,31 @@ describe('the household', () => {
     expect(writes(calls)).toEqual([])
   })
 
+  it('names the empty box on a new row and says why Save is greyed out (#283)', async () => {
+    const calls = await open(READS)
+
+    fireEvent.click(within(household()).getByRole('button', { name: 'Add someone' }))
+    fireEvent.change(memberField('Name', 1), { target: { value: 'Lodger' } })
+
+    // A name is not what is missing, and the row says which box is — printing the format
+    // rule here instead read as a complaint about text nobody had typed.
+    expect(screen.getByText('Still to fill in: Year of birth.')).toBeTruthy()
+    expect(screen.queryByText(/A four-digit year/)).toBeNull()
+    // The row has no save of its own, so the reason the only Save is disabled has to be
+    // beside that Save rather than left to be inferred.
+    expect(saveHousehold().disabled).toBe(true)
+    expect(screen.getByText(/details are not complete yet/)).toBeTruthy()
+
+    fireEvent.change(memberField('Time here', 1), { target: { value: '' } })
+    expect(screen.getByText('Still to fill in: Year of birth and Time here.')).toBeTruthy()
+
+    fireEvent.change(memberField('Year of birth', 1), { target: { value: '1998' } })
+    fireEvent.change(memberField('Time here', 1), { target: { value: '5000' } })
+    expect(saveHousehold().disabled).toBe(false)
+    expect(screen.queryByText(/details are not complete yet/)).toBeNull()
+    expect(writes(calls)).toEqual([])
+  })
+
   it('refuses a grouped custody share, which would read as five basis points', async () => {
     const calls = await open(READS)
 
