@@ -97,11 +97,13 @@
       "asAdult": "at the adult weight",
       "asChild": "at the child weight",
       "birthYear": "Year of birth",
+      "blocked_one": "One person's details are not complete yet. The household is saved as one, so finish the row above or remove it.",
+      "blocked_other": "{{value}} people's details are not complete yet. The household is saved as one, so finish the rows above or remove them.",
       "custody": "Time here",
       "hint": "Who lives here, which is what makes your spending comparable to a national average. A change applies to the next comparison drawn; nothing on this page recomputes.",
       "label": "Name",
+      "needs": "Still to fill in: {{fields}}.",
       "none": "Just you, at full weight. Add anybody else who lives here.",
-      "notANumber": "A four-digit year, and a whole number of basis points up to 10000.",
       "reads": "Counts {{weight}}, {{share}} of the time.",
       "readsShare": "Here {{share}} of the time.",
       "remove": "Remove",
@@ -122,7 +124,9 @@
       "sharedCostNotANumber": "A whole number of basis points up to 10000, or empty to derive it.",
       "sharedCostReads": "{{share}} of every shared cost counts as yours.",
       "title": "Household",
-      "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday."
+      "you": "{{name}} — always the first person on the scale, not a row here. Add everybody else. The weights below read as of {{year}}, because the scale moves a child to the adult weight on a birthday.",
+      "wrongShare": "{{field}} should be a whole number up to 10000, with no separator.",
+      "wrongYear": "{{field}} should be four digits — 1998, say, rather than a full date."
     },
     "mapping": {
       "caption": "Each category's division, the reference line it feeds, whether it is shared, and whether it is a savings or investments envelope",
@@ -164,6 +168,24 @@
       "title": "Where these figures come from",
       "transcribed": "Read off the published summary and not yet confirmed at the source: {{blocks}}.",
       "weights": "The first person counts {{first}}, every further person aged {{age}} or over counts {{adult}}, and every child under {{age}} counts {{child}}."
+    },
+    "reference": {
+      "caveat": "A figure typed here is never marked as confirmed at the source, however carefully it was read: it becomes a caveat on the budget card, the same as anything else nobody has checked against the publication.",
+      "citation": "Where you got it",
+      "citationHint": "Named in full, because this sentence is what makes the comparison traceable later. Something like \"Statbel, Household Budget Survey 2026 — mean expenditure per household and per consumption unit\".",
+      "file": "The file says {{amount}} a month for a household of {{size}} on the scale. Last checked {{verified}}.",
+      "fileNone": "The file carries no euro figure for the average household, so the comparison can only put shares beside shares. Type one here and the euro comparison switches on.",
+      "hint": "What the average household spends a month, and how big that household is on the scale above. Balancr divides the first by the second and scales the result to your household, so both have to come from the same edition of the survey. Balancr cannot fetch them: the survey has no interface for it, and the size is a ratio of two columns rather than a published figure.",
+      "mean": "Average household spending per month",
+      "meanHint": "Total consumption spending of the average household, per month. The survey publishes a year, so divide it by twelve.",
+      "meanNotANumber": "An amount above zero, like 3689,19.",
+      "overridden": "Your own figure applies instead of the file's, typed on {{savedOn}}.",
+      "reset": "Use the file's figure again",
+      "size": "Average household size on the scale",
+      "sizeHint": "In basis points: 15066 is 1,5066 equivalent adults. The survey's total spending per household divided by its total spending per consumption unit, which is the same scale as the weights above.",
+      "sizeNotANumber": "A whole number of basis points between 10000 and 200000.",
+      "sizeReads": "{{size}} equivalent adults on the scale.",
+      "title": "The average household it compares to"
     }
   },
   "build": {

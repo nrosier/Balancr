@@ -8,10 +8,18 @@
  *  - **The file is read-only and shown anyway.** Every share in it is the survey's, and a
  *    screen that let anybody edit them would be a screen that manufactures a reference —
  *    the one failure that would make the whole feature worse than not having it. So the
- *    provenance is displayed and nothing about it is a control. `hasReferenceHousehold`
- *    false means the survey's euro total was never transcribed and only the `mix`
- *    comparison is possible, which is said here rather than left as a mystery on the
- *    budget page.
+ *    provenance is displayed and nothing about it is a control.
+ *  - **With one exception, and it is a correction rather than an edit (#290).** The average
+ *    household — what it spends a month and how big it is on the scale — is the one figure
+ *    in the file that goes out of date on its own, because the survey publishes a new
+ *    edition and this app cannot fetch it: there is no API, the download URL embeds a
+ *    publication date, and the size is a ratio of two spreadsheet columns rather than a
+ *    published number. So the shipped figure is a starting point that can be retyped, the
+ *    file's own figure stays visible beside it, and a typed one is never marked confirmed
+ *    — which is exactly what the shares must never allow, and why nothing else here is
+ *    editable. With neither a file figure nor a correction, only the `mix` comparison is
+ *    possible — shares against shares — which is said here rather than left as a mystery
+ *    on the budget page.
  *  - **The roster is replaced whole, so it has a save button.** `members` is a list and
  *    the only two gestures on a list are "here is the new one" and "remove a row" — a
  *    merge cannot express the second. That is also why every other control on this page
@@ -51,9 +59,12 @@ import {
   divisionOf,
   formatBp,
   formatDate,
+  formatDecimal,
   formatList,
+  formatMoney,
   MAX_HOUSEHOLD_MEMBERS,
   OUTSIDE_CONSUMPTION,
+  parseMoneyToCents,
   SAVINGS_NATURE_CHOICES,
   SHARED_COST_DIRECTIONS,
   type BenchmarkSetting,
@@ -80,6 +91,21 @@ function parseBp(raw: string): number | null {
   return value <= 10_000 ? value : null
 }
 
+/**
+ * A household size on the equivalence scale, in basis points, or null (#290).
+ *
+ * Its own parser rather than `parseBp`, because this is the one basis-points field on the
+ * page that is not a share of something: a household is 1,5066 people, so 15066 is a
+ * perfectly ordinary value and `parseBp`'s ceiling of 10 000 would reject the figure the
+ * app ships with. The bounds are the schema's — at least one person, at most twenty.
+ */
+function parseSizeBp(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (!/^\d{1,6}$/.test(trimmed)) return null
+  const value = Number(trimmed)
+  return value >= 10_000 && value <= 200_000 ? value : null
+}
+
 /** A four-digit year, or null. The schema's own bounds, checked before the round trip. */
 function parseYear(raw: string): number | null {
   const trimmed = raw.trim()
@@ -99,7 +125,7 @@ const draftOf = (member: BenchmarkSetting['household']['members'][number]): Draf
 // ---------------------------------------------------------------------------
 
 export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const { benchmark } = settings
   const { file } = benchmark
 
@@ -287,12 +313,64 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             {rows.map((row, index) => {
               const birthYear = parseYear(row.birthYear)
               const custodyBp = parseBp(row.custodyBp)
+              // What each box is waiting for, per box. Empty and wrong are different
+              // mistakes and want different sentences (#283, #287): a box nobody has typed
+              // in yet is not a complaint, and a box holding a date rather than a year is
+              // not answered by the format rule for a box the reader got right. `label` is
+              // absent from both lists on purpose — a member with no name is saved as one,
+              // and the roster prints a weight rather than a name, so requiring it would be
+              // inventing a rule the server does not have.
+              const yearState =
+                row.birthYear.trim() === '' ? 'blank' : birthYear === null ? 'wrong' : 'ok'
+              const shareState =
+                row.custodyBp.trim() === '' ? 'blank' : custodyBp === null ? 'wrong' : 'ok'
+              const blank = [
+                yearState === 'blank' ? t('settings:benchmark.household.birthYear') : null,
+                shareState === 'blank' ? t('settings:benchmark.household.custody') : null,
+              ].filter((field): field is string => field !== null)
+              // One sentence per wrong box, each naming its own box and the mistake it is
+              // most likely to be. The box name is interpolated from the label rather than
+              // written into the sentence, so renaming a box cannot leave the explanation
+              // pointing at a box that no longer exists under that name.
+              const wrong = [
+                yearState === 'wrong'
+                  ? t('settings:benchmark.household.wrongYear', {
+                      field: t('settings:benchmark.household.birthYear'),
+                    })
+                  : null,
+                shareState === 'wrong'
+                  ? t('settings:benchmark.household.wrongShare', {
+                      field: t('settings:benchmark.household.custody'),
+                    })
+                  : null,
+              ].filter((sentence): sentence is string => sentence !== null)
+              const problems =
+                blank.length === 0
+                  ? wrong
+                  : [
+                      t('settings:benchmark.household.needs', {
+                        fields: formatList(blank, language),
+                      }),
+                      ...wrong,
+                    ]
+              const hintId = `member-reads-${String(index)}`
               const weight =
                 birthYear === null || childAgeBelow === null
                   ? null
                   : thisYear - birthYear < childAgeBelow
                     ? 'asChild'
                     : 'asAdult'
+              // Only meaningful once both boxes parse, which is exactly when the hint
+              // prints it; `null` for the rest is what lets the branch above stay flat.
+              const reads =
+                custodyBp === null
+                  ? null
+                  : weight === null
+                    ? t('settings:benchmark.household.readsShare', { share: formatBp(custodyBp) })
+                    : t('settings:benchmark.household.reads', {
+                        weight: t(`settings:benchmark.household.${weight}`),
+                        share: formatBp(custodyBp),
+                      })
               return (
                 // The index is the key because a row has no id: it is a position in a
                 // list that is replaced whole, and two members can be identical.
@@ -318,12 +396,23 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                       <label className="field__label" htmlFor={`member-year-${String(index)}`}>
                         {t('settings:benchmark.household.birthYear')}
                       </label>
+                      {/*
+                        `aria-invalid` for a box holding the wrong thing, but never for one
+                        that is merely still empty (#287): a row added by `Add someone`
+                        would otherwise announce itself as an error before the reader has
+                        touched it. The red border is not the only signal — the line below
+                        names the box, and `aria-describedby` points at it, so a reader who
+                        cannot see the border still gets the reason on the field itself
+                        rather than having to go looking for a paragraph.
+                      */}
                       <input
                         id={`member-year-${String(index)}`}
-                        className="field__input num"
+                        className={`field__input num${yearState === 'wrong' ? ' field__input--bad' : ''}`}
                         type="text"
                         inputMode="numeric"
                         autoComplete="off"
+                        aria-invalid={yearState === 'wrong' ? true : undefined}
+                        aria-describedby={hintId}
                         value={row.birthYear}
                         disabled={locked}
                         onChange={(event) => edit(index, 'birthYear', event.target.value)}
@@ -336,10 +425,12 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                       </label>
                       <input
                         id={`member-custody-${String(index)}`}
-                        className="field__input num"
+                        className={`field__input num${shareState === 'wrong' ? ' field__input--bad' : ''}`}
                         type="text"
                         inputMode="numeric"
                         autoComplete="off"
+                        aria-invalid={shareState === 'wrong' ? true : undefined}
+                        aria-describedby={hintId}
                         value={row.custodyBp}
                         disabled={locked}
                         onChange={(event) => edit(index, 'custodyBp', event.target.value)}
@@ -347,17 +438,22 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
                     </div>
                   </div>
 
-                  <p className="member__reads muted">
-                    {birthYear === null || custodyBp === null
-                      ? t('settings:benchmark.household.notANumber')
-                      : weight === null
-                        ? t('settings:benchmark.household.readsShare', {
-                            share: formatBp(custodyBp),
-                          })
-                        : t('settings:benchmark.household.reads', {
-                            weight: t(`settings:benchmark.household.${weight}`),
-                            share: formatBp(custodyBp),
-                          })}
+                  {/*
+                    One line, three jobs: what the row reads as when it is right, what is
+                    still to fill in when it is empty (#283), and what is wrong with it when
+                    it is wrong (#287). It used to do only the first and a joint format rule
+                    for the other two — a sentence about both boxes whichever one had
+                    failed, printed in the muted grey a correct row prints in, so a row that
+                    blocked the panel's only Save looked exactly like a row that would save.
+                    A problem now wears `--negative`, the colour `field__issue` already uses
+                    for the same purpose, and `aria-describedby` on both boxes ties it back
+                    to the field it is about.
+                  */}
+                  <p
+                    id={hintId}
+                    className={problems.length === 0 ? 'member__reads muted' : 'member__reads member__reads--bad'}
+                  >
+                    {problems.length === 0 ? reads : problems.join(' ')}
                   </p>
 
                   <button
@@ -435,6 +531,21 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
         <Issue message={state.issue('sharedCostBp')} />
         <Issue message={state.issue('sharedCostDirection')} />
 
+        {/*
+          Why Save is greyed out, beside the greyed-out button (#283). A row has no save
+          of its own — the household is PATCHed whole, which is what makes a removal a
+          removal — so a reader who has filled in one row and cannot commit it has no way
+          to discover that an unrelated row is the reason. `Issue`'s `role="alert"` is
+          right here: it appears in response to something the reader just did.
+        */}
+        <Issue
+          message={
+            invalid.size === 0
+              ? undefined
+              : t('settings:benchmark.household.blocked', { count: invalid.size })
+          }
+        />
+
         <div className="members__actions">
           <button
             type="button"
@@ -466,8 +577,223 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
         </div>
       </form>
 
-      {file === null ? null : <Provenance file={file} />}
+      {file === null ? null : (
+        <>
+          <ReferenceForm benchmark={benchmark} state={state} owner={owner} />
+          <Provenance
+            file={file}
+            // The *effective* state, not the file's: a typed correction switches the euro
+            // comparison on, so the "shares only" caveat has to come off when it does.
+            hasReference={file.referenceHousehold !== null || benchmark.referenceOverride !== null}
+          />
+        </>
+      )}
     </Panel>
+  )
+}
+
+// ---------------------------------------------------------------------------
+//  The average household
+// ---------------------------------------------------------------------------
+
+/** The three boxes while they are being typed, all text until they parse. */
+interface ReferenceDraft {
+  mean: string
+  size: string
+  citation: string
+}
+
+/**
+ * A correction to the average household the euro comparison scales (#290).
+ *
+ * Four decisions:
+ *
+ *  - **Both numbers or neither, and a citation with them.** The comparison divides one by
+ *    the other, so a total from the 2024 edition over a size from the 2019 one is a figure
+ *    with no meaning and no way to tell. The citation is required rather than generated,
+ *    because prose written here would be English in a Dutch page and because the file may
+ *    carry no reference block to borrow a sentence from — whoever types the numbers is the
+ *    only one who knows where they came from.
+ *  - **The file's own figure stays on screen.** It is what "reset" goes back to, and a
+ *    correction whose starting point is invisible is a correction nobody can check.
+ *  - **The boxes start prefilled from whatever currently applies**, so retyping one number
+ *    does not mean retyping three. That is also why the draft is one nullable object: null
+ *    is "untouched", and the save button is dead until something is.
+ *  - **Reset sends `null` rather than the file's numbers back.** Storing a copy of the file
+ *    would mean the next edition of the file changed nothing on screen while looking like
+ *    it should, and would leave a permanent "not confirmed" caveat on a confirmed figure.
+ */
+function ReferenceForm({
+  benchmark,
+  state,
+  owner,
+}: {
+  benchmark: BenchmarkSetting
+  state: SettingsPanelProps['state']
+  owner: boolean
+}): ReactNode {
+  const { t } = useT()
+  const { file, referenceOverride } = benchmark
+  const locked = !owner || state.busy
+
+  // What applies right now, which is what the boxes should say before anybody types: the
+  // correction if there is one, else the file's figure, else nothing at all.
+  const applied = referenceOverride ?? file?.referenceHousehold ?? null
+  const [draft, setDraft] = useState<ReferenceDraft | null>(null)
+  const fields: ReferenceDraft =
+    draft ??
+    (applied === null
+      ? { mean: '', size: '', citation: '' }
+      : {
+          mean: formatMoney(applied.meanMonthlyCents),
+          size: String(applied.equivalentAdultsBp),
+          citation: applied.citation,
+        })
+
+  const meanCents = parseMoneyToCents(fields.mean)
+  const sizeBp = parseSizeBp(fields.size)
+  const citation = fields.citation.trim()
+  const meanInvalid = fields.mean.trim() !== '' && (meanCents === null || meanCents <= 0)
+  const sizeInvalid = fields.size.trim() !== '' && sizeBp === null
+  const complete = meanCents !== null && meanCents > 0 && sizeBp !== null && citation.length >= 8
+
+  const edit = (field: keyof ReferenceDraft, value: string): void => {
+    setDraft({ ...fields, [field]: value })
+  }
+
+  const send = (reference: unknown): void => {
+    state.save('reference', 'PATCH', '/api/settings/benchmark-reference', { reference }, () => {
+      // Back to "whatever applies", which the answer has just replaced.
+      setDraft(null)
+    })
+  }
+
+  return (
+    <div className="stack">
+      <p className="panel__subtitle">{t('settings:benchmark.reference.title')}</p>
+      <p className="panel__meta muted">{t('settings:benchmark.reference.hint')}</p>
+
+      <p className="panel__meta muted">
+        {file?.referenceHousehold == null
+          ? t('settings:benchmark.reference.fileNone')
+          : t('settings:benchmark.reference.file', {
+              amount: formatMoney(file.referenceHousehold.meanMonthlyCents),
+              size: formatDecimal(file.referenceHousehold.equivalentAdultsBp / 10_000, 4),
+              verified: formatDate(file.referenceHousehold.lastVerified),
+            })}
+      </p>
+
+      {referenceOverride === null ? null : (
+        <p className="panel__meta muted">
+          {t('settings:benchmark.reference.overridden', {
+            savedOn: formatDate(referenceOverride.savedOn),
+          })}
+        </p>
+      )}
+
+      <form
+        className="reference-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (complete)
+            send({
+              meanMonthlyCents: meanCents,
+              equivalentAdultsBp: sizeBp,
+              citation,
+            })
+        }}
+      >
+        <div className="field">
+          <label className="field__label" htmlFor="reference-mean">
+            {t('settings:benchmark.reference.mean')}
+          </label>
+          <input
+            id="reference-mean"
+            className="field__input num"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            value={fields.mean}
+            disabled={locked}
+            onChange={(event) => edit('mean', event.target.value)}
+          />
+          <p className="member__reads muted">
+            {meanInvalid
+              ? t('settings:benchmark.reference.meanNotANumber')
+              : t('settings:benchmark.reference.meanHint')}
+          </p>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="reference-size">
+            {t('settings:benchmark.reference.size')}
+          </label>
+          <input
+            id="reference-size"
+            className="field__input num"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            value={fields.size}
+            disabled={locked}
+            onChange={(event) => edit('size', event.target.value)}
+          />
+          <p className="member__reads muted">
+            {sizeInvalid
+              ? t('settings:benchmark.reference.sizeNotANumber')
+              : sizeBp === null
+                ? t('settings:benchmark.reference.sizeHint')
+                : t('settings:benchmark.reference.sizeReads', {
+                    size: formatDecimal(sizeBp / 10_000, 4),
+                  })}
+          </p>
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="reference-citation">
+            {t('settings:benchmark.reference.citation')}
+          </label>
+          <input
+            id="reference-citation"
+            className="field__input"
+            type="text"
+            autoComplete="off"
+            maxLength={200}
+            value={fields.citation}
+            disabled={locked}
+            onChange={(event) => edit('citation', event.target.value)}
+          />
+          <p className="member__reads muted">{t('settings:benchmark.reference.citationHint')}</p>
+        </div>
+
+        <p className="panel__meta muted">{t('settings:benchmark.reference.caveat')}</p>
+
+        <Issue message={state.issue('reference')} />
+        <Issue message={state.issue('meanMonthlyCents')} />
+        <Issue message={state.issue('equivalentAdultsBp')} />
+        <Issue message={state.issue('citation')} />
+
+        <div className="members__actions">
+          {referenceOverride === null ? null : (
+            <button
+              type="button"
+              className="button button--quiet"
+              disabled={locked}
+              onClick={() => send(null)}
+            >
+              {t('settings:benchmark.reference.reset')}
+            </button>
+          )}
+          <button
+            type="submit"
+            className="button button--primary"
+            disabled={locked || draft === null || !complete}
+          >
+            {state.pending === 'reference' ? t('shell.loading') : t('action.save')}
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -477,7 +803,13 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
  * Always visible rather than behind a disclosure, for the reason the tax block gives: a
  * number nobody can trace is a number this app made up.
  */
-function Provenance({ file }: { file: NonNullable<BenchmarkSetting['file']> }): ReactNode {
+function Provenance({
+  file,
+  hasReference,
+}: {
+  file: NonNullable<BenchmarkSetting['file']>
+  hasReference: boolean
+}): ReactNode {
   const { t, language } = useT()
   const { equivalence, source, transcribed } = file
 
@@ -505,9 +837,7 @@ function Provenance({ file }: { file: NonNullable<BenchmarkSetting['file']> }): 
             age: String(equivalence.childAgeBelow),
           })}
         </li>
-        {file.hasReferenceHousehold ? null : (
-          <li>{t('settings:benchmark.provenance.mixOnly')}</li>
-        )}
+        {hasReference ? null : <li>{t('settings:benchmark.provenance.mixOnly')}</li>}
         {transcribed.length === 0 ? null : (
           <li>
             {t('settings:benchmark.provenance.transcribed', {

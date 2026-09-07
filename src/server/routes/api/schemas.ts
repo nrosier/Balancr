@@ -1249,13 +1249,26 @@ export const benchmarkSettingSchema = z.object({
         }),
       ),
       /**
-       * Whether the file carries the average household's euro total and size.
+       * The average household's euro total and size, as the *file* states them.
        *
-       * Without it only the `mix` comparison is possible, and the panel has to say so —
-       * otherwise the euro figures nobody can see look like a bug rather than a block
-       * left blank on purpose.
+       * Null when the file leaves the block out, and the panel has to say so — otherwise
+       * the euro figures nobody can see look like a bug rather than a block left blank on
+       * purpose, and only the `mix` comparison is possible.
+       *
+       * The figures travel rather than a boolean (#290) so the panel can show what an
+       * override is replacing. An override that hid the figure it replaced would make a
+       * mistyped correction impossible to spot against the thing it corrected.
        */
-      hasReferenceHousehold: z.boolean(),
+      referenceHousehold: z
+        .object({
+          meanMonthlyCents: z.int(),
+          equivalentAdultsBp: basisPoints(),
+          citation: z.string(),
+          sourceUrl: z.string().nullable(),
+          lastVerified: dateKey(),
+          status: z.enum(['confirmed', 'transcribed']),
+        })
+        .nullable(),
       transcribed: z.array(z.enum(BENCHMARK_BLOCKS)),
     })
     .nullable(),
@@ -1285,6 +1298,22 @@ export const benchmarkSettingSchema = z.object({
      */
     sharedCostDirection: z.enum(SHARED_COST_DIRECTIONS),
   }),
+  /**
+   * A hand-typed correction to the average household, or null to use the file's (#290).
+   *
+   * Beside `household` rather than inside `file`, because it is not from the file — it is
+   * the one thing on this panel that overrides it. `savedOn` is read-only: the server
+   * stamps the day it was stored, since a client that chose the date could make a figure
+   * look permanently fresh.
+   */
+  referenceOverride: z
+    .object({
+      meanMonthlyCents: z.int().positive(),
+      equivalentAdultsBp: basisPoints(),
+      citation: z.string(),
+      savedOn: dateKey(),
+    })
+    .nullable(),
   /** The code that means "not household consumption", for the picker's own entry. */
   outsideCode: z.literal(OUTSIDE_CONSUMPTION),
   /**
