@@ -5,27 +5,34 @@
  * roughly half of it was never economically yours. This is the card that says so — beside
  * Actual's figure and never instead of it.
  *
- * Four decisions:
+ * Five decisions:
  *
  *  - **Two columns, and the first one is Actual's.** "You paid" is the number that
  *    reconciles with the bank and with Actual's own screen, so it is printed first and is
- *    never adjusted anywhere in this app. "Yours" is the second column and the new claim.
- *    A card that showed only the halved figure would be a card that quietly disagrees with
- *    every other total on the page.
- *  - **The assumption is on screen, always.** A borne figure rests on "you paid the whole
- *    invoice and bear this share of it", which is true of school fees and false of a cost
- *    the co-parent invoices you for. Nothing can check which, so the card states it and a
- *    wrongly flagged category becomes visible rather than silently halved.
+ *    never adjusted anywhere in this app. The second column is the new claim. A card that
+ *    showed only the derived figure would be a card that quietly disagrees with every
+ *    other total on the page.
+ *  - **The direction decides every word, not just the numbers (#289).** Under
+ *    `whole_invoice` the second column is your part of a bill you paid whole; under
+ *    `my_share` it is the total a bill came to, of which your account only ever held a
+ *    part. Those are opposite sentences about the same three figures — one says money is
+ *    owed to you, the other says money was never yours — so the card branches on
+ *    `custody.direction` rather than relabelling a column.
+ *  - **The assumption is on screen, always, and the two are not equally strong.** A
+ *    discount divides a number Actual holds. A gross-up infers one it has never held from
+ *    a share somebody typed, so a wrong share there does not produce a slightly-off
+ *    figure — it produces a fiction, and the `my_share` caveat says so in as many words.
  *  - **No colour and no severity**, for the reason the benchmark card gives: nobody has
  *    done anything wrong by paying a bill that gets split, and a red cell is an alert
- *    whatever the payload calls it. The matching finding is capped at `info`.
- *  - **Two of the three unavailable reasons draw nothing.** `no_shared` is the ordinary
+ *    whatever the payload calls it. The matching findings are capped at `info`.
+ *  - **Two of the four unavailable reasons draw nothing.** `no_shared` is the ordinary
  *    state of most budgets — the flag is opt-in, and a card explaining an absence nobody
- *    asked about is noise — and `no_month` already has its own notice above. `no_basis` is
- *    the one worth a box: categories are flagged, so somebody meant this to work.
+ *    asked about is noise — and `no_month` already has its own notice above. `no_basis`
+ *    and `zero_share` are the two worth a box: categories are flagged, so somebody meant
+ *    this to work, and the second one has a different fix from the first.
  *
- * Nothing here is computed. Every figure arrives as an integer, including the offset,
- * which is a subtraction the server did.
+ * Nothing here is computed. Every figure arrives as an integer, including the co-parent's
+ * part, which is a subtraction the server did.
  */
 import { useId, type ReactNode } from 'react'
 import { Trans } from 'react-i18next'
@@ -41,25 +48,32 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
   const captionId = useId()
 
   if (custody.kind === 'unavailable') {
-    if (custody.reason !== 'no_basis') return null
+    if (custody.reason !== 'no_basis' && custody.reason !== 'zero_share') return null
     return (
       <div className="notice notice--info" role="status">
         <p className="notice__lead">
           <Trans
-            i18nKey="budget:custody.unavailable.no_basis"
-            // `no_basis` always carries the flagged total; the nullable type is the
-            // union's, not this branch's.
+            i18nKey={`budget:custody.unavailable.${custody.reason}`}
+            // Both of these reasons always carry the flagged total; the nullable type is
+            // the union's, not this branch's.
             components={{
               money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
             }}
           />
         </p>
-        <p className="notice__hint">{t('budget:custody.unavailable.hint')}</p>
+        <p className="notice__hint">{t(`budget:custody.unavailable.hint.${custody.reason}`)}</p>
       </div>
     )
   }
 
   const share = formatBp(custody.shareBp)
+  // The direction picks the sentence, and the derived column with it. Named once here
+  // rather than tested at each of the four places it matters, so a future third direction
+  // fails to compile in one spot instead of quietly taking the whole-invoice branch four
+  // times over.
+  const grossedUp = custody.direction === 'my_share'
+  const derived = (line: { totalCents: number; yoursCents: number }): number =>
+    grossedUp ? line.totalCents : line.yoursCents
 
   return (
     <section className="card">
@@ -67,12 +81,12 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
 
       <p className="custody__lede">
         <Trans
-          i18nKey="budget:custody.lede"
+          i18nKey={`budget:custody.lede.${custody.direction}`}
           values={{ month: formatMonth(custody.month, language) }}
           components={{
             money: <Money cents={custody.paidCents} options={{ whole: true }} />,
-            money2: <Money cents={custody.borneCents} options={{ whole: true }} />,
-            money3: <Money cents={custody.offsetCents} options={{ whole: true }} />,
+            money2: <Money cents={derived(custody)} options={{ whole: true }} />,
+            money3: <Money cents={custody.otherCents} options={{ whole: true }} />,
           }}
         />
       </p>
@@ -80,7 +94,7 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
       <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
         <table className="table custody__table">
           <caption className="table__caption" id={captionId}>
-            {t('budget:custody.caption')}
+            {t(`budget:custody.caption.${custody.direction}`)}
           </caption>
           <thead>
             <tr>
@@ -89,7 +103,7 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
                 {t('budget:custody.column.paid')}
               </th>
               <th scope="col" className="table__cell--number">
-                {t('budget:custody.column.borne')}
+                {t(grossedUp ? 'budget:custody.column.total' : 'budget:custody.column.borne')}
               </th>
             </tr>
           </thead>
@@ -100,7 +114,7 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
                   {line.categoryName}
                 </th>
                 <td className="table__cell--number">{euro(line.paidCents)}</td>
-                <td className="table__cell--number">{euro(line.borneCents)}</td>
+                <td className="table__cell--number">{euro(derived(line))}</td>
               </tr>
             ))}
           </tbody>
@@ -114,7 +128,7 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
             <tr>
               <th scope="row">{t('budget:custody.total')}</th>
               <td className="table__cell--number">{euro(custody.paidCents)}</td>
-              <td className="table__cell--number">{euro(custody.borneCents)}</td>
+              <td className="table__cell--number">{euro(derived(custody))}</td>
             </tr>
           </tfoot>
         </table>
@@ -127,7 +141,7 @@ export function Custody({ custody }: { custody: CustodyWire }): ReactNode {
             : t('budget:custody.basis.roster', { count: custody.members, share })}
         </li>
         <li>{t('budget:custody.share', { share: formatBp(custody.shareOfSpendBp) })}</li>
-        <li>{t('budget:custody.assumption', { share })}</li>
+        <li>{t(`budget:custody.assumption.${custody.direction}`, { share })}</li>
       </ul>
     </section>
   )

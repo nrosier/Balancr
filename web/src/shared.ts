@@ -156,8 +156,13 @@ export {
   MIN_DELTA_BP,
   MIN_MAPPED_BP,
   OUTSIDE_CONSUMPTION,
+  SHARED_COST_DIRECTIONS,
 } from '../../src/domain/benchmark/vocabulary.ts'
-export type { BenchmarkGroup, CoicopDivision } from '../../src/domain/benchmark/vocabulary.ts'
+export type {
+  BenchmarkGroup,
+  CoicopDivision,
+  SharedCostDirection,
+} from '../../src/domain/benchmark/vocabulary.ts'
 
 export { SAVINGS_NATURE_CHOICES } from '../../src/domain/benchmark/mapping.ts'
 export type { SavingsNatureChoice } from '../../src/domain/benchmark/mapping.ts'

@@ -1,19 +1,24 @@
 /**
- * The custody-aware split (#44): what a shared cost costs you, beside what you paid.
+ * The custody-aware split (#44, #289): what a shared cost costs you, beside what you paid.
  *
- * Two things here are load-bearing beyond the arithmetic, and both are about a figure
+ * Three things here are load-bearing beyond the arithmetic, and each is about a figure
  * that is easy to make quietly wrong:
  *
  *  - **Actual's number is never adjusted.** `paidCents` on every line and on the total is
- *    the month's own figure, and the borne figure is an addition. A test that only
- *    checked the halves would pass on an implementation that silently halved the budget.
+ *    the month's own figure, and everything else is an addition. A test that only checked
+ *    the halves would pass on an implementation that silently halved the budget.
  *  - **The rows add up to the total under them.** Rounding per line and rounding once are
  *    a cent or two apart on a real month, and the cent is what costs somebody an evening
  *    with a calculator.
+ *  - **The direction is not a label on the same numbers.** `whole_invoice` multiplies down
+ *    to your part; `my_share` divides up to a total your account never held. Reading the
+ *    same stored share the wrong way applies it twice, so the two directions are asserted
+ *    against the same inputs and expected to disagree.
  *
- * The rest is the refusals: no month, nothing flagged, and a roster the share cannot be
- * derived from are three different answers, because the card draws nothing for two of
- * them and says something for the third.
+ * The rest is the refusals: no month, nothing flagged, a roster the share cannot be
+ * derived from, and a stated 0% there is nothing to divide by. Four different answers,
+ * because the card draws nothing for two of them and says a different thing for each of
+ * the other two.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
@@ -60,11 +65,18 @@ function fact(id: string, spentCents: number, overrides: Partial<MonthlyFact> = 
 const household = (overrides: Partial<Household> = {}): Household => ({
   members: [],
   sharedCostBp: null,
+  // The stored default, and the direction every case below is in unless it says otherwise:
+  // it is what the feature modelled before #289, so it is the reading these tests were
+  // written against and the one a regression would have to break to be noticed.
+  sharedCostDirection: 'whole_invoice',
   ...overrides,
 })
 
 /** A roster with one half-time child, which is the case the feature exists for. */
 const HALF_TIME = household({ members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+
+/** The same household reading the same share the other way round (#289). */
+const GROSSED_UP = household({ ...HALF_TIME, sharedCostDirection: 'my_share' })
 
 function split(
   rows: readonly MonthlyFact[],
@@ -135,7 +147,7 @@ describe('the share and where it came from', () => {
 })
 
 describe('splitting a month', () => {
-  it('reports what was paid and what is borne, and never adjusts what was paid', () => {
+  it('reports what was paid and what is yours, and never adjusts what was paid', () => {
     const result = ok(
       split(
         [fact('school', 40_000), fact('rent', 100_000), fact('clothes', 12_000)],
@@ -144,16 +156,27 @@ describe('splitting a month', () => {
     )
 
     expect(result.paidCents).toBe(52_000)
-    expect(result.borneCents).toBe(26_000)
-    expect(result.offsetCents).toBe(26_000)
+    expect(result.direction).toBe('whole_invoice')
+    // The whole invoice landed here, so the total is Actual's own figure and the split is
+    // inside it: nothing is grossed up and nothing is inferred.
+    expect(result.totalCents).toBe(52_000)
+    expect(result.yoursCents).toBe(26_000)
+    expect(result.otherCents).toBe(26_000)
     // € 520 of € 1.520 spent in the month.
     expect(result.shareOfSpendBp).toBe(3_421)
     expect(result.basis).toBe('roster')
     expect(result.shareBp).toBe(5_000)
     expect(result.members).toBe(1)
-    expect(result.lines.map((line) => [line.categoryId, line.paidCents, line.borneCents])).toEqual([
-      ['school', 40_000, 20_000],
-      ['clothes', 12_000, 6_000],
+    expect(
+      result.lines.map((line) => [
+        line.categoryId,
+        line.paidCents,
+        line.yoursCents,
+        line.otherCents,
+      ]),
+    ).toEqual([
+      ['school', 40_000, 20_000, 20_000],
+      ['clothes', 12_000, 6_000, 6_000],
     ])
   })
 
@@ -161,10 +184,10 @@ describe('splitting a month', () => {
     // Three lines that each round up at a third: rounded once at the end the total is
     // 3.334 and the rows say 3.335.
     const result = ok(split([fact('a', 3_333), fact('b', 3_333), fact('c', 3_333)], ['a', 'b', 'c']))
-    expect(result.lines.map((line) => line.borneCents)).toEqual([1_667, 1_667, 1_667])
-    expect(result.borneCents).toBe(5_001)
-    expect(result.borneCents).toBe(result.lines.reduce((sum, line) => sum + line.borneCents, 0))
-    expect(result.paidCents - result.borneCents).toBe(result.offsetCents)
+    expect(result.lines.map((line) => line.yoursCents)).toEqual([1_667, 1_667, 1_667])
+    expect(result.yoursCents).toBe(5_001)
+    expect(result.yoursCents).toBe(result.lines.reduce((sum, line) => sum + line.yoursCents, 0))
+    expect(result.paidCents - result.yoursCents).toBe(result.otherCents)
   })
 
   it('lists the largest paid first, and breaks a tie by name', () => {
@@ -229,11 +252,80 @@ describe('splitting a month', () => {
     })
   })
 
+  it('says zero_share, not no_basis, when a grossed-up share is a stated nought', () => {
+    // A stated 0% is a share, not an absence — `custodyShare` has its own test for that.
+    // Dividing by it is what has no answer, so the reason names the share rather than
+    // telling somebody who typed a number that nothing says what their share is (#289).
+    expect(
+      split(
+        [fact('school', 40_000)],
+        ['school'],
+        household({ sharedCostBp: 0, sharedCostDirection: 'my_share' }),
+      ),
+    ).toEqual({ kind: 'unavailable', reason: 'zero_share', paidCents: 40_000 })
+  })
+
+  it('still splits a stated nought the other way round, where nothing divides', () => {
+    // `whole_invoice` multiplies, so 0% is a legitimate "none of this is mine" and the
+    // whole paid figure belongs to the other household.
+    const result = ok(split([fact('school', 40_000)], ['school'], household({ sharedCostBp: 0 })))
+    expect(result.yoursCents).toBe(0)
+    expect(result.otherCents).toBe(40_000)
+  })
+
   it('splits nothing off when the stated share is the whole cost', () => {
     const result = ok(split([fact('school', 40_000)], ['school'], household({ sharedCostBp: 10_000 })))
-    expect(result.borneCents).toBe(40_000)
-    expect(result.offsetCents).toBe(0)
+    expect(result.yoursCents).toBe(40_000)
+    expect(result.otherCents).toBe(0)
     expect(result.basis).toBe('stated')
+  })
+})
+
+describe('the other direction: what landed here is already only my share (#289)', () => {
+  it('works the total back up out of the share, and leaves what was paid alone', () => {
+    // € 400 paid at a 50% share is € 800 in total, of which € 400 was settled by the other
+    // household directly and never touched this account. The same input read the other way
+    // says € 200 is yours and € 200 is owed to you — both columns different, which is why
+    // the direction is stored rather than guessed.
+    const result = ok(split([fact('school', 40_000)], ['school'], GROSSED_UP))
+    expect(result.direction).toBe('my_share')
+    expect(result.paidCents).toBe(40_000)
+    expect(result.totalCents).toBe(80_000)
+    expect(result.yoursCents).toBe(40_000)
+    expect(result.otherCents).toBe(40_000)
+  })
+
+  it('never inflates the share of the month, which is a fact about the account', () => {
+    // The grossed-up total includes money the bank never saw, so counting it in the
+    // numerator would put "how much of my spending is shared" over 100% on a 40% share.
+    const result = ok(split([fact('school', 40_000), fact('rent', 60_000)], ['school'], GROSSED_UP))
+    expect(result.totalCents).toBe(80_000)
+    expect(result.shareOfSpendBp).toBe(4_000)
+  })
+
+  it('rounds per line here too, so the rows add up and total equals yours plus theirs', () => {
+    const result = ok(
+      split([fact('a', 3_333), fact('b', 3_333), fact('c', 3_333)], ['a', 'b', 'c'], GROSSED_UP),
+    )
+    expect(result.lines.map((line) => line.totalCents)).toEqual([6_666, 6_666, 6_666])
+    expect(result.totalCents).toBe(19_998)
+    expect(result.totalCents).toBe(result.lines.reduce((sum, line) => sum + line.totalCents, 0))
+    for (const line of result.lines) {
+      expect(line.totalCents).toBe(line.yoursCents + line.otherCents)
+    }
+    expect(result.totalCents).toBe(result.yoursCents + result.otherCents)
+  })
+
+  it('reports a stated 70% as your part of a larger cost, not as a discount on it', () => {
+    // The bug the direction exists to prevent, in one assertion: € 700 paid at a stated
+    // 70% is € 1.000 in total with € 300 settled elsewhere. Read as a whole invoice it
+    // would say € 490 is yours and € 210 is owed to you — the share applied twice, and a
+    // debt asserted that the other household has already paid.
+    const stated = household({ sharedCostBp: 7_000, sharedCostDirection: 'my_share' })
+    const result = ok(split([fact('school', 70_000)], ['school'], stated))
+    expect(result.totalCents).toBe(100_000)
+    expect(result.yoursCents).toBe(70_000)
+    expect(result.otherCents).toBe(30_000)
   })
 })
 
@@ -248,7 +340,38 @@ describe('the finding', () => {
         categoryId: null,
         categoryName: null,
         severity: 'info',
-        metrics: { offsetCents: 35_000, paidCents: 70_000, borneCents: 35_000, shareBp: 5_000 },
+        metrics: {
+          otherCents: 35_000,
+          paidCents: 70_000,
+          totalCents: 70_000,
+          yoursCents: 35_000,
+          shareBp: 5_000,
+        },
+      },
+    ])
+  })
+
+  it('reports the other direction under its own code, not the same sentence reworded', () => {
+    // One says money is owed to you, the other says money was never yours to be owed. A
+    // single code could only carry a sentence vague enough to be true of both (#289).
+    const result = split(
+      [fact('school', 40_000), fact('camp', 30_000)],
+      ['school', 'camp'],
+      GROSSED_UP,
+    )
+    expect(signals(result)).toEqual([
+      {
+        code: 'custody_total',
+        categoryId: null,
+        categoryName: null,
+        severity: 'info',
+        metrics: {
+          otherCents: 70_000,
+          paidCents: 70_000,
+          totalCents: 140_000,
+          yoursCents: 70_000,
+          shareBp: 5_000,
+        },
       },
     ])
   })
@@ -256,7 +379,7 @@ describe('the finding', () => {
   it('stays quiet under the materiality floor', () => {
     // € 20 off a shared subscription is true and not worth a line on the insights page.
     const result = split([fact('streaming', 4_000)], ['streaming'])
-    expect(ok(result).offsetCents).toBe(2_000)
+    expect(ok(result).otherCents).toBe(2_000)
     expect(signals(result)).toEqual([])
   })
 
@@ -297,7 +420,10 @@ describe('the context, read off the database', () => {
     const result = ok(splitMonth(context, MONTH, [fact('school', 50_000), fact('rent', 100_000)]))
     expect(result.month).toBe(MONTH)
     expect(result.shareBp).toBe(4_000)
-    expect(result.borneCents).toBe(20_000)
+    expect(result.yoursCents).toBe(20_000)
+    // Absent from the stored JSON above, so this is the schema's default arriving through
+    // the loader — the guarantee that a roster saved before #289 still reads as it did.
+    expect(result.direction).toBe('whole_invoice')
   })
 
   it('falls back to one person with no flags on an empty database', () => {

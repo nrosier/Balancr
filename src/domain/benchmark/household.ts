@@ -40,7 +40,7 @@ import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
 import type { Equivalence } from './schema.ts'
-import { MAX_HOUSEHOLD_MEMBERS } from './vocabulary.ts'
+import { MAX_HOUSEHOLD_MEMBERS, SHARED_COST_DIRECTIONS } from './vocabulary.ts'
 
 const log = logger.child({ module: 'benchmark/household' })
 
@@ -102,6 +102,28 @@ export const householdSchema = z
      * plenty of agreements split costs down the middle on an unequal week.
      */
     sharedCostBp: z.int().min(0).max(10_000).nullable().default(null),
+    /**
+     * Which way round the share reads: is what Actual holds the whole bill, or already
+     * only your part of it (#289)?
+     *
+     * The share alone cannot say. A €600 line in a shared category is either a €600
+     * invoice you paid whole and bear 60% of, or your 60% of a €1 000 cost the co-parent
+     * settled the rest of directly — the same stored number, two different arrangements,
+     * and every figure derived from it differs. Read the wrong way the app does not
+     * produce a slightly-off number, it produces a fiction: applying the share to money
+     * that was already only your share discounts it twice and invents a debt the
+     * co-parent has already settled.
+     *
+     * `whole_invoice` is the default because it is what the feature originally modelled
+     * and therefore what every household that configured it before this field existed
+     * meant. A default that silently reinterpreted their stored share would rewrite
+     * figures they had already read.
+     *
+     * One value for the household rather than one per category, for the same reason the
+     * share itself is: an arrangement is normally one arrangement, and fifty of these
+     * would be fifty fields nobody maintains.
+     */
+    sharedCostDirection: z.enum(SHARED_COST_DIRECTIONS).default('whole_invoice'),
   })
   .strict()
   .prefault({})

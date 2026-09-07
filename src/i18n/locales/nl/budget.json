@@ -93,25 +93,39 @@
     "unallocated_other": "{{value}} planningen hebben geen categorie en tellen alleen mee in het maandtotaal."
   },
   "custody": {
-    "assumption": "Dit gaat ervan uit dat de volledige factuur van jouw rekening ging en dat {{share}} ervan voor jou is. Niets hiervan verandert de cijfers van Actual — wat je betaalde, betaalde je.",
+    "assumption": {
+      "my_share": "Dit gaat ervan uit dat wat van jouw rekening ging al enkel jouw {{share}} was, en dat hetzelfde aandeel voor elke regel hier geldt. Het totaal is afgeleid en niet gelezen: Actual heeft het nooit gekend, dus een verkeerd aandeel maakt dit cijfer niet lichtjes onjuist maar verzonnen. Niets hiervan verandert de cijfers van Actual — wat je betaalde, betaalde je.",
+      "whole_invoice": "Dit gaat ervan uit dat de volledige factuur van jouw rekening ging en dat {{share}} ervan voor jou is. Niets hiervan verandert de cijfers van Actual — wat je betaalde, betaalde je."
+    },
     "basis": {
       "roster_one": "Er is geen verdeling opgegeven, dus dit gebruikt het deel van de tijd dat {{value}} lid hier is: {{share}}.",
       "roster_other": "Er is geen verdeling opgegeven, dus dit gebruikt het gemiddelde deel van de tijd dat {{value}} leden hier zijn: {{share}}.",
       "stated": "Het aandeel van {{share}} is wat je onder Instellingen, Huishouden opgaf."
     },
-    "caption": "Wat je aan gedeelde kosten betaalde en jouw aandeel daarin, grootste eerst",
+    "caption": {
+      "my_share": "Wat je aan gedeelde kosten betaalde en wat elke kost in totaal was, grootste eerst",
+      "whole_invoice": "Wat je aan gedeelde kosten betaalde en jouw aandeel daarin, grootste eerst"
+    },
     "column": {
       "borne": "Voor jou",
       "category": "Categorie",
-      "paid": "Jij betaalde"
+      "paid": "Jij betaalde",
+      "total": "In totaal"
     },
-    "lede": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{borne}}</money2> daarvan is economisch voor jou; <money3>{{offset}}</money3> is het aandeel van het andere huishouden.",
+    "lede": {
+      "my_share": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt — jouw deel van <money2>{{derived}}</money2> in totaal. De andere <money3>{{other}}</money3> werd rechtstreeks door het andere huishouden betaald en kwam nooit op jouw rekening.",
+      "whole_invoice": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{derived}}</money2> daarvan is economisch voor jou; <money3>{{other}}</money3> is het aandeel van het andere huishouden."
+    },
     "share": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
     "title": "Kosten gedeeld met een co-ouder",
     "total": "Totaal",
     "unavailable": {
-      "hint": "Voeg onder Instellingen, Huishouden toe wie hier een deel van de tijd is, of geef het aandeel rechtstreeks op — dan verschijnt de verdeling hier.",
-      "no_basis": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is."
+      "hint": {
+        "no_basis": "Voeg onder Instellingen, Huishouden toe wie hier een deel van de tijd is, of geef het aandeel rechtstreeks op — dan verschijnt de verdeling hier.",
+        "zero_share": "Verhoog het aandeel onder Instellingen, Huishouden tot het deel van deze kosten dat voor jou is — of, als de volledige factuur hier wel binnenkomt, verander daar de richting."
+      },
+      "no_basis": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar niets zegt welk aandeel daarvan voor jou is.",
+      "zero_share": "Categorieën ter waarde van <money>{{amount}}</money> deze maand zijn aangeduid als gedeeld met een co-ouder, maar jouw opgegeven aandeel is 0% — er is niets om het totaal uit terug te rekenen."
     }
   },
   "empty": {

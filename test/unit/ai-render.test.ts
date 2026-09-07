@@ -62,10 +62,15 @@ const ALL_METRICS: Record<string, number> = {
   shortfallCents: 225_000,
   previousHighCents: 4_800_000,
   gainCents: 120_000,
-  // custody (#44): what was paid on shared costs, what is borne, and the share applied
-  offsetCents: 26_000,
+  // custody (#44, #289): what was paid on shared costs, what the whole cost came to, the
+  // two households' parts of it, and the share that split or grossed it up. `offsetCents`
+  // is deliberately absent: it is the pre-#289 name for `otherCents`, and leaving it out
+  // here keeps the superset honest about what a producer emits today — the fallback that
+  // still reads it has a test of its own below.
   paidCents: 52_000,
-  borneCents: 26_000,
+  totalCents: 104_000,
+  yoursCents: 52_000,
+  otherCents: 26_000,
   shareBp: 5_000,
   // drift (#183): a class outside its band, and how long for
   monthsOutside: 3,
@@ -246,6 +251,35 @@ describe('rendering carries the finding through', () => {
     // Good news by declaration: paying a bill that gets split is not an overrun, and the
     // insights page styles it apart from one.
     expect(renderSignal(custody)?.negative).toBe(false)
+  })
+
+  it('reads a signal stored before the metric was renamed (#289)', () => {
+    // Signals are persisted per month and the nightly pass judges two of them, so months
+    // already on disk still carry `offsetCents`. Without the fallback in `vars.ts` this
+    // renders as null and a sentence somebody has read disappears from the archive.
+    const stored = signal('custody_offset', {
+      categoryId: null,
+      categoryName: null,
+      metrics: { offsetCents: 26_000, paidCents: 52_000, shareBp: 5_000 },
+    })
+    expect(norm(renderSignal(stored, 'en')?.text ?? '')).toBe(
+      "You paid € 520,00 on shared costs; at a 50% share, € 260,00 of that is the co-parent's.",
+    )
+  })
+
+  it('states the whole cost, not the co-parent\u2019s part, in the other direction (#289)', () => {
+    // The sentence that only the grossed-up direction can say: what the thing cost, of
+    // which this household's books hold € 520. The co-parent's part is left out on
+    // purpose — it is the subtraction of two figures already in the sentence, the same
+    // reason `drift_above_band` omits its own distance.
+    const grossed = signal('custody_total', { categoryId: null, categoryName: null })
+    expect(norm(renderSignal(grossed, 'en')?.text ?? '')).toBe(
+      'You paid € 520,00 on shared costs, which at a 50% share is your part of € 1.040,00 in total.',
+    )
+    expect(norm(renderSignal(grossed, 'nl')?.text ?? '')).toContain('€ 1.040,00')
+    // Context about an arrangement, like its counterpart: nobody overspent by being two
+    // households.
+    expect(renderSignal(grossed)?.negative).toBe(false)
   })
 
   it('translates the benchmark group a benchmark finding names (#43)', () => {

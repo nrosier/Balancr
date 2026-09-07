@@ -8,12 +8,13 @@
  * figure that answers "did I overspend". Paying the whole school bill in September is a
  * 200% overrun against your own norm and roughly half of it was never economically yours.
  *
- * So this computes a second figure beside the first, and refuses to replace it:
+ * So this computes further figures beside the first, and refuses to replace it:
  *
  *  - **`paidCents` is Actual's own number.** Unchanged, and the card prints it first.
- *  - **`borneCents` is your share of it**, and `offsetCents` is the remainder — the
- *    co-parent's share of what you paid. That is the number that makes an overrun read
- *    as an arrangement rather than as a spending problem.
+ *  - **`totalCents` is what the thing cost**, `yoursCents` the part that is economically
+ *    yours, and `otherCents` the co-parent's part. `total = yours + other` always. Those
+ *    are the numbers that make an overrun read as an arrangement rather than as a spending
+ *    problem.
  *
  * Three decisions worth disagreeing with:
  *
@@ -21,6 +22,13 @@
  *    share would be more expressive and would also be fifty fields nobody maintains; the
  *    arrangement people actually have is one split applied to the things that are shared.
  *    The flag says *which* categories, and this says *how much*.
+ *  - **Which way the share reads is stored, not guessed (#289).** The same €600 line is
+ *    either a whole invoice you bear 60% of or your 60% of a €1 000 cost, and nothing in
+ *    the data distinguishes them — so `sharedCostDirection` says which, and the two
+ *    directions derive opposite things from the same number. `whole_invoice` multiplies
+ *    down to your part; `my_share` divides up to the total the account never saw. Reading
+ *    it the wrong way is not an approximation: it applies the share twice and asserts a
+ *    debt that has already been settled.
  *  - **Derived from the roster, unless somebody states it.** A member who is here part of
  *    the time is exactly who a shared cost is about, so the default share is the mean of
  *    those members' `custodyBp` — no age threshold, no benchmark file, nothing invented.
@@ -31,11 +39,17 @@
  *    to say which of the two it was. #44 asks for both figures reported; a figure whose
  *    provenance is not on the wire cannot be reported honestly.
  *
- * The direction this deliberately does not model: a category where the *co-parent* pays
- * the invoice and you transfer your half. What Actual then holds is already your share,
- * so `paid` and `borne` are the same and flagging it would produce an offset that is not
- * there. That is what the flag being opt-in per category is for, and the card says which
- * assumption it is making so a wrong flag is visible rather than silently halving a line.
+ * `my_share` is the direction this once deliberately refused to model, on the grounds that
+ * `paid` and `yours` would be the same figure. They are — and the figure worth having was
+ * never `yours`, it was the *total*, which is exactly what that direction can recover and
+ * the other cannot. What a household on that arrangement can now be told is what a child
+ * actually costs, of which their own books only ever hold a part.
+ *
+ * A gross-up is a weaker claim than a discount and the card has to say so: a discount
+ * divides a number Actual holds, a gross-up infers one it has never held from a share
+ * somebody typed. The flag stays opt-in per category and the card keeps stating its
+ * assumption, so a wrong flag or a wrong direction is visible rather than quietly
+ * rewriting a line.
  *
  * Pure: the roster, the flags and the month's facts arrive as arguments. `jobs/signals.ts`
  * and `GET /api/budget` both build the input through `custody-context.ts`, the same
@@ -44,6 +58,7 @@
  * implies — so nothing here may reach the database, the clock or `config`.
  */
 import type { Household } from '../benchmark/household.ts'
+import type { SharedCostDirection } from '../benchmark/vocabulary.ts'
 import { capSeverity } from '../ai/codes.ts'
 import type { AggregateParams } from './params.ts'
 import type { Signal } from './overspend.ts'
@@ -66,17 +81,26 @@ export type CustodyBasis = (typeof CUSTODY_BASES)[number]
  * is opt-in, and a card explaining an absence nobody asked about is noise. `no_basis` is
  * the one that needs saying: categories are flagged, so somebody meant this to work, and
  * the share it needs is missing.
+ *
+ * `zero_share` is its own reason rather than a fourth cause of `no_basis` (#289): a stated
+ * 0% under `my_share` is not a missing share, it is a share that cannot be divided by, and
+ * telling somebody who typed a number that nothing says what their share is would be the
+ * card contradicting the form.
  */
-export const CUSTODY_UNAVAILABLE = ['no_month', 'no_shared', 'no_basis'] as const
+export const CUSTODY_UNAVAILABLE = ['no_month', 'no_shared', 'no_basis', 'zero_share'] as const
 export type CustodyUnavailable = (typeof CUSTODY_UNAVAILABLE)[number]
 
 export interface CustodyLine {
   categoryId: string
   categoryName: string
-  /** Actual's figure for the month. */
+  /** Actual's figure for the month. Never adjusted, in either direction. */
   paidCents: number
-  /** `paidCents` at the household's share, rounded once per line. */
-  borneCents: number
+  /** What the thing cost in total: `paidCents` itself, or grossed up out of the share. */
+  totalCents: number
+  /** The part of `totalCents` that is economically yours. */
+  yoursCents: number
+  /** The rest of it: `totalCents − yoursCents`. */
+  otherCents: number
 }
 
 export type CustodySplit =
@@ -86,15 +110,33 @@ export type CustodySplit =
       readonly basis: CustodyBasis
       /** The share of a shared cost that is yours, in basis points. */
       readonly shareBp: number
+      /** Which way the share was read. See `SHARED_COST_DIRECTIONS`. */
+      readonly direction: SharedCostDirection
       /** How many part-time members the derived share averaged. Zero when `stated`. */
       readonly members: number
       /** One per flagged category with spending this month, largest paid first. */
       readonly lines: readonly CustodyLine[]
+      /**
+       * Actual's own figure, in both directions and always printed first.
+       *
+       * The one quantity whose relationship to the other three depends on the direction,
+       * which is the whole of what a direction is: under `whole_invoice` it equals
+       * `totalCents`, under `my_share` it equals `yoursCents`.
+       */
       readonly paidCents: number
-      readonly borneCents: number
-      /** `paidCents − borneCents`: the co-parent's share of what you paid. */
-      readonly offsetCents: number
-      /** What the flagged categories are of the month's whole spend. */
+      /** What the flagged categories cost in total, both households together. */
+      readonly totalCents: number
+      /** Your part of that. */
+      readonly yoursCents: number
+      /**
+       * The co-parent's part: `totalCents − yoursCents`.
+       *
+       * Money they owe you under `whole_invoice`, money that never reached your account
+       * under `my_share`. The figure is the same shape; only the sentence differs, which
+       * is why the direction travels with it.
+       */
+      readonly otherCents: number
+      /** What the flagged categories are of the month's whole spend, as Actual holds it. */
       readonly shareOfSpendBp: number
     }
   | {
@@ -119,9 +161,14 @@ export interface CustodyInput {
  * Exported because both the split and the settings panel print it: the panel has to show
  * what the roster currently implies *before* anybody states an override, or the field
  * reads as "0% until you type something".
+ *
+ * Two fields rather than the whole `Household`, because those are the two it reads. The
+ * panel calls it with a roster it is holding and a deliberately null share to ask "what
+ * would you derive from this?", and asking that question should not require inventing a
+ * direction — the direction is what to *do* with the share, not where it came from (#289).
  */
 export function custodyShare(
-  household: Household,
+  household: Pick<Household, 'members' | 'sharedCostBp'>,
 ): { basis: CustodyBasis; shareBp: number; members: number } | null {
   if (household.sharedCostBp !== null) {
     return { basis: 'stated', shareBp: household.sharedCostBp, members: 0 }
@@ -162,30 +209,62 @@ export function splitCustody(input: CustodyInput): CustodySplit {
     return { kind: 'unavailable', reason: 'no_basis', paidCents }
   }
 
+  // A gross-up divides by the share, so a stated 0% has no total rather than an infinite
+  // one — the same guard `savingsRateBp` puts on its own denominator. `whole_invoice` is
+  // unaffected: it multiplies, and a 0% share there is a legitimate "none of this is
+  // mine".
+  const direction = input.household.sharedCostDirection
+  if (direction === 'my_share' && share.shareBp === 0) {
+    return { kind: 'unavailable', reason: 'zero_share', paidCents }
+  }
+
   // Rounded per line rather than once at the end, so the rows add up to the total the
   // card prints under them. A total rounded separately is off by a cent or two from its
   // own rows, and that cent is what somebody spends an evening looking for.
+  //
+  // The two directions round different quantities, because each derives a different one:
+  // `whole_invoice` knows the total and computes your part of it, `my_share` knows your
+  // part and recovers the total. In both, `otherCents` is the subtraction rather than a
+  // third rounding, so `total = yours + other` holds exactly on every line.
   const lines = flagged
-    .map((row) => ({
-      categoryId: row.categoryId,
-      categoryName: row.categoryName,
-      paidCents: row.spentCents,
-      borneCents: Math.round((row.spentCents * share.shareBp) / 10_000),
-    }))
+    .map((row) => {
+      const paidCents = row.spentCents
+      const totalCents =
+        direction === 'whole_invoice'
+          ? paidCents
+          : Math.round((paidCents * 10_000) / share.shareBp)
+      const yoursCents =
+        direction === 'whole_invoice' ? Math.round((paidCents * share.shareBp) / 10_000) : paidCents
+      return {
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        paidCents,
+        totalCents,
+        yoursCents,
+        otherCents: totalCents - yoursCents,
+      }
+    })
     .sort((a, b) => b.paidCents - a.paidCents || a.categoryName.localeCompare(b.categoryName))
 
-  const borneCents = lines.reduce((sum, line) => sum + line.borneCents, 0)
+  const totalCents = lines.reduce((sum, line) => sum + line.totalCents, 0)
+  const yoursCents = lines.reduce((sum, line) => sum + line.yoursCents, 0)
 
   return {
     kind: 'ok',
     month: input.month,
     basis: share.basis,
     shareBp: share.shareBp,
+    direction,
     members: share.members,
     lines,
     paidCents,
-    borneCents,
-    offsetCents: paidCents - borneCents,
+    totalCents,
+    yoursCents,
+    otherCents: totalCents - yoursCents,
+    // Against what Actual holds, in both directions. The denominator is the month's real
+    // spend, so grossing a flagged line up must not inflate the numerator — "38% of what
+    // I spent went on shared costs" is a fact about the bank account, and a share of a
+    // total that includes money the account never saw would be over 100% soon enough.
     shareOfSpendBp: Math.round((paidCents / spentCents) * 10_000),
   }
 }
@@ -208,17 +287,23 @@ export function splitCustody(input: CustodyInput): CustodySplit {
  */
 export function custodySignals(split: CustodySplit, params: AggregateParams): Signal[] {
   if (split.kind !== 'ok') return []
-  if (split.offsetCents < params.overspend.materialityFloorCents) return []
+  if (split.otherCents < params.overspend.materialityFloorCents) return []
+  // Two codes rather than one sentence with swapped numbers, because the two directions
+  // make different claims about the same figure: one says money is owed to you, the other
+  // says money was never yours to begin with. A single sentence could only be vague enough
+  // to be true of both.
+  const code = split.direction === 'whole_invoice' ? 'custody_offset' : 'custody_total'
   return [
     {
-      code: 'custody_offset',
+      code,
       categoryId: null,
       categoryName: null,
-      severity: capSeverity('custody_offset', 'info'),
+      severity: capSeverity(code, 'info'),
       metrics: {
-        offsetCents: split.offsetCents,
+        otherCents: split.otherCents,
         paidCents: split.paidCents,
-        borneCents: split.borneCents,
+        totalCents: split.totalCents,
+        yoursCents: split.yoursCents,
         shareBp: split.shareBp,
       },
     },

@@ -625,14 +625,15 @@ describe('the Belgian comparison', () => {
 })
 
 /**
- * The custody card (#44), which makes a claim Actual does not: that half of what you paid
- * was never yours.
+ * The custody card (#44, #289), which makes a claim Actual does not: that half of what you
+ * paid was never yours — or that the whole cost was twice it.
  *
- * The two things worth failing over are the ones a plausible-looking card gets wrong. The
- * paid column must stay Actual's own figure, on every row and in the total, so the card
- * never disagrees with the envelope table above it; and the assumption behind the borne
+ * The three things worth failing over are the ones a plausible-looking card gets wrong.
+ * The paid column must stay Actual's own figure, on every row and in the total, so the
+ * card never disagrees with the envelope table above it; the assumption behind the derived
  * column has to be on screen, because nothing in the data can tell a school fee you paid
- * in full from a bill the co-parent invoiced you for.
+ * in full from a bill the co-parent invoiced you for; and the two directions must not
+ * print the same numbers, because reading one as the other applies the share twice.
  */
 describe('the shared-cost split', () => {
   const SPLIT: CustodyWire = {
@@ -640,15 +641,62 @@ describe('the shared-cost split', () => {
     month: '2026-08',
     basis: 'roster',
     shareBp: 5_000,
+    direction: 'whole_invoice',
     members: 1,
     lines: [
-      { categoryId: 'cat-school', categoryName: 'School', paidCents: 40_000, borneCents: 20_000 },
-      { categoryId: 'cat-kit', categoryName: 'Clothing', paidCents: 12_000, borneCents: 6_000 },
+      {
+        categoryId: 'cat-school',
+        categoryName: 'School',
+        paidCents: 40_000,
+        totalCents: 40_000,
+        yoursCents: 20_000,
+        otherCents: 20_000,
+      },
+      {
+        categoryId: 'cat-kit',
+        categoryName: 'Clothing',
+        paidCents: 12_000,
+        totalCents: 12_000,
+        yoursCents: 6_000,
+        otherCents: 6_000,
+      },
     ],
     paidCents: 52_000,
-    borneCents: 26_000,
-    offsetCents: 26_000,
+    totalCents: 52_000,
+    yoursCents: 26_000,
+    otherCents: 26_000,
     shareOfSpendBp: 1_677,
+  }
+
+  /**
+   * The same month on the other arrangement: € 520 left the account and that *was* the
+   * household's half, so the cost was € 1.040 and the co-parent settled their € 520
+   * themselves. Same share, same paid figure, every derived figure different (#289).
+   */
+  const GROSSED_UP: CustodyWire = {
+    ...SPLIT,
+    direction: 'my_share',
+    lines: [
+      {
+        categoryId: 'cat-school',
+        categoryName: 'School',
+        paidCents: 40_000,
+        totalCents: 80_000,
+        yoursCents: 40_000,
+        otherCents: 40_000,
+      },
+      {
+        categoryId: 'cat-kit',
+        categoryName: 'Clothing',
+        paidCents: 12_000,
+        totalCents: 24_000,
+        yoursCents: 12_000,
+        otherCents: 12_000,
+      },
+    ],
+    totalCents: 104_000,
+    yoursCents: 52_000,
+    otherCents: 52_000,
   }
 
   const withSplit = (custody: CustodyWire): BudgetPayload => ({ ...FULL, custody })
@@ -695,6 +743,50 @@ describe('the shared-cost split', () => {
     expect(screen.getByText(/This assumes the whole invoice left your account/)).toBeTruthy()
   })
 
+  it('works the total back up when what landed here was already only your part (#289)', async () => {
+    serve(json(withSplit(GROSSED_UP)))
+    renderApp(<Budget />, { path: '/budget/custody' })
+
+    // The claim the other direction cannot make: what the thing cost, of which this
+    // household's books hold half. And the € 520 beside it is a figure nobody owes
+    // anybody — the sentence has to say that, or the card reads as an unpaid debt.
+    expect(
+      await screen.findByText(
+        withMoney(
+          /In August 2026 you paid € 520 on costs shared with a co-parent — your part of € 1.040 in total/,
+        ),
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(/was settled by the other household directly and never reached your account/),
+    ).toBeTruthy()
+
+    const card = screen.getByText('Costs shared with a co-parent').closest('section')
+    // The second column is a different quantity, so it is a different heading: "Yours"
+    // over a grossed-up total would be a lie about the same number.
+    const headers = [...(card?.querySelectorAll('thead th') ?? [])].map((th) => th.textContent)
+    expect(headers).toEqual(['Category', 'You paid', 'In total'])
+
+    const cells = (tr: Element): (string | null)[] =>
+      [...tr.children].map((cell) => (cell.textContent ?? '').replaceAll('\u00a0', ' '))
+    expect([...(card?.querySelectorAll('tbody tr') ?? [])].map(cells)).toEqual([
+      ['School', '€ 400', '€ 800'],
+      ['Clothing', '€ 120', '€ 240'],
+    ])
+    expect([...(card?.querySelectorAll('tfoot tr') ?? [])].map(cells)).toEqual([
+      ['Total', '€ 520', '€ 1.040'],
+    ])
+
+    // A gross-up is a weaker claim than a discount and the card says so: the total is
+    // inferred from a share somebody typed, not divided out of a figure Actual holds.
+    expect(
+      screen.getByText(/The total is inferred rather than read: Actual has never held it/),
+    ).toBeTruthy()
+    // Still a fact about the bank account, so it cannot exceed the month: € 520 of what
+    // was actually spent, not € 1.040 of it.
+    expect(screen.getByText('Shared costs are 16,8% of what you spent this month.')).toBeTruthy()
+  })
+
   it('says a stated share was stated, rather than implying it was derived', async () => {
     // The distinction #44 asks to be reported: one is somebody's arrangement, the other
     // is Balancr guessing at an arrangement it has never seen.
@@ -729,6 +821,23 @@ describe('the shared-cost split', () => {
       ),
     ).toBeTruthy()
     expect(screen.getByText(/Add whoever is here part of the time under Settings, Household/))
+      .toBeTruthy()
+    expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
+  })
+
+  it('says a stated nought is a share it cannot divide by, not a missing one (#289)', async () => {
+    // Telling somebody who typed 0 that nothing says what their share is would be the
+    // card contradicting the form, so this reason has a box and a hint of its own — and
+    // the hint names both ways out, because either could be what they meant.
+    serve(json(withSplit({ kind: 'unavailable', reason: 'zero_share', paidCents: 52_000 })))
+    renderApp(<Budget />, { path: '/budget/custody' })
+
+    expect(
+      await screen.findByText(
+        withMoney(/but your stated share is 0\s?% — there is nothing to work the total back up from/),
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText(/if the whole invoice really does land here, switch the direction/))
       .toBeTruthy()
     expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
   })

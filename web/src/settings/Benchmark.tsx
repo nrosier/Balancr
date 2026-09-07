@@ -66,7 +66,9 @@ import {
   OUTSIDE_CONSUMPTION,
   parseMoneyToCents,
   SAVINGS_NATURE_CHOICES,
+  SHARED_COST_DIRECTIONS,
   type BenchmarkSetting,
+  type SharedCostDirection,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
@@ -156,6 +158,16 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   const sharedBp = sharedText.trim() === '' ? null : parseBp(sharedText)
   const sharedInvalid = sharedText.trim() !== '' && sharedBp === null
 
+  /**
+   * Which way that share reads, as picked, or null for "whatever is stored" (#289).
+   *
+   * A plain `string | null` rather than a `SharedCostDirection | null`, because the value
+   * arrives from a `<select>`'s `event.target.value` and narrowing it at the boundary is
+   * what `directionOf` below is for — the same shape every other draft on this panel has.
+   */
+  const [directionDraft, setDirectionDraft] = useState<SharedCostDirection | null>(null)
+  const direction = directionDraft ?? benchmark.household.sharedCostDirection
+
   const { members, invalid } = useMemo(() => {
     const bad = new Set<number>()
     const parsed: { birthYear: number; custodyBp: number; label?: string }[] = []
@@ -192,6 +204,22 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             share: formatBp(derived.shareBp),
           })
 
+  /**
+   * What the direction will do to the share that is actually in force.
+   *
+   * The effective share, not the typed one: with the box empty the split uses the roster's
+   * mean, and a note that said "0%" while the card printed 50% would be the panel
+   * disagreeing with the page it is configuring. Null when neither exists — then there is
+   * no figure to put in the sentence and the note above already says so.
+   */
+  const effectiveBp = sharedBp ?? derived?.shareBp ?? null
+  const directionReads =
+    effectiveBp === null
+      ? null
+      : t(`settings:benchmark.household.sharedCostDirectionReads_${direction}`, {
+          share: formatBp(effectiveBp),
+        })
+
   const edit = (index: number, field: keyof Draft, value: string): void => {
     setDrafts(rows.map((row, at) => (at === index ? { ...row, [field]: value } : row)))
   }
@@ -202,6 +230,7 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
       members,
       ...(selfLabel === '' ? {} : { selfLabel }),
       sharedCostBp: sharedBp,
+      sharedCostDirection: direction,
     }
     state.save('household', 'PATCH', '/api/settings/household', body, () => {
       // Back to "whatever is stored", which the answer has just replaced. Keeping the
@@ -210,6 +239,7 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
       setDrafts(null)
       setSharedDraft(null)
       setSelfLabelDraft(null)
+      setDirectionDraft(null)
     })
   }
 
@@ -466,8 +496,40 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
           </p>
         </div>
 
+        {/*
+          The direction, under the share it reads. Below rather than above, because the
+          share is the number people come here to type and this is the question about it —
+          and because the note under the picker quotes the share, which has to be on screen
+          above it to be a reading rather than a claim (#289).
+        */}
+        <div className="field">
+          <label className="field__label" htmlFor="shared-cost-direction">
+            {t('settings:benchmark.household.sharedCostDirection')}
+          </label>
+          <select
+            id="shared-cost-direction"
+            className="field__input"
+            value={direction}
+            disabled={locked}
+            onChange={(event) => setDirectionDraft(event.target.value as SharedCostDirection)}
+          >
+            {SHARED_COST_DIRECTIONS.map((option) => (
+              <option key={option} value={option}>
+                {t(`settings:benchmark.household.sharedCostDirection_${option}`)}
+              </option>
+            ))}
+          </select>
+          {directionReads === null ? null : (
+            <p className="member__reads muted">{directionReads}</p>
+          )}
+          <p className="panel__meta muted">
+            {t('settings:benchmark.household.sharedCostDirectionHint')}
+          </p>
+        </div>
+
         <Issue message={state.issue('members')} />
         <Issue message={state.issue('sharedCostBp')} />
+        <Issue message={state.issue('sharedCostDirection')} />
 
         {/*
           Why Save is greyed out, beside the greyed-out button (#283). A row has no save
@@ -502,7 +564,10 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             className="button button--primary"
             disabled={
               locked ||
-              (drafts === null && sharedDraft === null && selfLabelDraft === null) ||
+              (drafts === null &&
+                sharedDraft === null &&
+                selfLabelDraft === null &&
+                directionDraft === null) ||
               invalid.size > 0 ||
               sharedInvalid
             }
