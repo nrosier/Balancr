@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v0.11.6-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -965,18 +965,22 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `0.11.x` |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.1` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `0.11.6` is the current release, work on top of the
-`Forecasting and on-demand insight` milestone above, which is already closed.
-`1.0.0-rc.N` has started: the documentation pass is done, the savings rate now reads
-over a period rather than one month, and `npm run probe` is the reconciliation
-acceptance test. What remains is the security-verification checklist, which has to be
-walked against a real deployment rather than a fixture — so it waits on that rather
-than on code.
+**Where it is now** — `1.0.0-rc.1` is the current release, and every feature issue
+in the list above is closed. What remains before `1.0.0` is testing rather than
+building: two boxes of the security-verification checklist are unwalked — the cost
+cap's degrade path against a real key, and the rate limits under a deliberate burst —
+and the break-glass local login is unreachable in the topology this repo ships, which
+is safe in the security direction and a recovery path that does not work. The two boxes
+wait on somebody's own deployment rather than on code; the third waits on a choice
+between documenting the limitation and building a way around it.
+
+`docker pull` still resolves `latest` to the last stable release; a candidate is
+published under its own tag only.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and

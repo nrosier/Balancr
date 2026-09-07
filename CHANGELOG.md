@@ -6,6 +6,44 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.1] — 2026-09-07
+
+The first release candidate. **No functional change from `0.11.6`** — nothing to
+hunt for in the diff but the version. What makes it a candidate is that every
+feature issue in the milestone list is closed, so what remains before `1.0.0` is
+testing rather than building.
+
+### Verified
+
+- **No header authenticates.** Nothing in the codebase reads
+  `X-authentik-username`; the name appears only in comments explaining why it is not
+  read. Sign-in is a real OIDC code flow with PKCE, so the reverse proxy's
+  configuration is not the security boundary and there is a server-side session to
+  revoke. Confirmed live: the forged header is refused alone, with companions, and
+  with a loopback `X-Forwarded-For` beside it, on more than one authenticated route.
+- **The local login cannot be reached from outside.** Refused through the public
+  tunnel and refused from the local network, unmoved by `X-Forwarded-For` (loopback,
+  an in-range private address, a two-hop chain), `X-Real-IP`, or a different private
+  block. The gate reads the TCP peer address and never a header, which is the only
+  reason it is worth anything.
+- **The AI boundary is structural.** Every outbound payload interface is written by
+  hand, so there is no payee, memo or transaction-id *field* for a filter to miss —
+  only opaque labels cross, with the mapping kept server-side, asserted by a test
+  that greps the serialised payload for the words themselves.
+
+### Known before 1.0.0
+
+- **The break-glass login is unreachable in the shipped topology**
+  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  publishes no host port, the peer address is always the reverse proxy — so the
+  credential documented as existing "for when nobody can sign in" can be enrolled
+  and never used. Fail-safe in the security direction, and a recovery path that does
+  not work.
+- **Two verification boxes are unwalked**
+  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  against a real key, and the rate limits under a deliberate burst. Both need a
+  decision on somebody's own deployment rather than code.
+
 ## [0.11.6] — 2026-09-07
 
 ### Added
