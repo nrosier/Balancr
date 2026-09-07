@@ -169,6 +169,23 @@ export const netWorthPointSchema = z.object({
   totalCents: cents(),
 })
 
+/**
+ * One month of household flows, as both `/api/budget` and `/api/overview` send them.
+ *
+ * One schema rather than two identical literals, because the savings card is now on both
+ * pages and reads the same array shape from either (#296). It is structurally the domain's
+ * `SavingsMonth` plus the two fields that card does not use, so `periodSavings` takes it
+ * as it arrives with no adapter in between — and a field renamed here fails to compile on
+ * both pages at once instead of quietly on one.
+ */
+export const monthFlowsSchema = z.object({
+  month: monthKey(),
+  incomeCents: cents(),
+  spentCents: cents(),
+  budgetedCents: cents(),
+  savingsRateBp: basisPoints().nullable(),
+})
+
 export const overviewSchema = z.object({
   freshness: freshnessSchema,
   netWorth: z
@@ -186,6 +203,14 @@ export const overviewSchema = z.object({
     })
     .nullable(),
   history: z.array(netWorthPointSchema),
+  /**
+   * The trailing run of monthly flows, oldest first, ending at `month`.
+   *
+   * Separate from `history`, which is net-worth points and carries no flows at all —
+   * that absence is why the savings card here was stuck on one calendar month until #296.
+   * Long enough for every window the card offers, which is at most twelve months.
+   */
+  flows: z.array(monthFlowsSchema),
   month: monthKey().nullable(),
   totals: z
     .object({
@@ -444,15 +469,7 @@ export const budgetSchema = z.object({
       committedApproximate: z.boolean(),
     })
     .nullable(),
-  history: z.array(
-    z.object({
-      month: monthKey(),
-      incomeCents: cents(),
-      spentCents: cents(),
-      budgetedCents: cents(),
-      savingsRateBp: basisPoints().nullable(),
-    }),
-  ),
+  history: z.array(monthFlowsSchema),
   /** The months every `categories[].trendCents` is indexed by, oldest first. */
   trendMonths: z.array(monthKey()),
   categories: z.array(categoryFactSchema),
@@ -927,6 +944,16 @@ export const insightsSchema = z.object({
        * run_id` cascades) but is on the wire as nullable rather than as a lie.
        */
       model: z.string().nullable(),
+      /**
+       * The month's note has been edited since this review was written (#298), so the
+       * page offers a rewrite the way it does for an edited fact.
+       *
+       * A boolean rather than a timestamp: the comparison is by content, and there is
+       * nothing useful to print about *when* — the sentence the reader needs is "this
+       * predates your note", not a clock reading. Always false for a review written
+       * before #298, whose payload has no note to compare against.
+       */
+      noteChanged: z.boolean(),
     })
     .nullable(),
   /**

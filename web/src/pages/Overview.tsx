@@ -12,13 +12,15 @@
  * Gemini, which is what makes it load instantly and what makes `freshness` mandatory
  * rather than decorative.
  *
- * **Nothing here is computed.** Net worth is summed in SQL, the savings rate arrives
- * as basis points from the aggregation pass, and the emergency fund arrives as
- * hundredths of a month because `overview.ts` divides a liquid balance by a
- * twelve-month mean spend and refuses to hand a float across the wire. The one
- * division below turns those hundredths back into months for printing, and that is
- * the only arithmetic on the page. A figure no job has produced is `null` and prints
- * as "not known yet" — never as zero, which is a number someone would act on.
+ * **Almost nothing here is computed.** Net worth is summed in SQL and the emergency fund
+ * arrives as hundredths of a month, because `overview.ts` divides a liquid balance by a
+ * twelve-month mean spend and refuses to hand a float across the wire; the one division
+ * below turns those hundredths back into months for printing. The exception is the
+ * savings card, which since #296 sums a slice of `flows` and divides once — the same
+ * component the Budget page uses, for the same reason the arithmetic is not on the
+ * server: the period is a reading the reader picks after the payload has arrived. A
+ * figure no job has produced is `null` and prints as "not known yet" — never as zero,
+ * which is a number someone would act on.
  *
  * Labels come from three namespaces, addressed as `ns:key`. Net worth and the buffer
  * are portfolio vocabulary; the savings rate and the quality score are budget
@@ -27,9 +29,10 @@
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
+import { SavingsRate } from '../budget/SavingsRate.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
-import { formatBp, formatDate, formatMonth, type Overview as OverviewPayload } from '../shared.ts'
+import { formatDate, type Overview as OverviewPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
@@ -82,11 +85,10 @@ function Figures({
   data: OverviewPayload
   onRefreshed: () => void
 }): ReactNode {
-  const { t, language } = useT()
+  const { t } = useT()
   const unknown = t('empty.unknown')
 
-  const { history, hygiene, month, netWorth, totals } = data
-  const savingsRateBp = totals?.savingsRateBp ?? null
+  const { flows, history, hygiene, month, netWorth } = data
   const cover = data.emergencyFundCentimonths
 
   const netWorthRows: MetricRow[] =
@@ -116,15 +118,6 @@ function Figures({
               ]),
         ]
 
-  const budgetRows: MetricRow[] =
-    totals === null
-      ? []
-      : [
-          { label: t('budget:metric.income'), value: euro(totals.incomeCents) },
-          { label: t('budget:metric.spent'), value: euro(totals.spentCents) },
-          { label: t('budget:metric.assigned'), value: euro(totals.budgetedCents) },
-        ]
-
   return (
     <>
       <FreshnessBar freshness={data.freshness} onRefreshed={onRefreshed} />
@@ -140,16 +133,22 @@ function Figures({
           rows={netWorthRows}
         />
 
-        <Metric
-          label={t('budget:metric.savingsRate')}
-          value={savingsRateBp === null ? null : formatBp(savingsRateBp)}
-          unknown={unknown}
-          {...(month === null ? {} : { note: formatMonth(month, language) })}
-          {...(savingsRateBp === null
-            ? {}
-            : { tone: savingsRateBp < 0 ? ('negative' as const) : ('positive' as const) })}
-          rows={budgetRows}
-        />
+        {/*
+          The same card the Budget page shows, with the same four windows — one component,
+          because #296 was filed about these two drifting apart. It needs a month to anchor
+          on and this page has no picker, so `month` is the newest stored one; with no month
+          at all there are no flows either and nothing to draw.
+
+          `showFlows`: yes here, no on the Budget page. Nothing else on this page carries a
+          flow figure, so without the summed pair the percentage is unauditable — and these
+          rows used to come from `totals` and covered one month, which is exactly the
+          mismatch a period would have turned into a wrong reading.
+        */}
+        {month === null ? (
+          <Metric label={t('budget:metric.savingsRate')} value={null} unknown={unknown} />
+        ) : (
+          <SavingsRate history={flows} month={month} showFlows />
+        )}
 
         <Metric
           label={t('portfolio:metric.emergencyFund')}

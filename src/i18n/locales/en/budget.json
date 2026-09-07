@@ -129,9 +129,13 @@
     "unavailable": {
       "hint": {
         "no_basis": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
+        "no_month": "Pick another month, or run a sync to aggregate this one.",
+        "no_shared": "Tick Shared beside the categories a co-parent pays part of, under Settings, Categories — then say what share of them is yours under Settings, Household.",
         "zero_share": "Raise the share under Settings, Household to the part of these costs that is yours — or, if the whole invoice really does land here, switch the direction there instead."
       },
       "no_basis": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but nothing says what share of them is yours.",
+      "no_month": "Nothing has been computed for this month yet, so there is nothing to split.",
+      "no_shared": "No category is flagged as shared with a co-parent, so there is nothing to split.",
       "zero_share": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but your stated share is 0% — there is nothing to work the total back up from."
     }
   },
@@ -174,7 +178,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} characters",
-    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. The AI budget nudge on the Insights page can use a note like this when suggesting next month's amounts.",
+    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. Two AI passes read it: the budget nudge on the Insights page, when it suggests next month's amounts, and the month in words, so it can attribute a movement to what you told it instead of calling it drift. It is sent to the model as you wrote it, and it is not sent to the findings pass.",
     "label": "Note for {{month}}",
     "placeholder": "e.g. Replaced the dishwasher this month, about €400. Dentist appointment in October, about €150.",
     "stepper": {

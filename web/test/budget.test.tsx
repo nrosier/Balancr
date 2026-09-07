@@ -231,7 +231,7 @@ const FULL: BudgetPayload = {
     },
   ],
   benchmark: BENCHMARK,
-  // Nothing flagged as shared: the card draws nothing at all in that case, so the
+  // Nothing flagged as shared, which is what most budgets look like, so the
   // fixture every other test spreads stays free of a table it is not about (#44).
   custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
   uncategorised: { txnCount: 3, amountCents: 12_500 },
@@ -250,9 +250,11 @@ const EMPTY: BudgetPayload = {
   signals: [],
   // Nothing was spent, so there is nothing to compare. This drew nothing at all until
   // #300, on the reasoning that the empty month has its own sentence above — which stopped
-  // being true when #230 moved the comparison behind a tab of its own.
+  // being true when #230 moved the comparison behind a tab of its own. The same gap one tab
+  // over is #280, and looking for that one's siblings is how this was found.
   benchmark: { kind: 'unavailable', reason: 'no_month', mappedShareBp: null },
-  // Same reason, one step earlier: nothing was spent, so there is nothing to split.
+  // Same reason, one step earlier: nothing was spent, so there is nothing to split — and
+  // the same fix, because a tab of its own has nothing else on it either (#280).
   custody: { kind: 'unavailable', reason: 'no_month', paidCents: null },
   uncategorised: null,
 }
@@ -896,14 +898,31 @@ describe('the shared-cost split', () => {
     expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
   })
 
-  it('draws nothing when nothing is flagged, and nothing for an empty month', async () => {
-    // The ordinary state of most budgets. A card explaining an absence nobody asked about
-    // is noise, and the empty month already has a notice of its own (on Overview).
+  it('says nothing is flagged, and where to flag it, rather than drawing an empty tab', async () => {
+    // The ordinary state of most budgets, and the case #280 was filed about: this drew
+    // nothing at all, so somebody who clicked the label could not tell opt-in from broken.
     serve(json(FULL))
     renderApp(<Budget />, { path: '/budget/custody' })
-    await screen.findByLabelText('Month')
+
+    expect(
+      await screen.findByText('No category is flagged as shared with a co-parent, so there is nothing to split.'),
+    ).toBeTruthy()
+    expect(screen.getByText(/Tick Shared beside the categories a co-parent pays part of/)).toBeTruthy()
+    // Still no table: there is nothing to put in one.
     expect(screen.queryByText('Costs shared with a co-parent')).toBeNull()
-    expect(screen.queryByText(/are flagged as shared with a co-parent/)).toBeNull()
+  })
+
+  it('says so on a month nothing was computed for, where the tab is all there is', async () => {
+    // No categories either, so the guard on the section used to hide the pane — and the
+    // empty-month notice on Overview is not on screen from here (#280). `UNCOMPUTED`
+    // rather than `EMPTY`: a deployment with no months at all never reaches the sections.
+    serve(json(UNCOMPUTED))
+    renderApp(<Budget />, { path: '/budget/custody' })
+
+    expect(
+      await screen.findByText('Nothing has been computed for this month yet, so there is nothing to split.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Pick another month, or run a sync to aggregate this one.')).toBeTruthy()
   })
 })
 
@@ -971,6 +990,18 @@ describe('the savings rate over a period (#288)', () => {
     fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'previous_month' } })
     expect(rate()).toBe('Not known yet')
     expect(note()).toBe('No month with figures in this window')
+  })
+
+  it('leaves the flow pair off this page, where two cards already print the month\u2019s', async () => {
+    // The same component draws this card on the Overview page *with* the period's summed
+    // income and spend, because nothing else there carries a flow. Here the Spent and
+    // Income cards are two positions to the left, and a period's pair inside this card
+    // would put four figures under two labels covering two different spans (#296).
+    show()
+    await screen.findByText('€ 3.100')
+
+    const card = document.querySelector('.metric__head')?.closest('.metric')
+    expect(card?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
   })
 
   it('offers all four windows, translated', async () => {
