@@ -914,6 +914,13 @@ export const proposals = sqliteTable(
     payloadJson: text('payload_json').notNull(),
     /** Before/after pair rendered for review. */
     renderedDiffJson: text('rendered_diff_json'),
+    /**
+     * Why this proposal proposes what it does (#273): a `ProposalWhy`, either a
+     * catalogue code plus its numbers or one sentence the budget nudge wrote.
+     * Nullable — the proposal types nobody has written reasons for yet, and every
+     * row created before this column existed, simply have none.
+     */
+    explanationJson: text('explanation_json'),
     status: text({ enum: ['pending', 'applied', 'rejected', 'expired'] })
       .notNull()
       .default('pending'),

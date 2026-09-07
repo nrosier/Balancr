@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 import {
   CLARIFICATION_SPECS,
   FINDING_SPECS,
+  PROPOSAL_WHY_SPECS,
 } from '../src/domain/ai/codes.ts'
 import {
   BENCHMARK_BLOCKS,
@@ -144,9 +145,14 @@ for (const [lang, flat] of catalogues) {
 // 5. Every AI code the model may emit must have a sentence in every language,
 //    using exactly the variables its spec declares. This is the check that stops
 //    a new finding code shipping as a raw identifier in the Dutch UI.
+//
+//    `ai:proposal.why` (#273) is not emitted by a model at all — a proposal's reason
+//    is chosen in code — but it is the same failure mode: a code with no Dutch
+//    sentence would throw on a Dutch card, so it belongs under the same guard.
 const codeGroups: Array<[string, Record<string, { readonly vars: readonly string[] }>]> = [
   ['ai:findings', FINDING_SPECS],
   ['ai:clarify', CLARIFICATION_SPECS],
+  ['ai:proposal.why', PROPOSAL_WHY_SPECS],
 ]
 for (const [prefix, specs] of codeGroups) {
   for (const [code, spec] of Object.entries(specs)) {
@@ -258,5 +264,6 @@ console.log(
   `i18n ok — ${namespaces.length} namespaces, ${languages.length} languages (${counts}), ` +
     `${Object.keys(FINDING_SPECS).length} finding codes, ` +
     `${Object.keys(CLARIFICATION_SPECS).length} clarification codes, ` +
+    `${Object.keys(PROPOSAL_WHY_SPECS).length} proposal reasons, ` +
     `${bounds.length} length bounds`,
 )

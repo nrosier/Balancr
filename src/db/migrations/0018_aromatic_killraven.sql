@@ -1,0 +1,1 @@
+ALTER TABLE `proposals` ADD `explanation_json` text;

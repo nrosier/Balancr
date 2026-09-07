@@ -30,6 +30,7 @@ import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricin
 import {
   groundNudgeResponse,
   nudgeJsonSchema,
+  NUDGE_REASON_MAX_CHARS,
   parseNudgeResponse,
   type DroppedNudge,
 } from '../../adapters/gemini/schemas.ts'
@@ -57,11 +58,13 @@ const log = logger.child({ module: 'ai.budget-nudge' })
 /**
  * What one nudge is assumed to cost in output tokens, for the guard.
  *
- * Generous on purpose, same reasoning as `category-guess.ts`'s own constant: an
- * adjustment is `{label, amountCents}`, a few dozen characters, and even a full
- * batch of every category in a month is well under this.
+ * Generous on purpose, same reasoning as `category-guess.ts`'s own constant. Raised
+ * for #273: an adjustment now carries a sentence as well as a figure, so a full batch
+ * of 50 runs to roughly 2 750 tokens rather than a few hundred. This constant prices
+ * the guard the owner sees before spending money, so under-estimating it understates
+ * what the call will cost.
  */
-const EXPECTED_OUTPUT_TOKENS = 2_000
+const EXPECTED_OUTPUT_TOKENS = 4_000
 
 /**
  * The system prompt for a budget nudge.
@@ -71,9 +74,8 @@ const EXPECTED_OUTPUT_TOKENS = 2_000
  * more place a figure could be edited into a different figure.
  */
 const BUDGET_NUDGE_SYSTEM = `
-You read one household's note about what is coming up, and a list of categories
-with next month's suggested budget, computed from a trailing average of past
-spending.
+You read one household's note about a given month, and a list of categories with
+next month's suggested budget, computed from a trailing average of past spending.
 
 Rules:
 
@@ -87,6 +89,10 @@ Rules:
    Do not invent a label and do not answer for a candidate not in the list.
 4. If the note names nothing that matches any candidate, return no
    adjustments.
+5. Give every adjustment a reason: one short sentence saying what in the note
+   drove it. Refer to the category the way the note does, in your own words —
+   never by its label. If you cannot say why in one sentence, leave the reason
+   empty rather than padding it.
 `.trim()
 
 /**
@@ -97,6 +103,10 @@ function budgetNudgeInstruction(payload: NudgeRedaction['payload']): string {
   return [
     `The household's note is below, alongside ${payload.candidates.length} candidate`,
     'budgets for', payload.month, '. Adjust only the ones the note speaks to.',
+    // Said in words rather than sent as a schema bound: `toGeminiSchema` drops
+    // length keywords, and #96 settled that a quantity is stated in prose here
+    // and enforced locally in `groundNudgeResponse`.
+    `Keep each reason under ${NUDGE_REASON_MAX_CHARS} characters.`,
   ].join(' ')
 }
 
@@ -417,6 +427,14 @@ export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promi
         type: 'budget_amount.set',
         targetRef: encodeBudgetTarget(categoryId, month),
         payload: { amountCents: adjustment.amountCents },
+        // The model's own sentence when it wrote a usable one (#273), and a
+        // mechanical one when it did not. Stored with `locale` because model prose
+        // cannot be re-rendered in another language the way a code can — a reader
+        // who switches languages sees this line stay as it was written.
+        why:
+          adjustment.reason === ''
+            ? { source: 'rule', code: 'note_adjusted', params: { month } }
+            : { source: 'ai', text: adjustment.reason, locale },
         runId,
       })
       adjusted += 1
