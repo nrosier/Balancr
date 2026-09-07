@@ -67,11 +67,27 @@ describe('built-in prompts', () => {
     const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
     expect(body).toMatch(/no figure in the narrative may come from the note/i)
     expect(body).toMatch(/context and never data/i)
-    // And it is genuinely new text, not a rule the previous default already had: without
-    // this, an installation seeded before #298 would never be upgraded to it.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
-    expect(previous).toBeDefined()
-    expect(previous).not.toMatch(/come from the note/i)
+    // And it is genuinely new text rather than a rule the prompt always had: the oldest
+    // body in the chain predates it. This anchored on `.at(-1)` until #278 appended a body
+    // that has this rule too — that every install running *any* chain entry reaches the
+    // current default is `seedPrompts`' own chain walk, not this test's job.
+    const oldest = SUPERSEDED_PROMPTS['narrative.system'].at(0)?.replace(/\s+/g, ' ')
+    expect(oldest).toBeDefined()
+    expect(oldest).not.toMatch(/come from the note/i)
+  })
+
+  it('tells both passes what an excluded envelope is, and what not to say about it (#278)', () => {
+    // The `excluded` block is meaningless on its own: a payload whose envelopes fall short
+    // of the month's totals invites exactly the sentence the exclusion was asked to
+    // prevent, and rule 1 — report only what you were given — is what makes reporting the
+    // residue look correct. So both passes are told, and the narrative is told twice as
+    // much, because it is the one that writes prose.
+    expect(DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')).toMatch(
+      /withheld from you on purpose/i,
+    )
+    expect(DEFAULT_PROMPTS['analysis.system']).toContain('"excluded"')
+    const oldest = SUPERSEDED_PROMPTS['narrative.system'].at(0)?.replace(/\s+/g, ' ')
+    expect(oldest).not.toMatch(/withheld from you on purpose/i)
   })
 
   it('tells the narrative pass not to do arithmetic on the figures it quotes', () => {
@@ -281,6 +297,24 @@ describe('seedPrompts', () => {
     }
   })
 
+  it('leaves an edit of the newest superseded narrative built-in alone', () => {
+    // The same guarantee as the [0] case above, at the end of the chain: somebody who
+    // added their own last rule keeps it, and does not silently get ours instead.
+    const list = SUPERSEDED_PROMPTS['narrative.system']
+    const newest = list[list.length - 1]
+    if (newest === undefined) throw new Error('no superseded narrative body')
+    const edited = `${newest}\n9. Always mention the weather.`
+    createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: edited,
+      activate: true,
+    })
+
+    expect(seedPrompts(db)).toBe(1) // the analysis prompt only
+    expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(edited)
+  })
+
   it('does not touch a language override when it upgrades the shared row', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
@@ -337,6 +371,28 @@ describe('the superseded list', () => {
     // dropped that instance stops receiving improvements with nothing reporting it.
     for (const key of PROMPT_KEYS) {
       expect(SUPERSEDED_PROMPTS[key].length).toBeGreaterThan(0)
+    }
+  })
+
+  it('recognises every past built-in, not only the first', () => {
+    // One entry per shipped default, and each one is an install somewhere. A chain that
+    // recognises its oldest link and not its newest leaves behind exactly the instances
+    // that are most current — which is the wrong half to lose.
+    for (const key of PROMPT_KEYS) {
+      for (const previous of SUPERSEDED_PROMPTS[key]) {
+        expect(supersededBuiltIn(key, previous), key).toBe(true)
+      }
+    }
+  })
+
+  it('holds every entry exactly once, so an upgrade cannot loop between two of them', () => {
+    // A duplicate would not be caught by the "never contains the current text" check
+    // above and is the shape a copy-paste mistake takes: the chain is written by hand,
+    // one constant per shipped release, and two identical links in it would make the
+    // version list on somebody's install unreadable rather than wrong.
+    for (const key of PROMPT_KEYS) {
+      const bodies = SUPERSEDED_PROMPTS[key]
+      expect(new Set(bodies).size, key).toBe(bodies.length)
     }
   })
 

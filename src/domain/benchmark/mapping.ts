@@ -72,6 +72,15 @@ export interface CategoryMapping {
    * classified `fixed` reads as unset in this form rather than something to clear.
    */
   readonly nature: 'savings' | 'investments' | null
+  /**
+   * How much of this envelope the AI layer may see (#278).
+   *
+   * One field over two columns, because the question a person is answering is one
+   * question with three answers rather than two independent boxes — and two boxes
+   * would let somebody tick "absent" and "name withheld" together, which is a state
+   * with only one meaning and two ways to write it.
+   */
+  readonly aiVisibility: AiVisibility
   /** The latest computed month, so the biggest envelope can be dealt with first. */
   readonly spentCents: number
 }
@@ -79,6 +88,37 @@ export interface CategoryMapping {
 /** The only two values this module's own writer may set. */
 export const SAVINGS_NATURE_CHOICES = ['savings', 'investments'] as const
 export type SavingsNatureChoice = (typeof SAVINGS_NATURE_CHOICES)[number]
+
+/**
+ * What the AI layer may see of one envelope, from most to least (#278).
+ *
+ * `label_only` is `category_meta.sensitive`: the amounts, the COICOP class and the
+ * nature cross, and the name and the description do not. `absent` is `ai_excluded`:
+ * nothing crosses, and the money survives only inside the month's totals and the
+ * count `redact.ts` sends beside them.
+ *
+ * Ordered widest-first, which is the order the control offers them in: the default is
+ * the first entry, and a person reading down the list reads decreasing disclosure.
+ */
+export const AI_VISIBILITY_CHOICES = ['shown', 'label_only', 'absent'] as const
+export type AiVisibility = (typeof AI_VISIBILITY_CHOICES)[number]
+
+/**
+ * The pair of columns, read as one answer.
+ *
+ * `ai_excluded` wins: it is the stronger answer, and `saveAiVisibility` sets
+ * `sensitive` alongside it so the two can never disagree about which of them is in
+ * force. Reading the pair in this order means that even a row written by some other
+ * path — an old `category_meta.set` proposal clearing `sensitive`, say — still reads as
+ * `absent` while the exclusion stands.
+ */
+export function aiVisibilityOf(row: {
+  aiExcluded: boolean
+  sensitive: boolean
+}): AiVisibility {
+  if (row.aiExcluded) return 'absent'
+  return row.sensitive ? 'label_only' : 'shown'
+}
 
 /**
  * Every category, ordered by how much attention it needs.
@@ -112,12 +152,18 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
       coicop: categoryMeta.coicopCode,
       custodyShared: categoryMeta.custodyShared,
       nature: categoryMeta.nature,
+      sensitive: categoryMeta.sensitive,
+      aiExcluded: categoryMeta.aiExcluded,
     })
     .from(categoryMeta)
     .all()
-    .map((row) => ({
+    .map(({ sensitive, aiExcluded, ...row }) => ({
       ...row,
       nature: row.nature === 'savings' || row.nature === 'investments' ? row.nature : null,
+      // The two columns collapse to the one answer here rather than on the wire, so
+      // every reader of a `CategoryMapping` sees the same three states and nobody
+      // downstream has to know which column carries which.
+      aiVisibility: aiVisibilityOf({ sensitive, aiExcluded }),
       spentCents: spend.get(row.categoryId) ?? 0,
     }))
 
@@ -171,6 +217,31 @@ export function saveCustodyShared(db: Db, categoryId: string, shared: boolean): 
 
   db.update(categoryMeta)
     .set({ custodyShared: shared, updatedAt: new Date() })
+    .where(eq(categoryMeta.categoryId, categoryId))
+    .run()
+}
+
+/**
+ * Sets how much of one envelope the AI layer may see (#278).
+ *
+ * Writes both columns from the one answer, always, so the pair is never contradictory
+ * and the state a person picked is the state that reads back.
+ *
+ * `absent` sets `sensitive` as well as `ai_excluded`. Not redundant: exclusion is
+ * strictly the stronger answer, so the weaker flag being on alongside it is consistent,
+ * and it means the flag fails towards withholding — a future path that reads only
+ * `sensitive` still keeps the name back. It also stops the `sensitive_unknown`
+ * clarification asking about an envelope whose answer has already been given.
+ */
+export function saveAiVisibility(db: Db, categoryId: string, visibility: AiVisibility): void {
+  requireCategory(db, categoryId)
+
+  db.update(categoryMeta)
+    .set({
+      aiExcluded: visibility === 'absent',
+      sensitive: visibility !== 'shown',
+      updatedAt: new Date(),
+    })
     .where(eq(categoryMeta.categoryId, categoryId))
     .run()
 }

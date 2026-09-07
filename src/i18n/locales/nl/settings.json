@@ -129,8 +129,16 @@
       "wrongYear": "{{field}} moet vier cijfers zijn — bijvoorbeeld 1998, niet een volledige datum."
     },
     "mapping": {
-      "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, of ze gedeeld is, en of ze een spaar- of beleggingspot is",
+      "aiVisibility": {
+        "absent": "Niets",
+        "label_only": "Alleen bedragen",
+        "shown": "Naam en bedragen"
+      },
+      "aiVisibilityLabel": "Wat de AI mag zien van {{name}}",
+      "aiVisibilityNote": "Bij alleen bedragen blijven de naam en je beschrijving op deze server; het bedrag, de COICOP-afdeling en de soort kost gaan wel mee, dus een ruwe gok naar waar de envelope voor dient blijft mogelijk. Bij niets verdwijnt de envelope uit elke aanvraag: geen bedragen, geen afdeling, en geen bevinding, verhaalregel of budgetvoorstel erover. Het geld blijft in de maandtotalen zitten, aangegeven als een aantal en één samengevoegd bedrag, zodat de cijfers blijven kloppen.",
+      "caption": "De afdeling van elke categorie, de referentielijn die ze voedt, of ze gedeeld is, of ze een spaar- of beleggingsenvelope is, en hoeveel de AI ervan mag zien",
       "column": {
+        "aiVisibility": "Naar de AI",
         "category": "Categorie",
         "division": "COICOP-afdeling",
         "line": "Referentielijn",
@@ -140,7 +148,7 @@
       },
       "consumption": "Huishoudelijke consumptie",
       "hidden": "Verborgen",
-      "hint": "Als welke COICOP-afdeling elke categorie telt, want dat is wat de vergelijking optelt, welke categorieën je met een co-ouder deelt, en welke een spaar- of beleggingspot zijn. Alle drie worden bewaard zodra je ze instelt, en toegepast de volgende keer dat de budgetpagina gelezen wordt.",
+      "hint": "Welke COICOP-afdeling elke categorie is, wat de vergelijking optelt, welke categorieën je met een co-ouder deelt, welke spaar- of beleggingsenveloppen zijn, en hoeveel de AI-laag van elke categorie mag zien. Alle vier worden bewaard zoals je ze instelt en toegepast zodra de budgetpagina opnieuw wordt gelezen.",
       "income": "Inkomen",
       "inputLabel": "COICOP-afdeling voor {{name}}",
       "nature": {

@@ -177,6 +177,11 @@ async function prepareGuessBatch(
   }))
 
   const redaction = redactCategoryGuessBatch(inputs, categoryMetaById, categoryNameById, locale)
+  // Every candidate's history may have been entirely `aiExcluded` (#278), which leaves a
+  // batch with a vocabulary of nothing and no candidate to guess for. Treated as
+  // `no_candidates` rather than sent: a call with an empty list costs money and can only
+  // come back empty, and the caller's existing null path already says so per id.
+  if (redaction.payload.candidates.length === 0) return null
   return { candidates, redaction }
 }
 

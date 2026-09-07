@@ -555,6 +555,74 @@ describe('PATCH /api/settings/categories/:id/nature', () => {
   })
 })
 
+describe('PATCH /api/settings/categories/:id/ai-visibility', () => {
+  const send_ = (id: string, body: object, options?: { token?: string }) =>
+    patch(`/api/settings/categories/${id}/ai-visibility`, body, options)
+
+  const visibilityOf = (id: string): string | undefined =>
+    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.aiVisibility
+
+  it('withholds an envelope entirely, and answers with the list saying so (#278)', async () => {
+    const res = await send_('cat-groceries', { aiVisibility: 'absent' })
+
+    expect(res.statusCode).toBe(200)
+    const row = res
+      .json<Settings>()
+      .benchmark.categories.find((category) => category.categoryId === 'cat-groceries')
+    expect(row?.aiVisibility).toBe('absent')
+    expect(visibilityOf('cat-groceries')).toBe('absent')
+  })
+
+  it('answers the weaker state too, and does not leave the pair half-written', async () => {
+    // The two flags are one control, so the middle state has to be reachable from the
+    // strongest one: somebody who over-corrected must be able to come back to it.
+    await send_('cat-groceries', { aiVisibility: 'absent' })
+    expect((await send_('cat-groceries', { aiVisibility: 'label_only' })).statusCode).toBe(200)
+    expect(visibilityOf('cat-groceries')).toBe('label_only')
+    expect((await send_('cat-groceries', { aiVisibility: 'shown' })).statusCode).toBe(200)
+    expect(visibilityOf('cat-groceries')).toBe('shown')
+  })
+
+  it('records the change as the three-state answer, not as two columns', async () => {
+    // The one settings write whose effect is what leaves the machine, so the entry has
+    // to read as the decision somebody made rather than as the pair it was stored in.
+    await send_('cat-groceries', { aiVisibility: 'label_only' })
+    await send_('cat-groceries', { aiVisibility: 'absent' })
+    expect(auditActions(ctx.db)).toContain('settings.aiVisibility')
+
+    const entry = ctx.db.select().from(auditLog).all().at(-1)
+    expect(JSON.parse(entry?.beforeJson ?? '{}')).toEqual({ aiVisibility: 'label_only' })
+    expect(JSON.parse(entry?.afterJson ?? '{}')).toEqual({ aiVisibility: 'absent' })
+  })
+
+  it('accepts it on an income category, which is always sent otherwise', async () => {
+    // Unlike the custody flag, this is not inert on income: an income envelope has no
+    // "worth sending" threshold to fall under, so excluding one is the only way to keep
+    // it out. The control is therefore never disabled in the panel either.
+    const res = await send_('cat-salary', { aiVisibility: 'absent' })
+    expect(res.statusCode).toBe(200)
+    expect(visibilityOf('cat-salary')).toBe('absent')
+  })
+
+  it('refuses a state outside the three, and an empty body', async () => {
+    expect((await send_('cat-groceries', { aiVisibility: 'hidden' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', { aiVisibility: true })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', {})).statusCode).toBe(400)
+    expect(visibilityOf('cat-groceries')).toBe('shown')
+  })
+
+  it('answers 404 for a category Balancr has never seen', async () => {
+    expect((await send_('cat-invented', { aiVisibility: 'absent' })).statusCode).toBe(404)
+  })
+
+  it('is refused for a viewer', async () => {
+    // The state that decides what a paid model is shown is not a read-only concern.
+    const res = await send_('cat-groceries', { aiVisibility: 'absent' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(visibilityOf('cat-groceries')).toBe('shown')
+  })
+})
+
 describe('PATCH /api/settings/advice', () => {
   it('publishes the bands in force and every preset to choose from', async () => {
     // The presets travel on the wire because `PROFILE_PRESETS` lives on this side: the

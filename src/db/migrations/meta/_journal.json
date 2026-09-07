@@ -134,6 +134,13 @@
       "when": 1788765192821,
       "tag": "0018_aromatic_killraven",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788809201504,
+      "tag": "0019_bright_maximus",
+      "breakpoints": true
     }
   ]
 }
