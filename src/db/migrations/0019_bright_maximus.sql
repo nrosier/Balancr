@@ -1,0 +1,1 @@
+ALTER TABLE `category_meta` ADD `ai_excluded` integer DEFAULT false NOT NULL;

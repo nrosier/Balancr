@@ -175,8 +175,8 @@ export type {
   SharedCostDirection,
 } from '../../src/domain/benchmark/vocabulary.ts'
 
-export { SAVINGS_NATURE_CHOICES } from '../../src/domain/benchmark/mapping.ts'
-export type { SavingsNatureChoice } from '../../src/domain/benchmark/mapping.ts'
+export { AI_VISIBILITY_CHOICES, SAVINGS_NATURE_CHOICES } from '../../src/domain/benchmark/mapping.ts'
+export type { AiVisibility, SavingsNatureChoice } from '../../src/domain/benchmark/mapping.ts'
 
 export type {
   BootstrapResponse,

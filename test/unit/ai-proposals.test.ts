@@ -199,6 +199,17 @@ describe('createProposal', () => {
     expect(storedDiff(row)?.fields[0]?.warn).toBeUndefined()
   })
 
+  it('cannot take its own blindfold off (#278)', async () => {
+    // `aiExcluded` is deliberately not on `categoryMetaSetSchema`, so a model that has
+    // noticed a gap in the month cannot propose closing it. Unlike `sensitive` above —
+    // which a model *may* propose turning off, with a warning, because the owner is
+    // allowed to decide their therapy envelope is just "Health" — this one is the
+    // owner's alone: the whole guarantee is that nothing which reads the payload gets a
+    // say in what the next payload contains. The route in `settings.ts` is the one writer.
+    await expect(propose({ aiExcluded: false } as never)).rejects.toThrow(/invalid/)
+    await expect(propose({ nature: 'fixed', aiExcluded: true } as never)).rejects.toThrow(/invalid/)
+  })
+
   it('supersedes the pending proposal for the same target rather than duplicating it', async () => {
     // `proposals_pending_uq` would reject the insert; the newer suggestion is the
     // one computed from newer data, so it wins.

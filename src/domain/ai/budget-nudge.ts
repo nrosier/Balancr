@@ -203,7 +203,11 @@ function prepareNudgeBatch(db: Db, month: string, locale: string): NudgeRedactio
   if (inputs.length === 0) return null
 
   const note = loadMonthNote(db, month)
-  return redactBudgetNudgeBatch(inputs, categoryMetaById, month, locale, note)
+  const redaction = redactBudgetNudgeBatch(inputs, categoryMetaById, month, locale, note)
+  // Every pending candidate may be `aiExcluded` (#278), leaving nothing to adjust. Same
+  // answer as an empty pending list above: no call, and the deterministic amounts stand.
+  if (redaction.payload.candidates.length === 0) return null
+  return redaction
 }
 
 function decodeBudgetTargetCategoryId(targetRef: string): string {

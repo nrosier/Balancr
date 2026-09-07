@@ -180,6 +180,7 @@ const BENCHMARK: Payload['benchmark'] = {
       coicop: null,
       custodyShared: false,
       nature: null,
+      aiVisibility: 'shown',
       spentCents: 8_000,
     },
     {
@@ -190,6 +191,7 @@ const BENCHMARK: Payload['benchmark'] = {
       coicop: '04.5.1',
       custodyShared: false,
       nature: null,
+      aiVisibility: 'shown',
       spentCents: 120_000,
     },
     {
@@ -200,6 +202,7 @@ const BENCHMARK: Payload['benchmark'] = {
       coicop: '00',
       custodyShared: false,
       nature: null,
+      aiVisibility: 'shown',
       spentCents: 1_500,
     },
     {
@@ -210,6 +213,7 @@ const BENCHMARK: Payload['benchmark'] = {
       coicop: null,
       custodyShared: false,
       nature: null,
+      aiVisibility: 'shown',
       spentCents: 0,
     },
     // Hidden, so the co-parent box is closed for the second of the two reasons it can
@@ -222,6 +226,9 @@ const BENCHMARK: Payload['benchmark'] = {
       coicop: null,
       custodyShared: false,
       nature: null,
+      // The one row where the third state is not the default, because it is the row
+      // where it matters most: a hidden envelope that saw money is still sent (#278).
+      aiVisibility: 'absent',
       spentCents: 0,
     },
   ],
@@ -2059,6 +2066,9 @@ describe('the category table', () => {
   const nature = (name: string): HTMLSelectElement =>
     screen.getByLabelText(`Savings or investments envelope for ${name}`) as HTMLSelectElement
 
+  const visibility = (name: string): HTMLSelectElement =>
+    screen.getByLabelText(`What the AI may see of ${name}`) as HTMLSelectElement
+
   /** The payload with one envelope already flagged, for the checked state (#44). */
   const withFlagged = (categoryId: string): Payload => ({
     ...PAYLOAD,
@@ -2264,6 +2274,56 @@ describe('the category table', () => {
     expect(nature('Old subscription').disabled).toBe(true)
   })
 
+  it('withholds an envelope from the AI the moment it is picked (#278)', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/categories/cat-coffee/ai-visibility': json(PAYLOAD),
+    })
+
+    expect(visibility('Coffee').value).toBe('shown')
+    fireEvent.change(visibility('Coffee'), { target: { value: 'absent' } })
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/categories/cat-coffee/ai-visibility',
+          method: 'PATCH',
+          body: { aiVisibility: 'absent' },
+        },
+      ])
+    })
+  })
+
+  it('shows the stored state, including on a row that is already withheld', async () => {
+    await open(READS)
+    expect(visibility('Old subscription').value).toBe('absent')
+  })
+
+  it('offers the three states in order of what they give away', async () => {
+    await open(READS)
+
+    const options = Array.from(visibility('Coffee').options, (option) => option.value)
+    expect(options).toEqual(['shown', 'label_only', 'absent'])
+  })
+
+  it('leaves the control open for income and hidden rows, unlike the two beside it', async () => {
+    // The custody box and the nature tag are closed for both, because the split and the
+    // savings nudge skip them. This one is not: a hidden envelope with money in it is
+    // still sent, and an income envelope always is — so closing the control would take
+    // away the answer on exactly the rows somebody would want it for (#278).
+    await open(READS)
+
+    expect(visibility('Salary').disabled).toBe(false)
+    expect(visibility('Old subscription').disabled).toBe(false)
+  })
+
+  it('says what each state costs, rather than only what it withholds', async () => {
+    await open(READS)
+
+    expect(screen.getByText(/a broad guess at what the envelope is for remains possible/)).toBeTruthy()
+    expect(screen.getByText(/declared as a count and one combined figure/)).toBeTruthy()
+  })
+
   it('says beside the boxes that no budget figure is adjusted', async () => {
     // The one thing this column has to get across. A person who read a tick as an edit
     // to their budget would be right to be alarmed, and wrong about what happens.
@@ -2281,6 +2341,7 @@ describe('the category table', () => {
     expect(picker('Coffee').disabled).toBe(true)
     expect(shared('Coffee').disabled).toBe(true)
     expect(nature('Coffee').disabled).toBe(true)
+    expect(visibility('Coffee').disabled).toBe(true)
   })
 })
 

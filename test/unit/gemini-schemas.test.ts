@@ -79,6 +79,7 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
         txnCount: 4,
       },
     ],
+    excluded: null,
     accounts: [{ label: 'a1', source: 'actual', kind: 'checking', inNetWorth: true }],
     portfolio: null,
     drift: null,

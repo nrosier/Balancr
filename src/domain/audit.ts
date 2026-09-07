@@ -99,6 +99,16 @@ export const AUDIT_ACTIONS = [
    */
   'settings.nature',
   /**
+   * How much of a category the AI layer may see: shown, name withheld, or absent (#278).
+   *
+   * Its own action for the same reason the two above have theirs, with one more: this is
+   * the only settings write whose effect is what leaves the machine, so the trail
+   * answering "when did this envelope stop being sent" has to be findable by name rather
+   * than by opening every `category_meta` entry. `before`/`after` carry the three-state
+   * answer, not the two columns, so an entry reads as the decision somebody made.
+   */
+  'settings.aiVisibility',
+  /**
    * A month's own note on the Budget page (#217, redesigned per-month by #270).
    *
    * Lives on Budget rather than Settings now, but belongs on this list for the

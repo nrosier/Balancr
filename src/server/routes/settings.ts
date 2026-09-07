@@ -66,10 +66,12 @@ import {
 } from '../../domain/benchmark/household.ts'
 import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
 import {
+  AI_VISIBILITY_CHOICES,
   COICOP_CHOICES,
   loadMapping,
   MappingError,
   SAVINGS_NATURE_CHOICES,
+  saveAiVisibility,
   saveCoicop,
   saveCustodyShared,
   saveNature,
@@ -330,6 +332,17 @@ const coicopPatchRequest = z.strictObject({ coicop: z.enum(COICOP_CHOICES).nulla
  * are only two states to express.
  */
 const custodySharedPatchRequest = z.strictObject({ custodyShared: z.boolean() })
+
+/**
+ * How much of one category the AI layer may see (#278).
+ *
+ * An enum rather than the two booleans it writes, so the wire carries the decision and
+ * not its storage: a request that could set `ai_excluded` without `sensitive` would be a
+ * request for the one pair of values `saveAiVisibility` exists to make impossible.
+ */
+const aiVisibilityPatchRequest = z.strictObject({
+  aiVisibility: z.enum(AI_VISIBILITY_CHOICES),
+})
 
 /**
  * One category's savings/investments tag, or `null` to clear it (#252).
@@ -954,6 +967,47 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: { custodyShared: before.custodyShared },
       after: { custodyShared },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Sets how much of one envelope the AI layer may see (#278).
+   *
+   * The one settings route whose effect is on what leaves the machine, which is why the
+   * body is the three-state answer and not the two columns behind it: see
+   * `saveAiVisibility` for why the pair is always written together.
+   *
+   * Allowed on an income or hidden category, unlike the two routes above, and for a
+   * reason that is not consistency: those two flags feed features that ignore both
+   * kinds, so storing one there would do nothing — but a hidden envelope with money in
+   * it *is* sent (`bundle.ts`'s `worthSending`), and an income envelope always is. So
+   * the answer means something for every row in the table, and the control is never
+   * closed.
+   */
+  app.patch('/api/settings/categories/:id/ai-visibility', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const categoryId = (request.params as { id: string }).id
+    const { aiVisibility } = parseBody(aiVisibilityPatchRequest, request.body)
+
+    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      saveAiVisibility(db, categoryId, aiVisibility)
+    } catch (error) {
+      if (error instanceof MappingError) throw notFound('No such category.')
+      throw error
+    }
+
+    recordAudit(db, {
+      action: 'settings.aiVisibility',
+      entity: 'category_meta',
+      entityRef: categoryId,
+      actorId: user.id,
+      before: { aiVisibility: before.aiVisibility },
+      after: { aiVisibility },
     })
 
     return buildSettings(db, request)

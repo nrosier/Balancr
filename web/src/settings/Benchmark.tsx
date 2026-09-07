@@ -65,6 +65,7 @@ import {
   MAX_HOUSEHOLD_MEMBERS,
   OUTSIDE_CONSUMPTION,
   parseMoneyToCents,
+  AI_VISIBILITY_CHOICES,
   SAVINGS_NATURE_CHOICES,
   SHARED_COST_DIRECTIONS,
   type BenchmarkSetting,
@@ -917,6 +918,13 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
             to be alarmed (#44).
           */}
           <p className="panel__meta muted">{t('settings:benchmark.mapping.sharedNote')}</p>
+          {/*
+            What the third state actually costs, said where the choice is made. It is the
+            one control on this screen whose effect is on what leaves the machine, and
+            the honest version of it names the loss: an absent envelope gets no finding,
+            no narrative sentence and no budget nudge of its own (#278).
+          */}
+          <p className="panel__meta muted">{t('settings:benchmark.mapping.aiVisibilityNote')}</p>
 
           <div className="table-scroll">
             <table className="table">
@@ -933,6 +941,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                   <th scope="col">{t('settings:benchmark.mapping.column.line')}</th>
                   <th scope="col">{t('settings:benchmark.mapping.column.shared')}</th>
                   <th scope="col">{t('settings:benchmark.mapping.column.nature')}</th>
+                  <th scope="col">{t('settings:benchmark.mapping.column.aiVisibility')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1055,6 +1064,37 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                           {SAVINGS_NATURE_CHOICES.map((choice) => (
                             <option key={choice} value={choice}>
                               {t(`settings:benchmark.mapping.nature.${choice}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      {/*
+                        Never disabled, unlike the two columns before it. Those feed
+                        features that ignore income and hidden categories, so a stored
+                        flag there would do nothing — but a hidden envelope with money in
+                        it is sent to the model, and an income envelope always is, so this
+                        answer means something on every row (#278).
+                      */}
+                      <td>
+                        <select
+                          className="field__input"
+                          aria-label={t('settings:benchmark.mapping.aiVisibilityLabel', {
+                            name: category.categoryName,
+                          })}
+                          value={category.aiVisibility}
+                          disabled={locked}
+                          onChange={(event) => {
+                            state.save(
+                              `aiVisibility:${category.categoryId}`,
+                              'PATCH',
+                              `/api/settings/categories/${category.categoryId}/ai-visibility`,
+                              { aiVisibility: event.target.value },
+                            )
+                          }}
+                        >
+                          {AI_VISIBILITY_CHOICES.map((choice) => (
+                            <option key={choice} value={choice}>
+                              {t(`settings:benchmark.mapping.aiVisibility.${choice}`)}
                             </option>
                           ))}
                         </select>

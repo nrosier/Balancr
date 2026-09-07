@@ -263,6 +263,29 @@ export const categoryMeta = sqliteTable(
      */
     sensitive: integer({ mode: 'boolean' }).notNull().default(false),
     /**
+     * The stronger flag: this envelope is not in any payload at all (#278).
+     *
+     * `sensitive` withholds the name and the description and deliberately keeps the
+     * amounts, the COICOP class and the nature — which still leaves a broad category
+     * inferable, since `06` is health whatever the label says. This removes the row
+     * instead: no label, no class, no amounts of its own. Its money survives only
+     * inside the month's totals, plus a count and a total of what was left out, so the
+     * figures still reconcile and the model is not left to read the difference as an
+     * error. See `redact.ts`'s `RedactedExcluded`.
+     *
+     * Two columns rather than one three-valued one, because `sensitive` is already an
+     * indexed column with a clarification code and an AI-proposal field pointing at it.
+     * The pair is written together from a single three-state control and is therefore
+     * never contradictory: excluding a category also sets `sensitive`, since exclusion
+     * is strictly the stronger answer and the flag should fail towards withholding if
+     * any future path reads only one of the two. Read it back through
+     * `mapping.ts`'s `aiVisibility`, never off this column alone.
+     *
+     * No index: nothing queries on it. The one filter is in `redact.ts`, over rows the
+     * bundle has already loaded.
+     */
+    aiExcluded: integer('ai_excluded', { mode: 'boolean' }).notNull().default(false),
+    /**
      * 0..100 — how much of the above the user confirmed rather than Balancr
      * inferred. Each answered clarification raises it; nothing lowers it.
      */

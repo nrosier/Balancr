@@ -129,8 +129,16 @@
       "wrongYear": "{{field}} should be four digits — 1998, say, rather than a full date."
     },
     "mapping": {
-      "caption": "Each category's division, the reference line it feeds, whether it is shared, and whether it is a savings or investments envelope",
+      "aiVisibility": {
+        "absent": "Nothing",
+        "label_only": "Amounts only",
+        "shown": "Name and amounts"
+      },
+      "aiVisibilityLabel": "What the AI may see of {{name}}",
+      "aiVisibilityNote": "Amounts only keeps the name and your description on this server; the amount, the COICOP division and the kind of cost still go, so a broad guess at what the envelope is for remains possible. Nothing removes the envelope from every request: no amounts, no division, and no finding, narrative sentence or budget suggestion about it. Its money stays inside the month's totals, declared as a count and one combined figure, so the figures still add up.",
+      "caption": "Each category's division, the reference line it feeds, whether it is shared, whether it is a savings or investments envelope, and how much of it the AI may see",
       "column": {
+        "aiVisibility": "Sent to the AI",
         "category": "Category",
         "division": "COICOP division",
         "line": "Reference line",
@@ -140,7 +148,7 @@
       },
       "consumption": "Household consumption",
       "hidden": "Hidden",
-      "hint": "Which COICOP division each category counts as, which is what the comparison sums, which categories you split with a co-parent, and which are savings or investments envelopes. All three are saved as you set them, and applied the next time the budget page is read.",
+      "hint": "Which COICOP division each category counts as, which is what the comparison sums, which categories you split with a co-parent, which are savings or investments envelopes, and how much of each one the AI layer may see. All four are saved as you set them, and applied the next time the budget page is read.",
       "income": "Income",
       "inputLabel": "COICOP division for {{name}}",
       "nature": {
