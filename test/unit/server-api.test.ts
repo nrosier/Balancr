@@ -34,7 +34,12 @@ import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { TREND_MONTHS } from '../../src/server/routes/api/budget.ts'
-import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.ts'
+import { TRAILING_MONTHS } from '../../src/domain/aggregate/savings.ts'
+import {
+  COVER_WINDOW_MONTHS,
+  emergencyFundCentimonths,
+  FLOW_HISTORY_MONTHS,
+} from '../../src/server/routes/api/overview.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
@@ -151,6 +156,25 @@ describe('GET /api/overview', () => {
     const body = (await get('/api/overview')).json()
     // Mean of 310 000 and 352 000 is 331 000; 1 240 000 / 331 000 = 3.745…
     expect(body.emergencyFundCentimonths).toBe(375)
+  })
+
+  it('sends the monthly flows the savings card sums over, beside the net-worth points', async () => {
+    // The absence this fixes (#296): `history` is net-worth points and carries no flow at
+    // all, so the savings card had nothing to sum and was stuck on one calendar month.
+    // Oldest first, ending at the anchor month, and shaped exactly like `/api/budget`'s
+    // own history so `periodSavings` reads either as it arrives.
+    const body = (await get('/api/overview')).json()
+
+    expect(body.flows.map((entry: { month: string }) => entry.month)).toEqual(['2026-07', MONTH])
+    expect(body.flows.at(-1)).toEqual({
+      month: MONTH,
+      incomeCents: 400_000,
+      spentCents: 352_000,
+      budgetedCents: body.totals.budgetedCents,
+      savingsRateBp: body.totals.savingsRateBp,
+    })
+    // The two arrays are different kinds of thing and neither stands in for the other.
+    expect(body.history).not.toEqual(body.flows)
   })
 })
 
@@ -1140,5 +1164,14 @@ describe('months of cover', () => {
 
   it('is hundredths of a month, so a fraction never becomes a float', () => {
     expect(emergencyFundCentimonths(333_333, [{ spentCents: 100_000 }])).toBe(333)
+  })
+
+  it('reads its own window length, not the one the savings periods need', () => {
+    // The two constants are both twelve today and agree by coincidence, not by
+    // derivation: one is a statement about seasonality and the other is the longest
+    // window the savings card offers (#296). This asserts the relationship rather than
+    // the number, so raising either does not silently shorten the other's data.
+    expect(FLOW_HISTORY_MONTHS).toBeGreaterThanOrEqual(COVER_WINDOW_MONTHS)
+    expect(FLOW_HISTORY_MONTHS).toBeGreaterThanOrEqual(TRAILING_MONTHS)
   })
 })
