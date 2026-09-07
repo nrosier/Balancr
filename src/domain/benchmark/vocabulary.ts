@@ -71,6 +71,17 @@ export const BENCHMARK_BLOCKS = ['source', 'equivalence', 'reference_household']
 export type BenchmarkBlock = (typeof BENCHMARK_BLOCKS)[number]
 
 /**
+ * Why there is no comparison. Enumerated, because each one needs a different action.
+ *
+ * Here rather than in `compare.ts` with the comparison itself, for the reason the group
+ * list is here: the browser draws a notice per reason, and `check-i18n.ts` walks the same
+ * list to insist both languages have a sentence and a hint for every one of them (#300).
+ * Neither can reach `compare.ts`, which imports the file loader and through it `config`.
+ */
+export const BENCHMARK_UNAVAILABLE = ['no_file', 'no_month', 'no_mapping', 'too_unmapped'] as const
+export type BenchmarkUnavailable = (typeof BENCHMARK_UNAVAILABLE)[number]
+
+/**
  * The reserved code for "not household consumption": savings, transfers, taxes, debt
  * capital, money moved to an investment account.
  *

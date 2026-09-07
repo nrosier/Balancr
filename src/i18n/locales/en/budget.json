@@ -51,8 +51,15 @@
     "title": "Compared with Belgian households",
     "transcribed": "Not yet confirmed at the source: {{blocks}}.",
     "unavailable": {
-      "hint": "Map your categories to a COICOP division under Settings and the comparison appears here.",
+      "hint": {
+        "no_file": "Settings, Benchmark names the file that is expected, and what to check when it cannot be read.",
+        "no_mapping": "Map your categories to a COICOP division under Settings and the comparison appears here.",
+        "no_month": "Pick another month, or run a sync to aggregate this one.",
+        "too_unmapped": "Map more of your categories to a COICOP division under Settings and the comparison appears here."
+      },
+      "no_file": "This installation has no benchmark to compare against, so no comparison is drawn anywhere.",
       "no_mapping": "None of this month's spending is mapped to a benchmark group, so there is nothing to compare it against yet.",
+      "no_month": "Nothing has been computed for this month yet, so there is nothing to compare.",
       "too_unmapped": "Only {{share}} of this month's spending is mapped to a benchmark group, under the {{floor}} a comparison needs. What it would say about housing would really be a statement about the mapping."
     },
     "unmapped": {

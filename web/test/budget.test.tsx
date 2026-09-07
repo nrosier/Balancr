@@ -248,9 +248,9 @@ const EMPTY: BudgetPayload = {
   trendMonths: [],
   categories: [],
   signals: [],
-  // Nothing was spent, so there is nothing to compare — and the card renders nothing at
-  // all for this reason rather than a box saying so, because the empty month already has
-  // its own sentence above.
+  // Nothing was spent, so there is nothing to compare. This drew nothing at all until
+  // #300, on the reasoning that the empty month has its own sentence above — which stopped
+  // being true when #230 moved the comparison behind a tab of its own.
   benchmark: { kind: 'unavailable', reason: 'no_month', mappedShareBp: null },
   // Same reason, one step earlier: nothing was spent, so there is nothing to split.
   custody: { kind: 'unavailable', reason: 'no_month', paidCents: null },
@@ -604,25 +604,77 @@ describe('the Belgian comparison', () => {
     expect(
       await screen.findByText(/Only 64,9% of this month's spending is mapped .* under the 70%/),
     ).toBeTruthy()
+    // "Map *more* of your categories": the distinction the shared hint could not make
+    // (#300). `no_mapping` has nothing to add to, and telling somebody who has mapped two
+    // thirds of their budget to map their categories reads as though none of it counted.
     expect(
-      screen.getByText('Map your categories to a COICOP division under Settings and the comparison appears here.'),
+      screen.getByText('Map more of your categories to a COICOP division under Settings and the comparison appears here.'),
     ).toBeTruthy()
     expect(screen.queryByText('Compared with Belgian households')).toBeNull()
   })
 
-  it('draws nothing at all for a month with no spending in it', async () => {
+  it('says so on a month nothing was computed for, where the tab is all there is', async () => {
+    // The case #300 was filed about. `UNCOMPUTED` has no categories either, so the guard
+    // on the section hid the pane outright — and the empty-month notice lives inside the
+    // overview section, which is not on screen from here.
     serve(json(UNCOMPUTED))
     renderApp(<Budget />, { path: '/budget/benchmark' })
-    // The month picker is page-level (#230), so it is what settles regardless of which
-    // tab is open — the empty-month notice itself lives on Overview.
-    await screen.findByLabelText('Month')
 
-    // `no_month` and `no_file` are both supported states rather than problems, and a box
-    // on every budget page saying so would be noise on a page that already says the month
-    // is empty. Asserted through the card's own sentences rather than through the notice
-    // classes, because the empty month has a notice of its own two lines up (on Overview).
+    expect(
+      await screen.findByText('Nothing has been computed for this month yet, so there is nothing to compare.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Pick another month, or run a sync to aggregate this one.')).toBeTruthy()
+    // Still no table: there is nothing to put in one.
     expect(screen.queryByText('Compared with Belgian households')).toBeNull()
+    // And not the hint the shared string used to give every reason, which is the wrong
+    // instruction here — nothing is unmapped, the month is simply not computed.
     expect(screen.queryByText(/Map your categories to a COICOP division/)).toBeNull()
+  })
+
+  it('sends the reader to the settings panel when the deployment ships no benchmark', async () => {
+    // `no_file` is the one reason the reader of a budget page may not be able to act on:
+    // it means `BENCHMARK_PATH` points at nothing readable, which is a config and a log
+    // question. So the box says the comparison is off and names where that is explained,
+    // rather than reprinting an operator's file path under a month's figures.
+    serve(
+      json({
+        ...FULL,
+        benchmark: { kind: 'unavailable', reason: 'no_file', mappedShareBp: null },
+      } satisfies BudgetPayload),
+    )
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+
+    expect(
+      await screen.findByText(
+        'This installation has no benchmark to compare against, so no comparison is drawn anywhere.',
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText(/Settings, Benchmark names the file that is expected/)).toBeTruthy()
+    // Not the operator detail itself: that lives on the panel this points at, and stating
+    // a path and a log location twice is two places to update when either changes.
+    expect(screen.queryByText(/statbel-benchmark\.yaml/)).toBeNull()
+    expect(screen.queryByText(/BENCHMARK_PATH/)).toBeNull()
+  })
+
+  it('says nothing is mapped yet, which is not the same as spending nothing', async () => {
+    // The fourth reason, and the one the hint was originally written for — kept here so
+    // all four are covered in one place after #300 split the hint per reason.
+    serve(
+      json({
+        ...FULL,
+        benchmark: { kind: 'unavailable', reason: 'no_mapping', mappedShareBp: 0 },
+      } satisfies BudgetPayload),
+    )
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+
+    expect(
+      await screen.findByText(
+        "None of this month's spending is mapped to a benchmark group, so there is nothing to compare it against yet.",
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Map your categories to a COICOP division under Settings and the comparison appears here.'),
+    ).toBeTruthy()
   })
 })
 
