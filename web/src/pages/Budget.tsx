@@ -280,13 +280,19 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
         </>
       )}
 
-      {section === 'benchmark' && categories.length > 0 && <Benchmark benchmark={benchmark} />}
+      {/*
+        No `categories.length > 0` guard: the empty-month notice lives inside the overview
+        section, so on an unaggregated month this pane drew nothing at all. `Benchmark`
+        answers for itself now (#300) — the server sends `no_month` when there are no rows,
+        and every reason has a box.
+      */}
+      {section === 'benchmark' && <Benchmark benchmark={benchmark} />}
 
       {/*
-        No `categories.length > 0` guard, unlike the Benchmark tab above: the empty-month
-        notice lives inside the overview section, so on an unaggregated month this pane
-        would draw nothing at all. `Custody` answers for itself in that case (#280) — the
-        server sends `no_month` when there are no rows, and every reason now has a box.
+        Same as the Benchmark tab above, and for the same reason: no `categories.length > 0`
+        guard, because the empty-month notice lives inside the overview section and this pane
+        would otherwise draw nothing at all. `Custody` answers for itself instead (#280) — the
+        server sends `no_month` when there are no rows, and every reason has a box.
       */}
       {section === 'custody' && <Custody custody={custody} />}
 

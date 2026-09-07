@@ -28,11 +28,12 @@ import {
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
-import { BENCHMARK_BASES, BENCHMARK_UNAVAILABLE } from '../../../domain/benchmark/compare.ts'
+import { BENCHMARK_BASES } from '../../../domain/benchmark/compare.ts'
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
   BENCHMARK_BLOCKS,
   BENCHMARK_GROUPS,
+  BENCHMARK_UNAVAILABLE,
   COICOP_DIVISIONS,
   OUTSIDE_CONSUMPTION,
   SHARED_COST_DIRECTIONS,
