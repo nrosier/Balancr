@@ -199,7 +199,7 @@ so the browser talks to the real API.
 |---|---|
 | `npm run dev` | Server in watch mode with `.env` loaded |
 | `npm run dev:web` | Vite dev server for the UI, proxying to the above |
-| `npm run probe` | Read-only check of Actual and Ghostfolio, and a category-by-category reconciliation against Actual's own totals |
+| `npm run probe` | Read-only check of Actual and Ghostfolio, three months reconciled category by category against Actual's own totals, and net worth against Ghostfolio's dashboard |
 | `npm run backup:verify` | Decrypt a snapshot in a temp directory and prove it restores — the newest one, or `-- --all` |
 | `npm run backup:restore` | Put a snapshot back, after verifying it in full |
 | `npm test` | Unit tests — server under Node, UI under jsdom |
@@ -214,6 +214,14 @@ so the browser talks to the real API.
 the four Ghostfolio endpoints Balancr reads are its frontend's internal,
 unversioned API; the probe tells you which one changed instead of letting a wrong
 number reach a chart.
+
+It is also the acceptance test. Past the shape checks it reconciles the last three
+started months category by category against Actual's own totals, and the portfolio
+total Balancr would store against the figure Ghostfolio's own dashboard prints — and
+it exits non-zero on a disagreement, because a category total that differs from
+Actual's is a hygiene bug rather than a rounding issue. Those two sections are the
+only place in the app that prints real amounts to a terminal, so read the output;
+don't paste it into an issue.
 
 ## Configuration
 
