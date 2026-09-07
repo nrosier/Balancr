@@ -72,6 +72,12 @@ export const FINDING_SPECS = {
   // that gets split. Capped at `info` for the same reason `above_benchmark` is: this is
   // context about an arrangement, not a judgement (#44).
   custody_offset: { vars: ['amount', 'paid', 'share'], maxSeverity: 'info', negative: false },
+  // The same arrangement read the other way round (#289): what landed in the account was
+  // already only this household's part, so the figure worth reading is the total nobody's
+  // books hold. Two codes rather than one sentence with swapped numbers, because the two
+  // make different claims — one says money is owed to you, the other says money was never
+  // yours to be owed. A single sentence could only be vague enough to be true of both.
+  custody_total: { vars: ['total', 'paid', 'share'], maxSeverity: 'info', negative: false },
   // Every euro of `toBudgetCents` should end up assigned to something (#252) — a
   // spending category, savings, or investments — rather than sitting idle. Warn,
   // not alert: an unaddressed shortfall is a nudge, not something already wrong.

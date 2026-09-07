@@ -122,6 +122,25 @@ export function isBenchmarkGroup(value: string): value is BenchmarkGroup {
 export const MAX_HOUSEHOLD_MEMBERS = 12
 
 /**
+ * Which side of a shared cost lands in Actual (#289).
+ *
+ * `whole_invoice`: the bill arrives here in full and the stated share is a discount on it —
+ * the co-parent owes you their part, or has already reimbursed it. `my_share`: what arrives
+ * here is your part, paid in full, and the share is what to divide *by* to recover the
+ * whole cost — the co-parent's part never touches your books and is owed to nobody.
+ *
+ * Not a boolean, so a third arrangement can be named rather than encoded as a negation,
+ * and so the stored value says what it means when read on its own.
+ *
+ * Here rather than beside `householdSchema` for the reason this whole module exists: the
+ * settings panel draws a picker over these two and the budget card branches on them, and
+ * neither should have to import the roster loader — and with it drizzle, zod and the
+ * logger — to learn two strings.
+ */
+export const SHARED_COST_DIRECTIONS = ['whole_invoice', 'my_share'] as const
+export type SharedCostDirection = (typeof SHARED_COST_DIRECTIONS)[number]
+
+/**
  * How much of the month's spending must carry a COICOP code before a comparison is
  * drawn at all.
  *

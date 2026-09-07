@@ -93,25 +93,39 @@
     "unallocated_other": "{{value}} schedules have no category, so they count in the month total only."
   },
   "custody": {
-    "assumption": "This assumes the whole invoice left your account and that {{share}} of it is yours. Nothing here changes Actual's figures — what you paid is what you paid.",
+    "assumption": {
+      "my_share": "This assumes what left your account was already only your {{share}}, and that the same share applies to every line here. The total is inferred rather than read: Actual has never held it, so a wrong share does not make this figure slightly off, it makes it up. Nothing here changes Actual's figures — what you paid is what you paid.",
+      "whole_invoice": "This assumes the whole invoice left your account and that {{share}} of it is yours. Nothing here changes Actual's figures — what you paid is what you paid."
+    },
     "basis": {
       "roster_one": "No split has been stated, so this uses the share of the time {{value}} member is here: {{share}}.",
       "roster_other": "No split has been stated, so this uses the average share of the time {{value}} members are here: {{share}}.",
       "stated": "The {{share}} share is the one you stated under Settings, Household."
     },
-    "caption": "What you paid on shared costs and your share of it, largest first",
+    "caption": {
+      "my_share": "What you paid on shared costs and what each one came to in total, largest first",
+      "whole_invoice": "What you paid on shared costs and your share of it, largest first"
+    },
     "column": {
       "borne": "Yours",
       "category": "Category",
-      "paid": "You paid"
+      "paid": "You paid",
+      "total": "In total"
     },
-    "lede": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{borne}}</money2> of that is economically yours; <money3>{{offset}}</money3> is the other household's share.",
+    "lede": {
+      "my_share": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent — your part of <money2>{{derived}}</money2> in total. The other <money3>{{other}}</money3> was settled by the other household directly and never reached your account.",
+      "whole_invoice": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{derived}}</money2> of that is economically yours; <money3>{{other}}</money3> is the other household's share."
+    },
     "share": "Shared costs are {{share}} of what you spent this month.",
     "title": "Costs shared with a co-parent",
     "total": "Total",
     "unavailable": {
-      "hint": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
-      "no_basis": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but nothing says what share of them is yours."
+      "hint": {
+        "no_basis": "Add whoever is here part of the time under Settings, Household, or state the share directly — then the split appears here.",
+        "zero_share": "Raise the share under Settings, Household to the part of these costs that is yours — or, if the whole invoice really does land here, switch the direction there instead."
+      },
+      "no_basis": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but nothing says what share of them is yours.",
+      "zero_share": "Categories worth <money>{{amount}}</money> this month are flagged as shared with a co-parent, but your stated share is 0% — there is nothing to work the total back up from."
     }
   },
   "empty": {

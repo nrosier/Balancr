@@ -135,12 +135,27 @@ const NUMERIC_VARS: {
       target: monthsFromBp(m.targetMonthsBp, translate),
     }),
   net_worth_high: (m) => present({ amount: money(m.amountCents) }),
-  // `amount` is the offset — the co-parent's share of what you paid — and `paid` is
+  // `amount` is the co-parent's part — their share of what you paid — and `paid` is
   // Actual's own figure, printed beside it because the sentence is only honest with
   // both: half of something is not a claim until the something is on screen.
   custody_offset: (m) =>
     present({
-      amount: money(m.offsetCents),
+      // `offsetCents` is what this metric was called before #289 renamed it, and signals
+      // are stored per month: the nightly pass rewrites the months it judges and leaves
+      // older ones alone, so a rename with no fallback would blank a sentence somebody
+      // has already read. One `??` is cheaper than a migration over a JSON column.
+      amount: money(m.otherCents ?? m.offsetCents),
+      paid: money(m.paidCents),
+      share: percent(m.shareBp),
+    }),
+  // The other direction (#289), and the pair of figures is chosen the same way: `paid` is
+  // what left the account and `total` is what the thing cost, so the co-parent's part is
+  // the subtraction of two numbers already in the sentence. Printing it as well would
+  // invite the model to check the sum, which is the reason `drift_above_band` below leaves
+  // its own distance out.
+  custody_total: (m) =>
+    present({
+      total: money(m.totalCents),
       paid: money(m.paidCents),
       share: percent(m.shareBp),
     }),

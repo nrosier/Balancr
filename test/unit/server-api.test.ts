@@ -278,16 +278,22 @@ describe('GET /api/budget', () => {
     expect(body.custody.kind).toBe('ok')
     expect(body.custody.basis).toBe('roster')
     expect(body.custody.shareBp).toBe(5_000)
-    // Actual's own figure, unchanged, and the borne figure beside it.
+    // Actual's own figure, unchanged, and the derived figures beside it. The direction is
+    // on the wire because the card's sentences differ by it, and it defaults to the
+    // reading a roster saved before #289 was written against.
+    expect(body.custody.direction).toBe('whole_invoice')
     expect(body.custody.paidCents).toBe(72_000)
-    expect(body.custody.borneCents).toBe(36_000)
-    expect(body.custody.offsetCents).toBe(36_000)
+    expect(body.custody.totalCents).toBe(72_000)
+    expect(body.custody.yoursCents).toBe(36_000)
+    expect(body.custody.otherCents).toBe(36_000)
     expect(body.custody.lines).toEqual([
       {
         categoryId: 'cat-groceries',
         categoryName: 'Groceries',
         paidCents: 72_000,
-        borneCents: 36_000,
+        totalCents: 72_000,
+        yoursCents: 36_000,
+        otherCents: 36_000,
       },
     ])
     // And the category itself still reports what left the account, or the two halves of

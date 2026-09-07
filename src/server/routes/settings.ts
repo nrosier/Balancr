@@ -75,6 +75,7 @@ import {
   saveNature,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
+import { SHARED_COST_DIRECTIONS } from '../../domain/benchmark/vocabulary.ts'
 import {
   applyReferenceOverride,
   clearReferenceOverride,
@@ -244,6 +245,15 @@ const householdPatchRequest = z.strictObject({
    * how somebody ends up reading a split they thought they had removed.
    */
   sharedCostBp: z.number().int().nullable().optional(),
+  /**
+   * Which way that share reads (#289). Optional for the same reason and with the same
+   * consequence as the two fields above: omitting it *replaces* rather than preserves, so
+   * a form that predates the field lands the schema's own default. That default is
+   * `whole_invoice`, which is what the feature modelled before the field existed and
+   * therefore what anybody who configured a share back then meant — so the one patch that
+   * can silently set this is the one that cannot be changing anybody's mind.
+   */
+  sharedCostDirection: z.enum(SHARED_COST_DIRECTIONS).optional(),
 })
 
 /**
@@ -527,6 +537,7 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
       })),
       ...(household.selfLabel === undefined ? {} : { selfLabel: household.selfLabel }),
       sharedCostBp: household.sharedCostBp,
+      sharedCostDirection: household.sharedCostDirection,
     },
     referenceOverride:
       override === null
