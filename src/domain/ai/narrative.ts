@@ -51,37 +51,48 @@ const log = logger.child({ module: 'ai.narrative' })
 export type NarrativeRow = typeof aiNarratives.$inferSelect
 
 /**
- * Six short paragraphs, with room to finish the last sentence.
+ * Room for six short paragraphs *and* for the thinking that precedes them.
  *
  * A ceiling rather than a target: a truncated narrative is worse than a short one,
- * and the prompt already asks for brevity, so this only stops a runaway. But the
- * deep model thinks, and thinking tokens are billed against this same ceiling
- * (#221) — so hitting it is not proof the prose itself ran long. `callNarrativeModel`
- * checks `finishReason` and retries once at `MAX_OUTPUT_TOKENS_RETRY` before giving
- * up, rather than trusting a non-empty response to mean a complete one.
+ * and the prompt already asks for brevity, so this only stops a runaway.
+ *
+ * It has to be sized for both halves of the response, because a thinking model's
+ * thoughts are billed against this same ceiling and are consumed *before* the first
+ * word of prose (#221). Sized for the prose alone it becomes a ceiling the model can
+ * exhaust without answering at all, which is what 1,800 did on `gemini-3.1-pro-preview`
+ * — a warn line and a wasted, billed call on essentially every run, with
+ * `MAX_OUTPUT_TOKENS_RETRY` doing the actual work (#282). The escalation below is meant
+ * to be the rare case, not the code path, so the base is now well clear of what
+ * thinking has been observed to need.
  */
-export const MAX_OUTPUT_TOKENS = 1_800
+export const MAX_OUTPUT_TOKENS = 8_000
 
 /**
  * What one narrative is assumed to cost in output tokens, for the guard.
  *
- * Higher than `MAX_OUTPUT_TOKENS` on purpose: the deep model thinks, thinking
- * tokens are billed as output, and they are not bounded by `maxOutputTokens`. The
- * estimate exists to keep a run from starting when it cannot be paid for, so
- * overstating it errs toward the banner rather than toward an overspend.
+ * The ceiling itself, because that is the most a single call can bill and one call is
+ * what the common path now is. It used to sit *above* the ceiling on the belief that
+ * thinking was unbounded by `maxOutputTokens`; the truncations that belief was written
+ * to explain are the proof it is not — an unbounded thought could not have ended the
+ * call at `MAX_TOKENS`.
+ *
+ * A run that escalates bills more than this. That is accepted rather than priced in:
+ * the guard exists to stop a run that cannot be paid for, and inflating every estimate
+ * to cover the rare second call would cap runs that were affordable. What was actually
+ * spent is recorded from `usageMetadata` either way, so the monthly total stays honest.
  */
-export const EXPECTED_OUTPUT_TOKENS = 6_000
+export const EXPECTED_OUTPUT_TOKENS = MAX_OUTPUT_TOKENS
 
 /**
  * One escalation, not open-ended retrying, for a call that hit `MAX_OUTPUT_TOKENS`.
  *
- * At least `EXPECTED_OUTPUT_TOKENS` rather than a flat multiple of the base ceiling
- * (#248): a plain `MAX_OUTPUT_TOKENS * 2` (3,600) sat below what the cost guard
- * above already assumes a narrative can need, so a run whose thinking used exactly
- * as much as `EXPECTED_OUTPUT_TOKENS` anticipated would still be truncated on the
- * retry. Tying the two together means raising one estimate raises the other.
+ * A multiple of the base rather than its own figure, so the two cannot drift apart the
+ * way they did in #248 — where a retry ceiling pinned to the cost estimate quietly
+ * became the ceiling that every run relied on. Doubling is enough: a month whose
+ * thinking overruns 8,000 tokens is a month where the payload, not the ceiling, is the
+ * thing to look at.
  */
-export const MAX_OUTPUT_TOKENS_RETRY = EXPECTED_OUTPUT_TOKENS
+export const MAX_OUTPUT_TOKENS_RETRY = MAX_OUTPUT_TOKENS * 2
 
 /**
  * Slightly above the default 0.2.
