@@ -97,6 +97,44 @@ half-English, and costs a fraction of what shipping raw transactions would.
   about a split, the total you paid on shared costs, the share applied to it and the euros
   that leaves with the other household.
 
+### Where it goes, and when
+
+Four hosts, and three of them are yours: Actual, Ghostfolio and the OIDC issuer all sit
+on your own network. Google is the only third party, and only if the AI layer is
+configured at all — leave the Gemini credential empty and nothing leaves the machine
+except the calls that fetch your own data from your own servers. The
+[egress allowlist](#egress) is derived from those four, so a fifth host is refused
+rather than reviewed.
+
+- **Which Google.** `GEMINI_PROVIDER=vertex`, the recommended setting, sends to Vertex
+  AI in `GOOGLE_CLOUD_LOCATION` (`europe-west1` by default), which keeps the request in
+  that region and leaves an IAM and audit trail on your own project. `aistudio` is a
+  plain API key with none of that, and a **free-tier** key is the one configuration to
+  avoid outright: its terms allow Google to use prompts to improve its products, and
+  these prompts are your budget.
+- **Once a night, and never on a page load.** The nightly pass runs at
+  `JOBS_NIGHTLY_HOUR` (03:00 local) and is the only thing that spends money on its own.
+  Opening Insights makes no call — the findings, the narrative and the queues were
+  written hours earlier and are read from SQLite. Every other call is one you asked
+  for, by pressing a button that first says what it will cost.
+- **What is in the call.** Category names with the month's budgeted, spent and
+  available figures, the signals derived from them, and for the household comparison a
+  survey line, a share and a euro figure. No payee, no memo, no individual transaction,
+  no account number, and nobody's name or year of birth.
+- **What "sensitive" actually withholds.** The name and the description you wrote — the
+  two fields that say what the envelope is. It keeps the amounts, and it keeps the
+  classification: the COICOP code, `fixed`/`variable`/`discretionary`, and how often it
+  is expected. That is deliberate rather than an oversight — an envelope with no amounts
+  and no class is one the model can say nothing useful about — but it does mean a broad
+  category (`06`, health) is inferable from a flagged envelope. There is no per-envelope
+  opt-out beyond the flag today: if even the class is too much, the honest answers are
+  `AI_ENABLED=false`, or keeping that spending out of the budget Balancr reads.
+- **How to check it without reading the source.** Insights → Ledger lists every call
+  ever made — when, which model, tokens in and out, what it cost, how it ended — and
+  "Show the exact payload" prints what was sent, from `ai_runs.payload_json`. Nothing
+  prunes that table: a call made in the first week is still auditable a year later. If
+  a claim above is ever false, that is where it shows.
+
 ### Privacy mode
 
 A separate, on-screen concern from the list above: the eye icon in the header
@@ -719,6 +757,26 @@ database, not Google. Write it down somewhere that is not `.env`.
 Leaving it empty is a legitimate configuration — the job logs one line saying backups
 are off and reports success — and it is the right one if the volume is already covered
 by a host snapshot or a restic job.
+
+Two files matter to whatever takes over: the database at `DATABASE_PATH`
+(`/data/balancr.db`) and `.env`, which holds the only copy of every credential. Stop the
+app before copying the database — a running instance keeps its `-wal` and `-shm`
+sidecars beside the file, and a plain `cp` of the `.db` alone can catch a checkpoint
+half-written:
+
+```sh
+docker compose stop balancr
+cp /data/balancr.db /somewhere/else/
+docker compose start balancr
+
+# or, without stopping it — the same mechanism the nightly job uses:
+sqlite3 /data/balancr.db "VACUUM INTO '/somewhere/else/balancr.db'"
+```
+
+To restore one of those plain copies: stop the app, put the file back, delete any
+`-wal`/`-shm` left beside it, run `npm run db:migrate` if the copy predates this build,
+start the app. `/data/actual` is not worth copying either way — it is a cache of a
+budget the Actual server still holds.
 
 What is worth protecting is smaller than it looks. Almost everything in the database is
 recomputed from Actual and Ghostfolio on the next nightly run, so losing it costs a
