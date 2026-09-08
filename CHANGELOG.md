@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.6] — 2026-09-09
+
+Another one found by using it, in the figure the rc.5 control exists to fix in bulk.
+
+### Fixed
+
+- **A same-day schedule occurrence already posted was still counted as still
+  to come** ([#315](https://github.com/nrosier/Balancr/issues/315)). The
+  committed-spend figure that feeds the burn-rate projection compared an
+  occurrence's date against today only, so a bill due today that had already
+  posted — and was marked paid — landed in both the month's real spend and
+  the "still to come" total, overstating the projected month-end figure by
+  that bill. Actual's own `next_date` advances past an occurrence once it
+  posts; a `next_date` after today is now read as that signal, and the
+  occurrence moves to "already fell this month" instead.
+
 ## [1.0.0-rc.5] — 2026-09-08
 
 The general-purpose version of the fix `rc.4` needed by hand.

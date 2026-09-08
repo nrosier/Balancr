@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.5-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.6-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -986,20 +986,18 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.5` |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.6` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0-rc.5` is the current release, and every feature issue in
-the list above is closed. It adds an owner-only reset control in Settings: one button
-that empties every table Balancr computes from Actual and Ghostfolio — budget facts,
-signals, net worth, portfolio snapshots — and starts the same jobs a nightly run
-would, without touching source data, account or category configuration, or the AI
-ledger. It exists because `rc.4`'s day-of-month fix needed exactly this and had no
-way to get it except knowing which page's refresh button happened to cascade into
-`sync`; a stale or wrong computed column is now a button press away from fixed,
-whichever one it turns out to be next. What remains before `1.0.0` is still testing
+**Where it is now** — `1.0.0-rc.6` is the current release, and every feature issue in
+the list above is closed. It fixes a same-day schedule occurrence that had already
+posted still being counted as still-to-come: the committed-spend figure behind the
+burn-rate projection compared a bill's date against today only, so a bill due today
+that was already paid landed in both real spend and the "still to come" total,
+overstating the month-end projection by that bill. Actual's own signal for "this
+occurrence already posted" now settles it. What remains before `1.0.0` is still testing
 rather than building: two boxes of the security-verification
 checklist are unwalked — the cost cap's degrade path against a real key, and the rate limits under a
 deliberate burst — and the break-glass local login is unreachable in the topology this
