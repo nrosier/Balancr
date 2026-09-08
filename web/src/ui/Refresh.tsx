@@ -35,6 +35,12 @@
  * The AI pass is deliberately not startable from here. It is the one job that spends
  * money, `POST /api/refresh` refuses it by name, and the control for it lives on the
  * settings page beside the month's spend and the price of a run — see `Spend.tsx`.
+ *
+ * `startReset` posts to a different, owner-only endpoint that deletes every
+ * computed-fact row before starting the same kind of chain — but it is the same
+ * `state`/`busy`, on purpose: the status panel's danger-zone control and its
+ * per-job buttons must disable each other exactly as two ordinary refreshes
+ * already do, because the server still allows only one operation at a time.
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, apiSend } from '../api/client.ts'
@@ -106,6 +112,14 @@ export interface Refresher {
   busy: boolean
   /** Undefined asks for the server's default set, which is every data job. */
   start: (jobs?: readonly string[]) => void
+  /**
+   * Wipes every computed-fact table and starts the full recompute chain. Shares
+   * this hook's own `state`, so a reset and an ordinary refresh disable one
+   * another exactly like two ordinary refreshes already do — the server allows
+   * one outstanding operation, and the button should say so before the request
+   * does.
+   */
+  startReset: () => void
 }
 
 /**
@@ -150,14 +164,14 @@ export function useRefresh(rows: readonly JobProgress[], onRefreshed: () => void
     }
   }, [state, landed, onRefreshed])
 
-  const start = useCallback(
-    (jobs?: readonly string[]): void => {
+  // Shared by `start` and `startReset`: both post, arm the same `running` state
+  // from the same `RefreshAccepted` shape, and fail the same three ways. The only
+  // difference between the two buttons is which URL and body they send.
+  const post = useCallback(
+    (path: string, body?: object): void => {
       setState({ kind: 'starting' })
-      // No body at all rather than an empty list: the server reads a missing body as
-      // "every data job", and an empty array as the mistake it is.
-      const body = jobs === undefined ? undefined : { jobs: [...jobs] }
 
-      void apiSend<RefreshAccepted>('POST', '/api/refresh', body, csrf)
+      void apiSend<RefreshAccepted>('POST', path, body, csrf)
         .then((accepted) => {
           setState({
             kind: 'running',
@@ -189,7 +203,25 @@ export function useRefresh(rows: readonly JobProgress[], onRefreshed: () => void
     [csrf, expired],
   )
 
-  return { state, busy: state.kind === 'starting' || state.kind === 'running', start }
+  const start = useCallback(
+    (jobs?: readonly string[]): void => {
+      // No body at all rather than an empty list: the server reads a missing body as
+      // "every data job", and an empty array as the mistake it is.
+      post('/api/refresh', jobs === undefined ? undefined : { jobs: [...jobs] })
+    },
+    [post],
+  )
+
+  const startReset = useCallback((): void => {
+    post('/api/refresh/reset')
+  }, [post])
+
+  return {
+    state,
+    busy: state.kind === 'starting' || state.kind === 'running',
+    start,
+    startReset,
+  }
 }
 
 /**

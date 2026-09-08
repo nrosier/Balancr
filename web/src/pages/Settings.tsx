@@ -87,14 +87,14 @@ const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
 function GeneralSection(props: SettingsPanelProps): ReactNode {
   const { t, language } = useT()
   const active = useSubsection(GENERAL_SUBSECTIONS)
-  const { settings } = props
+  const { settings, owner } = props
 
   return (
     <>
       <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
 
       {active === 'status' ? (
-        <StatusPanel />
+        <StatusPanel owner={owner} />
       ) : (
         <>
           <LanguagePanel {...props} />
