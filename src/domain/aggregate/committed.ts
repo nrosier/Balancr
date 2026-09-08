@@ -21,12 +21,18 @@
  *    bill would answer "what is still to come" with two different things at once — and
  *    would take the weight off an overspend warning with money that has not arrived.
  *    An inflow schedule is skipped, which is why every figure here is positive-out.
- *  - **An occurrence due today counts as still to come.** #159 says "between today and
- *    month end", and on the one day a month a bill falls due it may or may not have
- *    posted yet. Counting it means a schedule Actual has already posted is briefly in
- *    both `spentCents` and this figure, which overstates the day's projection by one
- *    bill; not counting it would understate every manual schedule for a whole day. Both
- *    are wrong on that day and only one of them is wrong in the safe direction.
+ *  - **An occurrence due today counts as still to come, unless Actual's own `next_date`
+ *    says it already happened.** #159 says "between today and month end", and on the
+ *    one day a month a bill falls due it may or may not have posted yet. Actual
+ *    advances `next_date` past an occurrence once it posts — automatically, or marked
+ *    paid by hand — so a `next_date` after today is Actual telling us today's
+ *    occurrence is done, and it moves into `toDateCents` instead, the same place a
+ *    bill paid on the 1st goes. Without that signal (a schedule whose `next_date` is
+ *    still today, or absent) it counts as still to come: a schedule Actual has already
+ *    posted is then briefly in both `spentCents` and this figure, which overstates the
+ *    day's projection by one bill; not counting it would understate every manual
+ *    schedule for a whole day. Both are wrong on that day and, absent the signal above,
+ *    only one of them is wrong in the safe direction.
  *  - **Uncertainty resolves upward, and unattributed money is not guessed.** The
  *    adapter already takes the upper bound of a range rather than Actual's average; a
  *    schedule no rule assigns a category to lands in `unallocatedCents` and is counted
@@ -158,13 +164,19 @@ export function committedForMonth(input: CommittedInput): CommittedMonth {
     if (costCents <= 0) continue
 
     const dates = expandOccurrences(schedule.date, first, last)
-    let remaining = dates.filter((date) => date >= today).length
+    // Actual advances `next_date` past an occurrence once it posts, so a `next_date`
+    // strictly after today means today's own occurrence — if our expansion found one —
+    // already happened, and belongs in `toDate` rather than `remaining`.
+    const postedToday = schedule.nextDate !== null && schedule.nextDate > today
+    let remaining = dates.filter(
+      (date) => date >= today && !(date === today && postedToday),
+    ).length
     const toDate = dates.length - remaining
 
-    // The tie-break, and the only use of Actual's own `next_date`: when our expansion
-    // finds nothing at all this month but Actual says the next occurrence falls inside
-    // the window, the cost is counted. A disagreement between the two resolves toward
-    // counting the money, which is the same direction as every other decision here.
+    // The other use of Actual's own `next_date`: when our expansion finds nothing at
+    // all this month but Actual says the next occurrence falls inside the window, the
+    // cost is counted. A disagreement between the two resolves toward counting the
+    // money, which is the same direction as every other decision here.
     if (
       dates.length === 0 &&
       schedule.nextDate !== null &&
