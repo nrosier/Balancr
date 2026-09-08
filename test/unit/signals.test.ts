@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { capSeverity, FINDING_SPECS } from '../../src/domain/ai/codes.ts'
 import type { BaselineResult } from '../../src/domain/aggregate/baseline.ts'
+import type { DayCurveResult } from '../../src/domain/aggregate/daycurve.ts'
 import { hygieneSignals } from '../../src/domain/aggregate/hygiene.ts'
 import {
   benchmarkSignals,
@@ -23,6 +24,8 @@ interface FactOverrides {
   committedToDate?: number
   isIncome?: boolean
   baseline?: Partial<BaselineResult> | null
+  /** The historical day-of-month spending shape (#311). Null by default. */
+  dayCurve?: Partial<DayCurveResult> | null
   txnCount?: number
 }
 
@@ -57,6 +60,15 @@ function fact(overrides: FactOverrides = {}): MonthlyFact {
           windowMonths: 1,
           winsorEffectBp: 0,
           ...overrides.baseline,
+        }
+      : null,
+    dayCurve: overrides.dayCurve
+      ? {
+          medianFractionBp: 5_000,
+          dispersionBp: 0,
+          monthsUsed: 12,
+          reliable: true,
+          ...overrides.dayCurve,
         }
       : null,
   }
@@ -402,6 +414,82 @@ describe('burn rate', () => {
     // variable half is floored at zero, so the projection is the spend itself.
     const early = fact({ spent: 20_000, committedToDate: 90_000, budgeted: 10_000 })
     expect(projected(categorySignals([early], 0.5, DEFAULT_PARAMS))).toBe(20_000)
+  })
+
+  describe('the day-of-month curve (#311)', () => {
+    it('projects from the historical curve instead of a flat rate, once it and the baseline are both present', () => {
+      // Halfway through the month, historically halfway through this category's
+      // eventual total (medianFractionBp: 5_000): the remaining half of a EUR
+      // 1.000 baseline is added to what has already gone out. The old flat-rate
+      // formula would have said EUR 1.200 (spent x 1/p) — a different number,
+      // which is the point: this is the curve talking, not the rate.
+      const bursty = fact({
+        spent: 60_000,
+        budgeted: 90_000,
+        txnCount: 2,
+        // deltaBp: 0 keeps this within the neutral band, so the fixture isolates
+        // burn_rate_over rather than also tripping above_/below_baseline.
+        baseline: { baselineCents: 100_000, deltaBp: 0 },
+        dayCurve: { medianFractionBp: 5_000 },
+      })
+      const signals = categorySignals([bursty], 0.5, DEFAULT_PARAMS)
+      expect(codes(signals)).toEqual(['burn_rate_over'])
+      expect(signals[0]?.metrics).toEqual({
+        projectedCents: 110_000,
+        assignedCents: 90_000,
+        spentCents: 60_000,
+        committedCents: 0,
+        projectedOverrunCents: 20_000,
+        monthProgressBp: 5_000,
+      })
+    })
+
+    it('still catches a brand-new schedule the curve has no history for, via the max() floor', () => {
+      // Nothing spent yet and the curve — trusted, but built from months before this
+      // schedule existed — says nothing unusual is due (medianFractionBp: 0, so the
+      // curve alone would only project the EUR 100 baseline). The EUR 500 committed
+      // this month is the real number, and `Math.max` lets it win.
+      const newSchedule = fact({
+        spent: 0,
+        committed: 50_000,
+        // Covers the committed figure, so this fixture isolates burn_rate_over
+        // rather than also tripping committed_over_available.
+        available: 50_000,
+        budgeted: 20_000,
+        baseline: { baselineCents: 10_000, deltaBp: 0 },
+        dayCurve: { medianFractionBp: 0 },
+      })
+      const signals = categorySignals([newSchedule], 0.3, DEFAULT_PARAMS)
+      expect(codes(signals)).toEqual(['burn_rate_over'])
+      expect(signals[0]?.metrics.projectedCents).toBe(50_000)
+    })
+
+    it('falls back to the flat-rate extrapolation for a scattered category, rather than trusting a curve that would call it falsely "on track"', () => {
+      // A haircut-shaped category: a stable EUR 500 total, but landing anywhere from
+      // day 2 to day 25, so the historical fraction spent by any given day swings
+      // wildly (dispersion above the gate — `reliable: false`). This month it
+      // happened to land early, at 90% of the eventual total by day 9 of 30. A
+      // curve that trusted that history would read this as "basically done" and
+      // miss the fact that this category still, in fact, always spends its budget.
+      const overrides = {
+        spent: 45_000,
+        budgeted: 50_000,
+        txnCount: 2,
+        baseline: { baselineCents: 50_000, deltaBp: 0 },
+      }
+      const scattered = fact({ ...overrides, dayCurve: { medianFractionBp: 9_000, reliable: false } })
+      const signals = categorySignals([scattered], 0.3, DEFAULT_PARAMS)
+      expect(codes(signals)).toEqual(['burn_rate_over'])
+      // The unreliable curve is ignored entirely: this is the pre-#311 formula's
+      // number (spent + extrapolated variable), not the curve's EUR 500.
+      expect(signals[0]?.metrics.projectedCents).toBe(150_000)
+
+      // What the gate is protecting against: the identical figures with the same
+      // curve trusted would say this envelope is right on budget and warn about
+      // nothing at all.
+      const trusted = fact({ ...overrides, dayCurve: { medianFractionBp: 9_000, reliable: true } })
+      expect(codes(categorySignals([trusted], 0.3, DEFAULT_PARAMS))).toEqual([])
+    })
   })
 })
 

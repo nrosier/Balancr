@@ -67,6 +67,7 @@ const fact = (
   committedToDateCents: 0,
   committedApproximate: false,
   baseline: null,
+  dayCurve: null,
   ...overrides,
 })
 

@@ -74,6 +74,10 @@ export function persistFacts(
             baselineMonthsUsed: fact.baseline?.monthsUsed ?? null,
             baselineWindowMonths: fact.baseline?.windowMonths ?? null,
             baselineWinsorEffectBp: fact.baseline?.winsorEffectBp ?? null,
+            dayCurveMedianFractionBp: fact.dayCurve?.medianFractionBp ?? null,
+            dayCurveDispersionBp: fact.dayCurve?.dispersionBp ?? null,
+            dayCurveMonthsUsed: fact.dayCurve?.monthsUsed ?? null,
+            dayCurveReliable: fact.dayCurve?.reliable ?? null,
             computedAt,
           })),
         )
@@ -95,6 +99,10 @@ export function persistFacts(
             baselineMonthsUsed: sql`excluded.baseline_months_used`,
             baselineWindowMonths: sql`excluded.baseline_window_months`,
             baselineWinsorEffectBp: sql`excluded.baseline_winsor_effect_bp`,
+            dayCurveMedianFractionBp: sql`excluded.day_curve_median_fraction_bp`,
+            dayCurveDispersionBp: sql`excluded.day_curve_dispersion_bp`,
+            dayCurveMonthsUsed: sql`excluded.day_curve_months_used`,
+            dayCurveReliable: sql`excluded.day_curve_reliable`,
             computedAt: sql`excluded.computed_at`,
           },
         })
@@ -243,6 +251,17 @@ export function loadFacts(db: Db, month: string): MonthlyFact[] {
             monthsUsed: fact.baselineMonthsUsed ?? 0,
             windowMonths: fact.baselineWindowMonths ?? 1,
             winsorEffectBp: fact.baselineWinsorEffectBp,
+          },
+    // Same one-column gate as the baseline above: all four companion columns
+    // are written together or not at all.
+    dayCurve:
+      fact.dayCurveMedianFractionBp === null
+        ? null
+        : {
+            medianFractionBp: fact.dayCurveMedianFractionBp,
+            dispersionBp: fact.dayCurveDispersionBp ?? 0,
+            monthsUsed: fact.dayCurveMonthsUsed ?? 0,
+            reliable: fact.dayCurveReliable ?? false,
           },
   }))
 }

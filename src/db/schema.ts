@@ -417,6 +417,18 @@ export const monthlyCategoryFacts = sqliteTable(
     baselineWindowMonths: integer('baseline_window_months'),
     /** How far winsorisation moved the norm, basis points. */
     baselineWinsorEffectBp: integer('baseline_winsor_effect_bp'),
+    /**
+     * Historical median fraction of the month's eventual total already spent
+     * by the equivalent day, 0..10000 (#311). Only ever set for the current
+     * month. Null exactly when there was not enough history to compute a curve.
+     */
+    dayCurveMedianFractionBp: integer('day_curve_median_fraction_bp'),
+    /** IQR of that fraction across history, basis points. Null iff the above is. */
+    dayCurveDispersionBp: integer('day_curve_dispersion_bp'),
+    /** Historical months that had any spend and fed the curve. Null iff the above is. */
+    dayCurveMonthsUsed: integer('day_curve_months_used'),
+    /** Whether the dispersion above is low enough for `burn_rate_over` to project from it. */
+    dayCurveReliable: integer('day_curve_reliable', { mode: 'boolean' }),
     computedAt: createdAt(),
   },
   (t) => [

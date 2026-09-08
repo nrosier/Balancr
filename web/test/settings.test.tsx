@@ -64,6 +64,7 @@ const PARAMS = {
     availableFloorCents: 500,
   },
   burnRate: { minMonthProgress: 0.25, toleranceBp: 1_000 },
+  dayCurve: { windowMonths: 12, minMonths: 6, maxDispersionBp: 2_500 },
   hygiene: {
     reconcileStaleDays: 45,
     priceStaleDays: 5,

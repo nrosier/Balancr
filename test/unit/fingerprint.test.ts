@@ -24,6 +24,7 @@ function fact(overrides: Partial<MonthlyFact> = {}): MonthlyFact {
     committedToDateCents: 0,
     committedApproximate: false,
     baseline: null,
+    dayCurve: null,
     ...overrides,
   }
 }
