@@ -16,6 +16,7 @@ import {
   fetchBudgetMonth,
   fetchBudgetMonths,
   fetchRecomputedSpend,
+  fetchRecomputedSpendDaily,
   fetchSchedules,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
@@ -38,13 +39,22 @@ import {
 } from '../domain/aggregate/classify.ts'
 import { FREQUENCY_WINDOW } from '../domain/aggregate/baseline.ts'
 import { committedForMonth, emptyCommitted } from '../domain/aggregate/committed.ts'
+import { buildDayCurves } from '../domain/aggregate/daycurve.ts'
 import { loadFrequencies, persistFacts, syncCategoryMeta } from '../domain/aggregate/facts.ts'
 import { monthFingerprint } from '../domain/aggregate/fingerprint.ts'
 import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { aggregateSpend } from '../domain/aggregate/spend.ts'
 import type { Logger } from '../logger.ts'
-import { addMonths, currentMonthIn, endOfMonth, startOfMonth, todayIn } from '../util/month.ts'
+import {
+  addMonths,
+  currentMonthIn,
+  endOfMonth,
+  monthProgress,
+  monthsBefore,
+  startOfMonth,
+  todayIn,
+} from '../util/month.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
 /**
@@ -221,7 +231,7 @@ export function classifyGhostfolio(
   return { reclassified, mirrored }
 }
 
-async function run({ db, log }: JobContext): Promise<JobDetail> {
+async function run({ db, log, now }: JobContext): Promise<JobDetail> {
   await syncActual()
 
   const params = loadParams(db)
@@ -260,12 +270,37 @@ async function run({ db, log }: JobContext): Promise<JobDetail> {
       })
     : emptyCommitted(currentMonth)
 
+  // The historical day-of-month shape `burn_rate_over` projects from (#311).
+  // Same reasoning as `committed`: only the current month gets one, and its
+  // own fetch window — independent of the baseline history above — is read
+  // here, at sync-time, because "how far through the month" is a function of
+  // today.
+  const dayCurveHistoryMonths = monthsBefore(currentMonth, params.dayCurve.windowMonths)
+  const dayCurves = targets.includes(currentMonth)
+    ? buildDayCurves({
+        daily: await fetchRecomputedSpendDaily(
+          startOfMonth(dayCurveHistoryMonths[0] as string),
+          endOfMonth(addMonths(currentMonth, -1)),
+        ),
+        historyMonths: dayCurveHistoryMonths,
+        month: currentMonth,
+        incomeCategoryIds: new Set(
+          history.flatMap((month) =>
+            month.categories.filter((category) => category.isIncome).map((c) => c.categoryId),
+          ),
+        ),
+        progress: monthProgress(currentMonth, now, config.TZ),
+        params: params.dayCurve,
+      })
+    : null
+
   const aggregate = aggregateSpend({
     history,
     recomputed,
     frequencies: loadFrequencies(db),
     targetMonths: targets,
     committed,
+    dayCurves,
     params,
   })
 

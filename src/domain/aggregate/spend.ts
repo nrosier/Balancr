@@ -22,6 +22,7 @@
 import type { BudgetMonth, CategoryMonth, RecomputedSpend } from '../../adapters/actual/queries.ts'
 import { assertDenseMonths } from '../../util/month.ts'
 import type { CommittedMonth } from './committed.ts'
+import type { DayCurveMonth, DayCurveResult } from './daycurve.ts'
 import {
   computeBaseline,
   type BaselineResult,
@@ -53,6 +54,18 @@ export interface SpendInput {
    * projection in `overspend.ts` degrade to the plain extrapolation it used to be.
    */
   committed?: CommittedMonth | null
+  /**
+   * The current month's historical day-of-month spending shape, for the one
+   * month `burn_rate_over` projects (#311).
+   *
+   * Same rationale as `committed`: clock-dependent, so the caller computes it
+   * once at sync-time. Null, or a month that is not among `targetMonths`,
+   * leaves every category's `dayCurve` at null — which is also exactly right
+   * for an installation with too little history, and is what makes the
+   * projection in `overspend.ts` degrade to the committed/extrapolation
+   * formula it already had.
+   */
+  dayCurves?: DayCurveMonth | null
   params: AggregateParams
 }
 
@@ -91,6 +104,12 @@ export interface MonthlyFact {
   committedApproximate: boolean
   /** Null when there is not enough history to state a norm. */
   baseline: BaselineResult | null
+  /**
+   * The historical day-of-month shape of this category's spending, or null
+   * when there is not enough history or the timing is too scattered to trust
+   * (#311). Only ever set for the current month — see `SpendInput.dayCurves`.
+   */
+  dayCurve: DayCurveResult | null
 }
 
 export interface UncategorisedBucket {
@@ -158,7 +177,7 @@ interface CategoryDimension {
 }
 
 /** Actual's sign convention to ours. */
-function toPositiveOut(amountCents: number, isIncome: boolean): number {
+export function toPositiveOut(amountCents: number, isIncome: boolean): number {
   return isIncome ? amountCents : -amountCents
 }
 
@@ -250,6 +269,7 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
   // is not among them matches no fact and contributes nothing, which is the right
   // answer for a backfill pass over months where the figure means nothing anyway.
   const committed = input.committed ?? null
+  const dayCurves = input.dayCurves ?? null
 
   for (const month of targets) {
     for (const categoryId of categoryIds) {
@@ -269,6 +289,10 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
         committed?.month === month && !dimension.isIncome
           ? committed.categories.get(categoryId)
           : undefined
+      const dayCurve =
+        dayCurves?.month === month && !dimension.isIncome
+          ? dayCurves.categories.get(categoryId) ?? null
+          : null
 
       facts.push({
         month,
@@ -291,6 +315,7 @@ export function aggregateSpend(input: SpendInput): SpendAggregate {
           input.frequencies.get(categoryId) ?? 'monthly',
           params.baseline,
         ),
+        dayCurve,
       })
 
       if (recomputed === undefined) continue

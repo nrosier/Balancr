@@ -407,6 +407,11 @@
         "minMonthProgress": "No projection before this share of the month",
         "toleranceBp": "Tolerated overrun"
       },
+      "dayCurve": {
+        "maxDispersionBp": "Tolerated spread across those months",
+        "minMonths": "Fewest months before a curve is trusted",
+        "windowMonths": "Months of history in the curve"
+      },
       "drift": {
         "persistentMonths": "Months outside a band before flagging"
       },
@@ -430,6 +435,7 @@
     "group": {
       "baseline": "Your own norm",
       "burnRate": "Pace",
+      "dayCurve": "Day-of-month pattern",
       "drift": "Portfolio drift",
       "household": "Household targets",
       "hygiene": "Data hygiene",
