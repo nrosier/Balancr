@@ -18,6 +18,7 @@ import {
   fetchRecomputedSpend,
   fetchRecomputedSpendDaily,
   fetchSchedules,
+  fetchSchedulesPaidToday,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
@@ -262,11 +263,13 @@ async function run({ db, log, now }: JobContext): Promise<JobDetail> {
   // aggregator is pure and this is a function of today. Only the current month
   // gets one — a past month's committed figure is zero by definition, and the
   // schedules for a future month are not what `targets` is about.
+  const today = todayIn(config.TZ)
   const committed = targets.includes(currentMonth)
     ? committedForMonth({
         schedules: await fetchSchedules(),
         month: currentMonth,
-        today: todayIn(config.TZ),
+        today,
+        paidToday: await fetchSchedulesPaidToday(today),
       })
     : emptyCommitted(currentMonth)
 

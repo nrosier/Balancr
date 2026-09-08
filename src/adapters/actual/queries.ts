@@ -771,3 +771,28 @@ export async function fetchSchedules(): Promise<ActualSchedule[]> {
           : { kind: 'recurring' as const, recurrence: toRecurrence(schedule.date) },
     }))
 }
+
+const scheduleLinkRow = z.object({ schedule: z.string() })
+
+/**
+ * Which schedules already have a transaction dated `today` linked to them.
+ *
+ * This is Actual's own "Paid" signal — its schedule status (`getStatus` in
+ * `@actual-app/core`) checks a linked transaction (`hasTrans`) before it ever looks at
+ * `next_date`, and shows "Paid" the moment one exists, whatever `next_date` says.
+ * `next_date` is a poor substitute: it is advanced by Actual's own background
+ * schedule-advancing service, which is not guaranteed to have run, and which its own
+ * source declines to advance on the day a schedule falls due. A transaction whose
+ * `schedule` field names this schedule, dated today, is the same ground truth Actual's
+ * own UI reads — nothing here is inferred from an amount or a payee match.
+ */
+export function fetchSchedulesPaidToday(today: string): Promise<ReadonlySet<string>> {
+  return runAql(
+    'schedules-paid-today',
+    (q) =>
+      q('transactions')
+        .filter({ date: today, schedule: { $ne: null } })
+        .select(['schedule']),
+    scheduleLinkRow,
+  ).then((rows) => new Set(rows.map((row) => row.schedule)))
+}
