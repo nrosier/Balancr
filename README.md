@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.4-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -986,20 +986,22 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.3` |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.4` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0-rc.3` is the current release, and every feature issue in
-the list above is closed. It carries one more thing real use turned up: the
-spending-pace projection was extrapolating a single lump-sum transaction — a
-hand-entered bill, a haircut — as if it were the start of a daily trickle, projecting
-several times the budget from one data point. It now waits for a second transaction
-before extrapolating a category's variable spending; already-spent and
-already-committed figures still count in full. What remains before `1.0.0` is still
-testing rather than building: two boxes of the security-verification checklist are
-unwalked — the cost cap's degrade path against a real key, and the rate limits under a
+**Where it is now** — `1.0.0-rc.4` is the current release, and every feature issue in
+the list above is closed. It carries another fix from the same projection `rc.3`
+touched: even with a second-transaction floor, a flat rate still misjudged a
+category whose spending lands in a predictable window (a utility bill always
+posting the same handful of days) and, in the other direction, a category with a
+stable total but scattered timing that happened to land early and looked "ahead of
+pace" for no real reason. The projection now reads a category's own day-of-month
+history and uses it once that history is consistent enough to trust; anything too
+scattered to project from keeps the existing flat-rate formula. What remains before
+`1.0.0` is still testing rather than building: two boxes of the security-verification
+checklist are unwalked — the cost cap's degrade path against a real key, and the rate limits under a
 deliberate burst — and the break-glass local login is unreachable in the topology this
 repo ships, which is safe in the security direction and a recovery path that does not
 work. The two boxes wait on somebody's own deployment rather than on code; the third
