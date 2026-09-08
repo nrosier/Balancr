@@ -208,6 +208,30 @@ export function categorySignals(
     // is what lets a single-transaction category still trip `burn_rate_over` on
     // spend and schedules alone, just never on a projection with one data point
     // behind it.
+    //
+    // A fourth wrong answer survives all three fixes above: a category that gets
+    // its spending in a predictable burst at a particular point in the month — a
+    // utility bill always landing days 8-13 — still gets read against a flat
+    // rate, so it looks alarming early and falsely calm late. #311's fix is a
+    // historical day-of-month curve: given `fact.dayCurve.medianFractionBp`, the
+    // typical share of the month's eventual total already spent by today, the
+    // rest of the baseline projects the remainder. That curve is schedule-blind
+    // by construction — it does not know rent from a haircut — which cuts both
+    // ways: it also fixes the third wrong answer's cousin, a category that is
+    // one lump sum a month but was never entered as an Actual schedule.
+    //
+    // The curve is trusted only when `fact.dayCurve.reliable` — a category whose
+    // total is stable but whose *timing* is scattered (haircuts, anywhere from
+    // day 2 to day 25) would otherwise read a merely-early payment as "ahead of
+    // pace" and manufacture the exact false alarm this feature exists to avoid.
+    // An unreliable or absent curve falls back to the formula above unchanged.
+    //
+    // `Math.max`, not a sum, combines the curve's projection with committed
+    // spend: the curve already implicitly captures an *established* recurring
+    // bill, so adding `committedCents` on top would double-count it. The floor
+    // still lets a brand-new, historically-unprecedented schedule win via the
+    // known-certain committed figure, which the curve has no history to reflect
+    // yet.
     const variableToDateCents = Math.max(0, spentCents - fact.committedToDateCents)
     const extrapolatedVariableCents =
       fact.txnCount >= 2 ? Math.round(variableToDateCents * (1 / monthProgress - 1)) : 0
@@ -217,7 +241,15 @@ export function categorySignals(
       budgetedCents > 0 &&
       (spentCents > 0 || committedCents > 0)
     ) {
-      const projectedCents = spentCents + committedCents + extrapolatedVariableCents
+      let projectedCents: number
+      if (fact.dayCurve?.reliable && fact.baseline) {
+        const remainingFraction = Math.max(0, 1 - fact.dayCurve.medianFractionBp / 10_000)
+        const dayCurveProjectedCents =
+          spentCents + Math.round(fact.baseline.baselineCents * remainingFraction)
+        projectedCents = Math.max(dayCurveProjectedCents, spentCents + committedCents)
+      } else {
+        projectedCents = spentCents + committedCents + extrapolatedVariableCents
+      }
       const toleranceCents = Math.round(budgetedCents * (1 + burnRate.toleranceBp / 10_000))
       const projectedOverrunCents = projectedCents - budgetedCents
       if (

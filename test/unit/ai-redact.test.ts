@@ -126,6 +126,7 @@ const fact = (overrides: Partial<MonthlyFact> = {}): MonthlyFact => ({
     windowMonths: 1,
     winsorEffectBp: -120,
   },
+  dayCurve: null,
   ...overrides,
 })
 

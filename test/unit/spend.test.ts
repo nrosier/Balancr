@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { RecomputedSpend } from '../../src/adapters/actual/queries.ts'
 import { emptyCommitted, type CommittedMonth } from '../../src/domain/aggregate/committed.ts'
+import type { DayCurveMonth } from '../../src/domain/aggregate/daycurve.ts'
 import { DEFAULT_PARAMS } from '../../src/domain/aggregate/params.ts'
 import { aggregateSpend, type MonthlyFact } from '../../src/domain/aggregate/spend.ts'
 import { budgetMonth, history } from '../fixtures/budget.ts'
@@ -401,6 +402,78 @@ describe('aggregateSpend and what is still to come (#159)', () => {
       const { facts, totals } = run(committed)
       expect(facts.every((fact) => fact.committedCents === 0)).toBe(true)
       expect(totals.every((month) => month.committedCents === 0)).toBe(true)
+    }
+  })
+})
+
+describe('aggregateSpend and the day-of-month curve (#311)', () => {
+  const MONTHS = [
+    budgetMonth('2026-01', [
+      { id: 'salary', spent: 300_000, isIncome: true },
+      { id: 'rent', spent: 90_000, budgeted: 90_000 },
+      { id: 'food', spent: 40_000, budgeted: 55_000 },
+    ]),
+    budgetMonth('2026-02', [{ id: 'food', spent: 10_000, budgeted: 55_000 }]),
+  ]
+
+  /** What `buildDayCurves` produces for January, with an income category in it. */
+  const january = (): DayCurveMonth => ({
+    month: '2026-01',
+    categories: new Map([
+      ['food', { medianFractionBp: 4_000, dispersionBp: 500, monthsUsed: 8, reliable: true }],
+      // An income category, which `buildDayCurves` never produces — asserted below
+      // because the guard against it lives here rather than there.
+      ['salary', { medianFractionBp: 9_000, dispersionBp: 100, monthsUsed: 8, reliable: true }],
+    ]),
+  })
+
+  const run = (dayCurves: DayCurveMonth | null) =>
+    aggregateSpend({
+      history: MONTHS,
+      recomputed: [],
+      frequencies: NO_FREQUENCIES,
+      targetMonths: ['2026-01', '2026-02'],
+      params: DEFAULT_PARAMS,
+      dayCurves,
+    })
+
+  const factFor = (facts: readonly MonthlyFact[], month: string, categoryId: string) =>
+    facts.find((fact) => fact.month === month && fact.categoryId === categoryId)
+
+  it('attaches a category curve beside spend, rather than inside it', () => {
+    const fact = factFor(run(january()).facts, '2026-01', 'food')
+    expect(fact?.spentCents).toBe(40_000)
+    expect(fact?.dayCurve).toEqual({
+      medianFractionBp: 4_000,
+      dispersionBp: 500,
+      monthsUsed: 8,
+      reliable: true,
+    })
+  })
+
+  it('leaves a category with no curve at null', () => {
+    const fact = factFor(run(january()).facts, '2026-01', 'rent')
+    expect(fact?.dayCurve).toBeNull()
+  })
+
+  it('never attributes a curve to income', () => {
+    // A curve on a salary category would read burn_rate_over backwards: income is
+    // judged against its own baseline, not an envelope's day-of-month shape.
+    const fact = factFor(run(january()).facts, '2026-01', 'salary')
+    expect(fact?.dayCurve).toBeNull()
+  })
+
+  it('ignores a day curve month that is not the month being aggregated', () => {
+    // The curve is a function of today, so it belongs to exactly one month.
+    // February gets null rather than January's curve a second time.
+    const fact = factFor(run(january()).facts, '2026-02', 'food')
+    expect(fact?.dayCurve).toBeNull()
+  })
+
+  it('reads no curves at all as null everywhere', () => {
+    for (const dayCurves of [null, { month: '2026-01', categories: new Map() }]) {
+      const { facts } = run(dayCurves)
+      expect(facts.every((fact) => fact.dayCurve === null)).toBe(true)
     }
   })
 })

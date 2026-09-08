@@ -118,8 +118,34 @@ const drift = z
   })
   .prefault({})
 
+/**
+ * The historical day-of-month spending shape `burn_rate_over` trusts instead of
+ * a flat rate (#311), and the gate that decides whether a category's shape is
+ * trustworthy at all.
+ *
+ * `minMonths` and `maxDispersionBp` are deliberately stricter than `baseline`'s:
+ * a false "reliable" here is the exact failure mode #311 exists to prevent (a
+ * category whose timing only *looks* consistent by chance), whereas a false
+ * "not reliable" just falls back to the already-safe committed/extrapolation
+ * formula. The gate should lean conservative.
+ */
+const dayCurve = z
+  .object({
+    /** Historical months sampled for the day-of-month curve. */
+    windowMonths: z.number().int().min(3).max(24).default(12),
+    /** Below this many months with any spend, no curve is emitted at all. */
+    minMonths: z.number().int().min(2).max(24).default(6),
+    /**
+     * IQR (p75 − p25) of the sampled fraction, in basis points, above which the
+     * category's day-of-month timing is not considered predictable enough to
+     * project against.
+     */
+    maxDispersionBp: z.number().int().min(0).max(10_000).default(2_500),
+  })
+  .prefault({})
+
 export const aggregateParamsSchema = z
-  .object({ baseline, overspend, burnRate, hygiene, household, drift })
+  .object({ baseline, overspend, burnRate, hygiene, household, drift, dayCurve })
   .prefault({})
   .refine((p) => p.baseline.winsorLowerPct < p.baseline.winsorUpperPct, {
     message: 'winsorLowerPct must be below winsorUpperPct',
@@ -128,6 +154,10 @@ export const aggregateParamsSchema = z
   .refine((p) => p.overspend.baselineWarnBp <= p.overspend.baselineAlertBp, {
     message: 'baselineWarnBp must not exceed baselineAlertBp',
     path: ['overspend', 'baselineWarnBp'],
+  })
+  .refine((p) => p.dayCurve.minMonths <= p.dayCurve.windowMonths, {
+    message: 'minMonths must not exceed windowMonths',
+    path: ['dayCurve', 'minMonths'],
   })
 
 export type AggregateParams = z.infer<typeof aggregateParamsSchema>
@@ -211,7 +241,7 @@ export function saveParams(db: Db, patch: AggregateParamsPatch): AggregateParams
  * back with no error anywhere.
  *
  * Derived from `DEFAULT_PARAMS` rather than from a list, so it cannot fall behind
- * the schema. Group names themselves are the wire schema's job — it knows the five.
+ * the schema. Group names themselves are the wire schema's job — it knows the six.
  */
 export function unknownParamFields(patch: AggregateParamsPatch): string[] {
   const known = DEFAULT_PARAMS as unknown as Record<string, Record<string, unknown>>

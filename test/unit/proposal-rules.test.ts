@@ -41,6 +41,7 @@ function fact(overrides: FactOverrides = {}): MonthlyFact {
             winsorEffectBp: 0,
             ...overrides.baseline,
           },
+    dayCurve: null,
   }
 }
 

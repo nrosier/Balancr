@@ -301,6 +301,54 @@ export function fetchRecomputedSpend(
   )
 }
 
+const dayCategoryRow = z.object({
+  date: z.string(),
+  category: z.string().nullable(),
+  amount: cents.nullable(),
+})
+export interface RecomputedSpendDaily {
+  date: string
+  /** Null is the uncategorised bucket; the day-curve has no use for it. */
+  categoryId: string | null
+  /** Signed, as Actual stores it: negative for expenses. */
+  amountCents: number
+}
+
+/**
+ * Our own daily sum per category, for the day-of-month curve (#311).
+ *
+ * Same hygiene filter as `fetchRecomputedSpend` — see its comment for why each
+ * clause is there — grouped by day instead of by month. There is no Actual
+ * figure to cross-check this against (Actual has no per-day total), so unlike
+ * the monthly query this one never feeds `mismatches`; it is trusted at the
+ * same level `txnCount` already is elsewhere in this file.
+ */
+export function fetchRecomputedSpendDaily(
+  from: string,
+  to: string,
+): Promise<RecomputedSpendDaily[]> {
+  return runAql(
+    'recomputed-spend-daily',
+    (q) =>
+      q('transactions')
+        .filter({
+          date: { $gte: from, $lte: to },
+          transfer_id: null,
+          starting_balance_flag: false,
+          'account.offbudget': false,
+        })
+        .groupBy(['date', 'category'])
+        .select(['date', 'category', { amount: { $sum: '$amount' } }]),
+    dayCategoryRow,
+  ).then((rows) =>
+    rows.map((row) => ({
+      date: row.date,
+      categoryId: row.category,
+      amountCents: row.amount ?? 0,
+    })),
+  )
+}
+
 // ---------------------------------------------------------------------------
 //  Balances — Actual's own computation, for net worth
 // ---------------------------------------------------------------------------

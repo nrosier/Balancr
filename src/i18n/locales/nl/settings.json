@@ -407,6 +407,11 @@
         "minMonthProgress": "Geen projectie voor dit deel van de maand",
         "toleranceBp": "Toegelaten overschrijding"
       },
+      "dayCurve": {
+        "maxDispersionBp": "Toegelaten spreiding tussen die maanden",
+        "minMonths": "Minimum aantal maanden voor een betrouwbaar patroon",
+        "windowMonths": "Maanden geschiedenis in het patroon"
+      },
       "drift": {
         "persistentMonths": "Maanden buiten een bandbreedte voor een melding"
       },
@@ -430,6 +435,7 @@
     "group": {
       "baseline": "Je eigen norm",
       "burnRate": "Tempo",
+      "dayCurve": "Patroon binnen de maand",
       "drift": "Portefeuilledrift",
       "household": "Doelen van het huishouden",
       "hygiene": "Datakwaliteit",

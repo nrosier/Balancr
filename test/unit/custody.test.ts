@@ -57,6 +57,7 @@ function fact(id: string, spentCents: number, overrides: Partial<MonthlyFact> = 
     committedToDateCents: 0,
     committedApproximate: false,
     baseline: null,
+    dayCurve: null,
     ...overrides,
   }
 }

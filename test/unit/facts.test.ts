@@ -42,6 +42,7 @@ function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): 
     committedToDateCents: 0,
     committedApproximate: false,
     baseline: null,
+    dayCurve: null,
     ...overrides,
   }
 }
@@ -293,6 +294,31 @@ describe('loadFacts', () => {
     syncCategoryMeta(ctx.db, [written])
     persistFacts(ctx.db, [written], ['2026-03'])
     expect(loadFacts(ctx.db, '2026-03')[0]?.baseline).toEqual(written.baseline)
+  })
+
+  it('round-trips the day-of-month curve (#311)', () => {
+    const written = fact('2026-03', 'utilities', {
+      dayCurve: {
+        medianFractionBp: 6_500,
+        dispersionBp: 1_200,
+        monthsUsed: 9,
+        reliable: true,
+      },
+    })
+    syncCategoryMeta(ctx.db, [written])
+    persistFacts(ctx.db, [written], ['2026-03'])
+    expect(loadFacts(ctx.db, '2026-03')[0]?.dayCurve).toEqual(written.dayCurve)
+  })
+
+  it('keeps a null day curve null instead of storing a zero fraction', () => {
+    // Same reasoning as the baseline above: zero is a claim about the shape of the
+    // month, null is "not enough reliable history to say" — and the two must not be
+    // confused on the way back out.
+    persistFacts(ctx.db, [fact('2026-01', 'new')], ['2026-01'])
+    expect(rows()[0]?.dayCurveMedianFractionBp).toBeNull()
+    expect(rows()[0]?.dayCurveDispersionBp).toBeNull()
+    expect(rows()[0]?.dayCurveMonthsUsed).toBeNull()
+    expect(rows()[0]?.dayCurveReliable).toBeNull()
   })
 })
 
