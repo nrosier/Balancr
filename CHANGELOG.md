@@ -6,6 +6,23 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.5] — 2026-09-08
+
+The general-purpose version of the fix `rc.4` needed by hand.
+
+### Added
+
+- **An owner-only Settings control that force-resets every table Balancr
+  computes** ([#313](https://github.com/nrosier/Balancr/issues/313)). Wipes
+  budget facts, signals, net worth and portfolio snapshots — the nine tables
+  `src/db/schema.ts` marks as rebuilt idempotently — and starts the same jobs
+  a nightly run would, recomputing everything from Actual, Ghostfolio and
+  current settings. Source data, account and category configuration, and the
+  AI ledger are all left alone; the ledger deliberately so, since deleting it
+  would make the monthly spend guard think less had been spent than actually
+  had. Two presses, the same weight every other destructive-ish control in
+  Settings already gets: an armed state, then confirm or cancel.
+
 ## [1.0.0-rc.4] — 2026-09-08
 
 Another fix from using it: the same projection `rc.3` touched, still wrong for a
