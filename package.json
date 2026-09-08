@@ -1,6 +1,6 @@
 {
   "name": "balancr",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "private": true,
   "description": "Self-hosted AI budget and portfolio advisor for Actual Budget and Ghostfolio",
   "license": "MIT",
