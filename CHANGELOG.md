@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.7] — 2026-09-09
+
+rc.6's fix didn't fix anything. This one does.
+
+### Fixed
+
+- **`next_date` is not Actual's "already posted" signal, so rc.6's fix for
+  [#315](https://github.com/nrosier/Balancr/issues/315) never fired**
+  ([#317](https://github.com/nrosier/Balancr/issues/317)). Actual's own
+  background schedule-advancer declines to move `next_date` past today's
+  occurrence on the exact day it falls due, even once a transaction has
+  posted against it — so a same-day bill already paid was still double-
+  counted, exactly as before rc.6. The committed-spend figure now checks for
+  a transaction linked to the schedule instead, the same signal Actual's own
+  UI reads to show "Paid" rather than "Due".
+
 ## [1.0.0-rc.6] — 2026-09-09
 
 Another one found by using it, in the figure the rc.5 control exists to fix in bulk.
