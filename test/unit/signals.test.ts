@@ -23,6 +23,7 @@ interface FactOverrides {
   committedToDate?: number
   isIncome?: boolean
   baseline?: Partial<BaselineResult> | null
+  txnCount?: number
 }
 
 function fact(overrides: FactOverrides = {}): MonthlyFact {
@@ -42,7 +43,7 @@ function fact(overrides: FactOverrides = {}): MonthlyFact {
     // which is exactly why it has to be opted into rather than arrive by default.
     availableCents: overrides.available ?? 0,
     carryoverEnabled: false,
-    txnCount: 1,
+    txnCount: overrides.txnCount ?? 1,
     recomputedSpentCents: spentCents,
     committedCents: overrides.committed ?? 0,
     committedToDateCents: overrides.committedToDate ?? 0,
@@ -289,7 +290,10 @@ describe('baseline signals', () => {
 })
 
 describe('burn rate', () => {
-  const halfSpent = fact({ spent: 50_000, budgeted: 100_000 })
+  // Two transactions: enough to call it a rate rather than a single lump sum.
+  // See the "one transaction is not a rate" describe block below for the gate
+  // this gets past.
+  const halfSpent = fact({ spent: 50_000, budgeted: 100_000, txnCount: 2 })
 
   /** By code rather than by position: a fixture that also overspends emits two. */
   const projected = (signals: readonly Signal[]): number | undefined =>
@@ -321,10 +325,10 @@ describe('burn rate', () => {
 
   it('tolerates a small projected overrun', () => {
     // Default tolerance is 1000 bp: 5% over projection is within noise.
-    const slightly = fact({ spent: 52_500, budgeted: 100_000 })
+    const slightly = fact({ spent: 52_500, budgeted: 100_000, txnCount: 2 })
     expect(codes(categorySignals([slightly], 0.5, DEFAULT_PARAMS))).toEqual([])
 
-    const clearly = fact({ spent: 60_000, budgeted: 100_000 })
+    const clearly = fact({ spent: 60_000, budgeted: 100_000, txnCount: 2 })
     expect(codes(categorySignals([clearly], 0.5, DEFAULT_PARAMS))).toEqual(['burn_rate_over'])
   })
 
@@ -335,9 +339,10 @@ describe('burn rate', () => {
     const scheduled = fact({ spent: 100_000, committedToDate: 100_000, budgeted: 100_000 })
     expect(codes(categorySignals([scheduled], 0.25, DEFAULT_PARAMS))).toEqual([])
 
-    // The same figures with no schedule behind them are a category on course to spend
-    // four times its envelope, and still say so.
-    const variable = fact({ spent: 100_000, budgeted: 100_000 })
+    // The same figures with no schedule behind them, and a second transaction to show
+    // spending is still arriving, are a category on course to spend four times its
+    // envelope, and still say so.
+    const variable = fact({ spent: 100_000, budgeted: 100_000, txnCount: 2 })
     expect(projected(categorySignals([variable], 0.25, DEFAULT_PARAMS))).toBe(400_000)
   })
 
@@ -362,6 +367,7 @@ describe('burn rate', () => {
       committed: 10_000,
       budgeted: 130_000,
       available: 130_000,
+      txnCount: 2,
     })
     const signals = categorySignals([mixed], 0.5, DEFAULT_PARAMS)
     expect(codes(signals)).toEqual(['burn_rate_over'])
@@ -381,7 +387,11 @@ describe('burn rate', () => {
     // `round(x)` for a whole `n` — so an install with no schedules sees no change at
     // all, down to the cent.
     for (const progress of [0.25, 0.3, 0.5, 0.7, 0.9]) {
-      const signals = categorySignals([fact({ spent: 37_137, budgeted: 100 })], progress, DEFAULT_PARAMS)
+      const signals = categorySignals(
+        [fact({ spent: 37_137, budgeted: 100, txnCount: 2 })],
+        progress,
+        DEFAULT_PARAMS,
+      )
       expect(projected(signals)).toBe(Math.round(37_137 / progress))
     }
   })
@@ -392,6 +402,49 @@ describe('burn rate', () => {
     // variable half is floored at zero, so the projection is the spend itself.
     const early = fact({ spent: 20_000, committedToDate: 90_000, budgeted: 10_000 })
     expect(projected(categorySignals([early], 0.5, DEFAULT_PARAMS))).toBe(20_000)
+  })
+})
+
+describe('burn rate — one transaction is not a rate', () => {
+  it('does not extrapolate a single lump sum into a monthly trickle', () => {
+    // A haircut on day 3, entirely unscheduled, spending exactly what is assigned. The
+    // old formula divided by how much of the month had passed and reported a haircut
+    // every few days. `txnCount` defaults to 1 in the fixture.
+    const oneLump = fact({ spent: 2_500, budgeted: 2_500 })
+    expect(codes(categorySignals([oneLump], 0.25, DEFAULT_PARAMS))).toEqual([])
+  })
+
+  it('fires once a second transaction shows spending is actually still arriving', () => {
+    const twoTxns = fact({ spent: 2_500, budgeted: 2_500, txnCount: 2 })
+    expect(codes(categorySignals([twoTxns], 0.25, DEFAULT_PARAMS))).toEqual(['burn_rate_over'])
+  })
+
+  it('still counts a single transaction toward spent and committed, just not toward the projection', () => {
+    // Three utility direct debits are scheduled this month; one of them already posted
+    // as this month's only transaction. The bill already paid and the two still due are
+    // both real money and count in full — only the "and it will keep coming at this
+    // rate" leap is what a single transaction cannot support.
+    // `available` is set to cover what is committed so this test sees the burn rate
+    // alone, the same way the mixed-figures test above does.
+    const oneOfThreeScheduled = fact({
+      spent: 12_500,
+      committed: 16_700,
+      budgeted: 25_000,
+      available: 16_700,
+    })
+    const signals = categorySignals([oneOfThreeScheduled], 0.25, DEFAULT_PARAMS)
+    expect(codes(signals)).toEqual(['burn_rate_over'])
+    expect(signals[0]?.metrics.projectedCents).toBe(29_200)
+  })
+
+  it('leaves every other overspend signal alone — this gate is the projection only', () => {
+    // A single transaction that is already over the envelope is not a projection
+    // question at all; `over_assigned` already says so, immediately.
+    const overOnOneTxn = fact({ spent: 90_000, budgeted: 50_000 })
+    expect(codes(categorySignals([overOnOneTxn], 0.25, DEFAULT_PARAMS))).toEqual([
+      'over_assigned',
+      'burn_rate_over',
+    ])
   })
 })
 
