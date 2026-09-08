@@ -6,6 +6,23 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.3] — 2026-09-08
+
+One fix, found the same way `rc.2`'s were: using it.
+
+### Fixed
+
+- **The spending-pace projection stopped treating one transaction as a rate**
+  ([#309](https://github.com/nrosier/Balancr/issues/309)). A category with a
+  monthly lump sum and no Actual schedule behind it — a hand-entered utility
+  bill, a haircut — read as "all spent on day 3" and got extrapolated over the
+  rest of the month as if that were a trickle, projecting several times the
+  budget from a single data point. The variable half of the burn-rate
+  projection (#159's already-committed half is unaffected) now stays at zero
+  until a category has a second transaction this month; already-spent and
+  already-committed figures still count in full, so a category genuinely over
+  budget on one transaction alone still warns.
+
 ## [1.0.0-rc.2] — 2026-09-07
 
 Six fixes from walking `rc.1` against a real deployment, and one new setting. Four
