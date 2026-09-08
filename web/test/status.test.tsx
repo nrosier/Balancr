@@ -1,9 +1,9 @@
 /**
  * The panel that says whether this instance is working.
  *
- * It is the only panel on the settings page that writes nothing, which makes its
- * assertions a different kind from the rest of that file's. What matters here is that a
- * reader can tell four situations apart, because on screen three of them look identical:
+ * Almost everything here writes nothing, which makes most of its assertions a different
+ * kind from the rest of that file's. What matters in the cases below is that a reader can
+ * tell four situations apart, because on screen three of them look identical:
  *
  *  - **Nothing has run yet.** A fresh deployment. Neutral, and never coloured — a first
  *    boot that looked like a fault would send someone hunting for one.
@@ -21,10 +21,10 @@
  * has to arrive in Dutch, while a job's `error` is quoted from an upstream and must not
  * be translated or hidden. Both properties are asserted on one render.
  */
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { StatusPanel } from '../src/settings/Status.tsx'
-import type { Status } from '../src/shared.ts'
+import type { RefreshAccepted, Status } from '../src/shared.ts'
 import { clickLink, i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
 const json = (body: unknown, status = 200): Response =>
@@ -74,11 +74,12 @@ const BELGIAN_DATETIME = /^\d{2}\/\d{2}\/2026, \d{2}:\d{2}$/
 /** `HEALTHY` with fields replaced, so each case states only what it is about. */
 const status = (over: Partial<Status>): Status => ({ ...HEALTHY, ...over })
 
-/** Renders the panel against one answer, and waits for it to land. */
-async function show(body: Status | Response): Promise<ReturnType<typeof vi.fn>> {
+/** Renders the panel against one answer, and waits for it to land. `owner` defaults to
+ * true because only the reset-control cases below are actually about the distinction. */
+async function show(body: Status | Response, owner = true): Promise<ReturnType<typeof vi.fn>> {
   const mock = vi.fn(() => Promise.resolve(body instanceof Response ? body : json(body)))
   vi.stubGlobal('fetch', mock)
-  renderApp(<StatusPanel />)
+  renderApp(<StatusPanel owner={owner} />)
   await screen.findByRole('heading', { level: 2, name: /Status|status/ })
   return mock
 }
@@ -305,6 +306,69 @@ describe('when the endpoint itself fails', () => {
     expect(alert.textContent).toContain('req-9')
     // The heading is still there: this panel failing is not the page failing.
     expect(screen.getByRole('heading', { level: 2 })).toBeTruthy()
+  })
+})
+
+describe('the danger zone', () => {
+  /** A reply per path, for the two endpoints this section's tests need together. */
+  function serve(replies: Record<string, Response>): ReturnType<typeof vi.fn> {
+    const mock = vi.fn((path: string) => {
+      const reply = replies[path]
+      if (reply === undefined) return Promise.reject(new Error(`unstubbed request: ${path}`))
+      return Promise.resolve(reply.clone())
+    })
+    vi.stubGlobal('fetch', mock)
+    return mock
+  }
+
+  const resetAccepted: RefreshAccepted = {
+    requested: ['sync', 'portfolio', 'networth', 'backfill', 'signals'],
+    accepted: ['sync', 'portfolio', 'networth', 'backfill', 'signals'],
+    startedAt: '2026-09-03T12:00:00.000Z',
+  }
+
+  it('disables the control for a viewer, without hiding what it would do', async () => {
+    serve({ '/api/status': json(HEALTHY) })
+    renderApp(<StatusPanel owner={false} />)
+    await screen.findByRole('heading', { level: 2, name: /Status|status/ })
+
+    expect(screen.getByText(/Wipes every figure Balancr has computed/)).toBeTruthy()
+    const start = screen.getByRole('button', { name: 'Reset all calculated data' })
+    expect(start.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('arms, confirms, and reports itself started', async () => {
+    serve({
+      '/api/status': json(HEALTHY),
+      '/api/refresh/reset': json(resetAccepted, 202),
+    })
+    renderApp(<StatusPanel owner={true} />)
+    await screen.findByRole('heading', { level: 2, name: /Status|status/ })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset all calculated data' }))
+    const confirm = screen.getByRole('button', { name: 'Yes, wipe and recompute' })
+    expect(confirm.hasAttribute('disabled')).toBe(false)
+
+    fireEvent.click(confirm)
+    await screen.findByText('Started. The panel above will update as each job finishes.')
+  })
+
+  it('shares one busy state with the per-job buttons', async () => {
+    serve({
+      '/api/status': json(HEALTHY),
+      '/api/refresh/reset': json(resetAccepted, 202),
+    })
+    renderApp(<StatusPanel owner={true} />)
+    await screen.findByRole('heading', { level: 2, name: /Status|status/ })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset all calculated data' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, wipe and recompute' }))
+
+    await waitFor(() => {
+      for (const control of screen.getAllByRole('button', { name: 'Run now' })) {
+        expect(control.hasAttribute('disabled')).toBe(true)
+      }
+    })
   })
 })
 

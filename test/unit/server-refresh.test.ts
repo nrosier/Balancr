@@ -28,11 +28,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
-import { auditLog, users } from '../../src/db/schema.ts'
+import { auditLog, monthlyTotals, users } from '../../src/db/schema.ts'
 import { AI_OFF_REASONS } from '../../src/domain/ai/availability.ts'
 import { auditValues, loadAuditTrail, type AuditRow } from '../../src/domain/audit.ts'
 import { initI18n } from '../../src/i18n/index.ts'
-import { REFRESHABLE, jobsInFlight, type Job } from '../../src/jobs/index.ts'
+import { REFRESHABLE, RESET_REFRESH, jobsInFlight, type Job } from '../../src/jobs/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
@@ -112,6 +112,7 @@ const post = (
 }
 
 const refreshTrail = (): AuditRow[] => loadAuditTrail(ctx.db, { action: 'jobs.refresh' })
+const resetTrail = (): AuditRow[] => loadAuditTrail(ctx.db, { action: 'jobs.reset' })
 
 const after = (row: AuditRow | undefined): Record<string, unknown> | null =>
   row === undefined ? null : auditValues(row).after
@@ -281,6 +282,75 @@ describe('POST /api/refresh', () => {
     // now. Both halves have to be readable off this payload or the button spins for ever.
     expect(sync?.status).toBe('ok')
     expect(Date.parse(sync?.lastRunAt ?? '')).toBeGreaterThanOrEqual(startedAt)
+  })
+})
+
+describe('POST /api/refresh/reset', () => {
+  it('refuses a viewer, because it deletes rows before anything else runs', async () => {
+    const res = await post('/api/refresh/reset', undefined, { token: viewer })
+
+    expect(res.statusCode).toBe(403)
+    expect(ran).toEqual([])
+    // Nothing was wiped either — the fixture's rows are still there.
+    expect(ctx.db.select().from(monthlyTotals).all()).toHaveLength(2)
+  })
+
+  it('refuses while a refresh is already running, and wipes nothing', async () => {
+    await post('/api/refresh', { jobs: ['sync'] })
+    const res = await post('/api/refresh/reset')
+
+    expect(res.statusCode).toBe(409)
+    const error = res.json<ErrorBody>().error
+    expect(error.code).toBe('conflict')
+    expect(error.message).toContain('sync')
+    // The busy check runs before the wipe, precisely so a job already writing when
+    // this request arrived does not have its output deleted out from under it.
+    expect(ctx.db.select().from(monthlyTotals).all()).toHaveLength(2)
+  })
+
+  it('wipes the computed tables and starts the reset job list', async () => {
+    const res = await post('/api/refresh/reset')
+
+    expect(res.statusCode).toBe(202)
+    const body = res.json<RefreshAccepted>()
+    expect(body.requested).toEqual([...RESET_REFRESH])
+    expect(body.accepted).toEqual([...RESET_REFRESH])
+    expect(Date.parse(body.startedAt)).not.toBeNaN()
+
+    // The wipe already happened by the time the response comes back — it is
+    // synchronous and precedes `startRefresh`.
+    expect(ctx.db.select().from(monthlyTotals).all()).toHaveLength(0)
+
+    await drain()
+    expect(new Set(ran)).toEqual(new Set(RESET_REFRESH))
+  })
+
+  it('records one audit entry naming what was wiped and what was started', async () => {
+    await post('/api/refresh/reset')
+
+    const entries = resetTrail()
+    expect(entries).toHaveLength(1)
+    const entry = entries[0]
+    if (entry === undefined) throw new Error('expected one jobs.reset entry')
+    expect(entry.entityRef).toBe('reset')
+    expect(entry.actorId).not.toBeNull()
+
+    const values = auditValues(entry)
+    const before = values.before as { tables: { table: string; rows: number }[] }
+    const totalsRow = before.tables.find((row) => row.table === 'monthly_totals')
+    expect(totalsRow?.rows).toBe(2)
+    expect(values.after).toEqual({ accepted: [...RESET_REFRESH] })
+  })
+
+  it('refuses without a CSRF token', async () => {
+    const res = await post('/api/refresh/reset', undefined, { csrf: false })
+    expect(res.statusCode).toBe(403)
+    expect(ctx.db.select().from(monthlyTotals).all()).toHaveLength(2)
+  })
+
+  it('refuses without a session', async () => {
+    const res = await post('/api/refresh/reset', undefined, { anonymous: true })
+    expect(res.statusCode).toBe(401)
   })
 })
 

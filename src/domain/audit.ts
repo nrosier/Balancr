@@ -136,6 +136,15 @@ export const AUDIT_ACTIONS = [
    * answer it — it holds one row per job, overwritten by every run.
    */
   'jobs.refresh',
+  /**
+   * The owner wiped every computed-fact table and started a full recompute.
+   *
+   * Its own name rather than `jobs.refresh`, for the one way it is not that: this
+   * one deletes rows before anything runs. "When was this instance last reset" is
+   * a different question from "when was `sync` last pulled by hand", and an entry
+   * that answered both would hide the destructive one behind the routine one.
+   */
+  'jobs.reset',
   'account.map',
   'prompt.create',
   'prompt.activate',

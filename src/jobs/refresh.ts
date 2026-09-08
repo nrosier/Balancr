@@ -97,6 +97,18 @@ export type Refreshable = (typeof REFRESHABLE)[number]
 export const DEFAULT_REFRESH = ['sync', 'portfolio', 'networth', 'signals'] as const
 
 /**
+ * What a full reset recomputes, once the computed-fact tables have been wiped.
+ *
+ * `DEFAULT_REFRESH` plus `backfill`. An ordinary refresh leaves `backfill` out
+ * because its output is for settled months in the past and a click should not cost
+ * minutes of upstream traffic — but after a reset there is nothing to leave out: the
+ * historical net-worth and portfolio rows are gone too, not just the current month's,
+ * so the chains a reset must run are the ones that rebuild everything rather than
+ * just what a page reads today.
+ */
+export const RESET_REFRESH = ['sync', 'portfolio', 'networth', 'backfill', 'signals'] as const
+
+/**
  * What else has to run for the answer to be consistent.
  *
  * Keyed by the job asked for, listing what reads its output. `signals` reads the

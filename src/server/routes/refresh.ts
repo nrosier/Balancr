@@ -32,21 +32,29 @@
  *
  * `202`, never `200`: the work has been accepted and has certainly not been done. A
  * `200` with a list of job names would read as "these ran".
+ *
+ * `POST /api/refresh/reset` lives here too, and breaks the first fence on purpose:
+ * it is owner-only, because unlike an ordinary refresh it deletes rows before it
+ * starts anything. See `resetComputedData` for what it deletes and, more to the
+ * point, what it does not.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { resetComputedData } from '../../domain/aggregate/reset.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import {
   DEFAULT_REFRESH,
+  jobsInFlight,
   REFRESHABLE,
+  RESET_REFRESH,
   startRefresh,
   type Job,
   type Refreshable,
   type RefreshStarted,
 } from '../../jobs/index.ts'
-import { requireUser } from '../auth/guard.ts'
+import { requireOwner, requireUser } from '../auth/guard.ts'
 import { conflict, forbidden } from '../errors.ts'
 import { refreshRateLimit } from '../rate-limit.ts'
 import { parseBody } from '../validate.ts'
@@ -126,6 +134,32 @@ export function auditRefresh(db: Db, actorId: string, started: RefreshStarted): 
   }
 }
 
+/**
+ * One entry for the whole operation, not one per job.
+ *
+ * `auditRefresh` writes one row per job because the question it answers is "was
+ * `portfolio` pulled by hand". A reset answers a different question — "when was
+ * this instance last wiped" — and that is one event, whichever jobs happened to run
+ * afterwards. `before` carries what `resetComputedData` deleted, which is the only
+ * figure worth keeping once the tables it describes are empty again.
+ */
+export function auditReset(
+  db: Db,
+  actorId: string,
+  wiped: readonly { table: string; rows: number }[],
+  started: RefreshStarted,
+): void {
+  recordAudit(db, {
+    action: 'jobs.reset',
+    entity: 'jobs',
+    entityRef: 'reset',
+    actorId,
+    before: { tables: wiped },
+    after: { accepted: started.accepted },
+    at: started.startedAt,
+  })
+}
+
 export function registerRefreshRoutes(
   app: FastifyInstance,
   db: Db,
@@ -159,6 +193,37 @@ export function registerRefreshRoutes(
       return refreshAcceptedSchema.parse({
         accepted: outcome.accepted,
         requested: outcome.requested,
+        startedAt: outcome.startedAt.toISOString(),
+      })
+    },
+  )
+
+  app.post(
+    '/api/refresh/reset',
+    { ...refreshRateLimit() },
+    (request: FastifyRequest, reply: FastifyReply): RefreshAccepted => {
+      const user = requireOwner(request)
+      requireJobsEnabled(config.JOBS_ENABLED)
+
+      // Checked *before* anything is deleted, and not left to `startRefresh`'s own
+      // claim: that claim only protects the jobs this request is about to start. A
+      // job already running from before this request arrived would otherwise have
+      // its output deleted out from under it mid-write. Nothing awaits between this
+      // check and the wipe below, so nothing else can start in between either.
+      const busy = jobsInFlight()
+      if (busy.length > 0) throw busyError(busy)
+
+      const wiped = resetComputedData(db)
+
+      const outcome = startRefresh(db, registry, RESET_REFRESH)
+      if ('busy' in outcome) throw busyError(outcome.busy)
+
+      auditReset(db, user.id, wiped, outcome)
+
+      reply.code(202)
+      return refreshAcceptedSchema.parse({
+        accepted: outcome.accepted,
+        requested: [...RESET_REFRESH],
         startedAt: outcome.startedAt.toISOString(),
       })
     },

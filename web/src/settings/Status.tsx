@@ -14,9 +14,11 @@
  *    presses retry, whereas this is the one thing on the page whose value decays while
  *    it is on screen. So it carries a refresh of its own, and it is the only panel
  *    that can be the thing that failed to load while the rest of the page is fine.
- *  - **It writes nothing**, so it does not take `owner` and it is not disabled for a
- *    viewer. Someone who cannot change a threshold is often exactly the person asking
- *    why the numbers look old.
+ *  - **Almost nothing here writes.** Every per-job button and the reload beneath the
+ *    probe section start or re-read, never change judgement, so the panel still takes
+ *    `owner` only for the one control that is not like the others — see the danger
+ *    zone below. A viewer sees every other button enabled: someone who cannot change a
+ *    threshold is often exactly the person asking why the numbers look old.
  *  - **The text is in two registers.** A `reason` is a code, translated here; a job's
  *    `error` and a probe check's `error` are quoted, because they are what an upstream
  *    said and translating them would be inventing. Quoted strings are marked as
@@ -31,8 +33,12 @@
  * already past, and one writes a file nothing on screen reads — so the panel that reports
  * on the jobs is where "run that one again" belongs. The four data jobs are startable here
  * too, and from the bar at the top of the page whose figures they produce.
+ *
+ * And it is the only screen with the reset control described in `ResetControl` below —
+ * owner-only, because unlike every other button here it deletes rows before anything
+ * starts. See `src/domain/aggregate/reset.ts` for what it deletes and what it never does.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { formatDateTime, formatDecimal } from '../shared.ts'
@@ -107,14 +113,14 @@ function Quoted({ text }: { text: string }): ReactNode {
   return <q className="status__quote">{text}</q>
 }
 
-export function StatusPanel(): ReactNode {
+export function StatusPanel({ owner }: { owner: boolean }): ReactNode {
   const { t } = useT()
   const resource = useResource<Status>('/api/status')
 
   return (
     <Panel title={t('settings:status.title')} hint={t('settings:status.lede')}>
       <DataState resource={resource}>
-        {(status) => <Report status={status} reload={resource.reload} />}
+        {(status) => <Report status={status} owner={owner} reload={resource.reload} />}
       </DataState>
     </Panel>
   )
@@ -130,7 +136,15 @@ export function StatusPanel(): ReactNode {
  * outstanding: the server runs one refresh at a time, and a second button would spend
  * its press on a `409`.
  */
-function Report({ status, reload }: { status: Status; reload: () => void }): ReactNode {
+function Report({
+  status,
+  owner,
+  reload,
+}: {
+  status: Status
+  owner: boolean
+  reload: () => void
+}): ReactNode {
   const { t } = useT()
   const refresher = useRefresh(status.jobs, reload)
 
@@ -165,6 +179,8 @@ function Report({ status, reload }: { status: Status; reload: () => void }): Rea
         ))}
       </ul>
 
+      <ResetControl owner={owner} refresher={refresher} />
+
       <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
       <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
       {status.probes.length === 0 ? (
@@ -178,6 +194,74 @@ function Report({ status, reload }: { status: Status; reload: () => void }): Rea
         {t('action.refresh')}
       </button>
     </>
+  )
+}
+
+/**
+ * The owner's escape hatch for a computed column that shipped stale or missing.
+ *
+ * Two presses, the same weight `Spend.tsx`'s `Rerun` gives the one other
+ * consequential button in settings — a wipe is not undoable, even though what
+ * it wipes is regenerated within seconds. The warning line says what survives
+ * (Actual, Ghostfolio, everything the owner has configured or decided) before
+ * the button that destroys everything else, the same order `Rerun` states a
+ * price before the button that spends it.
+ *
+ * Shares `refresher.state`/`.busy` with every per-job button in this panel —
+ * see `startReset` in `ui/Refresh.tsx` for why that sharing is load-bearing
+ * rather than incidental. A viewer sees the same disabled treatment `Rerun`
+ * gives one: `!owner` disables the button, it does not hide the section, so
+ * the person who cannot press it can still read what it would do.
+ */
+function ResetControl({ owner, refresher }: { owner: boolean; refresher: Refresher }): ReactNode {
+  const { t } = useT()
+  const [armed, setArmed] = useState(false)
+
+  const started = refresher.state.kind === 'done' || refresher.state.kind === 'running'
+
+  return (
+    <section className="rerun">
+      <h3 className="panel__subtitle">{t('settings:status.reset.title')}</h3>
+      <p className="muted">{t('settings:status.reset.warning')}</p>
+
+      {armed ? (
+        <div className="rerun__confirm">
+          <button
+            type="button"
+            className="button"
+            disabled={!owner || refresher.busy}
+            onClick={() => {
+              refresher.startReset()
+            }}
+          >
+            {refresher.state.kind === 'starting'
+              ? t('settings:status.reset.starting')
+              : t('settings:status.reset.confirm')}
+          </button>
+          <button
+            type="button"
+            className="button button--quiet"
+            disabled={refresher.busy}
+            onClick={() => setArmed(false)}
+          >
+            {t('settings:status.reset.cancel')}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="button button--quiet"
+          disabled={!owner || refresher.busy}
+          onClick={() => setArmed(true)}
+        >
+          {t('settings:status.reset.start')}
+        </button>
+      )}
+
+      {started ? (
+        <p className="muted">{t('settings:status.reset.started')}</p>
+      ) : null}
+    </section>
   )
 }
 

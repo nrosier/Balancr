@@ -391,7 +391,7 @@ function row(label: string): HTMLElement {
 describe('the per-job buttons on the status panel', () => {
   it('offers a run for the jobs the endpoint takes, and for no others', async () => {
     serve({ '/api/status': json(STATUS) })
-    renderApp(<StatusPanel />)
+    renderApp(<StatusPanel owner={true} />)
     await tick()
 
     // `probe` and `sync`. Not `ai`, which has a priced control of its own on the panel
@@ -407,7 +407,7 @@ describe('the per-job buttons on the status panel', () => {
       '/api/status': json(STATUS),
       '/api/refresh': json(accepted(['sync'], ['sync', 'networth', 'signals']), 202),
     })
-    renderApp(<StatusPanel />)
+    renderApp(<StatusPanel owner={true} />)
     await tick()
 
     fireEvent.click(within(row('Budget sync')).getByRole('button', { name: 'Run now' }))

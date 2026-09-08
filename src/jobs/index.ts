@@ -59,6 +59,7 @@ export {
   DEFAULT_REFRESH,
   expand,
   REFRESHABLE,
+  RESET_REFRESH,
   startRefresh,
   type Refreshable,
   type RefreshBusy,
