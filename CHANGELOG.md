@@ -6,6 +6,25 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.4] — 2026-09-08
+
+Another fix from using it: the same projection `rc.3` touched, still wrong for a
+different shape of category.
+
+### Fixed
+
+- **The spending-pace projection now reads a category's own day-of-month shape,
+  not just a flat rate** ([#311](https://github.com/nrosier/Balancr/issues/311)).
+  Even with `rc.3`'s two-transaction floor, a linear extrapolation still misjudges
+  two common shapes: a bill that reliably lands in a narrow window (a utility bill
+  always posting days 8–13) reads as overspending until that window arrives, and a
+  category with a stable total but scattered timing can read as "ahead of pace"
+  simply because its spending happened to land early this month. The projection now
+  builds a historical day-of-month curve per category and uses it once — and only
+  once — that history is consistent enough to trust; a category whose timing is too
+  scattered to project from falls back to the existing flat-rate formula unchanged,
+  so a false gate never produces a worse answer than before.
+
 ## [1.0.0-rc.3] — 2026-09-08
 
 One fix, found the same way `rc.2`'s were: using it.
