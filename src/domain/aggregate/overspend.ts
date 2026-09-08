@@ -196,17 +196,28 @@ export function categorySignals(
     // change at all. `committedToDateCents` is stored for precisely this line:
     // subtracting it leaves the variable spending, and clamping at zero handles a
     // direct debit that has not posted yet or landed a day early.
+    //
+    // A third wrong answer lives in that same variable half: a category nobody
+    // scheduled in Actual but that is still, in fact, one lump sum a month — a
+    // haircut, a utility bill entered by hand — reads as "all spent on day 3", and
+    // extrapolating *that* over the rest of the month projects a haircut every
+    // three days. One transaction is a fact, not a rate; a rate needs at least two
+    // to say spending is still arriving rather than already over. So the
+    // extrapolation term is zero until `txnCount` shows a second transaction this
+    // month — the committed and already-spent figures still count in full, which
+    // is what lets a single-transaction category still trip `burn_rate_over` on
+    // spend and schedules alone, just never on a projection with one data point
+    // behind it.
     const variableToDateCents = Math.max(0, spentCents - fact.committedToDateCents)
+    const extrapolatedVariableCents =
+      fact.txnCount >= 2 ? Math.round(variableToDateCents * (1 / monthProgress - 1)) : 0
     if (
       monthProgress >= burnRate.minMonthProgress &&
       monthProgress < 1 &&
       budgetedCents > 0 &&
       (spentCents > 0 || committedCents > 0)
     ) {
-      const projectedCents =
-        spentCents +
-        committedCents +
-        Math.round(variableToDateCents * (1 / monthProgress - 1))
+      const projectedCents = spentCents + committedCents + extrapolatedVariableCents
       const toleranceCents = Math.round(budgetedCents * (1 + burnRate.toleranceBp / 10_000))
       const projectedOverrunCents = projectedCents - budgetedCents
       if (
