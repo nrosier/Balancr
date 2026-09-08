@@ -986,21 +986,21 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.4` |
+| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.5` |
 | `1.0.0` | Blessed by the person whose money it is | ⬜ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0-rc.4` is the current release, and every feature issue in
-the list above is closed. It carries another fix from the same projection `rc.3`
-touched: even with a second-transaction floor, a flat rate still misjudged a
-category whose spending lands in a predictable window (a utility bill always
-posting the same handful of days) and, in the other direction, a category with a
-stable total but scattered timing that happened to land early and looked "ahead of
-pace" for no real reason. The projection now reads a category's own day-of-month
-history and uses it once that history is consistent enough to trust; anything too
-scattered to project from keeps the existing flat-rate formula. What remains before
-`1.0.0` is still testing rather than building: two boxes of the security-verification
+**Where it is now** — `1.0.0-rc.5` is the current release, and every feature issue in
+the list above is closed. It adds an owner-only reset control in Settings: one button
+that empties every table Balancr computes from Actual and Ghostfolio — budget facts,
+signals, net worth, portfolio snapshots — and starts the same jobs a nightly run
+would, without touching source data, account or category configuration, or the AI
+ledger. It exists because `rc.4`'s day-of-month fix needed exactly this and had no
+way to get it except knowing which page's refresh button happened to cascade into
+`sync`; a stale or wrong computed column is now a button press away from fixed,
+whichever one it turns out to be next. What remains before `1.0.0` is still testing
+rather than building: two boxes of the security-verification
 checklist are unwalked — the cost cap's degrade path against a real key, and the rate limits under a
 deliberate burst — and the break-glass local login is unreachable in the topology this
 repo ships, which is safe in the security direction and a recovery path that does not
