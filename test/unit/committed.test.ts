@@ -418,6 +418,24 @@ describe('committedForMonth — what counts', () => {
     expect(row(committed, 'cat-rent').occurrences).toBe(1)
   })
 
+  it('moves one due today to the total once next_date shows it already posted', () => {
+    // Actual advances `next_date` past an occurrence once it posts — automatically, or
+    // marked paid by hand. A `next_date` after today is that signal, and this bill
+    // belongs in `toDateCents` instead of being double-counted against `spentCents`.
+    const committed = committedForMonth({
+      schedules: [on('2026-09-04', { nextDate: '2026-10-04' })],
+      month: '2026-09',
+      today: '2026-09-04',
+    })
+    expect(row(committed, 'cat-rent')).toEqual({
+      remainingCents: 0,
+      toDateCents: 90_000,
+      occurrences: 0,
+      approximate: false,
+    })
+    expect(committed.totalCents).toBe(0)
+  })
+
   it('keeps one that already fell out of the total, but remembers the amount', () => {
     // Rent paid on the 1st is spend, and counting it again would double it. It is
     // still recorded, because it is what lets the burn-rate projection tell rent from
