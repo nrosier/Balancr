@@ -390,6 +390,15 @@
       "unreachable": "Niet bereikbaar. Dit lost zich normaal gezien van zelf op.",
       "unreadable": "De databank van Balancr kon niet gelezen worden, dus de rest kon niet gecontroleerd worden."
     },
+    "reset": {
+      "cancel": "Annuleren",
+      "confirm": "Ja, wissen en herberekenen",
+      "start": "Alle berekende gegevens resetten",
+      "started": "Gestart. Het overzicht hierboven werkt bij zodra elke taak klaar is.",
+      "starting": "Bezig met starten…",
+      "title": "Berekende gegevens resetten",
+      "warning": "Wist elk cijfer dat Balancr zelf berekend heeft — budgetnormen, signalen, netto vermogen en portefeuillegeschiedenis — en berekent alles opnieuw op basis van Actual, Ghostfolio en de instellingen op deze pagina. Niets dat verzameld, ingesteld of beslist is, wordt aangeraakt."
+    },
     "serving": "Deze instantie levert pagina’s.",
     "title": "Status van deze instantie"
   },

@@ -390,6 +390,15 @@
       "unreachable": "It could not be reached. This normally clears without anyone doing anything.",
       "unreadable": "Balancr's own database could not be read, so nothing else could be checked."
     },
+    "reset": {
+      "cancel": "Cancel",
+      "confirm": "Yes, wipe and recompute",
+      "start": "Reset all calculated data",
+      "started": "Started. The panel above will update as each job finishes.",
+      "starting": "Starting…",
+      "title": "Reset calculated data",
+      "warning": "Wipes every figure Balancr has computed — budget norms, signals, net worth and portfolio history — and recomputes all of it from Actual, Ghostfolio and the settings on this page. Nothing collected, nothing configured and nothing decided is touched."
+    },
     "serving": "This instance is serving pages.",
     "title": "Status of this instance"
   },
