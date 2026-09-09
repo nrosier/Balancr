@@ -50,3 +50,29 @@ export function tooltipRow(name: string, value: string): string {
 export function privateText(value: string): string {
   return `<span data-private>${escapeText(value)}</span>`
 }
+
+/**
+ * One series' line in an axis-trigger tooltip: its colour marker, its name, and its
+ * value in bold — the shape ECharts' own default axis tooltip uses per series. `marker`
+ * is HTML ECharts generated itself (a coloured dot's inline style), not feed-derived
+ * text, so it is safe to splice in unescaped; `name` is not, and goes through
+ * `escapeText` for the same reason `tooltipRow`'s does.
+ */
+export function tooltipSeriesRow(marker: string, name: string, value: string): string {
+  return `${marker}${escapeText(name)}: <strong>${value}</strong>`
+}
+
+/**
+ * A full axis-trigger tooltip: the axis label as a header, then one `tooltipSeriesRow`
+ * per series present at that point.
+ *
+ * This, and `tooltipSeriesRow` above, exist only because `tooltip.valueFormatter` is
+ * not a safe home for `privateText`'s markup: ECharts builds the default tooltip by
+ * running `valueFormatter`'s return value through its own `encodeHTML`, on the theory
+ * that a value formatter produces plain text. A full `tooltip.formatter`'s return value
+ * is inserted as-is, with no such pass — the only place `<span data-private>` survives
+ * as a real element rather than literal, visible tag text.
+ */
+export function tooltipAxis(header: string, rows: readonly string[]): string {
+  return [escapeText(header), ...rows].join('<br>')
+}
