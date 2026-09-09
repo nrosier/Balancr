@@ -6,6 +6,31 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0-rc.8] — 2026-09-09
+
+The committed-spend check finally covers every day of the month, not just today.
+
+### Fixed
+
+- **A schedule paid a day or two off its computed date was still counted as
+  still to come** ([#321](https://github.com/nrosier/Balancr/issues/321)).
+  `rc.6`/`rc.7` fixed this only for a transaction dated exactly `today`; an
+  approximate schedule — Actual's own "around a date" option — routinely
+  posts a transaction a day or two early or late, which that exact check
+  never recognised. The bill's amount then landed in both real spend and the
+  "still to come" total, overstating the burn-rate projection by exactly
+  that amount. The check now counts a linked transaction anywhere in the
+  month, the same tolerance Actual's own "Paid" status already gives it.
+- **Chart tooltips showed the literal text `<span data-private>€ 123</span>`
+  instead of a blurred figure** ([#319](https://github.com/nrosier/Balancr/issues/319)).
+  The budget-vs-assigned bullet chart, category trend sparkline and
+  net-worth line chart built their tooltip through ECharts' `valueFormatter`,
+  which escapes its return value as plain text rather than inserting it as
+  HTML — so the `<span>` meant to become a blurrable DOM node showed up as
+  literal tag text instead. All three now build the tooltip through a full
+  `tooltip.formatter`, the same mechanism the two charts that never had this
+  problem already used.
+
 ## [1.0.0-rc.7] — 2026-09-09
 
 rc.6's fix didn't fix anything. This one does.
