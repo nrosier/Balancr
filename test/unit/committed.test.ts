@@ -370,7 +370,7 @@ describe('committedForMonth — which month it will answer for', () => {
         schedules: [schedule({ date: recurring({ start: '2026-01-28' }) })],
         month,
         today: '2026-09-04',
-        paidToday: new Set(),
+        paidThisMonth: new Map(),
       })
       expect(committed).toEqual(emptyCommitted(month))
     }
@@ -381,7 +381,7 @@ describe('committedForMonth — which month it will answer for', () => {
       schedules: [schedule()],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed.month).toBe('2026-09')
     expect(committed.totalCents).toBe(90_000)
@@ -397,7 +397,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-28')],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-rent')).toEqual({
       remainingCents: 90_000,
@@ -416,7 +416,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-04')],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-rent').remainingCents).toBe(90_000)
     expect(row(committed, 'cat-rent').occurrences).toBe(1)
@@ -424,14 +424,14 @@ describe('committedForMonth — what counts', () => {
 
   it('moves one due today to the total once a transaction is linked to it', () => {
     // Actual's own "Paid" signal is a transaction linked to the schedule, not
-    // `next_date` — see `fetchSchedulesPaidToday`'s comment for why. One dated today
+    // `next_date` — see `fetchSchedulesPaidThisMonth`'s comment for why. One linked
     // means today's occurrence already happened, and it belongs in `toDateCents`
     // instead of being double-counted against `spentCents`.
     const committed = committedForMonth({
       schedules: [on('2026-09-04')],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(['sch-1']),
+      paidThisMonth: new Map([['sch-1', 1]]),
     })
     expect(row(committed, 'cat-rent')).toEqual({
       remainingCents: 0,
@@ -442,6 +442,36 @@ describe('committedForMonth — what counts', () => {
     expect(committed.totalCents).toBe(0)
   })
 
+  it('moves an occurrence to the total when it was paid days before today, not on it', () => {
+    // #159 regression: `paidThisMonth` used to be scoped to a transaction dated
+    // exactly `today`, so a bill paid a little early — or a little late but still
+    // before `today` — never registered, and stayed in `remaining` alongside the next
+    // genuinely-upcoming occurrence of the same schedule. Both this month's occurrences
+    // are still ahead of `today`; one linked transaction anywhere this month is enough
+    // to retire the earliest of them into `toDateCents`.
+    const committed = committedForMonth({
+      schedules: [
+        schedule({
+          amountCents: -12_000,
+          date: recurring({ frequency: 'weekly', start: '2026-09-04' }),
+        }),
+      ],
+      month: '2026-09',
+      today: '2026-09-01',
+      paidThisMonth: new Map([['sch-1', 1]]),
+    })
+    // The 4th, 11th, 18th and 25th are all still ahead of the 1st. One paid
+    // transaction retires exactly one of them, leaving three still to come rather
+    // than the four a same-day-only check would still be counting.
+    expect(row(committed, 'cat-rent')).toEqual({
+      remainingCents: 36_000,
+      toDateCents: 12_000,
+      occurrences: 3,
+      approximate: false,
+    })
+    expect(committed.totalCents).toBe(36_000)
+  })
+
   it('keeps one that already fell out of the total, but remembers the amount', () => {
     // Rent paid on the 1st is spend, and counting it again would double it. It is
     // still recorded, because it is what lets the burn-rate projection tell rent from
@@ -450,7 +480,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-01')],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-rent')).toEqual({
       remainingCents: 0,
@@ -466,7 +496,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-28', { completed: true })],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed).toEqual(emptyCommitted('2026-09'))
   })
@@ -478,7 +508,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-25', { amountCents: 250_000, categoryId: 'cat-income' })],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed).toEqual(emptyCommitted('2026-09'))
   })
@@ -488,7 +518,7 @@ describe('committedForMonth — what counts', () => {
       schedules: [on('2026-09-25', { amountCents: 0 })],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed).toEqual(emptyCommitted('2026-09'))
   })
@@ -502,7 +532,7 @@ describe('committedForMonth — what counts', () => {
       ],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-utilities')).toEqual({
       remainingCents: 10_500,
@@ -523,7 +553,7 @@ describe('committedForMonth — what counts', () => {
       ],
       month: '2026-09',
       today: '2026-09-12',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     // The 4th and the 11th have gone; the 18th and the 25th have not.
     expect(row(committed, 'cat-groceries')).toEqual({
@@ -546,7 +576,7 @@ describe("committedForMonth — Actual's own next date", () => {
       schedules: [schedule({ date: noSeptember, nextDate: '2026-09-30' })],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-rent').remainingCents).toBe(90_000)
     expect(row(committed, 'cat-rent').occurrences).toBe(1)
@@ -560,7 +590,7 @@ describe("committedForMonth — Actual's own next date", () => {
         schedules: [schedule({ date: noSeptember, nextDate })],
         month: '2026-09',
         today: '2026-09-04',
-        paidToday: new Set(),
+        paidThisMonth: new Map(),
       })
       expect(committed).toEqual(emptyCommitted('2026-09'))
     }
@@ -571,7 +601,7 @@ describe("committedForMonth — Actual's own next date", () => {
       schedules: [schedule({ date: { kind: 'once', date: '2026-09-28' }, nextDate: '2026-09-28' })],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-rent').remainingCents).toBe(90_000)
   })
@@ -588,7 +618,7 @@ describe('committedForMonth — money nobody has attributed', () => {
       ],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed.unallocatedCents).toBe(3_000)
     expect(committed.unallocatedCount).toBe(1)
@@ -605,7 +635,7 @@ describe('committedForMonth — money nobody has attributed', () => {
       ],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed.unallocatedCents).toBe(0)
     expect(committed.unallocatedCount).toBe(0)
@@ -623,7 +653,7 @@ describe('committedForMonth — an amount nobody stated exactly', () => {
       ],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(row(committed, 'cat-utilities').approximate).toBe(true)
     expect(committed.approximate).toBe(true)
@@ -639,7 +669,7 @@ describe('committedForMonth — an amount nobody stated exactly', () => {
       ],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed.approximate).toBe(false)
     expect(row(committed, 'cat-utilities').approximate).toBe(true)
@@ -650,7 +680,7 @@ describe('committedForMonth — an amount nobody stated exactly', () => {
       schedules: [schedule()],
       month: '2026-09',
       today: '2026-09-04',
-      paidToday: new Set(),
+      paidThisMonth: new Map(),
     })
     expect(committed.approximate).toBe(false)
   })
