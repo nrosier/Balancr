@@ -775,24 +775,35 @@ export async function fetchSchedules(): Promise<ActualSchedule[]> {
 const scheduleLinkRow = z.object({ schedule: z.string() })
 
 /**
- * Which schedules already have a transaction dated `today` linked to them.
+ * How many transactions this month are linked to each schedule.
  *
  * This is Actual's own "Paid" signal — its schedule status (`getStatus` in
  * `@actual-app/core`) checks a linked transaction (`hasTrans`) before it ever looks at
  * `next_date`, and shows "Paid" the moment one exists, whatever `next_date` says.
  * `next_date` is a poor substitute: it is advanced by Actual's own background
  * schedule-advancing service, which is not guaranteed to have run, and which its own
- * source declines to advance on the day a schedule falls due. A transaction whose
- * `schedule` field names this schedule, dated today, is the same ground truth Actual's
- * own UI reads — nothing here is inferred from an amount or a payee match.
+ * source declines to advance on the day a schedule falls due.
+ *
+ * Scoped to the whole month, not just today (#159 regression): a transaction linked to
+ * a schedule is "paid", whichever day of the month it landed on — paid a few days
+ * before or after the date our own recurrence expansion computed for that occurrence is
+ * still paid, and counting it only when it lands exactly on `today` is how one already-
+ * paid occurrence stayed in `committedForMonth`'s `remaining` and got charged twice.
  */
-export function fetchSchedulesPaidToday(today: string): Promise<ReadonlySet<string>> {
+export function fetchSchedulesPaidThisMonth(
+  first: string,
+  last: string,
+): Promise<ReadonlyMap<string, number>> {
   return runAql(
-    'schedules-paid-today',
+    'schedules-paid-this-month',
     (q) =>
       q('transactions')
-        .filter({ date: today, schedule: { $ne: null } })
+        .filter({ date: { $gte: first, $lte: last }, schedule: { $ne: null } })
         .select(['schedule']),
     scheduleLinkRow,
-  ).then((rows) => new Set(rows.map((row) => row.schedule)))
+  ).then((rows) => {
+    const counts = new Map<string, number>()
+    for (const row of rows) counts.set(row.schedule, (counts.get(row.schedule) ?? 0) + 1)
+    return counts
+  })
 }
