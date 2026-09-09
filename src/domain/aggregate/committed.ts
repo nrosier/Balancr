@@ -21,20 +21,23 @@
  *    bill would answer "what is still to come" with two different things at once — and
  *    would take the weight off an overspend warning with money that has not arrived.
  *    An inflow schedule is skipped, which is why every figure here is positive-out.
- *  - **An occurrence due today counts as still to come, unless a transaction is
- *    already linked to the schedule.** #159 says "between today and month end", and
- *    on the one day a month a bill falls due it may or may not have posted yet.
- *    Actual's own answer to "has this happened" is not `next_date` — that field is
- *    advanced by Actual's own background service, on its own schedule, and its source
- *    declines to advance it on the day a schedule falls due even once paid — it is
- *    whether a transaction's `schedule` field names this schedule (`fetchSchedulesPaidToday`),
- *    the same thing Actual's own UI reads to show "Paid". One dated today moves the
- *    occurrence into `toDateCents` instead, the same place a bill paid on the 1st
- *    goes. Without it (no linked transaction yet) it counts as still to come — which
- *    is also what Actual's own schedule list would call it: "Due", not "Paid". A
- *    transaction that merely matches the amount, entered by hand rather than through
- *    Actual's own "Enter" action on the schedule, does not count; guessing that match
- *    is exactly the inference the next decision below rules out.
+ *  - **An occurrence counts as still to come unless a transaction is already linked
+ *    to the schedule this month.** #159 says "between today and month end", and on
+ *    the one day a month a bill falls due it may or may not have posted yet. Actual's
+ *    own answer to "has this happened" is not `next_date` — that field is advanced by
+ *    Actual's own background service, on its own schedule, and its source declines to
+ *    advance it on the day a schedule falls due even once paid — it is whether a
+ *    transaction's `schedule` field names this schedule (`fetchSchedulesPaidThisMonth`),
+ *    the same thing Actual's own UI reads to show "Paid". That count is scoped to the
+ *    whole month, not just today: a bill paid a few days before its computed date (or
+ *    a few days after, and still before `today`) is just as paid, and the occurrences
+ *    it retires are the earliest ones our own expansion still calls upcoming — which of
+ *    those it happened to be does not change the amount, only which line it is
+ *    attributed to. Without a linked transaction to spare, an occurrence counts as
+ *    still to come — which is also what Actual's own schedule list would call it:
+ *    "Due", not "Paid". A transaction that merely matches the amount, entered by hand
+ *    rather than through Actual's own "Enter" action on the schedule, does not count;
+ *    guessing that match is exactly the inference the next decision below rules out.
  *  - **Uncertainty resolves upward, and unattributed money is not guessed.** The
  *    adapter already takes the upper bound of a range rather than Actual's average; a
  *    schedule no rule assigns a category to lands in `unallocatedCents` and is counted
@@ -130,11 +133,12 @@ export interface CommittedInput {
   /** Today in the configured timezone, `YYYY-MM-DD`. */
   today: string
   /**
-   * Schedule ids with a transaction dated `today` linked to them — Actual's own
-   * "Paid" signal. See `fetchSchedulesPaidToday`'s comment for why this, and not
-   * `next_date`, is the ground truth for "did today's occurrence already happen".
+   * How many transactions this month are linked to each schedule id — Actual's own
+   * "Paid" signal. See `fetchSchedulesPaidThisMonth`'s comment for why this, scoped to
+   * the whole month rather than just `today`, is the ground truth for "how many
+   * occurrences have already happened".
    */
-  paidToday: ReadonlySet<string>
+  paidThisMonth: ReadonlyMap<string, number>
 }
 
 /** A month with nothing scheduled, which is also every past month. */
@@ -172,15 +176,19 @@ export function committedForMonth(input: CommittedInput): CommittedMonth {
     if (costCents <= 0) continue
 
     const dates = expandOccurrences(schedule.date, first, last)
-    // Actual's own "Paid" signal is a transaction linked to this schedule, not
-    // `next_date` — see `fetchSchedulesPaidToday`. A linked transaction dated today
-    // means today's own occurrence — if our expansion found one — already happened,
-    // and belongs in `toDate` rather than `remaining`.
-    const postedToday = input.paidToday.has(schedule.id)
-    let remaining = dates.filter(
-      (date) => date >= today && !(date === today && postedToday),
-    ).length
-    const toDate = dates.length - remaining
+    // Occurrences our own expansion already puts before today are `toDate` regardless
+    // of `paidThisMonth` — they are in the past whether or not a transaction has been
+    // entered for them yet. `paidThisMonth`'s job is only the occurrences expansion
+    // still calls upcoming: any of this schedule's linked transactions beyond what
+    // `priorToToday` already accounts for means that many of them are paid despite
+    // landing on a computed date that has not arrived — see `fetchSchedulesPaidThisMonth`
+    // for why a linked transaction is Actual's own "Paid" signal, not `next_date`.
+    const priorToToday = dates.filter((date) => date < today).length
+    const stillUpcoming = dates.length - priorToToday
+    const paidCount = input.paidThisMonth.get(schedule.id) ?? 0
+    const extraPaid = Math.min(stillUpcoming, Math.max(0, paidCount - priorToToday))
+    const toDate = priorToToday + extraPaid
+    let remaining = stillUpcoming - extraPaid
 
     // The other use of Actual's own `next_date`: when our expansion finds nothing at
     // all this month but Actual says the next occurrence falls inside the window, the

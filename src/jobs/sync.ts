@@ -18,7 +18,7 @@ import {
   fetchRecomputedSpend,
   fetchRecomputedSpendDaily,
   fetchSchedules,
-  fetchSchedulesPaidToday,
+  fetchSchedulesPaidThisMonth,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
@@ -269,7 +269,10 @@ async function run({ db, log, now }: JobContext): Promise<JobDetail> {
         schedules: await fetchSchedules(),
         month: currentMonth,
         today,
-        paidToday: await fetchSchedulesPaidToday(today),
+        paidThisMonth: await fetchSchedulesPaidThisMonth(
+          startOfMonth(currentMonth),
+          endOfMonth(currentMonth),
+        ),
       })
     : emptyCommitted(currentMonth)
 
