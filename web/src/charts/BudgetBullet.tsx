@@ -26,7 +26,14 @@ import { useT } from '../i18n.ts'
 import { formatMoney, formatMoneyCompact } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
-import { privateText } from './tooltip.ts'
+import { privateText, tooltipAxis, tooltipSeriesRow } from './tooltip.ts'
+
+interface AxisTooltipPoint {
+  marker?: string
+  seriesName?: string
+  axisValueLabel?: string
+  value?: unknown
+}
 
 export interface BulletCategory {
   name: string
@@ -70,8 +77,28 @@ export function BudgetBullet({ categories, height }: BudgetBulletProps): ReactNo
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
+        // A full `formatter`, not `valueFormatter`: see `tooltipAxis`'s doc comment
+        // for why `valueFormatter` escapes `privateText`'s markup instead of rendering
+        // it. `params` is one entry per series present at the hovered category — the
+        // bar series always, the scatter (baseline) one only for a category that has
+        // one, since `flatMap` above never gave it a data point to hover otherwise.
+        formatter: (params: unknown) => {
+          const points = (Array.isArray(params) ? params : [params]) as AxisTooltipPoint[]
+          const header = points[0]?.axisValueLabel ?? ''
+          const rows = points.map((point) => {
+            // A bar's value is the plain number; the scatter's is `[baselineCents,
+            // categoryName]`, since that pair is what its `data` holds — the money
+            // figure is always the first element either way.
+            const raw = Array.isArray(point.value) ? point.value[0] : point.value
+            const cents = typeof raw === 'number' ? raw : 0
+            return tooltipSeriesRow(
+              point.marker ?? '',
+              point.seriesName ?? '',
+              privateText(formatMoney(cents, { whole: true })),
+            )
+          })
+          return tooltipAxis(header, rows)
+        },
       },
       legend: { data: [assigned, spent, baseline], bottom: 0 },
       grid: { left: 8, right: 16, top: 8, bottom: LEGEND_PX, containLabel: true },

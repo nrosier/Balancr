@@ -29,7 +29,14 @@ import { useT } from '../i18n.ts'
 import { formatDate, formatMoney, formatMoneyCompact, formatMonthShort } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
-import { privateText } from './tooltip.ts'
+import { privateText, tooltipAxis, tooltipSeriesRow } from './tooltip.ts'
+
+interface AxisTooltipPoint {
+  marker?: string
+  seriesName?: string
+  axisValueLabel?: string
+  value?: unknown
+}
 
 export interface NetWorthPoint {
   date: string
@@ -83,8 +90,23 @@ export function NetWorthChart({
     return {
       tooltip: {
         trigger: 'axis',
-        valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
+        // A full `formatter`, not `valueFormatter`: see `tooltipAxis`'s doc comment
+        // for why `valueFormatter` escapes `privateText`'s markup instead of rendering
+        // it. There is exactly one series, so `params` is always a single-element
+        // array.
+        formatter: (params: unknown) => {
+          const points = (Array.isArray(params) ? params : [params]) as AxisTooltipPoint[]
+          const header = points[0]?.axisValueLabel ?? ''
+          const rows = points.map((point) => {
+            const cents = typeof point.value === 'number' ? point.value : 0
+            return tooltipSeriesRow(
+              point.marker ?? '',
+              point.seriesName ?? '',
+              privateText(formatMoney(cents, { whole: true })),
+            )
+          })
+          return tooltipAxis(header, rows)
+        },
       },
       xAxis: {
         type: 'category',

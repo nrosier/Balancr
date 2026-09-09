@@ -27,7 +27,14 @@ import { useT } from '../i18n.ts'
 import { formatMonth, formatMonthShort, formatMoney, formatMoneyCompact } from '../shared.ts'
 import { Chart } from './Chart.tsx'
 import type { EChartsCoreOption } from './echarts.ts'
-import { privateText } from './tooltip.ts'
+import { privateText, tooltipAxis, tooltipSeriesRow } from './tooltip.ts'
+
+interface AxisTooltipPoint {
+  marker?: string
+  seriesName?: string
+  axisValueLabel?: string
+  value?: unknown
+}
 
 export interface CategoryTrendProps {
   name: string
@@ -56,8 +63,23 @@ export function CategoryTrend({
       grid: { left: 2, right: 2, top: 8, bottom: 18, containLabel: true },
       tooltip: {
         trigger: 'axis',
-        valueFormatter: (value: unknown) =>
-          typeof value === 'number' ? privateText(formatMoney(value, { whole: true })) : '',
+        // A full `formatter`, not `valueFormatter`: see `tooltipAxis`'s doc comment
+        // for why `valueFormatter` escapes `privateText`'s markup instead of rendering
+        // it. The `markLine` is silent and carries no series of its own, so `params`
+        // is always exactly the one line series.
+        formatter: (params: unknown) => {
+          const points = (Array.isArray(params) ? params : [params]) as AxisTooltipPoint[]
+          const header = points[0]?.axisValueLabel ?? ''
+          const rows = points.map((point) => {
+            const cents = typeof point.value === 'number' ? point.value : 0
+            return tooltipSeriesRow(
+              point.marker ?? '',
+              point.seriesName ?? '',
+              privateText(formatMoney(cents, { whole: true })),
+            )
+          })
+          return tooltipAxis(header, rows)
+        },
       },
       xAxis: {
         type: 'category',
