@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0--rc.8-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -986,27 +986,29 @@ ends.
 | `0.9.0` | Statbel benchmark, shared costs, scheduled spend, insights month picker | ✅ |
 | `0.10.0` | Budget depth: re-judging changed months, reusing an analysis | ✅ |
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
-| `1.0.0-rc.N` | Feature complete, in testing | 🔄 `1.0.0-rc.8` |
-| `1.0.0` | Blessed by the person whose money it is | ⬜ |
+| `1.0.0-rc.N` | Feature complete, in testing | ✅ shipped as `1.0.0-rc.8` |
+| `1.0.0` | Blessed by the person whose money it is | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0-rc.8` is the current release, and every feature issue in
-the list above is closed. It generalises `rc.6`/`rc.7`'s committed-spend fix from
-"posted exactly today" to "posted anywhere this month": an approximate schedule
-routinely posts a transaction a day or two off its computed date, which the
-exact-day check never recognised, so the bill's amount still doubled up against the
-burn-rate projection. It also fixes chart tooltips showing literal
-`<span data-private>` tag text instead of a blurred figure. What remains before `1.0.0` is still testing
-rather than building: two boxes of the security-verification
-checklist are unwalked — the cost cap's degrade path against a real key, and the rate limits under a
-deliberate burst — and the break-glass local login is unreachable in the topology this
-repo ships, which is safe in the security direction and a recovery path that does not
-work. The two boxes wait on somebody's own deployment rather than on code; the third
-waits on a choice between documenting the limitation and building a way around it.
+**Where it is now** — `1.0.0` is the current release. Every feature issue in the
+list above is closed, and the release-candidate series (`rc.1` through `rc.8`) ran
+without turning up a regression that survived to ship — the last of them generalised
+a committed-spend check from "posted exactly today" to "posted anywhere this month"
+and fixed chart tooltips showing literal `<span data-private>` tag text instead of a
+blurred figure. On top of that, Uitgavetempo now reads the buffer as well as the
+budget: a category on track to overspend against this month's assignment no longer
+reads the same whether or not there is anything left to absorb it. Three items from
+the testing checklist ship as documented, accepted limitations rather than
+blockers: two boxes of the security-verification checklist are unwalked — the cost
+cap's degrade path against a real key, and the rate limits under a deliberate burst
+— and the break-glass local login is unreachable in the topology this repo ships,
+which is safe in the security direction and a recovery path that does not work. All
+three wait on somebody's own deployment or their own choice, not on code, and none
+of them blocked this release.
 
-`docker pull` still resolves `latest` to the last stable release; a candidate is
-published under its own tag only.
+`docker pull` now resolves `latest` to `1.0.0`; a release candidate is published
+under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and

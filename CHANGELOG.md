@@ -6,6 +6,41 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.0] — 2026-09-09
+
+Blessed by the person whose money it is. Every feature milestone is closed, the
+release-candidate series ran without turning up a regression that survived to ship,
+and the three items below are shipped as documented, accepted limitations rather
+than treated as blockers — the choice `rc.1`'s own checklist left open.
+
+### Added
+
+- **Uitgavetempo also reads the buffer, not just the budget**
+  ([#324](https://github.com/nrosier/Balancr/pull/324)). The burn-rate projection
+  flagged a category the same way whether or not there was anything left to absorb
+  it: someone who overbudgets on purpose some months, to build a cushion for the
+  months they don't, saw every drawdown month read as a plain overspend warning,
+  indistinguishable from one with no cushion at all. The signal now also projects
+  the envelope's own available balance — carry-in included — forward by the same
+  amount the projection adds beyond what has already been spent, and escalates from
+  `warn` to `alert` only when that balance would end the month past
+  `overspend.availableFloorCents` in the red — the same line `over_available`
+  already draws on the balance itself.
+
+### Known, shipped as documented limitations
+
+- **The break-glass local login is unreachable in the shipped topology**
+  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  publishes no host port, the peer address is always the reverse proxy — so the
+  credential documented as existing "for when nobody can sign in" can be enrolled
+  and never used. Fail-safe in the security direction, and a recovery path that does
+  not work; this ships as a documented gap rather than a blocker.
+- **Two verification boxes stay unwalked**
+  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  against a real key, and the rate limits under a deliberate burst. Both need a
+  decision on somebody's own deployment rather than on code, and neither blocks
+  this release.
+
 ## [1.0.0-rc.8] — 2026-09-09
 
 The committed-spend check finally covers every day of the month, not just today.
