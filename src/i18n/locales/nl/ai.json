@@ -69,7 +69,7 @@
     "below_baseline": "{{category}} ligt {{delta}} onder je gebruikelijke niveau.",
     "budget_toward_investments": "{{amount}} van het onbegrote geld van deze maand zou naar beleggingen kunnen gaan.",
     "budget_toward_savings": "{{amount}} van het onbegrote geld van deze maand zou je buffer kunnen aanvullen.",
-    "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen.",
+    "burn_rate_over": "{{category}} gaat deze maand richting {{projected}}, tegenover {{assigned}} toegewezen, met {{buffer}} in de envelop tegen het einde van de maand.",
     "committed_over_available": "In {{category}} staat nog {{committed}} gepland, terwijl er {{available}} in de envelop overblijft.",
     "custody_offset": "Je betaalde {{paid}} aan gedeelde kosten; bij een aandeel van {{share}} is {{amount}} daarvan voor de co-ouder.",
     "custody_total": "Je betaalde {{paid}} aan gedeelde kosten, bij een aandeel van {{share}} jouw deel van {{total}} in totaal.",

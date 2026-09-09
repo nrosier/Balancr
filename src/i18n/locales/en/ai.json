@@ -69,7 +69,7 @@
     "below_baseline": "{{category}} is {{delta}} below your usual level.",
     "budget_toward_investments": "{{amount}} of this month's unbudgeted money could go toward investments.",
     "budget_toward_savings": "{{amount}} of this month's unbudgeted money could top up your emergency fund.",
-    "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned.",
+    "burn_rate_over": "{{category}} is on track for {{projected}} this month, against {{assigned}} assigned, with {{buffer}} left in the envelope by month end.",
     "committed_over_available": "{{category}} still has {{committed}} scheduled to go out, with {{available}} left in the envelope.",
     "custody_offset": "You paid {{paid}} on shared costs; at a {{share}} share, {{amount}} of that is the co-parent's.",
     "custody_total": "You paid {{paid}} on shared costs, which at a {{share}} share is your part of {{total}} in total.",

@@ -54,7 +54,15 @@ export const FINDING_SPECS = {
   },
 
   // --- trajectory ---
-  burn_rate_over: { vars: ['category', 'projected', 'assigned'], maxSeverity: 'warn', negative: true },
+  // Alert, unlike a plain 'warn': a projected overrun the buffer still covers is
+  // one thing, one that would push the envelope's own balance — carry-in
+  // included — past `overspend.availableFloorCents` is another, same distinction
+  // `over_available` already draws on the balance itself.
+  burn_rate_over: {
+    vars: ['category', 'projected', 'assigned', 'buffer'],
+    maxSeverity: 'alert',
+    negative: true,
+  },
   below_baseline: { vars: ['category', 'delta'], maxSeverity: 'info', negative: false },
   no_spend_streak: { vars: ['category', 'months'], maxSeverity: 'info', negative: false },
   irregular_expense: { vars: ['category', 'amount'], maxSeverity: 'info', negative: true },
