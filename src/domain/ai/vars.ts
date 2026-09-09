@@ -116,8 +116,15 @@ const NUMERIC_VARS: {
     present({ committed: money(m.committedCents), available: money(m.availableCents) }),
 
   // --- trajectory ---
+  // `buffer` is signed for the same reason `committed_over_available`'s `available`
+  // is: a projection the buffer still covers and one that would run it into the red
+  // are different sentences, and `formatMoney` prints the minus that says which.
   burn_rate_over: (m) =>
-    present({ projected: money(m.projectedCents), assigned: money(m.assignedCents) }),
+    present({
+      projected: money(m.projectedCents),
+      assigned: money(m.assignedCents),
+      buffer: money(m.projectedAvailableCents),
+    }),
   below_baseline: (m) => present({ delta: magnitudePercent(m.deltaBp) }),
   no_spend_streak: (m, translate) => present({ months: months(m.months, translate) }),
   irregular_expense: (m) => present({ amount: money(m.amountCents) }),

@@ -322,7 +322,34 @@ describe('burn rate', () => {
       committedCents: 0,
       projectedOverrunCents: 100_000,
       monthProgressBp: 2_500,
+      // No buffer at all (`available` defaults to 0), so the projected balance
+      // is deep in the red and the severity below escalates.
+      availableCents: 0,
+      projectedAvailableCents: -150_000,
     })
+  })
+
+  it('escalates to alert when the buffer cannot absorb the projected overrun', () => {
+    const noBuffer = fact({ spent: 50_000, budgeted: 100_000, available: 0, txnCount: 2 })
+    const signals = categorySignals([noBuffer], 0.25, DEFAULT_PARAMS)
+    expect(signals[0]?.severity).toBe('alert')
+  })
+
+  it('stays warn right at the buffer floor, like over_available draws the same line', () => {
+    // projectedCents is 200_000 and spentCents is 50_000, so the projection adds
+    // 150_000 beyond what is already spent. An available balance of exactly
+    // 149_500 projects to -500 — precisely `overspend.availableFloorCents` — and
+    // `over_available` treats that boundary as still fine, not yet a real problem.
+    const atFloor = fact({ spent: 50_000, budgeted: 100_000, available: 149_500, txnCount: 2 })
+    const signals = categorySignals([atFloor], 0.25, DEFAULT_PARAMS)
+    expect(signals[0]?.severity).toBe('warn')
+  })
+
+  it('stays warn when the buffer covers the projected overrun', () => {
+    const coveredBuffer = fact({ spent: 50_000, budgeted: 100_000, available: 200_000, txnCount: 2 })
+    const signals = categorySignals([coveredBuffer], 0.25, DEFAULT_PARAMS)
+    expect(signals[0]?.severity).toBe('warn')
+    expect(signals[0]?.metrics.projectedAvailableCents).toBe(50_000)
   })
 
   it('refuses to extrapolate from the first days of the month', () => {
@@ -390,7 +417,12 @@ describe('burn rate', () => {
       committedCents: 10_000,
       projectedOverrunCents: 50_000,
       monthProgressBp: 5_000,
+      // The envelope's own balance already covers the projected overrun, so this
+      // stays a plain warn rather than escalating.
+      availableCents: 130_000,
+      projectedAvailableCents: 80_000,
     })
+    expect(signals[0]?.severity).toBe('warn')
   })
 
   it('is exactly the old projection when nothing is scheduled', () => {
@@ -441,6 +473,8 @@ describe('burn rate', () => {
         committedCents: 0,
         projectedOverrunCents: 20_000,
         monthProgressBp: 5_000,
+        availableCents: 0,
+        projectedAvailableCents: -50_000,
       })
     })
 
