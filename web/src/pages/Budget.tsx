@@ -406,6 +406,8 @@ interface PaceRow {
   projectedCents: number
   overrunCents: number
   monthProgressBp: number
+  bufferCents: number
+  severity: RenderedSignal['severity']
   text: string
 }
 
@@ -420,14 +422,21 @@ interface PaceRow {
 function paceRows(signals: readonly RenderedSignal[]): PaceRow[] {
   return signals.flatMap((signal) => {
     if (signal.code !== 'burn_rate_over' || signal.categoryId === null) return []
-    const { assignedCents, monthProgressBp, projectedCents, projectedOverrunCents, spentCents } =
-      signal.metrics
+    const {
+      assignedCents,
+      monthProgressBp,
+      projectedCents,
+      projectedOverrunCents,
+      spentCents,
+      projectedAvailableCents,
+    } = signal.metrics
     if (
       assignedCents === undefined ||
       monthProgressBp === undefined ||
       projectedCents === undefined ||
       projectedOverrunCents === undefined ||
-      spentCents === undefined
+      spentCents === undefined ||
+      projectedAvailableCents === undefined
     ) {
       return []
     }
@@ -440,6 +449,8 @@ function paceRows(signals: readonly RenderedSignal[]): PaceRow[] {
         projectedCents,
         overrunCents: projectedOverrunCents,
         spentCents,
+        bufferCents: projectedAvailableCents,
+        severity: signal.severity,
         text: signal.text,
       },
     ]
@@ -494,6 +505,14 @@ function Pace({ signals, t }: { signals: readonly RenderedSignal[]; t: TFunction
               <Trans
                 i18nKey="budget:pace.overrun"
                 components={{ money: <Money cents={row.overrunCents} options={{ whole: true }} /> }}
+              />
+            </p>
+            <p
+              className={`pace__note pace__note--${row.severity === 'alert' ? 'alert' : 'warn'} num`}
+            >
+              <Trans
+                i18nKey={row.severity === 'alert' ? 'budget:pace.bufferShort' : 'budget:pace.bufferCovered'}
+                components={{ money: <Money cents={row.bufferCents} options={{ whole: true }} /> }}
               />
             </p>
           </li>

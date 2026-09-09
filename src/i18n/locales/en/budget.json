@@ -194,6 +194,8 @@
     "overview": "Overview"
   },
   "pace": {
+    "bufferCovered": "Buffer covers this — envelope projected to end at <money>{{amount}}</money>.",
+    "bufferShort": "Buffer will not cover this — envelope projected to end at <money>{{amount}}</money>.",
     "monthProgress": "{{progress}} of the month has passed",
     "overrun": "Projected overrun <money>{{amount}}</money>",
     "summary": "{{category}}: {{spent}} spent of {{assigned}} assigned, with {{progress}} of the month gone."

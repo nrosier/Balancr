@@ -194,6 +194,8 @@
     "overview": "Overzicht"
   },
   "pace": {
+    "bufferCovered": "Buffer vangt dit op — envelop komt naar verwachting uit op <money>{{amount}}</money>.",
+    "bufferShort": "Buffer vangt dit niet op — envelop komt naar verwachting uit op <money>{{amount}}</money>.",
     "monthProgress": "{{progress}} van de maand is voorbij",
     "overrun": "Verwachte overschrijding <money>{{amount}}</money>",
     "summary": "{{category}}: {{spent}} uitgegeven van {{assigned}} toegewezen, met {{progress}} van de maand voorbij."

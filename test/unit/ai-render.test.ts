@@ -48,6 +48,7 @@ const ALL_METRICS: Record<string, number> = {
   months: 4,
   projectedCents: 61_000,
   projectedOverrunCents: 21_000,
+  projectedAvailableCents: -12_000,
   monthProgressBp: 6_000,
   changeCents: -25_000,
   // household

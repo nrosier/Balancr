@@ -504,6 +504,10 @@
   color: var(--warn);
 }
 
+.pace__note--alert {
+  color: var(--negative);
+}
+
 /*
  * The bar. `--surface-sunken` for the track rather than a border, so the unspent part
  * of an envelope reads as room left rather than as a second thing to look at.

@@ -232,6 +232,15 @@ export function categorySignals(
     // still lets a brand-new, historically-unprecedented schedule win via the
     // known-certain committed figure, which the curve has no history to reflect
     // yet.
+    //
+    // A fifth wrong answer is judging the projection against `budgetedCents`
+    // alone: someone who overbudgets most months on purpose, to build a buffer
+    // for the months they don't, sees every drawdown month flagged the same as
+    // someone with no buffer at all. `projectedAvailableCents` projects the
+    // envelope's own balance — carry-in included — forward by the same amount
+    // the projection adds beyond what has already been spent, and the severity
+    // reuses `overspend.availableFloorCents`: the same line `over_available`
+    // already draws between a buffer that covers this and one that does not.
     const variableToDateCents = Math.max(0, spentCents - fact.committedToDateCents)
     const extrapolatedVariableCents =
       fact.txnCount >= 2 ? Math.round(variableToDateCents * (1 / monthProgress - 1)) : 0
@@ -256,15 +265,23 @@ export function categorySignals(
         projectedCents > toleranceCents &&
         projectedOverrunCents >= overspend.materialityFloorCents
       ) {
+        const projectedAvailableCents = availableCents - (projectedCents - spentCents)
         signals.push(
-          signal('burn_rate_over', fact, 'warn', {
-            projectedCents,
-            assignedCents: budgetedCents,
-            spentCents,
-            committedCents,
-            projectedOverrunCents,
-            monthProgressBp: Math.round(monthProgress * 10_000),
-          }),
+          signal(
+            'burn_rate_over',
+            fact,
+            projectedAvailableCents < -overspend.availableFloorCents ? 'alert' : 'warn',
+            {
+              projectedCents,
+              assignedCents: budgetedCents,
+              spentCents,
+              committedCents,
+              projectedOverrunCents,
+              monthProgressBp: Math.round(monthProgress * 10_000),
+              availableCents,
+              projectedAvailableCents,
+            },
+          ),
         )
       }
     }

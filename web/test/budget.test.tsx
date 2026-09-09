@@ -188,13 +188,18 @@ const FULL: BudgetPayload = {
       code: 'burn_rate_over',
       categoryId: 'cat-groceries',
       categoryName: 'Groceries',
-      severity: 'warn',
+      // The envelope's own balance (-€ 50, same as its `availableCents` above) has
+      // no buffer left to give, so the projected overrun would push it further
+      // into the red — an alert, not a plain warn.
+      severity: 'alert',
       metrics: {
         projectedCents: 84_000,
         assignedCents: 60_000,
         spentCents: 65_000,
         projectedOverrunCents: 24_000,
         monthProgressBp: 7_742,
+        availableCents: -5_000,
+        projectedAvailableCents: -24_000,
       },
     },
     {
@@ -463,7 +468,13 @@ describe('a month with figures in it', () => {
     expect(screen.getByText(withMoney('Projected overrun € 240'))).toBeTruthy()
     expect(
       screen.getByText(
-        'Groceries is on track for € 840,00 this month, against € 600,00 assigned.',
+        'Groceries is on track for € 840,00 this month, against € 600,00 assigned, ' +
+          'with € -240,00 left in the envelope by month end.',
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        withMoney('Buffer will not cover this — envelope projected to end at € -240.'),
       ),
     ).toBeTruthy()
 
