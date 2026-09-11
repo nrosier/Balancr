@@ -27,10 +27,13 @@ import { fireEvent, render, type RenderResult } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { CsrfConfig } from '../src/api/client.ts'
 import { CsrfProvider } from '../src/api/csrf.tsx'
+import type { Resource } from '../src/api/resource.tsx'
 import { initI18n, setLanguage } from '../src/i18n.ts'
 import { PrivacyProvider } from '../src/privacy/PrivacyContext.tsx'
 import { STORAGE_KEY as PRIVACY_STORAGE_KEY } from '../src/privacy/privacy.ts'
 import { RouterProvider } from '../src/router.tsx'
+import type { SettingsState } from '../src/settings/state.ts'
+import type { AiAvailabilityWire, Settings } from '../src/shared.ts'
 import { ThemeProvider } from '../src/theme/ThemeContext.tsx'
 
 /** What a test deployment supports. Both catalogues exist on disk. */
@@ -309,4 +312,104 @@ export function clickLink(element: Element, init: MouseEventInit = {}): boolean 
     document.removeEventListener('click', spy)
   }
   return claimed
+}
+
+/**
+ * A minimal-but-schema-valid `Settings` payload, for tests that render a panel
+ * directly rather than the whole `<Settings>` page and only care about one corner of
+ * the payload (`status.test.tsx`, `refresh.test.tsx` — both about `StatusPanel`'s AI
+ * tab and job cards, neither about the other eight panels).
+ *
+ * Deliberately not `settings.test.tsx`'s own `PAYLOAD`: that fixture's figures are
+ * tuned for its own Belgian-formatted-number assertions, and importing it here would
+ * couple two unrelated test files. Every field the schema does not default to an empty
+ * array/null is written out by hand for the same reason `settings.test.tsx` writes its
+ * own `PARAMS`/`ADVICE` by hand — `aggregateParamsSchema`/`riskProfileSettingSchema`
+ * are Zod, and importing either from `web/` drags `config.ts` in and throws on a
+ * process with no `ACTUAL_PASSWORD`.
+ */
+export function stubSettings(availability: AiAvailabilityWire = { enabled: true, reason: null }): Settings {
+  const bands = {
+    EQUITY: { minBp: 5_500, targetBp: 6_500, maxBp: 7_500 },
+    FIXED_INCOME: { minBp: 2_000, targetBp: 3_000, maxBp: 4_000 },
+    REAL_ESTATE: { minBp: 0, targetBp: 500, maxBp: 1_500 },
+    COMMODITY: { minBp: 0, targetBp: 0, maxBp: 1_000 },
+  }
+  const presets = { defensive: bands, balanced: bands, growth: bands }
+  const params = {
+    baseline: { windowMonths: 12, halfLifeMonths: 3, winsorLowerPct: 0.05, winsorUpperPct: 0.95, minMonths: 4 },
+    overspend: {
+      baselineWarnBp: 2_000,
+      baselineAlertBp: 5_000,
+      materialityFloorCents: 2_500,
+      availableFloorCents: 500,
+    },
+    burnRate: { minMonthProgress: 0.25, toleranceBp: 1_000 },
+    dayCurve: { windowMonths: 12, minMonths: 6, maxDispersionBp: 2_500 },
+    hygiene: {
+      reconcileStaleDays: 45,
+      priceStaleDays: 5,
+      uncategorisedWarnCount: 5,
+      recomputationToleranceCents: 0,
+    },
+    household: { savingsRateTargetBp: 1_500, emergencyFundTargetMonths: 3 },
+    drift: { persistentMonths: 3 },
+  }
+
+  return {
+    build: { version: null, revision: null },
+    history: { months: 0, earliest: null, latest: null },
+    profile: { email: null, displayName: null, locale: 'en', role: 'owner' },
+    locales: { supported: ['en', 'nl'], default: 'en' },
+    params,
+    paramDefaults: params,
+    advice: {
+      profile: 'balanced',
+      isPreset: true,
+      bands,
+      toleranceBp: 100,
+      minTradeCents: 50_000,
+      presets,
+    },
+    benchmark: {
+      file: null,
+      household: { members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' },
+      referenceOverride: null,
+      outsideCode: '00',
+      categories: [],
+    },
+    property: { properties: [] },
+    prompts: [],
+    accounts: [],
+    dedupe: [],
+    ai: {
+      availability,
+      models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
+      month: '2026-09',
+      spentMicroEur: 0,
+      budgetMicroEur: 15_000_000,
+      remainingMicroEur: 15_000_000,
+      usedBp: 0,
+      exceeded: false,
+      history: [],
+    },
+  }
+}
+
+/** A `Resource` that never loaded anything, for a panel that only reads `.data`/`.error` off it in passing. */
+export function stubResource<T>(): Resource<T> {
+  return { data: null, error: null, loading: false, reload: () => undefined }
+}
+
+/** A `SettingsState` with no request ever made, for a panel under test that does not exercise saving. */
+export function stubSettingsState(): SettingsState {
+  return {
+    resource: stubResource<Settings>(),
+    pending: null,
+    busy: false,
+    error: null,
+    issue: () => undefined,
+    save: () => undefined,
+    ask: () => undefined,
+  }
 }

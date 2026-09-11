@@ -222,7 +222,6 @@
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",
-    "spend": "AI usage",
     "thresholds": "Thresholds"
   },
   "profile": {
@@ -380,6 +379,7 @@
     },
     "lede": "What is working, what is not, and when each background job last managed to run.",
     "nav": {
+      "ai": "AI",
       "queue": "Jobs & queue",
       "services": "Services"
     },

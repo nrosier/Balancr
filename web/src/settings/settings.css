@@ -685,6 +685,22 @@
   margin: 0;
 }
 
+/* The AI service card, the only one that is also a link. `.card` alone leaves an
+   anchor's own underline and link colour on the name/reason text inside it, so
+   both are reset here rather than in the shared sheet, which knows nothing about
+   a card ever being a link. */
+.status__service--clickable {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--transition);
+}
+
+.status__service--clickable:hover,
+.status__service--clickable:focus-visible {
+  border-color: var(--accent);
+}
+
 .status__name {
   font-weight: var(--weight-medium);
 }
