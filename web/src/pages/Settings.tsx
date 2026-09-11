@@ -75,7 +75,7 @@ type GeneralSubsectionId = 'general' | 'status'
 
 const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
-  { id: 'status', path: '/settings/status', labelKey: 'settings:status.title' },
+  { id: 'status', path: '/settings/status', labelKey: 'settings:status.title', nested: true },
 ]
 
 /**
@@ -94,7 +94,7 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
       <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
 
       {active === 'status' ? (
-        <StatusPanel owner={owner} />
+        <StatusPanel owner={owner} aiAvailability={settings.ai.availability} />
       ) : (
         <>
           <LanguagePanel {...props} />

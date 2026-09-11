@@ -29,6 +29,7 @@ import { config } from '../../src/config.ts'
 import { registry } from '../../src/jobs/index.ts'
 import { backupJob } from '../../src/jobs/backup.ts'
 import type { Job, JobContext } from '../../src/jobs/runner.ts'
+import { noopStep } from '../fixtures/job-context.ts'
 
 const log = pino({ level: 'silent' })
 const PASS = 'a-passphrase-of-sixteen-plus'
@@ -50,7 +51,7 @@ afterEach(() => {
   vi.resetModules()
 })
 
-const context = (now: Date): JobContext => ({ db, log, now })
+const context = (now: Date): JobContext => ({ db, log, now, step: noopStep })
 
 /**
  * The job as an instance configured this way would have it.

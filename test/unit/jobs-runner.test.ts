@@ -5,16 +5,20 @@
  * the data is" rather than "when we last tried".
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { asc, eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { jobs as jobsTable } from '../../src/db/schema.ts'
+import { jobRuns as jobRunsTable, jobs as jobsTable } from '../../src/db/schema.ts'
 import {
   clearStaleRunning,
+  deriveRunStatus,
   loadJobRows,
+  pruneJobRuns,
   runDueJobs,
   runJob,
   type Job,
   type JobDetail,
+  type JobStep,
 } from '../../src/jobs/runner.ts'
 import type { Schedule } from '../../src/jobs/schedule.ts'
 
@@ -36,6 +40,14 @@ function job(
 }
 
 const row = (name: string) => loadJobRows(ctx.db).find((r) => r.name === name)
+
+const jobRuns = (name: string) =>
+  ctx.db
+    .select()
+    .from(jobRunsTable)
+    .where(eq(jobRunsTable.jobName, name))
+    .orderBy(asc(jobRunsTable.startedAt))
+    .all()
 
 describe('runJob', () => {
   it('records a success, with what the job reported', async () => {
@@ -262,5 +274,147 @@ describe('clearStaleRunning', () => {
     await runJob(ctx.db, job('sync', async () => {}))
     expect(clearStaleRunning(ctx.db)).toBe(0)
     expect(row('sync')!.status).toBe('ok')
+  })
+
+  it('also closes out a job_runs row left running by a crash', () => {
+    ctx.db
+      .insert(jobRunsTable)
+      .values({ id: 'stuck', jobName: 'sync', status: 'running', startedAt: new Date() })
+      .run()
+
+    clearStaleRunning(ctx.db)
+
+    expect(jobRuns('sync')).toMatchObject([{ status: 'error', finishedAt: expect.any(Date) }])
+    expect(jobRuns('sync')[0]!.error).toMatch(/interrupted/)
+  })
+})
+
+describe('ctx.step', () => {
+  it('records each step, in order, with its own status and duration', async () => {
+    await runJob(
+      ctx.db,
+      job('sync', async ({ step }) => {
+        await step('connect', async () => {})
+        await step('fetch', async () => 'data')
+      }),
+    )
+
+    const steps = JSON.parse(jobRuns('sync')[0]!.stepsJson) as JobStep[]
+    expect(steps.map((s) => [s.name, s.status])).toEqual([
+      ['connect', 'ok'],
+      ['fetch', 'ok'],
+    ])
+    expect(steps.every((s) => typeof s.durationMs === 'number')).toBe(true)
+  })
+
+  it('records a failing step and rethrows rather than swallowing it', async () => {
+    const result = await runJob(
+      ctx.db,
+      job('sync', async ({ step }) => {
+        await step('connect', async () => {
+          throw new Error('Actual unreachable')
+        })
+        return {}
+      }),
+    )
+
+    expect(result.status).toBe('error')
+    const steps = JSON.parse(jobRuns('sync')[0]!.stepsJson) as JobStep[]
+    expect(steps).toMatchObject([{ name: 'connect', status: 'error' }])
+    expect(steps[0]!.error).toMatch(/Actual unreachable/)
+  })
+
+  it('a job that never calls step reports no steps, same as before this existed', async () => {
+    await runJob(ctx.db, job('sync', async () => ({})))
+    expect(jobRuns('sync')[0]!.stepsJson).toBe('[]')
+  })
+})
+
+describe('deriveRunStatus', () => {
+  it('mirrors the old behaviour when no steps were recorded', () => {
+    expect(deriveRunStatus(true, [])).toBe('ok')
+    expect(deriveRunStatus(false, [])).toBe('error')
+  })
+
+  it('is ok when every recorded step succeeded', () => {
+    const steps: JobStep[] = [{ name: 'connect', status: 'ok', durationMs: 1, error: null }]
+    expect(deriveRunStatus(true, steps)).toBe('ok')
+  })
+
+  it('is partial when the run resolved despite a failing step', () => {
+    const steps: JobStep[] = [
+      { name: 'connect', status: 'ok', durationMs: 1, error: null },
+      { name: 'fetch', status: 'error', durationMs: 1, error: 'timeout' },
+    ]
+    expect(deriveRunStatus(true, steps)).toBe('partial')
+  })
+
+  it('is error when the run rejected, no matter how many steps had already succeeded', () => {
+    const steps: JobStep[] = [
+      { name: 'connect', status: 'ok', durationMs: 1, error: null },
+      { name: 'fetch', status: 'ok', durationMs: 1, error: null },
+    ]
+    expect(deriveRunStatus(false, steps)).toBe('error')
+  })
+})
+
+describe('job_runs', () => {
+  it('writes a running row up front, then closes it out on success', async () => {
+    await runJob(ctx.db, job('sync', async () => ({ facts: 1 })), new Date('2026-01-15T10:00:00Z'))
+
+    expect(jobRuns('sync')).toMatchObject([
+      { status: 'ok', startedAt: new Date('2026-01-15T10:00:00Z'), error: null },
+    ])
+    expect(jobRuns('sync')[0]!.finishedAt).not.toBeNull()
+    expect(jobRuns('sync')[0]!.durationMs).not.toBeNull()
+  })
+
+  it('closes it out as error, with the message, on failure', async () => {
+    await runJob(
+      ctx.db,
+      job('sync', async () => {
+        throw new Error('Ghostfolio unreachable')
+      }),
+    )
+
+    expect(jobRuns('sync')).toMatchObject([{ status: 'error' }])
+    expect(jobRuns('sync')[0]!.error).toMatch(/Ghostfolio unreachable/)
+  })
+
+  it('keeps one row per attempt', async () => {
+    await runJob(ctx.db, job('sync', async () => ({})))
+    await runJob(ctx.db, job('sync', async () => ({})))
+    expect(jobRuns('sync')).toHaveLength(2)
+  })
+})
+
+describe('pruneJobRuns', () => {
+  it('leaves the table alone while it has fewer rows than the keep count', () => {
+    for (let i = 0; i < 3; i++) {
+      ctx.db
+        .insert(jobRunsTable)
+        .values({ id: `r${i}`, jobName: 'sync', status: 'ok', startedAt: new Date(2026, 0, i + 1) })
+        .run()
+    }
+    pruneJobRuns(ctx.db, 'sync', 5)
+    expect(jobRuns('sync')).toHaveLength(3)
+  })
+
+  it('deletes the oldest rows beyond the keep count, for that job only', () => {
+    for (let i = 0; i < 5; i++) {
+      ctx.db
+        .insert(jobRunsTable)
+        .values({ id: `r${i}`, jobName: 'sync', status: 'ok', startedAt: new Date(2026, 0, i + 1) })
+        .run()
+    }
+    ctx.db
+      .insert(jobRunsTable)
+      .values({ id: 'other', jobName: 'probe', status: 'ok', startedAt: new Date(2026, 0, 1) })
+      .run()
+
+    pruneJobRuns(ctx.db, 'sync', 2)
+
+    expect(jobRuns('sync').map((r) => r.id)).toEqual(['r3', 'r4'])
+    expect(jobRuns('probe')).toHaveLength(1)
   })
 })

@@ -19,6 +19,7 @@ import { decodeBudgetTarget, pendingProposals } from '../../src/domain/ai/propos
 import { signalsJob } from '../../src/jobs/signals.ts'
 import type { JobDetail } from '../../src/jobs/runner.ts'
 import { logger } from '../../src/logger.ts'
+import { noopStep } from '../fixtures/job-context.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
@@ -87,7 +88,7 @@ function seed(month: string, hash: string, facts: MonthlyFact[] = [fact(month)])
 }
 
 const run = async (now: Date): Promise<JobDetail> =>
-  ((await signalsJob.run({ db, now, log: logger })) ?? {}) as JobDetail
+  ((await signalsJob.run({ db, now, log: logger, step: noopStep })) ?? {}) as JobDetail
 
 describe('which months get judged (#162)', () => {
   it('leaves an old month alone once judged, and rejudges it once its facts change', async () => {

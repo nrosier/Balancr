@@ -1198,6 +1198,27 @@ export const jobStatusSchema = z.object({
   schedule: z.string().nullable(),
 })
 
+export const jobStepSchema = z.object({
+  name: z.string(),
+  status: z.enum(['ok', 'error']),
+  durationMs: z.int().nonnegative(),
+  error: z.string().nullable(),
+})
+
+export const jobRunSchema = z.object({
+  status: z.enum(['running', 'ok', 'error', 'partial']),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  durationMs: z.int().nonnegative().nullable(),
+  error: z.string().nullable(),
+  steps: z.array(jobStepSchema),
+})
+
+export const jobHistorySchema = z.object({
+  jobName: z.string(),
+  runs: z.array(jobRunSchema),
+})
+
 export const probeStatusSchema = z.object({
   source: z.string(),
   status: z.enum(['ok', 'unreachable', 'shape-mismatch']),
@@ -1226,6 +1247,8 @@ export const statusSchema = z.object({
   jobsEnabled: z.boolean(),
   checks: z.array(checkSchema),
   jobs: z.array(jobStatusSchema),
+  /** Jobs this process has started and not yet finished — queued ones included. */
+  queued: z.array(z.string()),
   probes: z.array(probeStatusSchema),
 })
 
@@ -1865,6 +1888,9 @@ export type Settings = z.infer<typeof settingsSchema>
 export type Status = z.infer<typeof statusSchema>
 export type CheckReason = (typeof checkReasons)[number]
 export type JobStatus = z.infer<typeof jobStatusSchema>
+export type JobStep = z.infer<typeof jobStepSchema>
+export type JobRun = z.infer<typeof jobRunSchema>
+export type JobHistory = z.infer<typeof jobHistorySchema>
 export type ProbeStatus = z.infer<typeof probeStatusSchema>
 export type PromptSetting = z.infer<typeof promptSchema>
 export type PromptVersionSetting = z.infer<typeof promptVersionSchema>

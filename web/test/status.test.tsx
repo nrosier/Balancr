@@ -20,15 +20,25 @@
  * server-produced text and translated text sit in the same list: a `reason` is a code and
  * has to arrive in Dutch, while a job's `error` is quoted from an upstream and must not
  * be translated or hidden. Both properties are asserted on one render.
+ *
+ * Since #325, the panel itself is split into two sub-tabs — Services (three at-a-glance
+ * cards, the default landing view) and Queue (the job list, the reset control and the
+ * probe detail that used to be visible immediately). `show()` always pushes an explicit
+ * path rather than letting `useSubsection` fall back on whatever `window.history` was
+ * left at by a previous test, and `openQueue()` is the one way any case below reaches the
+ * Queue tab's content.
  */
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { StatusPanel } from '../src/settings/Status.tsx'
-import type { RefreshAccepted, Status } from '../src/shared.ts'
+import type { AiAvailabilityWire, RefreshAccepted, Status } from '../src/shared.ts'
 import { clickLink, i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+/** The AI card's default fixture: configured, on, and within budget. */
+const AI_ON: AiAvailabilityWire = { enabled: true, reason: null }
 
 /** A healthy instance whose jobs have all run. The baseline every case narrows from. */
 const HEALTHY: Status = {
@@ -56,6 +66,7 @@ const HEALTHY: Status = {
       schedule: 'every 60 minutes',
     },
   ],
+  queued: [],
   probes: [
     {
       source: 'ghostfolio',
@@ -74,14 +85,39 @@ const BELGIAN_DATETIME = /^\d{2}\/\d{2}\/2026, \d{2}:\d{2}$/
 /** `HEALTHY` with fields replaced, so each case states only what it is about. */
 const status = (over: Partial<Status>): Status => ({ ...HEALTHY, ...over })
 
-/** Renders the panel against one answer, and waits for it to land. `owner` defaults to
- * true because only the reset-control cases below are actually about the distinction. */
-async function show(body: Status | Response, owner = true): Promise<ReturnType<typeof vi.fn>> {
+/** Renders the panel against one answer, and waits for it to land.
+ *
+ * `owner` defaults to true because only the reset-control cases below are actually about
+ * the distinction; `aiAvailability` defaults to the AI card's "on" fixture because most
+ * cases below are not about that card either. `path` always defaults to the Services
+ * tab's own path — never left unset — because `useSubsection` replaces the URL it is
+ * given, and letting that default to whatever a previous test's clicks left in
+ * `window.history` would leak state between cases in this file. */
+async function show(
+  body: Status | Response,
+  options: { owner?: boolean; aiAvailability?: AiAvailabilityWire; path?: string } = {},
+): Promise<ReturnType<typeof vi.fn>> {
+  const { owner = true, aiAvailability = AI_ON, path = '/settings/status' } = options
   const mock = vi.fn(() => Promise.resolve(body instanceof Response ? body : json(body)))
   vi.stubGlobal('fetch', mock)
-  renderApp(<StatusPanel owner={owner} />)
+  renderApp(<StatusPanel owner={owner} aiAvailability={aiAvailability} />, { path })
   await screen.findByRole('heading', { level: 2, name: /Status|status/ })
   return mock
+}
+
+/** Switches to the Queue tab, in whichever of the two languages is active. Awaited on the
+ * link itself rather than clicked straight away, because the tab strip is part of the
+ * loaded state `DataState` renders and is not there yet the instant `show()` returns. */
+async function openQueue(): Promise<void> {
+  clickLink(await screen.findByRole('link', { name: /queue|wachtrij/i }))
+}
+
+/** The card for one service, found by its own name so a test can look inside it without
+ * caring where the grid puts it. */
+function serviceCard(name: string): HTMLElement {
+  const card = screen.getByText(name).closest('.status__service')
+  if (card === null) throw new Error(`no service card found for "${name}"`)
+  return card as HTMLElement
 }
 
 beforeAll(async () => {
@@ -111,6 +147,7 @@ describe('a healthy instance', () => {
 
   it('prints both timestamps and the duration through the shared formatters', async () => {
     await show(HEALTHY)
+    await openQueue()
 
     // `dd/MM/yyyy`, Belgian regardless of the interface language: `format.ts` is the
     // only place this application writes a date, and a panel doing its own arithmetic
@@ -133,6 +170,47 @@ describe('a healthy instance', () => {
   })
 })
 
+describe('the Services/Queue split (#325)', () => {
+  it('shows the cards by default, and the queue only once asked for', async () => {
+    await show(HEALTHY)
+
+    expect(screen.getByText('Actual Budget')).toBeTruthy()
+    expect(screen.queryByText('Budget sync')).toBeNull()
+
+    await openQueue()
+    expect(screen.getByText('Budget sync')).toBeTruthy()
+    expect(screen.queryByText('Actual Budget')).toBeNull()
+
+    clickLink(screen.getByRole('link', { name: 'Services' }))
+    await screen.findByText('Actual Budget')
+    expect(screen.queryByText('Budget sync')).toBeNull()
+  })
+})
+
+describe('the AI card (#325)', () => {
+  it('shows enabled without a reason, from the settings payload rather than a fetch', async () => {
+    const mock = await show(HEALTHY, { aiAvailability: AI_ON })
+    expect(mock.mock.calls.map((call) => String(call[0]))).toEqual(['/api/status'])
+
+    const card = serviceCard('AI assistant')
+    const badge = card.querySelector('.badge')
+    expect(badge?.className).not.toContain('badge--error')
+    expect(card.querySelector('.status__reason')).toBeNull()
+  })
+
+  it.each<[AiAvailabilityWire['reason'], RegExp]>([
+    ['notConfigured', /No Gemini key is configured/],
+    ['switchedOff', /AI_ENABLED is set to false/],
+    ['budgetZero', /monthly AI budget is set to zero/],
+  ])('explains why when disabled: %s', async (reason, expected) => {
+    await show(HEALTHY, { aiAvailability: { enabled: false, reason } })
+
+    const card = serviceCard('AI assistant')
+    expect(card.querySelector('.badge')?.textContent).toBe('Not known')
+    expect(card.textContent).toMatch(expected)
+  })
+})
+
 describe('a deployment where nothing has run', () => {
   it('says so without calling it a fault', async () => {
     await show(
@@ -149,14 +227,19 @@ describe('a deployment where nothing has run', () => {
       }),
     )
 
-    expect(screen.getAllByText('Not known')).toHaveLength(3)
+    // Two, not the four the old flat list showed: `database` is the top banner's own
+    // `ready` state and the `jobs` aggregate is dropped, so only Actual and Ghostfolio
+    // are left as cards (#325).
+    expect(screen.getAllByText('Not known')).toHaveLength(2)
     const nothingYet = 'Nothing has run yet, so there is nothing to report.'
-    expect(screen.getAllByText(nothingYet)).toHaveLength(3)
-    expect(screen.getByText('Ghostfolio has not been checked yet.')).toBeTruthy()
-    // Neutral: no tone class at all on the three unknowns.
+    expect(screen.getAllByText(nothingYet)).toHaveLength(2)
+    // Neutral: no tone class at all on the two unknowns.
     for (const badge of document.querySelectorAll('.badge')) {
       if (badge.textContent === 'Not known') expect(badge.className.trim()).toBe('badge')
     }
+
+    await openQueue()
+    expect(screen.getByText('Ghostfolio has not been checked yet.')).toBeTruthy()
   })
 })
 
@@ -196,27 +279,42 @@ describe('the two ways Ghostfolio breaks', () => {
   it('shows an outage as amber and says it will pass', async () => {
     await show(withProbe('unreachable'))
 
+    // The card shows the *check*'s own verdict (`degraded`), not the probe's — the
+    // probe's own "Unreachable" badge is Queue-tab detail, checked below.
     expect(screen.getByText(/could not be reached/)).toBeTruthy()
-    const badge = [...document.querySelectorAll('.badge')].find(
+    const card = serviceCard('Ghostfolio')
+    const badge = card.querySelector('.badge')
+    expect(badge?.textContent).toBe('Degraded')
+    expect(badge?.className).toContain('badge--warn')
+
+    await openQueue()
+    const probeBadge = [...document.querySelectorAll('.badge')].find(
       (node) => node.textContent === 'Unreachable',
     )
-    expect(badge?.className).toContain('badge--warn')
+    expect(probeBadge?.className).toContain('badge--warn')
   })
 
   it('shows a contract change as red and names the path', async () => {
     await show(withProbe('shape-mismatch'))
 
     expect(screen.getByText(/needs a Balancr update/)).toBeTruthy()
+    const card = serviceCard('Ghostfolio')
+    const badge = card.querySelector('.badge')
+    expect(badge?.textContent).toBe('Failed')
+    expect(badge?.className).toContain('badge--error')
+
+    // The probe's own path-level detail is Queue-tab content now — the card above only
+    // carries the verdict and the reason sentence.
+    await openQueue()
     expect(screen.getByText('/api/v1/portfolio/holdings')).toBeTruthy()
+    const probeBadge = [...document.querySelectorAll('.badge')].find(
+      (node) => node.textContent === 'Unexpected shape',
+    )
+    expect(probeBadge?.className).toContain('badge--error')
     // The upstream's own words, quoted rather than paraphrased: it is not translated,
     // and on a Dutch page it will still be in English.
     const quote = screen.getByText(/expected number/)
     expect(quote.tagName).toBe('Q')
-
-    const badge = [...document.querySelectorAll('.badge')].find(
-      (node) => node.textContent === 'Unexpected shape',
-    )
-    expect(badge?.className).toContain('badge--error')
   })
 })
 
@@ -246,6 +344,7 @@ describe('a job that has been failing', () => {
 
   it('shows the gap between the last attempt and the last success', async () => {
     await show(failing)
+    await openQueue()
 
     expect(screen.getAllByText(/^03\/09\/2026, \d{2}:\d{2}$/)).toHaveLength(2)
     expect(screen.getByText(/^28\/08\/2026, \d{2}:\d{2}$/)).toBeTruthy()
@@ -254,6 +353,7 @@ describe('a job that has been failing', () => {
 
   it('quotes the error rather than rewording it', async () => {
     await show(failing)
+    await openQueue()
     const quote = screen.getByText('connect ECONNREFUSED 172.19.0.4:5006')
     expect(quote.tagName).toBe('Q')
   })
@@ -285,10 +385,172 @@ describe('a job this build has no name for', () => {
         ],
       }),
     )
+    await openQueue()
 
     expect(screen.getByText('reconcile')).toBeTruthy()
     expect(screen.queryByText('job.reconcile')).toBeNull()
     expect(screen.getAllByText('Never')).toHaveLength(3)
+  })
+})
+
+describe('a job third in the queue', () => {
+  it('reads as pending — er, queued — rather than as whatever it said before', async () => {
+    await show(
+      status({
+        jobs: [
+          {
+            name: 'backfill',
+            status: 'idle',
+            lastRunAt: null,
+            lastSuccessAt: null,
+            nextRunAt: null,
+            lastDurationMs: null,
+            error: null,
+            schedule: null,
+          },
+        ],
+        queued: ['backfill'],
+      }),
+    )
+    await openQueue()
+
+    const badge = await screen.findByText('Queued')
+    expect(badge.className).toContain('badge--info')
+    // Never "Idle": once queued, the job's stale idle status is not the story.
+    expect(screen.queryByText('Idle')).toBeNull()
+  })
+
+  it('leaves a job that is already running alone', async () => {
+    await show(
+      status({
+        jobs: [
+          {
+            name: 'sync',
+            status: 'running',
+            lastRunAt: '2026-09-03T12:00:00.000Z',
+            lastSuccessAt: null,
+            nextRunAt: null,
+            lastDurationMs: null,
+            error: null,
+            schedule: null,
+          },
+        ],
+        // The job that just started is still in the in-flight set alongside its own
+        // `running` row — the row wins, and the badge must not flicker to "Queued".
+        queued: ['sync'],
+      }),
+    )
+    await openQueue()
+
+    await screen.findByText('Running')
+    expect(screen.queryByText('Queued')).toBeNull()
+  })
+})
+
+describe('a job’s run history', () => {
+  /** A reply per path, mirroring the danger zone's own helper below. */
+  function serveHistory(replies: Record<string, Response>): void {
+    const mock = vi.fn((path: string) => {
+      const reply = replies[path]
+      if (reply === undefined) return Promise.reject(new Error(`unstubbed request: ${path}`))
+      return Promise.resolve(reply.clone())
+    })
+    vi.stubGlobal('fetch', mock)
+  }
+
+  const oneJob = status({
+    jobs: [
+      {
+        name: 'sync',
+        status: 'ok',
+        lastRunAt: '2026-09-03T12:00:00.000Z',
+        lastSuccessAt: '2026-09-03T12:00:00.000Z',
+        nextRunAt: '2026-09-03T13:00:00.000Z',
+        lastDurationMs: 4_120,
+        error: null,
+        schedule: 'every 60 minutes',
+      },
+    ],
+  })
+
+  it('is not fetched until the row is expanded', async () => {
+    const mock = vi.fn((path: string) => {
+      if (path === '/api/status') return Promise.resolve(json(oneJob))
+      if (path === '/api/status/history?job=sync') {
+        return Promise.resolve(json({ jobName: 'sync', runs: [] }))
+      }
+      return Promise.reject(new Error(`unstubbed request: ${path}`))
+    })
+    vi.stubGlobal('fetch', mock)
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
+    await screen.findByText('Budget sync')
+
+    expect(mock.mock.calls.map((call) => String(call[0]))).toEqual(['/api/status'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show history' }))
+    await waitFor(() => {
+      expect(mock).toHaveBeenCalledWith('/api/status/history?job=sync', expect.anything())
+    })
+    await screen.findByText('No runs recorded yet.')
+  })
+
+  it('shows each run with its own steps, and folds back away on collapse', async () => {
+    serveHistory({
+      '/api/status': json(oneJob),
+      '/api/status/history?job=sync': json({
+        jobName: 'sync',
+        runs: [
+          {
+            status: 'partial',
+            startedAt: '2026-09-03T12:00:00.000Z',
+            finishedAt: '2026-09-03T12:00:04.000Z',
+            durationMs: 4_120,
+            error: null,
+            steps: [
+              { name: 'connect', status: 'ok', durationMs: 40, error: null },
+              {
+                name: 'fetch',
+                status: 'error',
+                durationMs: 900,
+                error: 'Ghostfolio timed out after 30000ms',
+              },
+            ],
+          },
+        ],
+      }),
+    })
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
+    await screen.findByText('Budget sync')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show history' }))
+    await screen.findByText('Connect')
+    expect(screen.getByText('Fetch')).toBeTruthy()
+    expect(screen.getByText('Ghostfolio timed out after 30000ms').tagName).toBe('Q')
+    const partial = [...document.querySelectorAll('.badge')].find(
+      (node) => node.textContent === 'Partially succeeded',
+    )
+    expect(partial?.className).toContain('badge--warn')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide history' }))
+    expect(screen.queryByText('Connect')).toBeNull()
+  })
+
+  it('says so plainly when a job has never run', async () => {
+    serveHistory({
+      '/api/status': json(oneJob),
+      '/api/status/history?job=sync': json({ jobName: 'sync', runs: [] }),
+    })
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
+    await screen.findByText('Budget sync')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show history' }))
+    await screen.findByText('No runs recorded yet.')
   })
 })
 
@@ -329,7 +591,9 @@ describe('the danger zone', () => {
 
   it('disables the control for a viewer, without hiding what it would do', async () => {
     serve({ '/api/status': json(HEALTHY) })
-    renderApp(<StatusPanel owner={false} />)
+    renderApp(<StatusPanel owner={false} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
     expect(screen.getByText(/Wipes every figure Balancr has computed/)).toBeTruthy()
@@ -342,7 +606,9 @@ describe('the danger zone', () => {
       '/api/status': json(HEALTHY),
       '/api/refresh/reset': json(resetAccepted, 202),
     })
-    renderApp(<StatusPanel owner={true} />)
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset all calculated data' }))
@@ -358,7 +624,9 @@ describe('the danger zone', () => {
       '/api/status': json(HEALTHY),
       '/api/refresh/reset': json(resetAccepted, 202),
     })
-    renderApp(<StatusPanel owner={true} />)
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+      path: '/settings/status/queue',
+    })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset all calculated data' }))
@@ -402,10 +670,16 @@ describe('in Dutch', () => {
     )
 
     expect(screen.getByText('Status van deze instantie')).toBeTruthy()
-    // Twice: Actual and Ghostfolio are both `failed`.
+    // Twice: Actual and Ghostfolio are both `failed` — unaffected by dropping the `jobs`
+    // aggregate card, which was never `failed` in this fixture.
     expect(screen.getAllByText('Mislukt')).toHaveLength(2)
-    expect(screen.getAllByText(/bij de laatste poging mislukt/)).toHaveLength(2)
+    // Once, not twice: only Actual's own reason is `jobFailed` among the two cards left.
+    // The old `jobs` aggregate also carried `jobFailed`, but it is no longer shown (#325).
+    expect(screen.getByText(/bij de laatste poging mislukt/)).toBeTruthy()
     expect(screen.getByText(/update van Balancr nodig/)).toBeTruthy()
+
+    // The job's own error and its timestamp are Queue-tab content now.
+    await openQueue()
     // Untranslated on purpose: Balancr did not write this sentence.
     expect(screen.getByText('connect ECONNREFUSED 172.19.0.4:5006')).toBeTruthy()
     // And the dates stay Belgian, which they were in English too: the interface language

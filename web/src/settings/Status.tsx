@@ -42,10 +42,33 @@ import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { formatDateTime, formatDecimal } from '../shared.ts'
-import type { JobStatus, ProbeStatus, Status } from '../shared.ts'
+import type {
+  AiAvailabilityWire,
+  JobHistory,
+  JobStatus,
+  JobStep,
+  ProbeStatus,
+  Status,
+} from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { RefreshStatus, useRefresh, type Refresher } from '../ui/Refresh.tsx'
+import { SectionNav } from '../ui/SectionNav.tsx'
+import { useSubsection, type Section } from '../ui/sections.ts'
 import { Panel } from './Panel.tsx'
+
+/**
+ * Services (the three at-a-glance cards, #325) versus Queue (everything that used to
+ * sit under the old flat `checks` list: the job list, the reset control and the probe
+ * detail). Nested one level under the page's own `general`/`status` split — `sections.ts`'s
+ * own prefix matching is written to support that, so this is plain reuse rather than a
+ * new mechanism.
+ */
+type StatusSubsectionId = 'services' | 'queue'
+
+const STATUS_SUBSECTIONS: readonly Section<StatusSubsectionId>[] = [
+  { id: 'services', path: '/settings/status', labelKey: 'settings:status.nav.services' },
+  { id: 'queue', path: '/settings/status/queue', labelKey: 'settings:status.nav.queue' },
+]
 
 /**
  * The jobs `POST /api/refresh` will start, mirroring `REFRESHABLE` in
@@ -69,7 +92,8 @@ const REFRESHABLE = [
 
 /**
  * Verdict to badge tone, for all three status vocabularies at once — the four check
- * verdicts, the four job states and the three probe outcomes.
+ * verdicts, the job states (now including a run's own history) and the three probe
+ * outcomes.
  *
  * `degraded` and `unreachable` are amber rather than red deliberately: both mean the
  * pages on screen are still correct and the cause will probably clear on its own.
@@ -77,11 +101,20 @@ const REFRESHABLE = [
  * states with no entry — `idle`, `unknown` — get the neutral badge, which is the right
  * answer for "nothing has happened yet": a new deployment is not a fault, and colouring
  * it would make every first run look like a problem.
+ *
+ * `partial` shares `degraded`'s amber for the same reason: a run that finished but had
+ * one failing step is "still worth a look", not a failure. `queued` shares `running`'s
+ * blue — nothing wrong, just not started yet. It is deliberately not called `pending`:
+ * that catalogue key already means "awaiting review" for a proposal decision, and
+ * reusing it here would print that sentence on a job that has never been reviewed by
+ * anyone.
  */
 const TONES: Record<string, 'ok' | 'info' | 'warn' | 'error'> = {
   ok: 'ok',
   running: 'info',
+  queued: 'info',
   degraded: 'warn',
+  partial: 'warn',
   unreachable: 'warn',
   failed: 'error',
   error: 'error',
@@ -113,14 +146,27 @@ function Quoted({ text }: { text: string }): ReactNode {
   return <q className="status__quote">{text}</q>
 }
 
-export function StatusPanel({ owner }: { owner: boolean }): ReactNode {
+export function StatusPanel({
+  owner,
+  aiAvailability,
+}: {
+  owner: boolean
+  aiAvailability: AiAvailabilityWire
+}): ReactNode {
   const { t } = useT()
   const resource = useResource<Status>('/api/status')
 
   return (
     <Panel title={t('settings:status.title')} hint={t('settings:status.lede')}>
       <DataState resource={resource}>
-        {(status) => <Report status={status} owner={owner} reload={resource.reload} />}
+        {(status) => (
+          <Report
+            status={status}
+            owner={owner}
+            reload={resource.reload}
+            aiAvailability={aiAvailability}
+          />
+        )}
       </DataState>
     </Panel>
   )
@@ -140,13 +186,16 @@ function Report({
   status,
   owner,
   reload,
+  aiAvailability,
 }: {
   status: Status
   owner: boolean
   reload: () => void
+  aiAvailability: AiAvailabilityWire
 }): ReactNode {
   const { t } = useT()
   const refresher = useRefresh(status.jobs, reload)
+  const active = useSubsection(STATUS_SUBSECTIONS)
 
   return (
     <>
@@ -157,43 +206,134 @@ function Report({
         {status.degraded ? ` ${t('settings:status.degraded')}` : ''}
       </p>
 
-      <ul className="status__checks">
-        {status.checks.map((check) => (
-          <li className="status__check" key={check.name}>
-            <span className="status__name">{t(`settings:status.check.${check.name}`)}</span>
-            <Badge status={check.status} />
-            {check.reason === null ? null : (
-              <span className="status__reason muted">
-                {t(`settings:status.reason.${check.reason}`)}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+      <SectionNav
+        sections={STATUS_SUBSECTIONS}
+        variant="sub"
+        ariaLabel={t('settings:status.title')}
+      />
 
-      <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
-      <RefreshStatus state={refresher.state} />
-      <ul className="status__jobs">
-        {status.jobs.map((job) => (
-          <JobRow job={job} refresher={refresher} key={job.name} />
-        ))}
-      </ul>
-
-      <ResetControl owner={owner} refresher={refresher} />
-
-      <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
-      <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
-      {status.probes.length === 0 ? (
-        <p className="muted">{t('settings:status.probe.notRunYet')}</p>
+      {active === 'services' ? (
+        <ServicesGrid status={status} aiAvailability={aiAvailability} />
       ) : (
-        status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
+        <>
+          <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
+          <RefreshStatus state={refresher.state} />
+          <ul className="status__jobs">
+            {status.jobs.map((job) => (
+              <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
+            ))}
+          </ul>
+
+          <ResetControl owner={owner} refresher={refresher} />
+
+          <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
+          <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
+          {status.probes.length === 0 ? (
+            <p className="muted">{t('settings:status.probe.notRunYet')}</p>
+          ) : (
+            status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
+          )}
+        </>
       )}
 
-      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do. */}
+      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
+          Shared across both tabs — the same request refreshes the cards and the queue. */}
       <button type="button" className="button button--quiet" onClick={reload}>
         {t('action.refresh')}
       </button>
     </>
+  )
+}
+
+/**
+ * The three services someone actually thinks about, at a glance — replacing the old
+ * flat `checks` list. `database` and the `jobs` aggregate check are dropped rather than
+ * shown as a fourth/fifth card: `database` is already the top banner's `ready` state,
+ * and `jobs` is strictly subsumed by the per-job list on the Queue tab.
+ */
+function ServicesGrid({
+  status,
+  aiAvailability,
+}: {
+  status: Status
+  aiAvailability: AiAvailabilityWire
+}): ReactNode {
+  const { t } = useT()
+  const check = (name: string) => status.checks.find((c) => c.name === name) ?? null
+  const job = (name: string) => status.jobs.find((j) => j.name === name) ?? null
+
+  const actual = check('actual')
+  // Actual's own job is `sync`; Ghostfolio's is `portfolio` — see `src/jobs/portfolio.ts`.
+  const ghostfolio = check('ghostfolio')
+  const syncedActual = job('sync')?.lastSuccessAt ?? null
+  const syncedGhostfolio = job('portfolio')?.lastSuccessAt ?? null
+  const aiReason = aiAvailability.reason ?? 'notConfigured'
+
+  return (
+    <div className="grid-cards">
+      <ServiceCard
+        name={t('settings:status.check.actual')}
+        status={actual?.status ?? 'unknown'}
+        reason={
+          actual?.reason == null ? null : t(`settings:status.reason.${actual.reason}`)
+        }
+        lastSyncedAt={syncedActual}
+      />
+      <ServiceCard
+        name={t('settings:status.check.ghostfolio')}
+        status={ghostfolio?.status ?? 'unknown'}
+        reason={
+          ghostfolio?.reason == null ? null : t(`settings:status.reason.${ghostfolio.reason}`)
+        }
+        lastSyncedAt={syncedGhostfolio}
+      />
+      <ServiceCard
+        name={t('settings:status.check.ai')}
+        status={aiAvailability.enabled ? 'ok' : 'unknown'}
+        reason={aiAvailability.enabled ? null : t(`ai:off.reason.${aiReason}`)}
+      />
+    </div>
+  )
+}
+
+/**
+ * One service's card: a header (name + badge), an optional "last synced" line and an
+ * optional reason sentence — the same three pieces of information the old flat list
+ * showed per check, reused via `.status__meta`/`.status__reason` rather than a new
+ * visual vocabulary.
+ *
+ * `lastSyncedAt` is left `undefined` for the AI card, which has no job of its own: `null`
+ * means "never", `undefined` means "not applicable" and the line is not rendered at all.
+ */
+function ServiceCard({
+  name,
+  status,
+  reason,
+  lastSyncedAt,
+}: {
+  name: string
+  status: string
+  reason: string | null
+  lastSyncedAt?: string | null
+}): ReactNode {
+  const { t } = useT()
+
+  return (
+    <div className="card status__service">
+      <p className="status__serviceHead">
+        <span className="status__name">{name}</span>
+        <Badge status={status} />
+      </p>
+      {lastSyncedAt === undefined ? null : (
+        <dl className="status__meta">
+          <dt>{t('settings:status.services.lastSynced')}</dt>
+          <dd className="num">
+            {lastSyncedAt === null ? t('settings:status.jobs.never') : formatDateTime(lastSyncedAt)}
+          </dd>
+        </dl>
+      )}
+      {reason === null ? null : <p className="status__reason muted">{reason}</p>}
+    </div>
   )
 }
 
@@ -266,6 +406,17 @@ function ResetControl({ owner, refresher }: { owner: boolean; refresher: Refresh
 }
 
 /**
+ * `job.status` plus what `job.status` cannot say: a job third in the queue has not
+ * written a `running` row yet (see `jobsInFlight`'s own comment in `runner.ts` for why
+ * that gap exists), so a name in `queued` whose row is not already `running` reads as
+ * `queued` rather than as whatever it said before it was asked to run again.
+ */
+function displayStatus(job: JobStatus, queued: readonly string[]): string {
+  if (job.status !== 'running' && queued.includes(job.name)) return 'queued'
+  return job.status
+}
+
+/**
  * One job, with both of its timestamps.
  *
  * Last attempt and last success are separate rows because the difference between them
@@ -276,9 +427,22 @@ function ResetControl({ owner, refresher }: { owner: boolean; refresher: Refresh
  * exists for whatever the database holds — including `ai`, and including a name written
  * by a later version of Balancr — and offering to start something the server answers
  * `400` for is worse than offering nothing.
+ *
+ * History is fetched only once expanded — `armed`, same toggle `ResetControl` uses
+ * above, mounts `JobHistory` on demand rather than every row fetching its own history on
+ * every poll of this panel.
  */
-function JobRow({ job, refresher }: { job: JobStatus; refresher: Refresher }): ReactNode {
+function JobRow({
+  job,
+  queued,
+  refresher,
+}: {
+  job: JobStatus
+  queued: readonly string[]
+  refresher: Refresher
+}): ReactNode {
   const { t } = useT()
+  const [expanded, setExpanded] = useState(false)
 
   // i18next answers an unknown key with the key. A `jobs` row is written by whichever
   // build last ran, so a name this bundle has no string for is a real possibility —
@@ -292,7 +456,7 @@ function JobRow({ job, refresher }: { job: JobStatus; refresher: Refresher }): R
   return (
     <li className="status__job">
       <span className="status__name">{label === key ? job.name : label}</span>
-      <Badge status={job.status} />
+      <Badge status={displayStatus(job, queued)} />
       <dl className="status__meta">
         <dt>{t('settings:status.jobs.lastRun')}</dt>
         <dd className="num">{when(job.lastRunAt)}</dd>
@@ -322,18 +486,106 @@ function JobRow({ job, refresher }: { job: JobStatus; refresher: Refresher }): R
           <Quoted text={job.error} />
         </p>
       )}
-      {REFRESHABLE.includes(job.name) ? (
+      <div className="status__jobActions">
+        {REFRESHABLE.includes(job.name) ? (
+          <button
+            type="button"
+            className="button button--quiet status__run"
+            disabled={refresher.busy}
+            onClick={() => {
+              refresher.start([job.name])
+            }}
+          >
+            {t('refresh.job')}
+          </button>
+        ) : null}
         <button
           type="button"
-          className="button button--quiet status__run"
-          disabled={refresher.busy}
-          onClick={() => {
-            refresher.start([job.name])
-          }}
+          className="button button--quiet"
+          onClick={() => setExpanded((was) => !was)}
         >
-          {t('refresh.job')}
+          {expanded
+            ? t('settings:status.history.hide')
+            : t('settings:status.history.show')}
         </button>
-      ) : null}
+      </div>
+      {expanded ? <JobHistory jobName={job.name} /> : null}
+    </li>
+  )
+}
+
+/**
+ * One job's past attempts, fetched only once its row is expanded.
+ *
+ * A separate request from `/api/status` on purpose — see that endpoint's own header:
+ * the panel above is polled broadly and stays light, and history is bounded, paged, and
+ * only wanted on demand. Mounting on demand is what makes the fetch on demand:
+ * `useResource` itself fetches on mount and needs no change for that.
+ */
+function JobHistory({ jobName }: { jobName: string }): ReactNode {
+  const { t } = useT()
+  const resource = useResource<JobHistory>(
+    `/api/status/history?job=${encodeURIComponent(jobName)}`,
+  )
+
+  return (
+    <div className="status__history">
+      <DataState resource={resource}>
+        {(history) =>
+          history.runs.length === 0 ? (
+            <p className="muted">{t('settings:status.history.empty')}</p>
+          ) : (
+            <ul className="status__runs">
+              {history.runs.map((run) => (
+                <li className="status__historyRun" key={run.startedAt}>
+                  <p className="status__historyRunHead">
+                    <Badge status={run.status} />
+                    <span className="muted num">{formatDateTime(run.startedAt)}</span>
+                    {run.durationMs === null ? null : (
+                      <span className="muted num">
+                        {t('settings:status.jobs.seconds', {
+                          value: formatDecimal(run.durationMs / 1000, 1),
+                        })}
+                      </span>
+                    )}
+                  </p>
+                  {run.error === null ? null : (
+                    <p className="status__error">
+                      <Quoted text={run.error} />
+                    </p>
+                  )}
+                  {run.steps.length === 0 ? null : (
+                    <ul className="status__steps">
+                      {run.steps.map((step) => (
+                        <JobStepRow step={step} key={step.name} />
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </DataState>
+    </div>
+  )
+}
+
+/** One named sub-step of a run — same shape as `ProbeReport`'s per-path checks below. */
+function JobStepRow({ step }: { step: JobStep }): ReactNode {
+  const { t } = useT()
+
+  const key = `step.${step.name}`
+  const label = t(key)
+
+  return (
+    <li className="status__step">
+      <span className="status__name">{label === key ? step.name : label}</span>
+      <Badge status={step.status} />
+      <span className="muted num">
+        {t('settings:status.jobs.seconds', { value: formatDecimal(step.durationMs / 1000, 1) })}
+      </span>
+      {step.error === null ? null : <Quoted text={step.error} />}
     </li>
   )
 }

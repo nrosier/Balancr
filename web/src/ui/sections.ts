@@ -17,6 +17,15 @@ export interface Section<Id extends string> {
   readonly path: string
   /** Catalogue key for the tab's label. */
   readonly labelKey: string
+  /**
+   * Owns every path under its own, not just an exact match — mirrors `AppRoute.nested`
+   * in `routes.ts`. Set only where the section renders its own further `useSubsection`
+   * (Status, #325's Services/Queue split): without it, the outer hook's own "replace an
+   * incomplete path with the canonical one" effect below cannot tell a path a nested
+   * tab strip already owns (`/settings/status/queue`) from one nobody does
+   * (`/settings/status/nonsense`), and corrects both back to the bare section path.
+   */
+  readonly nested?: boolean
 }
 
 /**
@@ -58,7 +67,8 @@ export function useSubsection<Id extends string>(sections: readonly Section<Id>[
 
   useEffect(() => {
     const current = sections.find((section) => section.id === active)
-    if (current !== undefined && path !== current.path) navigate(current.path, { replace: true })
+    if (current === undefined || current.nested === true) return
+    if (path !== current.path) navigate(current.path, { replace: true })
   }, [path, active, sections, navigate])
 
   return active

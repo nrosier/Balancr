@@ -154,6 +154,12 @@
     "actual": "Actual Budget",
     "ghostfolio": "Ghostfolio"
   },
+  "step": {
+    "accounts": "Rekeningen",
+    "compute": "Berekenen",
+    "connect": "Verbinden",
+    "fetch": "Ophalen"
+  },
   "status": {
     "answered": "Beantwoord",
     "applied": "Toegepast",
@@ -166,7 +172,9 @@
     "idle": "Inactief",
     "ok": "OK",
     "open": "Open",
+    "partial": "Deels gelukt",
     "pending": "Wacht op nazicht",
+    "queued": "In wachtrij",
     "rejected": "Afgewezen",
     "reused": "Herbruikt — gratis",
     "running": "Bezig",
