@@ -70,12 +70,13 @@ import type { SettingsPanelProps } from './state.ts'
 
 /**
  * Services (the three at-a-glance cards, #325) versus Queue (everything that used to
- * sit under the old flat `checks` list: the job list, the reset control and the probe
- * detail) versus AI (the cost/usage monitoring that used to be its own Settings tab —
- * reached only by clicking the AI service card, since nothing on it is a setting).
- * Nested one level under the page's own `general`/`status` split — `sections.ts`'s
- * own prefix matching is written to support that, so this is plain reuse rather than a
- * new mechanism.
+ * sit under the old flat `checks` list: the job list and the reset control) versus AI
+ * (the cost/usage monitoring that used to be its own Settings tab — reached only by
+ * clicking the AI service card, since nothing on it is a setting). Ghostfolio's own
+ * probe detail lives on its Services card, behind a disclosure, rather than under Queue
+ * (#331). Nested one level under the page's own `general`/`status` split —
+ * `sections.ts`'s own prefix matching is written to support that, so this is plain reuse
+ * rather than a new mechanism.
  */
 type StatusSubsectionId = 'services' | 'queue' | 'ai'
 
@@ -227,14 +228,6 @@ function Report({
           </div>
 
           <ResetControl owner={owner} refresher={refresher} />
-
-          <h3 className="panel__subtitle">{t('settings:status.probe.title')}</h3>
-          <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
-          {status.probes.length === 0 ? (
-            <p className="muted">{t('settings:status.probe.notRunYet')}</p>
-          ) : (
-            status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
-          )}
         </>
       ) : (
         <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
@@ -274,6 +267,7 @@ function ServicesGrid({
   const ghostfolio = check('ghostfolio')
   const syncedActual = job('sync')?.lastSuccessAt ?? null
   const syncedGhostfolio = job('portfolio')?.lastSuccessAt ?? null
+  const ghostfolioProbe = status.probes.find((probe) => probe.source === 'ghostfolio') ?? null
   const aiReason = aiAvailability.reason ?? 'notConfigured'
 
   return (
@@ -293,6 +287,7 @@ function ServicesGrid({
           ghostfolio?.reason == null ? null : t(`settings:status.reason.${ghostfolio.reason}`)
         }
         lastSyncedAt={syncedGhostfolio}
+        probe={ghostfolioProbe}
       />
       <ServiceCard
         name={t('settings:status.check.ai')}
@@ -315,10 +310,13 @@ function ServicesGrid({
  *
  * `href`, given only by the AI card, makes the whole card a link to its own tab — the
  * AI usage/cost history lives one click behind the card rather than on this grid, since
- * it is a monitoring view rather than an at-a-glance fact. Actual and Ghostfolio have no
- * `href`: their own detail (the job and probe rows behind their status) already has a
- * tab of its own — Queue — reachable from the strip above, so a second drill-in here
- * would be a second way to the same place.
+ * it is a monitoring view rather than an at-a-glance fact.
+ *
+ * `probe` is the per-endpoint detail behind the card's own verdict — today only Ghostfolio
+ * has one (`ServicesGrid` matches it by `source`), and it renders as a disclosure rather
+ * than always-on: the card's badge and reason already say whether something is wrong,
+ * and "which path, with what error" is a level of detail worth a click rather than
+ * always taking up space. `ProbeReport` is reused as-is for the revealed content.
  */
 function ServiceCard({
   name,
@@ -326,14 +324,17 @@ function ServiceCard({
   reason,
   lastSyncedAt,
   href,
+  probe = null,
 }: {
   name: string
   status: string
   reason: string | null
   lastSyncedAt?: string | null
   href?: string
+  probe?: ProbeStatus | null
 }): ReactNode {
   const { t } = useT()
+  const [expanded, setExpanded] = useState(false)
 
   const body = (
     <>
@@ -350,6 +351,24 @@ function ServiceCard({
         </dl>
       )}
       {reason === null ? null : <p className="status__reason muted">{reason}</p>}
+      {probe === null ? null : (
+        <>
+          <button
+            type="button"
+            className="status__disclosureButton"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {t('settings:status.probe.title')}
+          </button>
+          {expanded && (
+            <>
+              <p className="panel__hint muted">{t('settings:status.probe.lede')}</p>
+              <ProbeReport probe={probe} />
+            </>
+          )}
+        </>
+      )}
     </>
   )
 

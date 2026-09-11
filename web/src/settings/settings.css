@@ -716,6 +716,19 @@
   margin-right: var(--space-2);
 }
 
+/* Bare-button reset, same shape as .hygiene__reasonButton — kept local rather than
+   shared across files, since the two disclosures live in unrelated components. */
+.status__disclosureButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
 /*
  * "Run now", below the row's own detail rather than beside its name.
  *

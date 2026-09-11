@@ -22,13 +22,14 @@
  * be translated or hidden. Both properties are asserted on one render.
  *
  * Since #325, the panel itself is split into two sub-tabs — Services (three at-a-glance
- * cards, the default landing view) and Queue (the job list, the reset control and the
- * probe detail that used to be visible immediately). `show()` always pushes an explicit
- * path rather than letting `useSubsection` fall back on whatever `window.history` was
- * left at by a previous test, and `openQueue()` is the one way any case below reaches the
- * Queue tab's content.
+ * cards, the default landing view) and Queue (the job list and the reset control).
+ * Ghostfolio's own probe detail lives on its Services card now, behind a disclosure
+ * button, rather than under Queue (#331). `show()` always pushes an explicit path rather
+ * than letting `useSubsection` fall back on whatever `window.history` was left at by a
+ * previous test, and `openQueue()` is the one way any case below reaches the Queue tab's
+ * content.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { StatusPanel } from '../src/settings/Status.tsx'
@@ -267,8 +268,10 @@ describe('a deployment where nothing has run', () => {
       if (badge.textContent === 'Not known') expect(badge.className.trim()).toBe('badge')
     }
 
-    await openQueue()
-    expect(screen.getByText('Ghostfolio has not been checked yet.')).toBeTruthy()
+    // No probe recorded yet, so there is nothing to disclose — the card's own reason
+    // sentence above already says this, and a button with nothing behind it would be
+    // worse than no button at all.
+    expect(screen.queryByRole('button', { name: 'Ghostfolio endpoint checks' })).toBeNull()
   })
 })
 
@@ -309,18 +312,19 @@ describe('the two ways Ghostfolio breaks', () => {
     await show(withProbe('unreachable'))
 
     // The card shows the *check*'s own verdict (`degraded`), not the probe's — the
-    // probe's own "Unreachable" badge is Queue-tab detail, checked below.
+    // probe's own "Unreachable" badge is behind the card's disclosure, checked below.
     expect(screen.getByText(/could not be reached/)).toBeTruthy()
     const card = serviceCard('Ghostfolio')
     const badge = card.querySelector('.badge')
     expect(badge?.textContent).toBe('Degraded')
     expect(badge?.className).toContain('badge--warn')
 
-    await openQueue()
-    const probeBadge = [...document.querySelectorAll('.badge')].find(
-      (node) => node.textContent === 'Unreachable',
-    )
-    expect(probeBadge?.className).toContain('badge--warn')
+    fireEvent.click(within(card).getByRole('button', { name: 'Ghostfolio endpoint checks' }))
+    // Both the probe's own head and its one path repeat the same verdict, so every
+    // "Unreachable" badge in the card should agree on the tone.
+    for (const node of within(card).getAllByText('Unreachable')) {
+      expect(node.closest('.badge')?.className).toContain('badge--warn')
+    }
   })
 
   it('shows a contract change as red and names the path', async () => {
@@ -332,17 +336,18 @@ describe('the two ways Ghostfolio breaks', () => {
     expect(badge?.textContent).toBe('Failed')
     expect(badge?.className).toContain('badge--error')
 
-    // The probe's own path-level detail is Queue-tab content now — the card above only
-    // carries the verdict and the reason sentence.
-    await openQueue()
-    expect(screen.getByText('/api/v1/portfolio/holdings')).toBeTruthy()
-    const probeBadge = [...document.querySelectorAll('.badge')].find(
-      (node) => node.textContent === 'Unexpected shape',
-    )
-    expect(probeBadge?.className).toContain('badge--error')
+    // The probe's own path-level detail is behind the card's own disclosure now, not a
+    // separate Queue-tab section.
+    fireEvent.click(within(card).getByRole('button', { name: 'Ghostfolio endpoint checks' }))
+    expect(within(card).getByText('/api/v1/portfolio/holdings')).toBeTruthy()
+    // Both the probe's own head and its one path repeat the same verdict, so every
+    // "Unexpected shape" badge in the card should agree on the tone.
+    for (const node of within(card).getAllByText('Unexpected shape')) {
+      expect(node.closest('.badge')?.className).toContain('badge--error')
+    }
     // The upstream's own words, quoted rather than paraphrased: it is not translated,
     // and on a Dutch page it will still be in English.
-    const quote = screen.getByText(/expected number/)
+    const quote = within(card).getByText(/expected number/)
     expect(quote.tagName).toBe('Q')
   })
 })
