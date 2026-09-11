@@ -392,7 +392,6 @@
       "checkedAt": "Gecontroleerd op {{when}}",
       "lede": "Drie van de vier endpoints die Balancr leest horen bij de interne API van Ghostfolio, die bij elke upgrade mag veranderen. Dit is wat elk endpoint antwoordde.",
       "noDetail": "Het opgeslagen rapport kon niet gelezen worden, dus alleen het oordeel hierboven is beschikbaar.",
-      "notRunYet": "Ghostfolio is nog niet gecontroleerd.",
       "title": "Controle van de Ghostfolio-endpoints",
       "warnings": "Goed om te weten"
     },
