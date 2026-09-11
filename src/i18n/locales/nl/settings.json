@@ -357,11 +357,17 @@
   "status": {
     "check": {
       "actual": "Actual Budget",
+      "ai": "AI-assistent",
       "database": "De databank van Balancr",
       "ghostfolio": "Ghostfolio",
       "jobs": "Geplande taken"
     },
     "degraded": "De pagina’s komen nog uit de laatste geslaagde uitvoering.",
+    "history": {
+      "empty": "Nog geen uitvoeringen geregistreerd.",
+      "hide": "Geschiedenis verbergen",
+      "show": "Geschiedenis tonen"
+    },
     "jobs": {
       "lastRun": "Laatste poging",
       "lastSuccess": "Laatst gelukt",
@@ -373,6 +379,10 @@
       "took": "Duurde"
     },
     "lede": "Wat werkt, wat niet, en wanneer elke achtergrondtaak voor het laatst gelukt is.",
+    "nav": {
+      "queue": "Taken & wachtrij",
+      "services": "Services"
+    },
     "notServing": "Deze instantie kan geen pagina’s leveren.",
     "probe": {
       "checkedAt": "Gecontroleerd op {{when}}",
@@ -398,6 +408,9 @@
       "starting": "Bezig met starten…",
       "title": "Berekende gegevens resetten",
       "warning": "Wist elk cijfer dat Balancr zelf berekend heeft — budgetnormen, signalen, netto vermogen en portefeuillegeschiedenis — en berekent alles opnieuw op basis van Actual, Ghostfolio en de instellingen op deze pagina. Niets dat verzameld, ingesteld of beslist is, wordt aangeraakt."
+    },
+    "services": {
+      "lastSynced": "Laatst gesynchroniseerd"
     },
     "serving": "Deze instantie levert pagina’s.",
     "title": "Status van deze instantie"

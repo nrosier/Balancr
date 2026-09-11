@@ -41,6 +41,7 @@ import { backfillJob } from '../../src/jobs/backfill.ts'
 import type { JobDetail } from '../../src/jobs/runner.ts'
 import { logger } from '../../src/logger.ts'
 import { endOfMonth, monthsBefore } from '../../src/util/month.ts'
+import { noopStep } from '../fixtures/job-context.ts'
 import { seedMonth } from '../fixtures/month.ts'
 
 /** An Actual account row as `fetchAccounts` returns it. */
@@ -180,7 +181,7 @@ beforeEach(() => {
 })
 
 const run = async (now = NIGHT): Promise<JobDetail> =>
-  ((await backfillJob.run({ db, now, log: logger })) ?? {}) as JobDetail
+  ((await backfillJob.run({ db, now, log: logger, step: noopStep })) ?? {}) as JobDetail
 
 /** Month-end dates the backfill wrote a net-worth snapshot for. */
 const snapshots = (): Record<string, number> =>

@@ -45,6 +45,7 @@ import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import {
   describeSchedule,
+  jobsInFlight,
   loadJobRows,
   loadProbes,
   registry,
@@ -152,6 +153,7 @@ export function buildStatus(db: Db): Status {
         { name: 'jobs', status: 'unknown', reason: 'unreadable' },
       ],
       jobs: [],
+      queued: jobsInFlight(),
       probes: [],
     })
   }
@@ -194,6 +196,7 @@ export function buildStatus(db: Db): Status {
       error: row.status === 'error' ? row.error : null,
       schedule: scheduleOf(row.name),
     })),
+    queued: jobsInFlight(),
     probes: probes.map((probe) => ({
       source: probe.source,
       status: probe.status,

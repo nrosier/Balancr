@@ -158,6 +158,8 @@ const EnvSchema = z.object({
    * decides how far back a correction in Actual is picked up.
    */
   JOBS_HISTORY_MONTHS: z.coerce.number().int().min(1).max(120).default(24),
+  /** How many past runs to keep per job before the oldest are pruned. */
+  JOB_HISTORY_KEEP: z.coerce.number().int().min(1).max(500).default(50),
 
   // Backups
   /**
@@ -505,6 +507,7 @@ export function configSummary(): Record<string, unknown> {
     JOBS_SYNC_INTERVAL_MINUTES: config.JOBS_SYNC_INTERVAL_MINUTES,
     JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,
     JOBS_HISTORY_MONTHS: config.JOBS_HISTORY_MONTHS,
+    JOB_HISTORY_KEEP: config.JOB_HISTORY_KEEP,
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
     BACKUP_KEEP: config.BACKUP_KEEP,

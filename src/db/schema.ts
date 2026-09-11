@@ -1063,6 +1063,38 @@ export const upstreamProbes = sqliteTable('upstream_probes', {
 })
 
 /**
+ * One row per job attempt, unlike `jobs` above. Asked for directly: "show the job
+ * history" — the status panel's own row answers "is it healthy right now", not "what
+ * happened the last N times", and the two are genuinely different questions once a job
+ * fails intermittently rather than staying down.
+ *
+ * No FK to `jobs.name` — same reason `upstreamProbes` has none for its source: a row
+ * written by a build that has since renamed or retired a job must still load.
+ *
+ * Pruned to `config.JOB_HISTORY_KEEP` rows per `jobName` after every run (see
+ * `pruneJobRuns` in `jobs/runner.ts`), the same after-a-successful-write timing
+ * `BACKUP_KEEP` uses — so a failed prune never costs the row it would have removed.
+ */
+export const jobRuns = sqliteTable(
+  'job_runs',
+  {
+    id: uuid().primaryKey(),
+    jobName: text('job_name').notNull(),
+    status: text({ enum: ['running', 'ok', 'error', 'partial'] })
+      .notNull()
+      .default('running'),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+    /** Null while the run is still in progress. */
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+    durationMs: integer('duration_ms'),
+    error: text(),
+    /** `JobStep[]` — see `jobs/runner.ts`. `'[]'` for a job that reports no steps. */
+    stepsJson: text('steps_json').notNull().default('[]'),
+  },
+  (t) => [index('job_runs_job_name_started_at_idx').on(t.jobName, t.startedAt)],
+)
+
+/**
  * Rate-limit counters, kept in SQLite rather than in memory.
  *
  * The in-memory store the plugin ships with is the right default for a stateless

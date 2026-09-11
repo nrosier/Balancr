@@ -28,6 +28,7 @@ import { loadProbe, loadProbes, probeStatuses } from '../../src/jobs/probe-state
 import { probeJob } from '../../src/jobs/probe.ts'
 import { registry } from '../../src/jobs/index.ts'
 import { upstreamProbes } from '../../src/db/schema.ts'
+import { noopStep } from '../fixtures/job-context.ts'
 
 const log = pino({ level: 'silent' })
 
@@ -73,7 +74,7 @@ beforeEach(() => {
   gave.calls = 0
 })
 
-const run = () => probeJob.run({ db: ctx.db, now: AT, log })
+const run = () => probeJob.run({ db: ctx.db, now: AT, log, step: noopStep })
 
 describe('a healthy upstream', () => {
   it('stores the report and reports the counts', async () => {

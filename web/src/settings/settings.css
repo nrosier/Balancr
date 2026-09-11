@@ -666,6 +666,17 @@
   border-top: 1px solid var(--border);
 }
 
+/* A service card's own name + badge row — same shape as .status__probeHead,
+   but the card itself is the border, so no top rule or row padding here. */
+.status__serviceHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+
 .status__name {
   font-weight: var(--weight-medium);
 }
@@ -727,6 +738,72 @@
   font-family: var(--font-mono);
   font-size: var(--type-xs);
   overflow-wrap: anywhere;
+}
+
+/* The run-now button and the history toggle side by side, wrapping on narrow
+   screens the same way every other row in this panel already does. */
+.status__jobActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+
+.status__jobActions .status__run {
+  margin: 0;
+}
+
+.status__history {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) 0 0 var(--space-3);
+  border-left: 1px solid var(--border);
+}
+
+.status__runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--type-sm);
+}
+
+.status__historyRun {
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.status__historyRun:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.status__historyRunHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* One run's own steps, nested one level further than the run list itself. */
+.status__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+  font-size: var(--type-xs);
+  border-left: 1px solid var(--border);
+}
+
+.status__step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
 .status__probe {

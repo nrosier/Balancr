@@ -15,9 +15,9 @@
  *    success 4 days ago" is the signal that matters, and it only exists if
  *    failures are recorded as attempts rather than silence.
  */
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, notInArray } from 'drizzle-orm'
 import type { Db } from '../db/index.ts'
-import { jobs as jobsTable } from '../db/schema.ts'
+import { jobRuns as jobRunsTable, jobs as jobsTable } from '../db/schema.ts'
 import { config } from '../config.ts'
 import { logger } from '../logger.ts'
 import type { Logger } from '../logger.ts'
@@ -68,6 +68,15 @@ export interface JobContext {
    * (#160).
    */
   readonly force?: boolean
+  /**
+   * Names a named sub-step of this run, for the history the status panel shows.
+   * Optional for a job to call at all — one that never calls it simply reports
+   * no steps, same as a job whose `run` predates this existing. Does not
+   * swallow `fn`'s rejection: a job that wants to survive one step's failure
+   * and continue (which is how a run ends up `partial` rather than `error`)
+   * has to catch it itself.
+   */
+  readonly step: <T>(name: string, fn: () => Promise<T>) => Promise<T>
 }
 
 /** Counts and dates worth logging. Never a payee, never an amount. */
@@ -87,12 +96,90 @@ export interface JobRun {
   error?: string
 }
 
+/**
+ * One step `ctx.step` recorded, in the order it ran.
+ *
+ * `error` is always present, `null` for a step that succeeded — never an absent
+ * key — because this is serialised to `stepsJson` and read back by
+ * `status-history.ts`'s wire schema, which validates every step the same shape
+ * whether it failed or not.
+ */
+export interface JobStep {
+  name: string
+  status: 'ok' | 'error'
+  durationMs: number
+  error: string | null
+}
+
 export type JobRow = typeof jobsTable.$inferSelect
+export type JobRunRow = typeof jobRunsTable.$inferSelect
 
 function upsert(db: Db, name: string, set: Partial<JobRow>): void {
   db.insert(jobsTable)
     .values({ name, ...set })
     .onConflictDoUpdate({ target: jobsTable.name, set })
+    .run()
+}
+
+/** Builds the `ctx.step` a single run gets, recording into that run's own `steps`. */
+function makeStep(steps: JobStep[]): JobContext['step'] {
+  return async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    const started = Date.now()
+    try {
+      const result = await fn()
+      steps.push({ name, status: 'ok', durationMs: Date.now() - started, error: null })
+      return result
+    } catch (error) {
+      const message = (error instanceof Error ? error.message : String(error)).slice(0, 2_000)
+      steps.push({ name, status: 'error', durationMs: Date.now() - started, error: message })
+      throw error
+    }
+  }
+}
+
+/**
+ * A run that resolved is `ok` unless one of its own steps failed and it pressed on
+ * anyway — `partial`, so a job that swallowed a step's error to keep going reads as
+ * exactly that rather than as an unqualified success. A run that never resolved is
+ * always `error`, whatever fraction of its steps had already succeeded: it did not
+ * finish, and how far it got before failing is what `steps` is for, not `status`.
+ */
+export function deriveRunStatus(resolved: boolean, steps: readonly JobStep[]): 'ok' | 'error' | 'partial' {
+  if (!resolved) return 'error'
+  return steps.some((s) => s.status === 'error') ? 'partial' : 'ok'
+}
+
+function updateJobRun(db: Db, id: string, set: Partial<JobRunRow>): void {
+  db.update(jobRunsTable).set(set).where(eq(jobRunsTable.id, id)).run()
+}
+
+/**
+ * Deletes this job's oldest `job_runs` rows beyond `keep`, the same
+ * after-a-successful-write timing `BACKUP_KEEP` uses for snapshot files.
+ *
+ * Reads only the `keep` most recent ids rather than the whole table: with a keep
+ * count in the tens and jobs running at most hourly, this table never grows large
+ * enough for the read itself to be the cost worth optimising away.
+ */
+export function pruneJobRuns(db: Db, jobName: string, keep: number): void {
+  const recent = db
+    .select({ id: jobRunsTable.id })
+    .from(jobRunsTable)
+    .where(eq(jobRunsTable.jobName, jobName))
+    .orderBy(desc(jobRunsTable.startedAt))
+    .limit(keep)
+    .all()
+  if (recent.length < keep) return
+  db.delete(jobRunsTable)
+    .where(
+      and(
+        eq(jobRunsTable.jobName, jobName),
+        notInArray(
+          jobRunsTable.id,
+          recent.map((row) => row.id),
+        ),
+      ),
+    )
     .run()
 }
 
@@ -114,14 +201,27 @@ export function runJob(
   return queue(async () => {
     const jobLog = log.child({ job: job.name })
     const started = Date.now()
+    const runId = crypto.randomUUID()
+    const steps: JobStep[] = []
 
     upsert(db, job.name, { status: 'running', lastRunAt: now, error: null })
+    db.insert(jobRunsTable)
+      .values({ id: runId, jobName: job.name, status: 'running', startedAt: now })
+      .run()
     jobLog.debug({ schedule: describeSchedule(job.schedule) }, 'job started')
 
     try {
-      const detail = (await job.run({ db, now, log: jobLog, force: options.force ?? false })) ?? {}
+      const detail =
+        (await job.run({
+          db,
+          now,
+          log: jobLog,
+          force: options.force ?? false,
+          step: makeStep(steps),
+        })) ?? {}
       const durationMs = Date.now() - started
       const finished = new Date()
+      const runStatus = deriveRunStatus(true, steps)
       upsert(db, job.name, {
         status: 'ok',
         lastRunAt: now,
@@ -129,6 +229,13 @@ export function runJob(
         nextRunAt: nextRunAt(job.schedule, finished, finished, config.TZ),
         lastDurationMs: durationMs,
         error: null,
+      })
+      updateJobRun(db, runId, {
+        status: runStatus,
+        finishedAt: finished,
+        durationMs,
+        error: null,
+        stepsJson: JSON.stringify(steps),
       })
       jobLog.info({ durationMs, ...detail }, 'job finished')
       return { name: job.name, status: 'ok', durationMs, detail }
@@ -147,6 +254,13 @@ export function runJob(
         lastDurationMs: durationMs,
         error: message,
       })
+      updateJobRun(db, runId, {
+        status: 'error',
+        finishedAt: finished,
+        durationMs,
+        error: message,
+        stepsJson: JSON.stringify(steps),
+      })
       jobLog.error({ err: error, durationMs }, 'job failed')
       return { name: job.name, status: 'error', durationMs, detail: {}, error: message }
     } finally {
@@ -154,6 +268,7 @@ export function runJob(
       // a claim released in one but not the other would refuse every later refresh for
       // the lifetime of the process.
       inFlight.delete(job.name)
+      pruneJobRuns(db, job.name, config.JOB_HISTORY_KEEP)
     }
   })
 }
@@ -189,6 +304,17 @@ export function loadJobRows(db: Db): JobRow[] {
   return db.select().from(jobsTable).orderBy(jobsTable.name).all()
 }
 
+/** A job's past attempts, most recent first, for the status panel's history view. */
+export function loadJobRuns(db: Db, jobName: string, limit: number): JobRunRow[] {
+  return db
+    .select()
+    .from(jobRunsTable)
+    .where(eq(jobRunsTable.jobName, jobName))
+    .orderBy(desc(jobRunsTable.startedAt))
+    .limit(limit)
+    .all()
+}
+
 /**
  * Clears a `running` status left behind by a crash or a `docker kill`.
  *
@@ -197,7 +323,7 @@ export function loadJobRows(db: Db): JobRow[] {
  * believes.
  */
 export function clearStaleRunning(db: Db): number {
-  return db
+  const changes = db
     .update(jobsTable)
     .set({
       status: 'error',
@@ -205,4 +331,15 @@ export function clearStaleRunning(db: Db): number {
     })
     .where(eq(jobsTable.status, 'running'))
     .run().changes
+
+  db.update(jobRunsTable)
+    .set({
+      status: 'error',
+      finishedAt: new Date(),
+      error: 'interrupted — the process stopped while this job was running',
+    })
+    .where(eq(jobRunsTable.status, 'running'))
+    .run()
+
+  return changes
 }

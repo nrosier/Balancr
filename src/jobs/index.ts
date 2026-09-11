@@ -67,8 +67,10 @@ export {
 } from './refresh.ts'
 export {
   clearStaleRunning,
+  deriveRunStatus,
   jobsInFlight,
   loadJobRows,
+  loadJobRuns,
   runDueJobs,
   runJob,
   type Job,
@@ -76,6 +78,8 @@ export {
   type JobDetail,
   type JobRow,
   type JobRun,
+  type JobRunRow,
+  type JobStep,
 } from './runner.ts'
 export { describeSchedule, isDue, nextRunAt, type Schedule } from './schedule.ts'
 

@@ -259,7 +259,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Benchmark** | `BENCHMARK_PATH` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
-| **Jobs** | `JOBS_ENABLED`, `JOBS_SYNC_INTERVAL_MINUTES`, `JOBS_NIGHTLY_HOUR`, `JOBS_HISTORY_MONTHS` |
+| **Jobs** | `JOBS_ENABLED`, `JOBS_SYNC_INTERVAL_MINUTES`, `JOBS_NIGHTLY_HOUR`, `JOBS_HISTORY_MONTHS`, `JOB_HISTORY_KEEP` |
 
 Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
 `FORMAT_LOCALE` decides how money and dates are written. They are separate

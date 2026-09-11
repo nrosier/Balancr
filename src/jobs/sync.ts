@@ -232,112 +232,126 @@ export function classifyGhostfolio(
   return { reclassified, mirrored }
 }
 
-async function run({ db, log, now }: JobContext): Promise<JobDetail> {
-  await syncActual()
+async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
+  await step('connect', () => syncActual())
 
   const params = loadParams(db)
-  const available = await fetchBudgetMonths()
   const currentMonth = currentMonthIn(config.TZ)
-  const { load, targets } = planMonths(
-    available,
-    currentMonth,
-    config.JOBS_HISTORY_MONTHS,
-    params.baseline.windowMonths,
-  )
 
-  if (targets.length === 0) {
+  const fetched = await step('fetch', async () => {
+    const available = await fetchBudgetMonths()
+    const { load, targets } = planMonths(
+      available,
+      currentMonth,
+      config.JOBS_HISTORY_MONTHS,
+      params.baseline.windowMonths,
+    )
+
+    if (targets.length === 0) return { ready: false as const, load, targets }
+
+    const history = await fetchHistory(load)
+    const recomputed = await fetchRecomputedSpend(
+      startOfMonth(load[0] as string),
+      endOfMonth(load[load.length - 1] as string),
+    )
+
+    // What is still to come this month (#159). Read here rather than inside
+    // `aggregateSpend` for the reason every clock-dependent figure is: the
+    // aggregator is pure and this is a function of today. Only the current month
+    // gets one — a past month's committed figure is zero by definition, and the
+    // schedules for a future month are not what `targets` is about.
+    const today = todayIn(config.TZ)
+    const committed = targets.includes(currentMonth)
+      ? committedForMonth({
+          schedules: await fetchSchedules(),
+          month: currentMonth,
+          today,
+          paidThisMonth: await fetchSchedulesPaidThisMonth(
+            startOfMonth(currentMonth),
+            endOfMonth(currentMonth),
+          ),
+        })
+      : emptyCommitted(currentMonth)
+
+    // The historical day-of-month shape `burn_rate_over` projects from (#311).
+    // Same reasoning as `committed`: only the current month gets one, and its
+    // own fetch window — independent of the baseline history above — is read
+    // here, at sync-time, because "how far through the month" is a function of
+    // today.
+    const dayCurveHistoryMonths = monthsBefore(currentMonth, params.dayCurve.windowMonths)
+    const dayCurves = targets.includes(currentMonth)
+      ? buildDayCurves({
+          daily: await fetchRecomputedSpendDaily(
+            startOfMonth(dayCurveHistoryMonths[0] as string),
+            endOfMonth(addMonths(currentMonth, -1)),
+          ),
+          historyMonths: dayCurveHistoryMonths,
+          month: currentMonth,
+          incomeCategoryIds: new Set(
+            history.flatMap((month) =>
+              month.categories.filter((category) => category.isIncome).map((c) => c.categoryId),
+            ),
+          ),
+          progress: monthProgress(currentMonth, now, config.TZ),
+          params: params.dayCurve,
+        })
+      : null
+
+    return { ready: true as const, load, targets, history, recomputed, committed, dayCurves }
+  })
+
+  if (!fetched.ready) {
     // An empty budget is a legitimate state — a freshly created Actual file — and
     // must not read as a failure in the ops table.
     log.warn('Actual reports no budget months at or before the current month')
     return { months: 0, facts: 0 }
   }
+  const { load, targets, history, recomputed, committed, dayCurves } = fetched
 
-  const history = await fetchHistory(load)
-  const recomputed = await fetchRecomputedSpend(
-    startOfMonth(load[0] as string),
-    endOfMonth(load[load.length - 1] as string),
-  )
+  const computed = await step('compute', async () => {
+    const aggregate = aggregateSpend({
+      history,
+      recomputed,
+      frequencies: loadFrequencies(db),
+      targetMonths: targets,
+      committed,
+      dayCurves,
+      params,
+    })
 
-  // What is still to come this month (#159). Read here rather than inside
-  // `aggregateSpend` for the reason every clock-dependent figure is: the
-  // aggregator is pure and this is a function of today. Only the current month
-  // gets one — a past month's committed figure is zero by definition, and the
-  // schedules for a future month are not what `targets` is about.
-  const today = todayIn(config.TZ)
-  const committed = targets.includes(currentMonth)
-    ? committedForMonth({
-        schedules: await fetchSchedules(),
-        month: currentMonth,
-        today,
-        paidThisMonth: await fetchSchedulesPaidThisMonth(
-          startOfMonth(currentMonth),
-          endOfMonth(currentMonth),
-        ),
-      })
-    : emptyCommitted(currentMonth)
+    // Categories before facts: `loadFrequencies` above read the previous pass's
+    // rows, so a category seen for the first time today gets its row now and is
+    // classifiable by the next pass.
+    const categories = syncCategoryMeta(db, aggregate.facts)
+    const facts = persistFacts(db, aggregate.facts, targets)
+    // Month totals cover the target months, so the uncategorised backlog stored
+    // here is the backlog over the months this install reports on
+    // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
+    // baseline are dropped: there is no month row to hang them on, and a to-do list
+    // reaching further back than any page shows is not a to-do list.
+    const factsByMonth = new Map<string, typeof aggregate.facts>()
+    for (const fact of aggregate.facts) {
+      const bucket = factsByMonth.get(fact.month)
+      if (bucket === undefined) factsByMonth.set(fact.month, [fact])
+      else bucket.push(fact)
+    }
+    // A per-month fingerprint of the facts a judgement depends on (#162), so
+    // `signals.ts` can tell a month whose figures actually moved from one that
+    // was merely rewritten with the same numbers.
+    const fingerprints = new Map(
+      aggregate.totals.map((total) => [
+        total.month,
+        monthFingerprint(factsByMonth.get(total.month) ?? [], total),
+      ]),
+    )
+    const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised, fingerprints)
+    const drift = persistMismatches(db, aggregate.mismatches, targets)
 
-  // The historical day-of-month shape `burn_rate_over` projects from (#311).
-  // Same reasoning as `committed`: only the current month gets one, and its
-  // own fetch window — independent of the baseline history above — is read
-  // here, at sync-time, because "how far through the month" is a function of
-  // today.
-  const dayCurveHistoryMonths = monthsBefore(currentMonth, params.dayCurve.windowMonths)
-  const dayCurves = targets.includes(currentMonth)
-    ? buildDayCurves({
-        daily: await fetchRecomputedSpendDaily(
-          startOfMonth(dayCurveHistoryMonths[0] as string),
-          endOfMonth(addMonths(currentMonth, -1)),
-        ),
-        historyMonths: dayCurveHistoryMonths,
-        month: currentMonth,
-        incomeCategoryIds: new Set(
-          history.flatMap((month) =>
-            month.categories.filter((category) => category.isIncome).map((c) => c.categoryId),
-          ),
-        ),
-        progress: monthProgress(currentMonth, now, config.TZ),
-        params: params.dayCurve,
-      })
-    : null
-
-  const aggregate = aggregateSpend({
-    history,
-    recomputed,
-    frequencies: loadFrequencies(db),
-    targetMonths: targets,
-    committed,
-    dayCurves,
-    params,
+    return { aggregate, categories, facts, months, drift }
   })
+  const { aggregate, categories, facts, months, drift } = computed
 
-  // Categories before facts: `loadFrequencies` above read the previous pass's
-  // rows, so a category seen for the first time today gets its row now and is
-  // classifiable by the next pass.
-  const categories = syncCategoryMeta(db, aggregate.facts)
-  const facts = persistFacts(db, aggregate.facts, targets)
-  // Month totals cover the target months, so the uncategorised backlog stored
-  // here is the backlog over the months this install reports on
-  // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
-  // baseline are dropped: there is no month row to hang them on, and a to-do list
-  // reaching further back than any page shows is not a to-do list.
-  const factsByMonth = new Map<string, typeof aggregate.facts>()
-  for (const fact of aggregate.facts) {
-    const bucket = factsByMonth.get(fact.month)
-    if (bucket === undefined) factsByMonth.set(fact.month, [fact])
-    else bucket.push(fact)
-  }
-  // A per-month fingerprint of the facts a judgement depends on (#162), so
-  // `signals.ts` can tell a month whose figures actually moved from one that
-  // was merely rewritten with the same numbers.
-  const fingerprints = new Map(
-    aggregate.totals.map((total) => [
-      total.month,
-      monthFingerprint(factsByMonth.get(total.month) ?? [], total),
-    ]),
-  )
-  const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised, fingerprints)
-  const drift = persistMismatches(db, aggregate.mismatches, targets)
-  const accounts = await syncAccounts(db, log)
+  const accounts = await step('accounts', () => syncAccounts(db, log))
 
   return {
     months: targets.length,

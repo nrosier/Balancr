@@ -32,9 +32,12 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionExpiryProvider } from '../src/api/resource.tsx'
 import { StatusPanel } from '../src/settings/Status.tsx'
-import type { Freshness, JobStatus, RefreshAccepted, Status } from '../src/shared.ts'
+import type { AiAvailabilityWire, Freshness, JobStatus, RefreshAccepted, Status } from '../src/shared.ts'
 import { FreshnessBar } from '../src/ui/Refresh.tsx'
 import { i18nReady, renderApp } from './helpers.tsx'
+
+/** This suite is not about the AI card, so it is always on and never checked here. */
+const AI_ON: AiAvailabilityWire = { enabled: true, reason: null }
 
 /** What the hook polls at, and how many of those before it stops. Mirrors `Refresh.tsx`. */
 const POLL_MS = 2_000
@@ -378,6 +381,7 @@ const STATUS: Status = {
     // A row written by a version of Balancr this bundle has never seen.
     jobRow('gremlins', 'ok'),
   ],
+  queued: [],
   probes: [],
 }
 
@@ -391,15 +395,15 @@ function row(label: string): HTMLElement {
 describe('the per-job buttons on the status panel', () => {
   it('offers a run for the jobs the endpoint takes, and for no others', async () => {
     serve({ '/api/status': json(STATUS) })
-    renderApp(<StatusPanel owner={true} />)
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, { path: '/settings/status/queue' })
     await tick()
 
     // `probe` and `sync`. Not `ai`, which has a priced control of its own on the panel
     // above, and not a name this build has never heard of — offering either would be a
-    // button whose answer is an error.
+    // button whose answer is an error. Every row still gets the history toggle.
     expect(screen.getAllByRole('button', { name: 'Run now' })).toHaveLength(2)
-    expect(within(row('AI analysis')).queryByRole('button')).toBeNull()
-    expect(within(row('gremlins')).queryByRole('button')).toBeNull()
+    expect(within(row('AI analysis')).queryByRole('button', { name: 'Run now' })).toBeNull()
+    expect(within(row('gremlins')).queryByRole('button', { name: 'Run now' })).toBeNull()
   })
 
   it('asks for that job alone', async () => {
@@ -407,7 +411,7 @@ describe('the per-job buttons on the status panel', () => {
       '/api/status': json(STATUS),
       '/api/refresh': json(accepted(['sync'], ['sync', 'networth', 'signals']), 202),
     })
-    renderApp(<StatusPanel owner={true} />)
+    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, { path: '/settings/status/queue' })
     await tick()
 
     fireEvent.click(within(row('Budget sync')).getByRole('button', { name: 'Run now' }))

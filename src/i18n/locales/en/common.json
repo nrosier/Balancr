@@ -154,6 +154,12 @@
     "actual": "Actual Budget",
     "ghostfolio": "Ghostfolio"
   },
+  "step": {
+    "accounts": "Accounts",
+    "compute": "Compute",
+    "connect": "Connect",
+    "fetch": "Fetch"
+  },
   "status": {
     "answered": "Answered",
     "applied": "Applied",
@@ -166,7 +172,9 @@
     "idle": "Idle",
     "ok": "OK",
     "open": "Open",
+    "partial": "Partially succeeded",
     "pending": "Awaiting review",
+    "queued": "Queued",
     "rejected": "Rejected",
     "reused": "Reused — free",
     "running": "Running",

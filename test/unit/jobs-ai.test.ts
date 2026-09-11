@@ -33,6 +33,7 @@ import { logger } from '../../src/logger.ts'
 import { aiJob, CATCHUP_NIGHTS, monthsToAnalyse, narrativePeriod } from '../../src/jobs/ai.ts'
 import { registry } from '../../src/jobs/index.ts'
 import { runJob, type JobDetail } from '../../src/jobs/runner.ts'
+import { noopStep } from '../fixtures/job-context.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
 const LAST = '2026-02'
@@ -395,7 +396,7 @@ describe('with the model unavailable', () => {
       seedTwoMonths()
       const job = await freshJob(env)
 
-      const detail = (await job.run({ db, now: NIGHT, log: logger })) as JobDetail
+      const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
 
       expect(detail).toMatchObject({ enabled: false, reason, months: 0 })
       // Not a `capped` row every 24 hours: none of the three is an incident.
@@ -416,7 +417,7 @@ describe('with the model unavailable', () => {
       .run()
     const job = await freshJob({ GEMINI_MONTHLY_BUDGET_EUR: '0' })
 
-    const detail = (await job.run({ db, now: NIGHT, log: logger })) as JobDetail
+    const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
 
     expect(detail['expired']).toBe(1)
   })
