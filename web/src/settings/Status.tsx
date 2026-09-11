@@ -218,11 +218,11 @@ function Report({
         <>
           <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
           <RefreshStatus state={refresher.state} />
-          <ul className="status__jobs">
+          <div className="grid-cards">
             {status.jobs.map((job) => (
               <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
             ))}
-          </ul>
+          </div>
 
           <ResetControl owner={owner} refresher={refresher} />
 
@@ -454,9 +454,11 @@ function JobRow({
   const when = (iso: string | null): string => (iso === null ? never : formatDateTime(iso))
 
   return (
-    <li className="status__job">
-      <span className="status__name">{label === key ? job.name : label}</span>
-      <Badge status={displayStatus(job, queued)} />
+    <div className="card status__job">
+      <p className="status__jobHead">
+        <span className="status__name">{label === key ? job.name : label}</span>
+        <Badge status={displayStatus(job, queued)} />
+      </p>
       <dl className="status__meta">
         <dt>{t('settings:status.jobs.lastRun')}</dt>
         <dd className="num">{when(job.lastRunAt)}</dd>
@@ -510,7 +512,7 @@ function JobRow({
         </button>
       </div>
       {expanded ? <JobHistory jobName={job.name} /> : null}
-    </li>
+    </div>
   )
 }
 
@@ -602,7 +604,7 @@ function ProbeReport({ probe }: { probe: ProbeStatus }): ReactNode {
   const { t } = useT()
 
   return (
-    <div className="status__probe">
+    <div className="card status__probe">
       <p className="status__probeHead">
         <span className="status__name">{t(`source.${probe.source}`)}</span>
         <Badge status={probe.status} />

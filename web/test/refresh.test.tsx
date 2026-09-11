@@ -385,11 +385,11 @@ const STATUS: Status = {
   probes: [],
 }
 
-/** The list item a job's label sits in, so a click lands on that row's own button. */
+/** The card a job's label sits in, so a click lands on that row's own button. */
 function row(label: string): HTMLElement {
-  const item = screen.getByText(label).closest('li')
+  const item = screen.getByText(label).closest('.status__job')
   if (item === null) throw new Error(`no row for ${label}`)
-  return item
+  return item as HTMLElement
 }
 
 describe('the per-job buttons on the status panel', () => {

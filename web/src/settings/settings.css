@@ -624,10 +624,13 @@
 /* ---------------------------------------------------------------------------
    Status of this instance
 
-   Three lists of the same shape — a name, a badge, and something explaining the
-   badge — so they share the row rules rather than repeating them. Every row wraps
-   at 375px instead of scrolling: a job's timestamps are the part someone reads on
-   a phone, standing next to a machine that is not answering.
+   Services, jobs and probes are all cards now (#325 and the queue-tab follow-up):
+   a name, a badge, and something explaining the badge, each in its own bordered
+   box rather than a list row. `.status__check`/`.status__path` are still plain
+   rows — the aggregate checks list and a probe's per-path detail are both nested
+   inside a card already, so another border there would be a box inside a box.
+   Every row still wraps at 375px instead of scrolling: a job's timestamps are the
+   part someone reads on a phone, standing next to a machine that is not answering.
    --------------------------------------------------------------------------- */
 
 .status__verdict {
@@ -636,8 +639,6 @@
   font-weight: var(--weight-medium);
 }
 
-.status__checks,
-.status__jobs,
 .status__paths,
 .status__warnings {
   display: flex;
@@ -650,8 +651,7 @@
 }
 
 .status__check,
-.status__path,
-.status__probeHead {
+.status__path {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -661,18 +661,26 @@
   border-top: 1px solid var(--border);
 }
 
-.status__job {
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--border);
-}
-
-/* A service card's own name + badge row — same shape as .status__probeHead,
-   but the card itself is the border, so no top rule or row padding here. */
-.status__serviceHead {
+/* A card's own name + badge row — same shape as .status__probeHead, but the
+   card itself is the border, so no top rule or row padding here. */
+.status__serviceHead,
+.status__jobHead {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* The probe's head has a third element (the checked-at timestamp) that
+   .status__serviceHead/.status__jobHead's two-item space-between doesn't fit,
+   so it keeps a plain wrapping row instead — same card-border reasoning,
+   just without forcing the timestamp to the far edge. */
+.status__probeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: var(--space-2);
   margin: 0;
 }
