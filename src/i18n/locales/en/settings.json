@@ -392,7 +392,6 @@
       "checkedAt": "Checked {{when}}",
       "lede": "Three of the four endpoints Balancr reads are Ghostfolio’s internal API, which is free to change on any upgrade. This is what each one answered.",
       "noDetail": "The stored report could not be read, so only the verdict above is available.",
-      "notRunYet": "Ghostfolio has not been checked yet.",
       "title": "Ghostfolio endpoint checks",
       "warnings": "Worth knowing"
     },
