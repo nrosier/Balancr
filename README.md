@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -991,23 +991,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.0` is the current release. Every feature issue in the
-list above is closed, and the release-candidate series (`rc.1` through `rc.8`) ran
-without turning up a regression that survived to ship — the last of them generalised
-a committed-spend check from "posted exactly today" to "posted anywhere this month"
-and fixed chart tooltips showing literal `<span data-private>` tag text instead of a
-blurred figure. On top of that, Uitgavetempo now reads the buffer as well as the
-budget: a category on track to overspend against this month's assignment no longer
-reads the same whether or not there is anything left to absorb it. Three items from
-the testing checklist ship as documented, accepted limitations rather than
-blockers: two boxes of the security-verification checklist are unwalked — the cost
-cap's degrade path against a real key, and the rate limits under a deliberate burst
-— and the break-glass local login is unreachable in the topology this repo ships,
-which is safe in the security direction and a recovery path that does not work. All
-three wait on somebody's own deployment or their own choice, not on code, and none
-of them blocked this release.
+**Where it is now** — `1.0.1` is the current release, a patch on top of `1.0.0`.
+Every feature issue in the list above is still closed; this slice is the Status
+settings page leading with three at-a-glance service cards (Actual Budget,
+Ghostfolio, AI) instead of a flat check list, with the job queue, probe detail
+and reset control moved to their own tab.
 
-`docker pull` now resolves `latest` to `1.0.0`; a release candidate is published
+`docker pull` now resolves `latest` to `1.0.1`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
