@@ -444,6 +444,57 @@
   color: var(--positive);
 }
 
+/*
+ * A deduction with detail behind it. `dl` already allows a `<div>` grouping `dt`/`dd`
+ * (that's `.metric__row` itself); this wraps that same div plus the optional disclosure
+ * list, so the pair stays one direct child of `.metric__rows`.
+ */
+.metric__row-group + .metric__row-group {
+  margin-top: var(--space-1);
+}
+
+/* A label that happens to disclose more, not a form control — no border/background. */
+.hygiene__reasonButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.hygiene__signals {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--type-sm);
+}
+
+/* Same shape as `.finding` in `insights.css` — copied, not shared, since this
+   component lives outside `insights/` and keeps its own stylesheet. */
+.hygiene__signal {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-sunken);
+}
+
+.hygiene__signal--alert {
+  border-left-color: var(--negative);
+}
+
+.hygiene__signal--warn {
+  border-left-color: var(--warn);
+}
+
+.hygiene__signal--info {
+  border-left-color: var(--info);
+}
+
 /* ── Toolbars ────────────────────────────────────────────────────────────── */
 
 /*
