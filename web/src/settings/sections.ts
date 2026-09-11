@@ -14,26 +14,18 @@
  */
 import { sectionFor as sectionForGeneric, type Section } from '../ui/sections.ts'
 
-export type SettingsSectionId =
-  | 'general'
-  | 'prompts'
-  | 'risk'
-  | 'thresholds'
-  | 'accounts'
-  | 'benchmark'
-  | 'property'
+export type SettingsSectionId = 'account' | 'accounts' | 'portfolio' | 'budget' | 'ai' | 'system'
 
 export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
-  { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
-  { id: 'prompts', path: '/settings/prompts', labelKey: 'settings:nav.prompts' },
-  { id: 'risk', path: '/settings/risk', labelKey: 'settings:nav.risk' },
-  { id: 'thresholds', path: '/settings/thresholds', labelKey: 'settings:nav.thresholds' },
+  { id: 'account', path: '/settings', labelKey: 'settings:nav.account' },
   { id: 'accounts', path: '/settings/accounts', labelKey: 'settings:nav.accounts' },
-  { id: 'benchmark', path: '/settings/benchmark', labelKey: 'settings:nav.benchmark' },
-  { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
+  { id: 'portfolio', path: '/settings/portfolio', labelKey: 'settings:nav.portfolio', nested: true },
+  { id: 'budget', path: '/settings/budget', labelKey: 'settings:nav.budget', nested: true },
+  { id: 'ai', path: '/settings/ai', labelKey: 'settings:nav.ai', nested: true },
+  { id: 'system', path: '/settings/system', labelKey: 'settings:nav.system', nested: true },
 ]
 
-/** The section an arbitrary `/settings*` path belongs to; an unknown one lands on General. */
+/** The section an arbitrary `/settings*` path belongs to; an unknown one lands on Account. */
 export function sectionFor(pathname: string): SettingsSectionId {
-  return sectionForGeneric(SETTINGS_SECTIONS, pathname, 'general')
+  return sectionForGeneric(SETTINGS_SECTIONS, pathname, 'account')
 }

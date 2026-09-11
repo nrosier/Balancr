@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 *.db-journal
 *.db-wal
 *.db-shm
+/ui-design-report.html
+/ui-design-plan-unified.html
+/.playwright-mcp/

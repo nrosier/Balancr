@@ -19,49 +19,54 @@
  *    by anything on it, so each panel says when its change lands instead of pretending
  *    to show a result.
  *
- * **Sections (#200).** What used to be one long scroll of nine panels is now one
- * section at a time, chosen by `../settings/sections.ts`'s `sectionFor` from the real
- * URL (`routes.ts` marks `/settings` `nested`, so every `/settings/*` path still lands
- * on this component) and rendered under `SettingsNav`'s tab strip. `useSettings()` is
- * still called exactly once here regardless of section — the payload behind every
- * panel is one request, not one per tab.
+ * **Sections (#200, re-grouped for #336).** What used to be one long scroll of nine
+ * panels is now one section at a time, chosen by `../settings/sections.ts`'s
+ * `sectionFor` from the real URL (`routes.ts` marks `/settings` `nested`, so every
+ * `/settings/*` path still lands on this component) and rendered under `SettingsNav`'s
+ * tab strip. `useSettings()` is still called exactly once here regardless of section —
+ * the payload behind every panel is one request, not one per tab. Six tabs, each at
+ * most one sub-tab deep: Account and Accounts have no sub-tabs of their own; Portfolio,
+ * Budget, AI and System each own exactly one strip of sub-tabs, defined and rendered
+ * right here rather than through an imported pre-built section, so nothing nests a
+ * `SectionNav` inside another one.
  *
  * The status panel is the exception to the payload rule and says so in its own header:
  * it reads `/api/status`, not the settings payload, because readiness decays while the
  * page is open and because it has to be able to be the thing that failed while the
- * rest of the page loaded. The build block below it stays separate for the same reason
+ * rest of the page loaded. The build block beside it stays separate for the same reason
  * in reverse — the version and revision come from the settings payload, so they are
  * still on screen when `/api/status` is what is broken, which is when a bug report
- * needs them most. Both live on General together with the language control and the
- * data window, which is the section for "how this instance is doing" rather than any
- * one setting.
+ * needs them most. Both live on System, the section for "how this instance is doing"
+ * rather than any one setting.
  *
- * The risk profile has its own section ahead of thresholds in the tab order for the
- * reason it used to sit above them on the single page: it is the only section whose
- * numbers produce a suggestion to move money, and somebody arriving because the
- * portfolio page proposed a trade is looking for these twelve boxes rather than for
- * the EWMA half-life.
+ * The risk profile and property now share a Portfolio tab, since both are inputs to
+ * the same suggestion: somebody arriving because the portfolio page proposed a trade is
+ * looking for one of these two panels, not for the aggregation thresholds.
  *
- * The household and the COICOP mapping share a Benchmark section because both are the
- * same kind of work — saying which of Balancr's own vocabularies an external thing
- * belongs to — and because the household is meaningless without the mapping: an
- * equivalence scale divides a reference that nothing is compared against until at
- * least most of the month has a division (#43).
+ * The household, the COICOP mapping and the thresholds now share a Budget tab, since
+ * all three decide what a budget page shows. Household and its benchmark comparison
+ * used to be sub-sub-tabs of their own (a third tab-strip level, #200's one real
+ * regression); they now stack on one page, since flattening them costs nothing once
+ * mapping and thresholds are sibling tabs rather than sharing the strip.
+ *
+ * Usage/cost monitoring moved off Status and onto its own AI tab alongside the prompt
+ * editor (#325 had put it on Status because that was the only place tracking anything
+ * "live"; it reads no better there than being where the other AI-facing setting is).
  */
 import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import { AccountsPanel } from '../settings/Accounts.tsx'
-import { BenchmarkSection } from '../settings/Benchmark.tsx'
+import { ComparisonPanel, HouseholdPanel, MappingPanel } from '../settings/Benchmark.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { PropertyPanel } from '../settings/Property.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
 import { sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
-import { StatusPanel } from '../settings/Status.tsx'
-import { ThresholdsSection } from '../settings/Thresholds.tsx'
+import { AiUsage, StatusPanel } from '../settings/Status.tsx'
+import { ThresholdsPanel } from '../settings/Thresholds.tsx'
 import { useSettings, type SettingsPanelProps } from '../settings/state.ts'
 import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -70,34 +75,152 @@ import { useSubsection, type Section } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
-type GeneralSubsectionId = 'general' | 'status'
+type PortfolioSubsectionId = 'risk' | 'property'
 
-const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
-  { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
-  { id: 'status', path: '/settings/status', labelKey: 'settings:status.title', nested: true },
+const PORTFOLIO_SUBSECTIONS: readonly Section<PortfolioSubsectionId>[] = [
+  { id: 'risk', path: '/settings/portfolio/risk', labelKey: 'settings:nav.risk' },
+  { id: 'property', path: '/settings/portfolio/property', labelKey: 'settings:nav.property' },
 ]
 
 /**
- * General's own subsection tabs: the language control plus the history/build facts
- * that come from the settings payload, versus the status panel, which reads `/api/status`
- * on its own and is job-control-heavy enough to want its own page (see the module doc
- * comment on why the two used to share a section).
+ * Portfolio's own sub-tabs: risk profile and property, both former top-level sections
+ * (#200) now grouped under the one tab that decides what the portfolio page proposes.
+ *
+ * Both stay mounted, hidden rather than unrendered: `RiskPanel` and `PropertyPanel` each
+ * hold a typed-but-unsaved draft in their own `useState`, and unmounting one to show the
+ * other would throw that draft away the moment somebody switched tabs and back — the
+ * same reasoning `ThresholdsPanel` and the old `BenchmarkSection` already relied on.
  */
-function GeneralSection(props: SettingsPanelProps): ReactNode {
+function PortfolioSection(props: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(PORTFOLIO_SUBSECTIONS)
+
+  return (
+    <>
+      <SectionNav
+        sections={PORTFOLIO_SUBSECTIONS}
+        variant="sub"
+        ariaLabel={t('settings:nav.portfolio')}
+      />
+      <div hidden={active !== 'risk'}>
+        <RiskPanel {...props} />
+      </div>
+      <div hidden={active !== 'property'}>
+        <PropertyPanel {...props} />
+      </div>
+    </>
+  )
+}
+
+type BudgetSubsectionId = 'household' | 'mapping' | 'thresholds'
+
+const BUDGET_SUBSECTIONS: readonly Section<BudgetSubsectionId>[] = [
+  { id: 'household', path: '/settings/budget/household', labelKey: 'settings:budget.nav.household' },
+  { id: 'mapping', path: '/settings/budget/mapping', labelKey: 'settings:benchmark.mapping.title' },
+  { id: 'thresholds', path: '/settings/budget/thresholds', labelKey: 'settings:nav.thresholds' },
+]
+
+/**
+ * Budget's own sub-tabs: who lives here and what they're compared against (household +
+ * benchmark, stacked on one page since #327's household/comparison split no longer
+ * needs a tab strip of its own once it isn't sharing a section with mapping), the COICOP
+ * mapping table, and the aggregation thresholds — three former top-level sections (#200)
+ * that all decide what a budget page shows.
+ *
+ * All three stay mounted, hidden rather than unrendered: `HouseholdPanel` and
+ * `ThresholdsPanel` both hold a typed-but-unsaved draft in their own `useState`, and
+ * unmounting one to show a sibling would throw that draft away the moment somebody
+ * switched tabs to check something and switched back.
+ */
+function BudgetSection(props: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(BUDGET_SUBSECTIONS)
+
+  return (
+    <>
+      <SectionNav
+        sections={BUDGET_SUBSECTIONS}
+        variant="sub"
+        ariaLabel={t('settings:nav.budget')}
+      />
+      <div hidden={active !== 'household'}>
+        <HouseholdPanel {...props} />
+        <ComparisonPanel {...props} />
+      </div>
+      <div hidden={active !== 'mapping'}>
+        <MappingPanel {...props} />
+      </div>
+      <div hidden={active !== 'thresholds'}>
+        <ThresholdsPanel {...props} />
+      </div>
+    </>
+  )
+}
+
+type AiSubsectionId = 'usage' | 'prompts'
+
+const AI_SUBSECTIONS: readonly Section<AiSubsectionId>[] = [
+  { id: 'usage', path: '/settings/ai/usage', labelKey: 'settings:ai.nav.usage' },
+  { id: 'prompts', path: '/settings/ai/prompts', labelKey: 'settings:nav.prompts' },
+]
+
+/**
+ * AI's own sub-tabs: the cost/usage monitoring that used to live on the Status panel
+ * (#325) and the prompt editor, grouped together because neither is a setting that
+ * changes what the rest of the app computes — both are "what is the assistant doing and
+ * on whose instructions", which status/thresholds are not.
+ *
+ * Both stay mounted, hidden rather than unrendered: `PromptsPanel` holds a
+ * typed-but-unsaved draft in its own `useState`, and switching to Usage to check a
+ * figure must not throw it away.
+ */
+function AiSection(props: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(AI_SUBSECTIONS)
+  const { settings, state, owner, estimate } = props
+
+  return (
+    <>
+      <SectionNav sections={AI_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.ai')} />
+      <div hidden={active !== 'usage'}>
+        <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
+      </div>
+      <div hidden={active !== 'prompts'}>
+        <PromptsPanel {...props} />
+      </div>
+    </>
+  )
+}
+
+type SystemSubsectionId = 'status' | 'build'
+
+const SYSTEM_SUBSECTIONS: readonly Section<SystemSubsectionId>[] = [
+  { id: 'status', path: '/settings/system/status', labelKey: 'settings:status.title' },
+  { id: 'build', path: '/settings/system/build', labelKey: 'settings:system.nav.buildHistory' },
+]
+
+/**
+ * System's own sub-tabs: the status panel, which reads `/api/status` on its own and is
+ * job-control-heavy enough to want a tab of its own, versus the history/build facts that
+ * come from the settings payload (see the module doc comment on why the two used to
+ * share a section). Neither holds an unsaved draft worth preserving across a tab switch
+ * — status's own confirm buttons reset on purpose, the same way they always have — so
+ * this one switches by unmounting rather than hiding, matching the section's own
+ * previous behaviour before the split.
+ */
+function SystemSection(props: SettingsPanelProps): ReactNode {
   const { t, language } = useT()
-  const active = useSubsection(GENERAL_SUBSECTIONS)
+  const active = useSubsection(SYSTEM_SUBSECTIONS)
   const { settings } = props
 
   return (
     <>
-      <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
+      <SectionNav sections={SYSTEM_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.system')} />
 
       {active === 'status' ? (
         <StatusPanel {...props} />
       ) : (
         <>
-          <LanguagePanel {...props} />
-
           <section className="card panel">
             <h2 className="card__title">{t('settings:history.title')}</h2>
             <dl className="build">
@@ -177,14 +300,12 @@ export function Settings(): ReactNode {
                 </div>
               )}
 
-              {section === 'general' && <GeneralSection {...props} />}
-
-              {section === 'prompts' && <PromptsPanel {...props} />}
-              {section === 'risk' && <RiskPanel {...props} />}
-              {section === 'thresholds' && <ThresholdsSection {...props} />}
+              {section === 'account' && <LanguagePanel {...props} />}
               {section === 'accounts' && <AccountsPanel {...props} />}
-              {section === 'benchmark' && <BenchmarkSection {...props} />}
-              {section === 'property' && <PropertyPanel {...props} />}
+              {section === 'portfolio' && <PortfolioSection {...props} />}
+              {section === 'budget' && <BudgetSection {...props} />}
+              {section === 'ai' && <AiSection {...props} />}
+              {section === 'system' && <SystemSection {...props} />}
             </>
           )
         }}

@@ -21,13 +21,13 @@
  * has to arrive in Dutch, while a job's `error` is quoted from an upstream and must not
  * be translated or hidden. Both properties are asserted on one render.
  *
- * Since #325, the panel itself is split into two sub-tabs — Services (three at-a-glance
- * cards, the default landing view) and Queue (the job list and the reset control).
- * Ghostfolio's own probe detail lives on its Services card now, behind a disclosure
- * button, rather than under Queue (#331). `show()` always pushes an explicit path rather
- * than letting `useSubsection` fall back on whatever `window.history` was left at by a
- * previous test, and `openQueue()` is the one way any case below reaches the Queue tab's
- * content.
+ * Since #325, the panel shows three at-a-glance service cards and the full jobs grid
+ * together on one page rather than as two sub-tabs (#336 undid the earlier split: once AI
+ * usage moved to its own tab, "Services" vs "Queue" was two views of a single page rather
+ * than two sections worth their own tab strip). Ghostfolio's own probe detail lives on
+ * its Services card, behind a disclosure button (#331). `show()` still pushes an explicit
+ * path on every call rather than letting a previous test's `window.history` leak in, even
+ * though nothing on this panel reads it anymore — `Settings.tsx` is what owns the route.
  */
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -111,15 +111,14 @@ const status = (over: Partial<Status>): Status => ({ ...HEALTHY, ...over })
  *
  * `owner` defaults to true because only the reset-control cases below are actually about
  * the distinction; `aiAvailability` defaults to the AI card's "on" fixture because most
- * cases below are not about that card either. `path` always defaults to the Services
- * tab's own path — never left unset — because `useSubsection` replaces the URL it is
- * given, and letting that default to whatever a previous test's clicks left in
- * `window.history` would leak state between cases in this file. */
+ * cases below are not about that card either. `path` defaults to the panel's own route
+ * under the new System tab, matched to how `Settings.tsx` actually mounts it, even though
+ * `StatusPanel` itself no longer reacts to the route. */
 async function show(
   body: Status | Response,
   options: { owner?: boolean; aiAvailability?: AiAvailabilityWire; path?: string } = {},
 ): Promise<ReturnType<typeof vi.fn>> {
-  const { owner = true, aiAvailability = AI_ON, path = '/settings/status' } = options
+  const { owner = true, aiAvailability = AI_ON, path = '/settings/system/status' } = options
   const mock = vi.fn(() => Promise.resolve(body instanceof Response ? body : json(body)))
   vi.stubGlobal('fetch', mock)
   renderApp(
@@ -133,13 +132,6 @@ async function show(
   )
   await screen.findByRole('heading', { level: 2, name: /Status|status/ })
   return mock
-}
-
-/** Switches to the Queue tab, in whichever of the two languages is active. Awaited on the
- * link itself rather than clicked straight away, because the tab strip is part of the
- * loaded state `DataState` renders and is not there yet the instant `show()` returns. */
-async function openQueue(): Promise<void> {
-  clickLink(await screen.findByRole('link', { name: /queue|wachtrij/i }))
 }
 
 /** The card for one service, found by its own name so a test can look inside it without
@@ -177,14 +169,14 @@ describe('a healthy instance', () => {
 
   it('prints both timestamps and the duration through the shared formatters', async () => {
     await show(HEALTHY)
-    await openQueue()
 
     // `dd/MM/yyyy`, Belgian regardless of the interface language: `format.ts` is the
     // only place this application writes a date, and a panel doing its own arithmetic
     // would print `9/3/2026`. The clock is matched loosely and the fixture instants are
     // midday, so the assertion is about the format rather than about the timezone the
-    // suite happens to run in.
-    expect(screen.getAllByText(BELGIAN_DATETIME)).toHaveLength(3)
+    // suite happens to run in. Four, not three: the job row's own three dates, plus the
+    // Actual card's "last synced" line — both grids are on the same page now.
+    expect(screen.getAllByText(BELGIAN_DATETIME)).toHaveLength(4)
     expect(screen.getByText('Last success')).toBeTruthy()
     expect(screen.getByText('4,1 s')).toBeTruthy()
     expect(screen.getByText('every 60 minutes')).toBeTruthy()
@@ -200,20 +192,12 @@ describe('a healthy instance', () => {
   })
 })
 
-describe('the Services/Queue split (#325)', () => {
-  it('shows the cards by default, and the queue only once asked for', async () => {
+describe('the services grid and the jobs grid (#325, undone by #336)', () => {
+  it('shows both on the one page, not one behind a tab', async () => {
     await show(HEALTHY)
 
     expect(screen.getByText('Actual Budget')).toBeTruthy()
-    expect(screen.queryByText('Budget sync')).toBeNull()
-
-    await openQueue()
     expect(screen.getByText('Budget sync')).toBeTruthy()
-    expect(screen.queryByText('Actual Budget')).toBeNull()
-
-    clickLink(screen.getByRole('link', { name: 'Services' }))
-    await screen.findByText('Actual Budget')
-    expect(screen.queryByText('Budget sync')).toBeNull()
   })
 })
 
@@ -378,16 +362,16 @@ describe('a job that has been failing', () => {
 
   it('shows the gap between the last attempt and the last success', async () => {
     await show(failing)
-    await openQueue()
 
     expect(screen.getAllByText(/^03\/09\/2026, \d{2}:\d{2}$/)).toHaveLength(2)
-    expect(screen.getByText(/^28\/08\/2026, \d{2}:\d{2}$/)).toBeTruthy()
+    // Twice: the job row's own "last success" cell, plus the Actual service card's
+    // "last synced" line reading the same job's `lastSuccessAt`.
+    expect(screen.getAllByText(/^28\/08\/2026, \d{2}:\d{2}$/)).toHaveLength(2)
     expect(screen.getByText('Budget sync')).toBeTruthy()
   })
 
   it('quotes the error rather than rewording it', async () => {
     await show(failing)
-    await openQueue()
     const quote = screen.getByText('connect ECONNREFUSED 172.19.0.4:5006')
     expect(quote.tagName).toBe('Q')
   })
@@ -419,11 +403,13 @@ describe('a job this build has no name for', () => {
         ],
       }),
     )
-    await openQueue()
 
     expect(screen.getByText('reconcile')).toBeTruthy()
     expect(screen.queryByText('job.reconcile')).toBeNull()
-    expect(screen.getAllByText('Never')).toHaveLength(3)
+    // Five, not three: the job row's own three dates, plus "Never" for the Actual and
+    // Ghostfolio cards' own "last synced" lines — neither finds a job to read a date
+    // from in this fixture (only `reconcile` is here, not `sync`/`portfolio`).
+    expect(screen.getAllByText('Never')).toHaveLength(5)
   })
 })
 
@@ -446,7 +432,6 @@ describe('a job third in the queue', () => {
         queued: ['backfill'],
       }),
     )
-    await openQueue()
 
     const badge = await screen.findByText('Queued')
     expect(badge.className).toContain('badge--info')
@@ -474,7 +459,6 @@ describe('a job third in the queue', () => {
         queued: ['sync'],
       }),
     )
-    await openQueue()
 
     await screen.findByText('Running')
     expect(screen.queryByText('Queued')).toBeNull()
@@ -517,7 +501,7 @@ describe('a job’s run history', () => {
     })
     vi.stubGlobal('fetch', mock)
     renderApp(panel(true), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByText('Budget sync')
 
@@ -556,7 +540,7 @@ describe('a job’s run history', () => {
       }),
     })
     renderApp(panel(true), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByText('Budget sync')
 
@@ -579,7 +563,7 @@ describe('a job’s run history', () => {
       '/api/status/history?job=sync': json({ jobName: 'sync', runs: [] }),
     })
     renderApp(panel(true), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByText('Budget sync')
 
@@ -626,7 +610,7 @@ describe('the danger zone', () => {
   it('disables the control for a viewer, without hiding what it would do', async () => {
     serve({ '/api/status': json(HEALTHY) })
     renderApp(panel(false), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
@@ -641,7 +625,7 @@ describe('the danger zone', () => {
       '/api/refresh/reset': json(resetAccepted, 202),
     })
     renderApp(panel(true), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
@@ -659,7 +643,7 @@ describe('the danger zone', () => {
       '/api/refresh/reset': json(resetAccepted, 202),
     })
     renderApp(panel(true), {
-      path: '/settings/status/queue',
+      path: '/settings/system/status',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
 
@@ -712,8 +696,7 @@ describe('in Dutch', () => {
     expect(screen.getByText(/bij de laatste poging mislukt/)).toBeTruthy()
     expect(screen.getByText(/update van Balancr nodig/)).toBeTruthy()
 
-    // The job's own error and its timestamp are Queue-tab content now.
-    await openQueue()
+    // The job's own error and its timestamp sit in the jobs grid, on the same page.
     // Untranslated on purpose: Balancr did not write this sentence.
     expect(screen.getByText('connect ECONNREFUSED 172.19.0.4:5006')).toBeTruthy()
     // And the dates stay Belgian, which they were in English too: the interface language

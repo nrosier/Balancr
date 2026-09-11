@@ -33,8 +33,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { formatBp, formatDecimal, formatMoney, parseMoneyToCents } from '../shared.ts'
-import { SectionNav } from '../ui/SectionNav.tsx'
-import { useSubsection, type Section } from '../ui/sections.ts'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
 
@@ -95,12 +93,7 @@ interface Draft {
   text: Record<Path, string>
 }
 
-export function ThresholdsPanel({
-  settings,
-  state,
-  owner,
-  activeGroup,
-}: SettingsPanelProps & { activeGroup: string }): ReactNode {
+export function ThresholdsPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const [draft, setDraft] = useState<Draft>({ text: {} })
 
@@ -166,53 +159,51 @@ export function ThresholdsPanel({
           submit()
         }}
       >
-        {Object.entries(groups)
-          .filter(([group]) => group === activeGroup)
-          .map(([group, fields]) => (
-            <fieldset className="thresholds__group" key={group}>
-              <legend className="thresholds__legend">
-                {t(`settings:thresholds.group.${group}`)}
-              </legend>
-              {Object.entries(fields).map(([field, value]) => {
-                const path = `${group}.${field}`
-                const raw = draft.text[path]
-                const shown = raw ?? display(field, value)
-                const parsed = raw === undefined ? value : parseField(field, raw, value)
-                const rejection = invalid.get(path)
+        {Object.entries(groups).map(([group, fields]) => (
+          <fieldset className="thresholds__group" key={group}>
+            <legend className="thresholds__legend">
+              {t(`settings:thresholds.group.${group}`)}
+            </legend>
+            {Object.entries(fields).map(([field, value]) => {
+              const path = `${group}.${field}`
+              const raw = draft.text[path]
+              const shown = raw ?? display(field, value)
+              const parsed = raw === undefined ? value : parseField(field, raw, value)
+              const rejection = invalid.get(path)
 
-                return (
-                  <div className="field thresholds__field" key={path}>
-                    <label className="field__label" htmlFor={`threshold-${group}-${field}`}>
-                      {t(`settings:thresholds.field.${group}.${field}`)}
-                    </label>
-                    <input
-                      id={`threshold-${group}-${field}`}
-                      className="field__input num"
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={shown}
-                      disabled={!owner || state.busy}
-                      onChange={(event) => type(path, event.target.value)}
-                    />
-                    <p className="thresholds__note muted">
-                      {isBp(field) && typeof parsed === 'number'
-                        ? `${t('settings:thresholds.reads', { value: formatBp(parsed) })} · `
-                        : null}
-                      {t('settings:thresholds.default', {
-                        value: defaultText(field, defaults.get(path)),
-                      })}
-                    </p>
-                    {rejection === undefined ? (
-                      <Issue message={state.issue(path)} />
-                    ) : (
-                      <Issue message={t(`settings:thresholds.${rejection}`)} />
-                    )}
-                  </div>
-                )
-              })}
-            </fieldset>
-          ))}
+              return (
+                <div className="field thresholds__field" key={path}>
+                  <label className="field__label" htmlFor={`threshold-${group}-${field}`}>
+                    {t(`settings:thresholds.field.${group}.${field}`)}
+                  </label>
+                  <input
+                    id={`threshold-${group}-${field}`}
+                    className="field__input num"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={shown}
+                    disabled={!owner || state.busy}
+                    onChange={(event) => type(path, event.target.value)}
+                  />
+                  <p className="thresholds__note muted">
+                    {isBp(field) && typeof parsed === 'number'
+                      ? `${t('settings:thresholds.reads', { value: formatBp(parsed) })} · `
+                      : null}
+                    {t('settings:thresholds.default', {
+                      value: defaultText(field, defaults.get(path)),
+                    })}
+                  </p>
+                  {rejection === undefined ? (
+                    <Issue message={state.issue(path)} />
+                  ) : (
+                    <Issue message={t(`settings:thresholds.${rejection}`)} />
+                  )}
+                </div>
+              )
+            })}
+          </fieldset>
+        ))}
 
         <div className="thresholds__actions">
           <button
@@ -225,30 +216,6 @@ export function ThresholdsPanel({
         </div>
       </form>
     </Panel>
-  )
-}
-
-/**
- * Thresholds' own subsection tabs, one per group in `settings.params` (#227 follow-up).
- *
- * The list is built from the payload rather than a static table on purpose: it is what
- * keeps a group added to `aggregate/params.ts` showing up as its own tab with no edit
- * here, the same guarantee `ThresholdsPanel` already gives per field.
- */
-export function ThresholdsSection(props: SettingsPanelProps): ReactNode {
-  const { t } = useT()
-  const subsections: Section<string>[] = Object.keys(props.settings.params).map((group) => ({
-    id: group,
-    path: `/settings/thresholds/${group}`,
-    labelKey: `settings:thresholds.group.${group}`,
-  }))
-  const activeGroup = useSubsection(subsections)
-
-  return (
-    <>
-      <SectionNav sections={subsections} variant="sub" ariaLabel={t('settings:nav.thresholds')} />
-      <ThresholdsPanel {...props} activeGroup={activeGroup} />
-    </>
   )
 }
 

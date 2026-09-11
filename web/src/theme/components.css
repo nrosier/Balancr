@@ -61,7 +61,8 @@
 .section-nav__link {
   flex: 0 0 auto;
   padding: var(--space-2) 0;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
   color: var(--text-muted);
   text-decoration: none;
   font-size: var(--type-sm);
@@ -111,18 +112,16 @@
   font-size: var(--type-base);
   font-weight: var(--weight-semibold);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /*
- * `min(100%, 18rem)` rather than a bare `18rem`: on a 375px screen an 18rem minimum
+ * `min(100%, 15rem)` rather than a bare `15rem`: on a 375px screen a 15rem minimum
  * would overflow the track and push the card off the side.
  */
 .grid-cards {
   display: grid;
   gap: var(--space-4);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */

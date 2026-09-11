@@ -40,6 +40,9 @@
       "fast": "Analysis model"
     },
     "month": "Month",
+    "nav": {
+      "usage": "Usage"
+    },
     "reason": {
       "bad_response": "The model's answer did not match the schema, so nothing from it was used.",
       "call_failed": "The model could not be reached.",
@@ -200,6 +203,11 @@
       "title": "The average household it compares to"
     }
   },
+  "budget": {
+    "nav": {
+      "household": "Household & benchmark"
+    }
+  },
   "build": {
     "revision": "Build",
     "title": "This instance",
@@ -220,12 +228,15 @@
     "title": "Language"
   },
   "nav": {
+    "account": "Account",
     "accounts": "Accounts",
-    "benchmark": "Benchmark",
-    "general": "General",
+    "ai": "AI",
+    "budget": "Budget",
+    "portfolio": "Portfolio",
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",
+    "system": "System",
     "thresholds": "Thresholds"
   },
   "profile": {
@@ -382,11 +393,6 @@
       "took": "Took"
     },
     "lede": "What is working, what is not, and when each background job last managed to run.",
-    "nav": {
-      "ai": "AI",
-      "queue": "Jobs & queue",
-      "services": "Services"
-    },
     "notServing": "This instance cannot serve pages.",
     "probe": {
       "checkedAt": "Checked {{when}}",
@@ -417,6 +423,11 @@
     },
     "serving": "This instance is serving pages.",
     "title": "Status of this instance"
+  },
+  "system": {
+    "nav": {
+      "buildHistory": "Build & history"
+    }
   },
   "thresholds": {
     "default": "Default {{value}}",

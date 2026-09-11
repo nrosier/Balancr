@@ -458,12 +458,16 @@ type Replies = Record<string, Response | Error | (Response | Error)[]>
  */
 const SECTION_HEADING: Record<string, string> = {
   '/settings': 'Account',
-  '/settings/prompts': 'Assistant instructions',
-  '/settings/risk': 'Risk profile',
-  '/settings/thresholds': 'Thresholds',
   '/settings/accounts': 'Accounts',
-  '/settings/benchmark': 'Household',
-  '/settings/property': 'Property',
+  '/settings/portfolio/risk': 'Risk profile',
+  '/settings/portfolio/property': 'Property',
+  '/settings/budget': 'Household',
+  '/settings/budget/household': 'Household',
+  '/settings/budget/mapping': 'Categories',
+  '/settings/budget/thresholds': 'Thresholds',
+  '/settings/ai/prompts': 'Assistant instructions',
+  '/settings/system/status': 'Status of this instance',
+  '/settings/system/build': 'Data window',
 }
 
 /**
@@ -474,15 +478,20 @@ const SECTION_HEADING: Record<string, string> = {
  * this scope so a block that needs more than one section (a viewer's, the page's own
  * shape) can still reach every tab from one helper.
  *
- * `heading` overrides `SECTION_HEADING`'s lookup for a subsection path (#262) — a
- * group's own tab still renders the section's title, so a fixed heading covers every
- * `/settings/thresholds/<group>` and `/settings/benchmark/<tab>` path without growing
- * the map by one entry per subsection.
+ * `heading` overrides `SECTION_HEADING`'s lookup for a path this map does not carry.
+ * `level` is 2 for every panel but the AI tab's own Usage sub-tab, whose `AiUsage`
+ * renders no `<h2>` of its own — it shares the tab with Prompts, which does — so a
+ * caller that opens `/settings/ai/usage` has to say so.
  */
-async function openPage(replies: Replies, path = '/settings', heading?: string): Promise<Call[]> {
+async function openPage(
+  replies: Replies,
+  path = '/settings',
+  heading?: string,
+  level: 2 | 3 = 2,
+): Promise<Call[]> {
   const calls = serve(replies)
   renderApp(<Settings />, { path })
-  await screen.findByRole('heading', { level: 2, name: heading ?? SECTION_HEADING[path] ?? 'Account' })
+  await screen.findByRole('heading', { level, name: heading ?? SECTION_HEADING[path] ?? 'Account' })
   return calls
 }
 
@@ -573,31 +582,33 @@ describe('the shape of the page', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
   })
 
-  it('opens on General, and only General’s own subsection, with the build the answer came from', async () => {
+  it('opens on Account, and only Account’s own panel (#336)', async () => {
     await open(READS)
 
-    for (const title of ['Account', 'Data window', 'This instance']) {
-      expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
-    }
-    expect(screen.getByText('abc1234')).toBeTruthy()
-    expect(screen.getByText('0.5.6')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Account' })).toBeTruthy()
 
-    // Status moved to its own subsection tab (#262), and every other section's panel
-    // stays off the page until its own tab is open.
+    // Every other section's panel stays off the page until its own tab is open — the
+    // build/history facts that used to sit beside Account moved to System's own Build &
+    // history sub-tab, and Status' AI card moved on to the AI tab entirely (#336).
     for (const title of [
       'Status of this instance',
+      'Data window',
+      'This instance',
       'Assistant instructions',
       'Thresholds',
       'Accounts',
       'Household',
-      'AI usage',
+      'Risk profile',
+      'Property',
+      'Categories',
     ]) {
       expect(screen.queryByRole('heading', { level: 2, name: title })).toBeNull()
     }
+    expect(screen.queryByRole('heading', { level: 3, name: 'AI usage' })).toBeNull()
   })
 
-  it('shows only Status on its own subsection tab, not General’s own fields (#262)', async () => {
-    await openPage(READS, '/settings/status', 'Status of this instance')
+  it('shows only Status on its own subsection tab, not Account’s own fields (#262, #336)', async () => {
+    await openPage(READS, '/settings/system/status', 'Status of this instance')
 
     await screen.findByText('This instance is serving pages.')
     for (const title of ['Account', 'Data window', 'This instance']) {
@@ -606,10 +617,10 @@ describe('the shape of the page', () => {
   })
 
   it.each([
-    ['/settings/prompts', 'Assistant instructions'],
-    ['/settings/thresholds', 'Thresholds'],
+    ['/settings/ai/prompts', 'Assistant instructions'],
+    ['/settings/budget/thresholds', 'Thresholds'],
     ['/settings/accounts', 'Accounts'],
-  ] as const)('shows only %s’s panel on its own tab, not General’s', async (path, title) => {
+  ] as const)('shows only %s’s panel on its own tab, not Account’s', async (path, title) => {
     await open(READS, path)
 
     expect(screen.getByRole('heading', { level: 2, name: title })).toBeTruthy()
@@ -617,54 +628,60 @@ describe('the shape of the page', () => {
     expect(screen.queryByRole('heading', { level: 2, name: 'Status of this instance' })).toBeNull()
   })
 
-  it('shows only the household on Benchmark’s own household tab (#262)', async () => {
-    await openPage(READS, '/settings/benchmark/household', 'Household')
+  it('shows only the household on Budget’s own household tab (#262, #336)', async () => {
+    await openPage(READS, '/settings/budget/household', 'Household')
     expect(screen.getByRole('heading', { level: 2, name: 'Household' })).toBeTruthy()
     expect(screen.queryByRole('heading', { level: 2, name: 'Categories' })).toBeNull()
   })
 
-  it('shows only the category mapping on Benchmark’s other tab (#262)', async () => {
-    await openPage(READS, '/settings/benchmark/mapping', 'Categories')
+  it('shows only the category mapping on Budget’s other tab (#262, #336)', async () => {
+    await openPage(READS, '/settings/budget/mapping', 'Categories')
     expect(screen.getByRole('heading', { level: 2, name: 'Categories' })).toBeTruthy()
     expect(screen.queryByRole('heading', { level: 2, name: 'Household' })).toBeNull()
   })
 
-  it('lands on Household by default when Benchmark’s own tab is not named', async () => {
-    await open(READS, '/settings/benchmark')
+  it('lands on Household by default when Budget’s own tab is not named', async () => {
+    await open(READS, '/settings/budget')
 
     expect(screen.getByRole('heading', { level: 2, name: 'Household' })).toBeTruthy()
     expect(screen.queryByRole('heading', { level: 2, name: 'Categories' })).toBeNull()
     expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
   })
 
-  it('marks the open tab current, and lands on General for a path it does not recognise', async () => {
-    await open(READS, '/settings/risk')
+  it('marks the open tab current, and lands on Account for a path it does not recognise', async () => {
+    await open(READS, '/settings/portfolio/risk')
     expect(screen.getByRole('link', { name: 'Risk' }).getAttribute('aria-current')).toBe('page')
-    expect(screen.getByRole('link', { name: 'General' }).getAttribute('aria-current')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Account' }).getAttribute('aria-current')).toBeNull()
 
     await open(READS, '/settings/nonsense')
     expect(screen.getByRole('heading', { level: 2, name: 'Account' })).toBeTruthy()
   })
 
-  it('shows the data window, and what the sync pass has actually covered (#162)', async () => {
-    await open(READS)
+  it('shows the data window and the build the answer came from, on System’s own sub-tab (#162, #336)', async () => {
+    await openPage(READS, '/settings/system/build', 'Data window')
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Data window' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'This instance' })).toBeTruthy()
     expect(screen.getByText('24 months')).toBeTruthy()
     expect(screen.getByText('September 2024 – August 2026')).toBeTruthy()
+    expect(screen.getByText('abc1234')).toBeTruthy()
+    expect(screen.getByText('0.5.6')).toBeTruthy()
   })
 
   it('says nothing has been aggregated yet rather than a range of nothing', async () => {
-    await open({
-      ...READS,
-      '/api/settings': json({ ...PAYLOAD, history: { months: 24, earliest: null, latest: null } }),
-    })
+    await openPage(
+      {
+        ...READS,
+        '/api/settings': json({ ...PAYLOAD, history: { months: 24, earliest: null, latest: null } }),
+      },
+      '/settings/system/build',
+      'Data window',
+    )
 
     expect(screen.getByText('Nothing aggregated yet')).toBeTruthy()
   })
 
   it('asks for the payload once, and for the price a run would cost, on every tab', async () => {
-    const calls = await openPage(READS, '/settings/status', 'Status of this instance')
+    const calls = await openPage(READS, '/settings/system/status', 'Status of this instance')
     // `/api/status` is Status' own panel and separate from the payload on purpose —
     // `Settings.tsx` says why — so it is a third request here rather than a sixth field.
     await screen.findByText('This instance is serving pages.')
@@ -677,13 +694,13 @@ describe('the shape of the page', () => {
   })
 
   it('does not fetch the running instance status on a tab that does not show it', async () => {
-    const calls = await open(READS, '/settings/prompts')
+    const calls = await open(READS, '/settings/ai/prompts')
     await screen.findByRole('button', { name: /^Test on/ })
 
     // `/api/ai/estimate` is asked for regardless of tab — both Prompts' test run and
     // the AI usage tab's by-hand run price against it — but `/api/status` is never
-    // asked for here: only the Status section's own subsections mount the panel that
-    // reads it (#262).
+    // asked for here: only System's own Status sub-tab mounts the panel that reads it
+    // (#262, #336).
     expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
   })
 })
@@ -710,11 +727,10 @@ describe('language', () => {
     ])
 
     // Belgian formatting is not a language setting: the euro sign and the comma stay,
-    // on a tab that has a euro figure to check it against. AI usage moved from its own
-    // nav entry to Status's AI subtab (#325's Spend-into-Status move), so getting there
-    // now takes two clicks — General's own Status tab, then Status's own AI tab.
-    fireEvent.click(screen.getByRole('link', { name: 'Status van deze instantie' }))
-    fireEvent.click(await screen.findByRole('link', { name: 'AI' }))
+    // on a tab that has a euro figure to check it against. AI usage now lives on its
+    // own top-level AI tab, whose own Usage sub-tab is the default landing (#336), so
+    // one click reaches it.
+    fireEvent.click(screen.getByRole('link', { name: 'AI' }))
     expect(await screen.findByText('€ 2,50')).toBeTruthy()
   })
 
@@ -727,21 +743,33 @@ describe('language', () => {
 
 describe('thresholds', () => {
   /**
-   * Thresholds moved to its own tab (#200), then grew one tab per group (#262) — every
-   * case here means one of those, `baseline` (the default group) unless it says
-   * otherwise.
+   * Thresholds moved to its own tab (#200), then grew one tab per group (#262), then
+   * dropped that split again (#336) — every group's fieldset renders at once on Budget's
+   * own Thresholds sub-tab, so there is exactly one path here, not one per group.
    */
-  const open = (replies: Replies, group = 'baseline'): Promise<Call[]> =>
-    openPage(replies, `/settings/thresholds/${group}`, 'Thresholds')
+  const open = (replies: Replies): Promise<Call[]> =>
+    openPage(replies, '/settings/budget/thresholds', 'Thresholds')
 
-  it('sends only the fields that changed, across the subsections they live in', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'baseline')
+  it('shows every group’s fieldset at once, not one per tab (#336)', async () => {
+    await open(READS)
+
+    for (const group of [
+      'Your own norm',
+      'Overspending',
+      'Pace',
+      'Data hygiene',
+      'Household targets',
+      'Portfolio drift',
+    ]) {
+      expect(screen.getByRole('group', { name: group })).toBeTruthy()
+    }
+  })
+
+  it('sends only the fields that changed, across the groups they live in', async () => {
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
 
     fireEvent.change(field('Months of history in the norm'), { target: { value: '18' } })
-    fireEvent.click(screen.getByRole('link', { name: 'Overspending' }))
-    fireEvent.change(await screen.findByLabelText('Warn above the norm', { exact: false }), {
-      target: { value: '2500' },
-    })
+    fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     fireEvent.click(save())
 
     await waitFor(() => {
@@ -753,38 +781,8 @@ describe('thresholds', () => {
     })
   })
 
-  it('keeps a typed value after switching to a different subsection tab and back', async () => {
-    await open(READS, 'baseline')
-
-    fireEvent.change(field('Months of history in the norm'), { target: { value: '18' } })
-    fireEvent.click(screen.getByRole('link', { name: 'Overspending' }))
-    await screen.findByLabelText('Warn above the norm', { exact: false })
-    fireEvent.click(screen.getByRole('link', { name: 'Your own norm' }))
-
-    const input = (await screen.findByLabelText('Months of history in the norm', {
-      exact: false,
-    })) as HTMLInputElement
-    expect(input.value).toBe('18')
-  })
-
-  it('shows only the active group’s fieldset, not the other five', async () => {
-    await open(READS, 'drift')
-
-    expect(screen.getByRole('group', { name: 'Portfolio drift' })).toBeTruthy()
-    for (const group of ['Your own norm', 'Overspending', 'Pace', 'Data hygiene', 'Household targets']) {
-      expect(screen.queryByRole('group', { name: group })).toBeNull()
-    }
-  })
-
-  it('lands on its own default group when the subsection is not named', async () => {
-    await openPage(READS, '/settings/thresholds', 'Thresholds')
-
-    expect(screen.getByRole('group', { name: 'Your own norm' })).toBeTruthy()
-    expect(screen.queryByRole('group', { name: 'Portfolio drift' })).toBeNull()
-  })
-
   it('parses a money field the Belgian way and sends cents', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'overspend')
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
 
     // Shown as `€ 25,00`, typed back as an amount, sent as an integer number of cents.
     expect(field('Ignore amounts under').value).toBe(eur('25,00'))
@@ -797,7 +795,7 @@ describe('thresholds', () => {
   })
 
   it('refuses a grouping mark in a plain number rather than reading it as three digits', async () => {
-    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) }, 'overspend')
+    const calls = await open({ ...READS, '/api/settings/params': json(PAYLOAD) })
 
     // `parseFloat('2.000')` is 2 — which would save 0,02% as if it were 20%.
     fireEvent.change(field('Warn above the norm'), { target: { value: '2.000' } })
@@ -810,7 +808,7 @@ describe('thresholds', () => {
   })
 
   it('has nothing to save once a field is typed back to what is stored', async () => {
-    await open(READS, 'overspend')
+    await open(READS)
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     expect(save().disabled).toBe(false)
@@ -820,20 +818,17 @@ describe('thresholds', () => {
   })
 
   it('says what a basis-points field will be read as, so 2000 is not mistaken for money', async () => {
-    await open(READS, 'overspend')
+    await open(READS)
     expect(screen.getByText(/reads as 20%/)).toBeTruthy()
   })
 
   it('puts a rejected field beside itself rather than at the top of the page', async () => {
-    await open(
-      {
-        ...READS,
-        '/api/settings/params': failure('invalidBody', 'That request was not valid.', 400, [
-          { path: 'overspend.baselineWarnBp', message: 'must not exceed baselineAlertBp' },
-        ]),
-      },
-      'overspend',
-    )
+    await open({
+      ...READS,
+      '/api/settings/params': failure('invalidBody', 'That request was not valid.', 400, [
+        { path: 'overspend.baselineWarnBp', message: 'must not exceed baselineAlertBp' },
+      ]),
+    })
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '9000' } })
     fireEvent.click(save())
@@ -845,13 +840,10 @@ describe('thresholds', () => {
   })
 
   it('reports a failure the server did not attribute to a field once, above the panels', async () => {
-    await open(
-      {
-        ...READS,
-        '/api/settings/params': failure('rateLimited', 'Too many requests. Try again shortly.', 429),
-      },
-      'overspend',
-    )
+    await open({
+      ...READS,
+      '/api/settings/params': failure('rateLimited', 'Too many requests. Try again shortly.', 429),
+    })
 
     fireEvent.change(field('Warn above the norm'), { target: { value: '2500' } })
     fireEvent.click(save())
@@ -863,7 +855,7 @@ describe('thresholds', () => {
 })
 
 describe('the risk profile', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/risk')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/portfolio/risk')
 
   it('prints what each preset means, so the word is not a black box', async () => {
     await open(READS)
@@ -1243,7 +1235,7 @@ describe('a linked pair of accounts', () => {
 })
 
 describe('the household', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/benchmark')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/budget/household')
 
   const household = (): HTMLElement => form('household')
 
@@ -1266,15 +1258,12 @@ describe('the household', () => {
     }) as HTMLButtonElement
 
   /**
-   * `reference()`'s panel, for the tests below it (#290/#327): the Statbel correction
-   * form moved to Household's own Comparison sub-tab, which — like Household/Mapping one
-   * level up — stays mounted but `hidden` while its sibling shows. `getByRole` treats a
-   * `hidden` ancestor as inaccessible even though the node is in the document, so a test
-   * that queries the Save button (or clicks it) needs the Comparison tab actually active,
-   * not just `open()`'s default landing on Household.
+   * `reference()`'s panel, for the tests below it (#290/#327, flattened by #336): the
+   * Statbel correction form no longer lives on a sub-sub-tab of its own — `ComparisonPanel`
+   * stacks directly under `HouseholdPanel` on Budget's own Household sub-tab, so opening
+   * Household is all a test needs to reach it.
    */
-  const openComparison = (replies: Replies): Promise<Call[]> =>
-    openPage(replies, '/settings/benchmark/household/comparison', 'Comparison')
+  const openComparison = open
 
   /** The citation the fixture's file carries, which the boxes prefill from (#290). */
   const FILE_CITATION =
@@ -1380,18 +1369,18 @@ describe('the household', () => {
     })
   })
 
-  it('keeps a typed name after switching to Benchmark’s other tab and back', async () => {
+  it('keeps a typed name after switching to Budget’s other tab and back', async () => {
     // Regression: the household roster used to live on the same page as the mapping
     // table, so nothing unmounted it. Splitting them into subsection tabs (#262) made
-    // `BenchmarkSection` render one panel or the other, and a naive conditional threw
-    // away this exact draft the moment somebody switched to check the mapping and
-    // switched back.
+    // `BudgetSection` render one panel or the other, and a naive conditional threw away
+    // this exact draft the moment somebody switched to check the mapping and switched
+    // back.
     await open(READS)
 
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Nick' } })
     fireEvent.click(screen.getByRole('link', { name: 'Categories' }))
     await screen.findByRole('heading', { level: 2, name: 'Categories' })
-    fireEvent.click(screen.getByRole('link', { name: 'Household' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Household & benchmark' }))
 
     const input = (await screen.findByLabelText('Your name')) as HTMLInputElement
     expect(input.value).toBe('Nick')
@@ -1855,7 +1844,7 @@ describe('the household', () => {
 })
 
 describe('property', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/property')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/portfolio/property')
 
   const property = (): HTMLElement => form('property-form')
 
@@ -2067,9 +2056,9 @@ describe('property', () => {
 })
 
 describe('the category table', () => {
-  /** The mapping moved to Benchmark's own subsection tab (#262), apart from Household. */
+  /** The mapping lives on Budget's own subsection tab (#262, #336), apart from Household. */
   const open = (replies: Replies): Promise<Call[]> =>
-    openPage(replies, '/settings/benchmark/mapping', 'Categories')
+    openPage(replies, '/settings/budget/mapping', 'Categories')
 
   const picker = (name: string): HTMLSelectElement =>
     screen.getByLabelText(`COICOP division for ${name}`) as HTMLSelectElement
@@ -2360,7 +2349,7 @@ describe('the category table', () => {
 })
 
 describe('prompts', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai/prompts')
 
   /** One Dutch version, deliberately written and active: the diverged state. */
   const DUTCH = {
@@ -2583,7 +2572,7 @@ describe('prompts', () => {
 })
 
 describe('the test run', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai/prompts')
 
   /**
    * The button, once the estimate has landed.
@@ -2660,10 +2649,11 @@ describe('the test run', () => {
 
     await screen.findByRole('heading', { name: 'Test run' })
     expect(screen.queryByRole('button', { name: /^Test on/ })).toBeNull()
-    // The variable to set, in the one place that would have offered to spend money —
-    // the AI usage panel's own reason renders on a different page now (#325), so only
-    // Prompts' copy of this text is mounted here.
-    expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(1)
+    // Twice: Prompts' own copy of this text, plus Usage's `RerunOff` copy of the same
+    // reason — AI's two sub-tabs stay mounted together (hidden via CSS, not unmounted,
+    // per #336's draft-preserving pattern), so both render even though only Prompts is
+    // showing.
+    expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(2)
   })
 
   it('is not offered for the narrative prompt, which the server will not run', async () => {
@@ -2678,18 +2668,16 @@ describe('the test run', () => {
 })
 
 describe('AI spend', () => {
-  // Moved off its own Settings tab onto the Status page, behind the AI service card
-  // (#325's follow-on): reached at `/settings/status/ai`, a sibling of Services/Queue
-  // under the same "Status of this instance" heading rather than a page of its own.
+  // Moved off Status entirely and onto its own AI tab's Usage sub-tab (#336, undoing
+  // #325's earlier move onto the Status page) — `AiUsage` renders no `<h2>` of its own
+  // (it shares the tab with Prompts, which does), so `openPage` has to be told to wait
+  // for its `<h3>` instead.
   const open = (replies: Replies): Promise<Call[]> =>
-    openPage(replies, '/settings/status/ai', 'Status of this instance')
+    openPage(replies, '/settings/ai/usage', 'AI usage', 3)
 
   it('prints the month to date and the months behind it from the server’s figures', async () => {
     await open(READS)
 
-    // `openPage` only waits for the page's own h2; the AI tab's content sits behind a
-    // second, separate `/api/status` fetch (`StatusPanel`'s own `DataState`), which can
-    // still be pending when that heading first renders.
     expect(await screen.findByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
     // `formatBp` keeps one decimal, so 1667 basis points is 16,7% and not 16,67%.
     expect(screen.getByText('16,7% of the monthly budget')).toBeTruthy()
@@ -2713,10 +2701,10 @@ describe('AI spend', () => {
 
     await screen.findByRole('heading', { name: 'Run by hand' })
     expect(screen.queryByRole('button', { name: 'Run the analysis now' })).toBeNull()
-    // Once: this panel's own reason, from the same key the prompt editor's test run
-    // shows on its own tab (#200) — the two are on different pages now and neither
-    // ever doubled the other's count.
-    expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(1)
+    // Twice: this panel's own reason, plus Prompts' copy of the same key — AI's two
+    // sub-tabs stay mounted together (hidden via CSS, not unmounted, per #336's
+    // draft-preserving pattern), so both render even though only Usage is showing.
+    expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(2)
     // No price on a run that cannot start.
     expect(screen.queryByText(/would cost about/)).toBeNull()
     expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
@@ -2732,7 +2720,7 @@ describe('a viewer', () => {
   it('can read every threshold and change none of them', async () => {
     await openPage(
       { '/api/settings': json(VIEWER), '/api/ai/estimate': json(ESTIMATE) },
-      '/settings/thresholds/overspend',
+      '/settings/budget/thresholds',
       'Thresholds',
     )
 

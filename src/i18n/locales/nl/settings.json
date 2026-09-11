@@ -40,6 +40,9 @@
       "fast": "Model voor de analyse"
     },
     "month": "Maand",
+    "nav": {
+      "usage": "Gebruik"
+    },
     "reason": {
       "bad_response": "Het antwoord van het model paste niet in het schema, dus er is niets van gebruikt.",
       "call_failed": "Het model was niet bereikbaar.",
@@ -200,6 +203,11 @@
       "title": "Het gemiddelde huishouden waarmee vergeleken wordt"
     }
   },
+  "budget": {
+    "nav": {
+      "household": "Huishouden & vergelijking"
+    }
+  },
   "build": {
     "revision": "Build",
     "title": "Deze installatie",
@@ -220,12 +228,15 @@
     "title": "Taal"
   },
   "nav": {
+    "account": "Account",
     "accounts": "Rekeningen",
-    "benchmark": "Vergelijking",
-    "general": "Algemeen",
+    "ai": "AI",
+    "budget": "Budget",
+    "portfolio": "Portfolio",
     "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",
+    "system": "Systeem",
     "thresholds": "Drempels"
   },
   "profile": {
@@ -382,11 +393,6 @@
       "took": "Duurde"
     },
     "lede": "Wat werkt, wat niet, en wanneer elke achtergrondtaak voor het laatst gelukt is.",
-    "nav": {
-      "ai": "AI",
-      "queue": "Taken & wachtrij",
-      "services": "Services"
-    },
     "notServing": "Deze instantie kan geen pagina’s leveren.",
     "probe": {
       "checkedAt": "Gecontroleerd op {{when}}",
@@ -417,6 +423,11 @@
     },
     "serving": "Deze instantie levert pagina’s.",
     "title": "Status van deze instantie"
+  },
+  "system": {
+    "nav": {
+      "buildHistory": "Build & geschiedenis"
+    }
   },
   "thresholds": {
     "default": "Standaard {{value}}",

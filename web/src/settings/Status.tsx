@@ -63,28 +63,8 @@ import type {
 import { DataState } from '../ui/DataState.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { RefreshStatus, useRefresh, type Refresher } from '../ui/Refresh.tsx'
-import { SectionNav } from '../ui/SectionNav.tsx'
-import { useSubsection, type Section } from '../ui/sections.ts'
 import { Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
-
-/**
- * Services (the three at-a-glance cards, #325) versus Queue (everything that used to
- * sit under the old flat `checks` list: the job list and the reset control) versus AI
- * (the cost/usage monitoring that used to be its own Settings tab — reached only by
- * clicking the AI service card, since nothing on it is a setting). Ghostfolio's own
- * probe detail lives on its Services card, behind a disclosure, rather than under Queue
- * (#331). Nested one level under the page's own `general`/`status` split —
- * `sections.ts`'s own prefix matching is written to support that, so this is plain reuse
- * rather than a new mechanism.
- */
-type StatusSubsectionId = 'services' | 'queue' | 'ai'
-
-const STATUS_SUBSECTIONS: readonly Section<StatusSubsectionId>[] = [
-  { id: 'services', path: '/settings/status', labelKey: 'settings:status.nav.services' },
-  { id: 'queue', path: '/settings/status/queue', labelKey: 'settings:status.nav.queue' },
-  { id: 'ai', path: '/settings/status/ai', labelKey: 'settings:status.nav.ai' },
-]
 
 /**
  * The jobs `POST /api/refresh` will start, mirroring `REFRESHABLE` in
@@ -189,16 +169,13 @@ function Report({
   status,
   reload,
   settings,
-  state,
   owner,
-  estimate,
 }: SettingsPanelProps & {
   status: Status
   reload: () => void
 }): ReactNode {
   const { t } = useT()
   const refresher = useRefresh(status.jobs, reload)
-  const active = useSubsection(STATUS_SUBSECTIONS)
 
   return (
     <>
@@ -209,38 +186,22 @@ function Report({
         {status.degraded ? ` ${t('settings:status.degraded')}` : ''}
       </p>
 
-      <SectionNav
-        sections={STATUS_SUBSECTIONS}
-        variant="sub"
-        ariaLabel={t('settings:status.title')}
-      />
+      <ServicesGrid status={status} aiAvailability={settings.ai.availability} />
 
-      {active === 'services' ? (
-        <ServicesGrid status={status} aiAvailability={settings.ai.availability} />
-      ) : active === 'queue' ? (
-        <>
-          <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
-          <RefreshStatus state={refresher.state} />
-          <div className="grid-cards">
-            {status.jobs.map((job) => (
-              <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
-            ))}
-          </div>
+      <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
+      <RefreshStatus state={refresher.state} />
+      <div className="grid-cards">
+        {status.jobs.map((job) => (
+          <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
+        ))}
+      </div>
 
-          <ResetControl owner={owner} refresher={refresher} />
-        </>
-      ) : (
-        <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
-      )}
+      <ResetControl owner={owner} refresher={refresher} />
 
-      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
-          Shared across Services and Queue — the AI tab's own figures come from the
-          settings payload instead, which this button does not touch. */}
-      {active === 'ai' ? null : (
-        <button type="button" className="button button--quiet" onClick={reload}>
-          {t('action.refresh')}
-        </button>
-      )}
+      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do. */}
+      <button type="button" className="button button--quiet" onClick={reload}>
+        {t('action.refresh')}
+      </button>
     </>
   )
 }
@@ -293,7 +254,7 @@ function ServicesGrid({
         name={t('settings:status.check.ai')}
         status={aiAvailability.enabled ? 'ok' : 'unknown'}
         reason={aiAvailability.enabled ? null : t(`ai:off.reason.${aiReason}`)}
-        href="/settings/status/ai"
+        href="/settings/ai"
       />
     </div>
   )
@@ -694,10 +655,11 @@ function ProbeReport({ probe }: { probe: ProbeStatus }): ReactNode {
 const count = (value: number): string => formatDecimal(value, 0)
 
 /**
- * What the assistant has cost this month, and what it cost before — moved here from its
- * own Settings tab, because nothing on it is a setting: it is read-only monitoring plus
- * the one button that starts an analysis by hand, which belongs beside the rest of "is
- * this instance working" rather than beside the thresholds and prompts that configure it.
+ * What the assistant has cost this month, and what it cost before — rendered on the AI
+ * tab's own Usage sub-tab (`Settings.tsx`'s `AiSection`), because nothing on it is a
+ * setting: it is read-only monitoring plus the one button that starts an analysis by
+ * hand, sharing a tab with the prompts that configure the model rather than with the
+ * rest of "is this instance working".
  *
  * Figures are micro-euros, printed by `formatMicroEur` rather than divided here — one
  * analysis can cost €0,0004, and a page that rounded to cents would show `€ 0,00` beside
@@ -705,7 +667,7 @@ const count = (value: number): string => formatDecimal(value, 0)
  * nothing on this panel is summed: `spentMicroEur` is a view over `ai_runs`, which is the
  * only place a month's total is computed.
  */
-function AiUsage({
+export function AiUsage({
   ai,
   state,
   owner,
