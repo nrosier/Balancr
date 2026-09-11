@@ -33,7 +33,8 @@
  *    inside a `<button>` would double the tab stop. `Pending.tsx`'s transaction-amount
  *    figure is not one of these — it renders through `<Money>` like everywhere else.
  *  - AI-operational-cost figures elsewhere — the price of a Gemini call, not personal
- *    spending — in `settings/Spend.tsx`, `settings/Prompts.tsx`.
+ *    spending — in `settings/Status.tsx` (the AI usage tab, moved from the settings page
+ *    it used to have its own tab on), `settings/Prompts.tsx`.
  *  - Settings/configuration numbers — thresholds and trading minimums the account
  *    configures, not spending — in `settings/Thresholds.tsx`, `settings/Risk.tsx`,
  *    `settings/Property.tsx` (a property's value, a mortgage's balance and payment,
@@ -67,7 +68,7 @@ const ALLOWED = new Set(
     'insights/Narrative.tsx',
     'insights/Pending.tsx',
     'insights/BudgetNudge.tsx',
-    'settings/Spend.tsx',
+    'settings/Status.tsx',
     'settings/Prompts.tsx',
     'pages/Insights.tsx',
     'settings/Thresholds.tsx',

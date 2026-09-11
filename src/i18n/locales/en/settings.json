@@ -92,6 +92,10 @@
       "11": "11 — Restaurants and hotels",
       "12": "12 — Miscellaneous goods and services"
     },
+    "comparison": {
+      "title": "Comparison",
+      "hint": "The average Belgian household your spending is compared against, and where that figure comes from."
+    },
     "household": {
       "add": "Add someone",
       "asAdult": "at the adult weight",
@@ -222,7 +226,6 @@
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",
-    "spend": "AI usage",
     "thresholds": "Thresholds"
   },
   "profile": {
@@ -380,6 +383,7 @@
     },
     "lede": "What is working, what is not, and when each background job last managed to run.",
     "nav": {
+      "ai": "AI",
       "queue": "Jobs & queue",
       "services": "Services"
     },

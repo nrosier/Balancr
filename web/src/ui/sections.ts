@@ -58,18 +58,31 @@ export function sectionFor<Id extends string>(
  * replacing the URL with that default's own path so the tab strip's `exact` `Link`
  * actually lights up. `replace`, not `push`: nobody should be able to back-button into a
  * URL the app itself decided was incomplete.
+ *
+ * `enabled` (default `true`) gates that correction alone, not the returned id. A tab
+ * strip kept mounted-but-`hidden` while a sibling tab is showing — Household's own
+ * Household/Comparison split under Benchmark's Household/Mapping one, #327 — still calls
+ * this hook every render, and without the gate it would see a path like
+ * `/settings/benchmark/mapping` as "not one of mine", fall back to its own first
+ * subsection, and force the URL straight back to `/settings/benchmark/household` the
+ * moment somebody clicked away. Pass `false` from the parent while its own tab isn't
+ * the active one; the returned id is unused while hidden anyway.
  */
-export function useSubsection<Id extends string>(sections: readonly Section<Id>[]): Id {
+export function useSubsection<Id extends string>(
+  sections: readonly Section<Id>[],
+  enabled = true,
+): Id {
   const { path, navigate } = useRouter()
   const first = sections[0]
   if (first === undefined) throw new Error('useSubsection called with no sections')
   const active = sectionFor(sections, path, first.id)
 
   useEffect(() => {
+    if (!enabled) return
     const current = sections.find((section) => section.id === active)
     if (current === undefined || current.nested === true) return
     if (path !== current.path) navigate(current.path, { replace: true })
-  }, [path, active, sections, navigate])
+  }, [path, active, sections, navigate, enabled])
 
   return active
 }

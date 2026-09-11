@@ -464,7 +464,6 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/accounts': 'Accounts',
   '/settings/benchmark': 'Household',
   '/settings/property': 'Property',
-  '/settings/spend': 'AI usage',
 }
 
 /**
@@ -610,7 +609,6 @@ describe('the shape of the page', () => {
     ['/settings/prompts', 'Assistant instructions'],
     ['/settings/thresholds', 'Thresholds'],
     ['/settings/accounts', 'Accounts'],
-    ['/settings/spend', 'AI usage'],
   ] as const)('shows only %s’s panel on its own tab, not General’s', async (path, title) => {
     await open(READS, path)
 
@@ -683,8 +681,9 @@ describe('the shape of the page', () => {
     await screen.findByRole('button', { name: /^Test on/ })
 
     // `/api/ai/estimate` is asked for regardless of tab — both Prompts' test run and
-    // Spend's by-hand run price against it — but `/api/status` is never asked for here:
-    // only General's own Status subsection mounts the panel that reads it (#262).
+    // the AI usage tab's by-hand run price against it — but `/api/status` is never
+    // asked for here: only the Status section's own subsections mount the panel that
+    // reads it (#262).
     expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
   })
 })
@@ -711,8 +710,11 @@ describe('language', () => {
     ])
 
     // Belgian formatting is not a language setting: the euro sign and the comma stay,
-    // on a tab that has a euro figure to check it against.
-    fireEvent.click(screen.getByRole('link', { name: 'AI-gebruik' }))
+    // on a tab that has a euro figure to check it against. AI usage moved from its own
+    // nav entry to Status's AI subtab (#325's Spend-into-Status move), so getting there
+    // now takes two clicks — General's own Status tab, then Status's own AI tab.
+    fireEvent.click(screen.getByRole('link', { name: 'Status van deze instantie' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'AI' }))
     expect(await screen.findByText('€ 2,50')).toBeTruthy()
   })
 
@@ -1263,6 +1265,17 @@ describe('the household', () => {
       name: 'Save',
     }) as HTMLButtonElement
 
+  /**
+   * `reference()`'s panel, for the tests below it (#290/#327): the Statbel correction
+   * form moved to Household's own Comparison sub-tab, which — like Household/Mapping one
+   * level up — stays mounted but `hidden` while its sibling shows. `getByRole` treats a
+   * `hidden` ancestor as inaccessible even though the node is in the document, so a test
+   * that queries the Save button (or clicks it) needs the Comparison tab actually active,
+   * not just `open()`'s default landing on Household.
+   */
+  const openComparison = (replies: Replies): Promise<Call[]> =>
+    openPage(replies, '/settings/benchmark/household/comparison', 'Comparison')
+
   /** The citation the fixture's file carries, which the boxes prefill from (#290). */
   const FILE_CITATION =
     'Statbel, Household Budget Survey 2024 — mean expenditure per household and per consumption unit'
@@ -1668,7 +1681,7 @@ describe('the household', () => {
   })
 
   it('names the source of every figure the comparison uses', async () => {
-    await open(READS)
+    await openComparison(READS)
 
     expect(
       screen.getByText(/Statbel, Household Budget Survey 2024/, { exact: false }),
@@ -1686,7 +1699,7 @@ describe('the household', () => {
   it('offers the average household as a correction, starting from the file (#290)', async () => {
     // The fixture's file carries no euro figure, so the panel says so and the boxes start
     // empty — typing a pair here is what switches the euro comparison on at all.
-    await open(READS)
+    await openComparison(READS)
 
     expect(screen.getByText(/The file carries no euro figure/)).toBeTruthy()
     expect(
@@ -1696,7 +1709,7 @@ describe('the household', () => {
   })
 
   it('prefills all three boxes from the file when it has the figures (#290)', async () => {
-    await open({ ...READS, '/api/settings': json(withReference) })
+    await openComparison({ ...READS, '/api/settings': json(withReference) })
 
     expect(
       (screen.getByLabelText('Average household spending per month') as HTMLInputElement).value,
@@ -1712,7 +1725,7 @@ describe('the household', () => {
   })
 
   it('sends both figures and the citation together (#290)', async () => {
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(withReference),
       '/api/settings/benchmark-reference': json(withReference),
@@ -1746,7 +1759,7 @@ describe('the household', () => {
   })
 
   it('refuses a size the scale could not use, and a citation that names nothing (#290)', async () => {
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(withReference),
     })
@@ -1784,7 +1797,7 @@ describe('the household', () => {
         },
       },
     }
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(overridden),
       '/api/settings/benchmark-reference': json(withReference),
@@ -1813,7 +1826,7 @@ describe('the household', () => {
   })
 
   it('leaves the average household read-only for a viewer (#290)', async () => {
-    await open({
+    await openComparison({
       ...READS,
       '/api/settings': json({
         ...withReference,
@@ -2648,8 +2661,8 @@ describe('the test run', () => {
     await screen.findByRole('heading', { name: 'Test run' })
     expect(screen.queryByRole('button', { name: /^Test on/ })).toBeNull()
     // The variable to set, in the one place that would have offered to spend money —
-    // once flat, this and the Spend panel's own reason both rendered on the same page
-    // and this asserted two; the tab split (#200) means only Prompts is mounted here.
+    // the AI usage panel's own reason renders on a different page now (#325), so only
+    // Prompts' copy of this text is mounted here.
     expect(screen.getAllByText(/Set GEMINI_API_KEY/)).toHaveLength(1)
   })
 
@@ -2665,12 +2678,19 @@ describe('the test run', () => {
 })
 
 describe('AI spend', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/spend')
+  // Moved off its own Settings tab onto the Status page, behind the AI service card
+  // (#325's follow-on): reached at `/settings/status/ai`, a sibling of Services/Queue
+  // under the same "Status of this instance" heading rather than a page of its own.
+  const open = (replies: Replies): Promise<Call[]> =>
+    openPage(replies, '/settings/status/ai', 'Status of this instance')
 
   it('prints the month to date and the months behind it from the server’s figures', async () => {
     await open(READS)
 
-    expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
+    // `openPage` only waits for the page's own h2; the AI tab's content sits behind a
+    // second, separate `/api/status` fetch (`StatusPanel`'s own `DataState`), which can
+    // still be pending when that heading first renders.
+    expect(await screen.findByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
     // `formatBp` keeps one decimal, so 1667 basis points is 16,7% and not 16,67%.
     expect(screen.getByText('16,7% of the monthly budget')).toBeTruthy()
     expect(screen.getByText('August 2026')).toBeTruthy()
@@ -2694,8 +2714,8 @@ describe('AI spend', () => {
     await screen.findByRole('heading', { name: 'Run by hand' })
     expect(screen.queryByRole('button', { name: 'Run the analysis now' })).toBeNull()
     // Once: this panel's own reason, from the same key the prompt editor's test run
-    // would show on its own tab (#200) — before the split both rendered on one page
-    // and this asserted two.
+    // shows on its own tab (#200) — the two are on different pages now and neither
+    // ever doubled the other's count.
     expect(screen.getAllByText(/Raise GEMINI_MONTHLY_BUDGET_EUR/)).toHaveLength(1)
     // No price on a run that cannot start.
     expect(screen.queryByText(/would cost about/)).toBeNull()
