@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.1-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.2-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -991,13 +991,16 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.1` is the current release, a patch on top of `1.0.0`.
-Every feature issue in the list above is still closed; this slice is the Status
-settings page leading with three at-a-glance service cards (Actual Budget,
-Ghostfolio, AI) instead of a flat check list, with the job queue, probe detail
-and reset control moved to their own tab.
+**Where it is now** — `1.0.2` is the current release, a patch on top of `1.0.0`.
+Every feature issue in the list above is still closed; this slice rounds out the
+Status page split from `1.0.1` — the Queue tab's job and probe lists now render
+as cards, AI usage monitoring moved off its own Settings tab and behind the AI
+service card, Household gained its own Household/Comparison sub-tabs, and
+Ghostfolio's per-endpoint checks moved from the Queue tab onto its own Services
+card — plus a Data Quality card that now explains which findings are behind
+each deduction, instead of leaving that to a guess.
 
-`docker pull` now resolves `latest` to `1.0.1`; a release candidate is published
+`docker pull` now resolves `latest` to `1.0.2`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
