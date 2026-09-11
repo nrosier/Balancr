@@ -23,10 +23,11 @@
  * equity the owner may not have held throughout that window.
  */
 import type { Db } from '../../../db/index.ts'
+import { HYGIENE_CODES } from '../../../domain/aggregate/hygiene.ts'
 import { loadLatestNetWorth, loadNetWorthHistory } from '../../../domain/aggregate/networth-store.ts'
 import { latestStoredMonth, loadMonthTotals, loadTrailingTotals } from '../../../domain/aggregate/month-store.ts'
 import { TRAILING_MONTHS } from '../../../domain/aggregate/savings.ts'
-import { loadHygiene } from '../../../domain/aggregate/signals-store.ts'
+import { loadHygiene, loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import {
   loadProperties,
   outstandingBalanceCents,
@@ -75,6 +76,7 @@ export const FLOW_HISTORY_MONTHS = Math.max(COVER_WINDOW_MONTHS, TRAILING_MONTHS
 export function buildOverview(db: Db): Overview {
   const month = latestStoredMonth(db)
   const totals = month === null ? null : (loadMonthTotals(db, [month])[0] ?? null)
+  const hygiene = month === null ? null : loadHygiene(db, month)
   const netWorth = loadLatestNetWorth(db)
   const flows = month === null ? [] : loadTrailingTotals(db, month, FLOW_HISTORY_MONTHS)
   // The cover figure keeps its own, shorter window even when the two lengths agree — see
@@ -127,6 +129,12 @@ export function buildOverview(db: Db): Overview {
           },
     emergencyFundCentimonths:
       netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, coverWindow),
-    hygiene: month === null ? null : loadHygiene(db, month),
+    hygiene:
+      hygiene === null || month === null
+        ? null
+        : {
+            ...hygiene,
+            signals: loadSignals(db, month).filter((signal) => HYGIENE_CODES.has(signal.code)),
+          },
   })
 }
