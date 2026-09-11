@@ -18,7 +18,7 @@
  *    is the number the reader needs anyway — a stale snapshot misleads whatever
  *    the upstream price is doing.
  */
-import { capSeverity } from '../ai/codes.ts'
+import { capSeverity, type FindingCode } from '../ai/codes.ts'
 import { daysBetween } from '../../util/month.ts'
 import type { AggregateParams } from './params.ts'
 import { sortSignals, type Signal } from './overspend.ts'
@@ -58,6 +58,18 @@ export interface HygieneScore {
   /** What was deducted and why, so the number is never unexplainable. */
   deductions: { reason: string; bp: number }[]
 }
+
+/**
+ * The codes this file can emit — the single source of truth for "which of a
+ * month's persisted signals are hygiene's own", so a caller reading them back
+ * (`buildOverview`) doesn't have to keep its own copy of this list in sync.
+ */
+export const HYGIENE_CODES: ReadonlySet<FindingCode> = new Set([
+  'uncategorised_backlog',
+  'recompute_mismatch',
+  'unreconciled_account',
+  'stale_prices',
+])
 
 const DEDUCTION = {
   /** Per uncategorised transaction over the tolerated count, to a 2500 cap. */

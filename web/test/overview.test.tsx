@@ -68,7 +68,7 @@ const FULL: OverviewPayload = {
     savingsRateBp: 2_619,
   },
   emergencyFundCentimonths: 450,
-  hygiene: { scoreBp: 8_750, deductions: [{ reason: 'uncategorised', bp: 750 }] },
+  hygiene: { scoreBp: 8_750, deductions: [{ reason: 'uncategorised', bp: 750 }], signals: [] },
 }
 
 /** What a deployment that has never run a job answers. Every field null, no rows. */
@@ -401,6 +401,7 @@ describe('the hygiene card', () => {
         { reason: 'uncategorised', bp: 750 },
         { reason: 'stale_prices', bp: 500 },
       ],
+      signals: [],
     })
 
     expect(screen.getByText('87,5%')).toBeTruthy()
@@ -411,7 +412,7 @@ describe('the hygiene card', () => {
   })
 
   it('says so when nothing is', () => {
-    show({ scoreBp: 10_000, deductions: [] })
+    show({ scoreBp: 10_000, deductions: [], signals: [] })
 
     expect(screen.getByText('100%')).toBeTruthy()
     expect(screen.getByText('Nothing is costing points.')).toBeTruthy()
@@ -421,9 +422,35 @@ describe('the hygiene card', () => {
   it('prints a reason it has no label for rather than dropping the deduction', () => {
     // A server ahead of the bundle — a new reason code from a later release. Showing
     // the code costs the reader a lookup; hiding the row costs them the points.
-    show({ scoreBp: 9_000, deductions: [{ reason: 'gremlins', bp: 1_000 }] })
+    show({ scoreBp: 9_000, deductions: [{ reason: 'gremlins', bp: 1_000 }], signals: [] })
 
     expect(screen.getByText('gremlins')).toBeTruthy()
     expect(screen.getByText('-10%')).toBeTruthy()
+    // No signal can be filed under a reason this bundle has no code mapping for, so
+    // the row stays plain text rather than a button that would open onto nothing.
+    expect(screen.queryByRole('button', { name: 'gremlins' })).toBeNull()
+  })
+
+  it('explains a deduction by expanding it into the findings behind it', () => {
+    show({
+      scoreBp: 9_000,
+      deductions: [{ reason: 'recompute_mismatch', bp: 1_000 }],
+      signals: [
+        {
+          code: 'recompute_mismatch',
+          categoryId: 'cat-1',
+          categoryName: 'Groceries',
+          severity: 'alert',
+          metrics: { differenceCents: 5_000, actualCents: 20_000, recomputedCents: 15_000 },
+        },
+      ],
+    })
+
+    // Closed until clicked: the sentence is not on the page yet.
+    expect(screen.queryByText(/Groceries does not reconcile/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recomputed totals disagree with Actual' }))
+
+    expect(screen.getByText("Groceries does not reconcile: our own sum is € 50,00 away from Actual's.")).toBeTruthy()
   })
 })

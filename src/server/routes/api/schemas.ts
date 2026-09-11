@@ -129,6 +129,8 @@ export const signalSchema = z.object({
 export const hygieneSchema = z.object({
   scoreBp: basisPoints(),
   deductions: z.array(z.object({ reason: z.string(), bp: basisPoints() })),
+  /** The findings behind the deductions above, so the score is never unexplainable. */
+  signals: z.array(signalSchema),
 })
 
 /**
