@@ -6,6 +6,40 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.1] — 2026-09-11
+
+The status page answers "is my stuff working" at a glance instead of a
+four-row checklist.
+
+### Added
+
+- **Status panel: three at-a-glance service cards replace the flat check
+  list** ([#325](https://github.com/nrosier/Balancr/issues/325)). Actual
+  Budget, Ghostfolio and AI — the three things someone actually wants to
+  check — now render as their own cards on a new Services tab, each with a
+  badge and a last-synced time instead of being buried inside a list of
+  eight jobs and four raw health checks. Everything that used to be on the
+  page — the full job list, per-path Ghostfolio probe detail, and the
+  danger-zone reset control — moved to a second Queue tab rather than being
+  dropped.
+- **Sync's named steps and `buildJobHistory` are now tested against a real
+  run** ([#326](https://github.com/nrosier/Balancr/issues/326)). The
+  per-job history the Queue tab's "Show history" toggle reads had shipped
+  with no test coverage of its own; it now has both, plus a
+  `JOB_HISTORY_KEEP`-bounded history table and `/api/status/history`
+  endpoint backing it.
+
+### Fixed
+
+- **The Queue tab redirected straight back to Services on click.** Settings'
+  own General/Status tab strip and the Services/Queue tab strip nested
+  inside it both use the same "replace an incomplete path with its tab's
+  canonical one" mechanism, and the outer one didn't know `/settings/status/queue`
+  was a path the inner one already owned — every attempt to open the Queue
+  tab landed back where it started within one render. Only showed up under
+  a real browser session, not the unit tests, which render `StatusPanel` on
+  its own.
+
 ## [1.0.0] — 2026-09-09
 
 Blessed by the person whose money it is. Every feature milestone is closed, the
