@@ -578,7 +578,32 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
         </div>
       </form>
 
-      {file === null ? null : (
+    </Panel>
+  )
+}
+
+/**
+ * The Statbel average-household reference and its provenance — split out from
+ * `HouseholdPanel` (#327) so "who lives here" and "what we compare against" are two
+ * sub-tabs rather than one form doing both jobs.
+ */
+export function ComparisonPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const { benchmark } = settings
+  const { file } = benchmark
+
+  return (
+    <Panel
+      title={t('settings:benchmark.comparison.title')}
+      hint={t('settings:benchmark.comparison.hint')}
+      notice={owner ? null : <p className="panel__meta muted">{t('settings:viewerOnly')}</p>}
+    >
+      {file === null ? (
+        <div className="notice notice--info" role="status">
+          <p className="notice__lead">{t('settings:benchmark.noFile')}</p>
+          <p className="notice__hint">{t('settings:benchmark.noFileHint')}</p>
+        </div>
+      ) : (
         <>
           <ReferenceForm benchmark={benchmark} state={state} owner={owner} />
           <Provenance
@@ -1122,6 +1147,11 @@ const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
     id: 'household',
     path: '/settings/benchmark/household',
     labelKey: 'settings:benchmark.household.title',
+    // Household owns a further tab strip of its own (Household/Comparison, below) —
+    // without this, useSubsection's canonicalizing effect would see a path like
+    // `/settings/benchmark/household/comparison` as "not one of my own section paths"
+    // and redirect it back to the bare `/settings/benchmark/household`.
+    nested: true,
   },
   {
     id: 'mapping',
@@ -1152,10 +1182,63 @@ export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
         ariaLabel={t('settings:nav.benchmark')}
       />
       <div hidden={active !== 'household'}>
-        <HouseholdPanel {...props} />
+        <HouseholdSection {...props} active={active === 'household'} />
       </div>
       <div hidden={active !== 'mapping'}>
         <MappingPanel {...props} />
+      </div>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+//  Household's own sub-tabs: who lives here, vs what we compare against
+// ---------------------------------------------------------------------------
+
+type HouseholdSubsectionId = 'household' | 'comparison'
+
+const HOUSEHOLD_SUBSECTIONS: readonly Section<HouseholdSubsectionId>[] = [
+  {
+    id: 'household',
+    path: '/settings/benchmark/household',
+    labelKey: 'settings:benchmark.household.title',
+  },
+  {
+    id: 'comparison',
+    path: '/settings/benchmark/household/comparison',
+    labelKey: 'settings:benchmark.comparison.title',
+  },
+]
+
+/**
+ * Household's own sub-tabs (#327): "who lives here" (roster, shared-cost split) and
+ * "what we compare against" (the Statbel reference correction + provenance) used to be
+ * one form doing both jobs — split the same way `BenchmarkSection` above splits
+ * Household from Mapping, and for the same reason both panels stay mounted rather than
+ * unmounted: `HouseholdPanel`'s roster edits and `ComparisonPanel`'s reference draft are
+ * both local `useState`, and switching tabs must not throw an in-progress edit away.
+ *
+ * `active` says whether `BenchmarkSection` currently shows this section at all — this
+ * component stays mounted (in a `hidden` wrapper) even while Mapping is showing, and its
+ * own `useSubsection` call must not treat that as "the URL needs correcting back to
+ * household" (see the comment on `useSubsection`'s `enabled` parameter).
+ */
+function HouseholdSection({ active: sectionActive, ...props }: SettingsPanelProps & { active: boolean }): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(HOUSEHOLD_SUBSECTIONS, sectionActive)
+
+  return (
+    <>
+      <SectionNav
+        sections={HOUSEHOLD_SUBSECTIONS}
+        variant="sub"
+        ariaLabel={t('settings:benchmark.household.title')}
+      />
+      <div hidden={active !== 'household'}>
+        <HouseholdPanel {...props} />
+      </div>
+      <div hidden={active !== 'comparison'}>
+        <ComparisonPanel {...props} />
       </div>
     </>
   )

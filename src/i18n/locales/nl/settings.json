@@ -92,6 +92,10 @@
       "11": "11 — Restaurants en hotels",
       "12": "12 — Diverse goederen en diensten"
     },
+    "comparison": {
+      "title": "Vergelijking",
+      "hint": "Het gemiddelde Belgische huishouden waarmee jouw uitgaven vergeleken worden, en waar dat cijfer vandaan komt."
+    },
     "household": {
       "add": "Iemand toevoegen",
       "asAdult": "tegen het gewicht van een volwassene",
@@ -222,7 +226,6 @@
     "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",
-    "spend": "AI-gebruik",
     "thresholds": "Drempels"
   },
   "profile": {
@@ -380,6 +383,7 @@
     },
     "lede": "Wat werkt, wat niet, en wanneer elke achtergrondtaak voor het laatst gelukt is.",
     "nav": {
+      "ai": "AI",
       "queue": "Taken & wachtrij",
       "services": "Services"
     },

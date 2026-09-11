@@ -60,7 +60,6 @@ import { PropertyPanel } from '../settings/Property.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
 import { sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
-import { SpendPanel } from '../settings/Spend.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsSection } from '../settings/Thresholds.tsx'
 import { useSettings, type SettingsPanelProps } from '../settings/state.ts'
@@ -87,14 +86,14 @@ const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
 function GeneralSection(props: SettingsPanelProps): ReactNode {
   const { t, language } = useT()
   const active = useSubsection(GENERAL_SUBSECTIONS)
-  const { settings, owner } = props
+  const { settings } = props
 
   return (
     <>
       <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
 
       {active === 'status' ? (
-        <StatusPanel owner={owner} aiAvailability={settings.ai.availability} />
+        <StatusPanel {...props} />
       ) : (
         <>
           <LanguagePanel {...props} />
@@ -186,8 +185,6 @@ export function Settings(): ReactNode {
               {section === 'accounts' && <AccountsPanel {...props} />}
               {section === 'benchmark' && <BenchmarkSection {...props} />}
               {section === 'property' && <PropertyPanel {...props} />}
-
-              {section === 'spend' && <SpendPanel {...props} />}
             </>
           )
         }}

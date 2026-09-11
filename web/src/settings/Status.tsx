@@ -41,33 +41,48 @@
 import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
-import { formatDateTime, formatDecimal } from '../shared.ts'
+import { Link } from '../router.tsx'
+import {
+  formatBp,
+  formatDateTime,
+  formatDecimal,
+  formatMicroEur,
+  formatMonth,
+} from '../shared.ts'
 import type {
   AiAvailabilityWire,
+  AiEstimate,
   JobHistory,
   JobStatus,
   JobStep,
   ProbeStatus,
+  RefreshAccepted,
+  Settings,
   Status,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { Metric } from '../ui/Metric.tsx'
 import { RefreshStatus, useRefresh, type Refresher } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { useSubsection, type Section } from '../ui/sections.ts'
 import { Panel } from './Panel.tsx'
+import type { SettingsPanelProps } from './state.ts'
 
 /**
  * Services (the three at-a-glance cards, #325) versus Queue (everything that used to
  * sit under the old flat `checks` list: the job list, the reset control and the probe
- * detail). Nested one level under the page's own `general`/`status` split — `sections.ts`'s
+ * detail) versus AI (the cost/usage monitoring that used to be its own Settings tab —
+ * reached only by clicking the AI service card, since nothing on it is a setting).
+ * Nested one level under the page's own `general`/`status` split — `sections.ts`'s
  * own prefix matching is written to support that, so this is plain reuse rather than a
  * new mechanism.
  */
-type StatusSubsectionId = 'services' | 'queue'
+type StatusSubsectionId = 'services' | 'queue' | 'ai'
 
 const STATUS_SUBSECTIONS: readonly Section<StatusSubsectionId>[] = [
   { id: 'services', path: '/settings/status', labelKey: 'settings:status.nav.services' },
   { id: 'queue', path: '/settings/status/queue', labelKey: 'settings:status.nav.queue' },
+  { id: 'ai', path: '/settings/status/ai', labelKey: 'settings:status.nav.ai' },
 ]
 
 /**
@@ -146,27 +161,14 @@ function Quoted({ text }: { text: string }): ReactNode {
   return <q className="status__quote">{text}</q>
 }
 
-export function StatusPanel({
-  owner,
-  aiAvailability,
-}: {
-  owner: boolean
-  aiAvailability: AiAvailabilityWire
-}): ReactNode {
+export function StatusPanel(props: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const resource = useResource<Status>('/api/status')
 
   return (
     <Panel title={t('settings:status.title')} hint={t('settings:status.lede')}>
       <DataState resource={resource}>
-        {(status) => (
-          <Report
-            status={status}
-            owner={owner}
-            reload={resource.reload}
-            aiAvailability={aiAvailability}
-          />
-        )}
+        {(status) => <Report status={status} reload={resource.reload} {...props} />}
       </DataState>
     </Panel>
   )
@@ -184,14 +186,14 @@ export function StatusPanel({
  */
 function Report({
   status,
-  owner,
   reload,
-  aiAvailability,
-}: {
+  settings,
+  state,
+  owner,
+  estimate,
+}: SettingsPanelProps & {
   status: Status
-  owner: boolean
   reload: () => void
-  aiAvailability: AiAvailabilityWire
 }): ReactNode {
   const { t } = useT()
   const refresher = useRefresh(status.jobs, reload)
@@ -213,16 +215,16 @@ function Report({
       />
 
       {active === 'services' ? (
-        <ServicesGrid status={status} aiAvailability={aiAvailability} />
-      ) : (
+        <ServicesGrid status={status} aiAvailability={settings.ai.availability} />
+      ) : active === 'queue' ? (
         <>
           <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
           <RefreshStatus state={refresher.state} />
-          <ul className="status__jobs">
+          <div className="grid-cards">
             {status.jobs.map((job) => (
               <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
             ))}
-          </ul>
+          </div>
 
           <ResetControl owner={owner} refresher={refresher} />
 
@@ -234,13 +236,18 @@ function Report({
             status.probes.map((probe) => <ProbeReport probe={probe} key={probe.source} />)
           )}
         </>
+      ) : (
+        <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
       )}
 
       {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
-          Shared across both tabs — the same request refreshes the cards and the queue. */}
-      <button type="button" className="button button--quiet" onClick={reload}>
-        {t('action.refresh')}
-      </button>
+          Shared across Services and Queue — the AI tab's own figures come from the
+          settings payload instead, which this button does not touch. */}
+      {active === 'ai' ? null : (
+        <button type="button" className="button button--quiet" onClick={reload}>
+          {t('action.refresh')}
+        </button>
+      )}
     </>
   )
 }
@@ -291,6 +298,7 @@ function ServicesGrid({
         name={t('settings:status.check.ai')}
         status={aiAvailability.enabled ? 'ok' : 'unknown'}
         reason={aiAvailability.enabled ? null : t(`ai:off.reason.${aiReason}`)}
+        href="/settings/status/ai"
       />
     </div>
   )
@@ -304,22 +312,31 @@ function ServicesGrid({
  *
  * `lastSyncedAt` is left `undefined` for the AI card, which has no job of its own: `null`
  * means "never", `undefined` means "not applicable" and the line is not rendered at all.
+ *
+ * `href`, given only by the AI card, makes the whole card a link to its own tab — the
+ * AI usage/cost history lives one click behind the card rather than on this grid, since
+ * it is a monitoring view rather than an at-a-glance fact. Actual and Ghostfolio have no
+ * `href`: their own detail (the job and probe rows behind their status) already has a
+ * tab of its own — Queue — reachable from the strip above, so a second drill-in here
+ * would be a second way to the same place.
  */
 function ServiceCard({
   name,
   status,
   reason,
   lastSyncedAt,
+  href,
 }: {
   name: string
   status: string
   reason: string | null
   lastSyncedAt?: string | null
+  href?: string
 }): ReactNode {
   const { t } = useT()
 
-  return (
-    <div className="card status__service">
+  const body = (
+    <>
       <p className="status__serviceHead">
         <span className="status__name">{name}</span>
         <Badge status={status} />
@@ -333,7 +350,15 @@ function ServiceCard({
         </dl>
       )}
       {reason === null ? null : <p className="status__reason muted">{reason}</p>}
-    </div>
+    </>
+  )
+
+  if (href === undefined) return <div className="card status__service">{body}</div>
+
+  return (
+    <Link to={href} className="card status__service status__service--clickable">
+      {body}
+    </Link>
   )
 }
 
@@ -454,9 +479,11 @@ function JobRow({
   const when = (iso: string | null): string => (iso === null ? never : formatDateTime(iso))
 
   return (
-    <li className="status__job">
-      <span className="status__name">{label === key ? job.name : label}</span>
-      <Badge status={displayStatus(job, queued)} />
+    <div className="card status__job">
+      <p className="status__jobHead">
+        <span className="status__name">{label === key ? job.name : label}</span>
+        <Badge status={displayStatus(job, queued)} />
+      </p>
       <dl className="status__meta">
         <dt>{t('settings:status.jobs.lastRun')}</dt>
         <dd className="num">{when(job.lastRunAt)}</dd>
@@ -510,7 +537,7 @@ function JobRow({
         </button>
       </div>
       {expanded ? <JobHistory jobName={job.name} /> : null}
-    </li>
+    </div>
   )
 }
 
@@ -602,7 +629,7 @@ function ProbeReport({ probe }: { probe: ProbeStatus }): ReactNode {
   const { t } = useT()
 
   return (
-    <div className="status__probe">
+    <div className="card status__probe">
       <p className="status__probeHead">
         <span className="status__name">{t(`source.${probe.source}`)}</span>
         <Badge status={probe.status} />
@@ -641,5 +668,238 @@ function ProbeReport({ probe }: { probe: ProbeStatus }): ReactNode {
         </>
       )}
     </div>
+  )
+}
+
+/** A count, Belgian grouping and no decimals: token totals reach six figures. */
+const count = (value: number): string => formatDecimal(value, 0)
+
+/**
+ * What the assistant has cost this month, and what it cost before — moved here from its
+ * own Settings tab, because nothing on it is a setting: it is read-only monitoring plus
+ * the one button that starts an analysis by hand, which belongs beside the rest of "is
+ * this instance working" rather than beside the thresholds and prompts that configure it.
+ *
+ * Figures are micro-euros, printed by `formatMicroEur` rather than divided here — one
+ * analysis can cost €0,0004, and a page that rounded to cents would show `€ 0,00` beside
+ * a button that charges for being pressed. The history is the server's, newest first, and
+ * nothing on this panel is summed: `spentMicroEur` is a view over `ai_runs`, which is the
+ * only place a month's total is computed.
+ */
+function AiUsage({
+  ai,
+  state,
+  owner,
+  estimate,
+}: { ai: Settings['ai'] } & Pick<SettingsPanelProps, 'state' | 'owner' | 'estimate'>): ReactNode {
+  const { t, language } = useT()
+
+  return (
+    <>
+      <h3 className="panel__subtitle">{t('settings:ai.title')}</h3>
+      <p className="panel__hint muted">
+        {t('settings:ai.spend', {
+          spent: formatMicroEur(ai.spentMicroEur),
+          budget: formatMicroEur(ai.budgetMicroEur),
+        })}
+      </p>
+
+      {ai.exceeded ? (
+        <div className="notice notice--warn" role="status">
+          <p className="notice__lead">{t('settings:ai.exceeded')}</p>
+        </div>
+      ) : null}
+
+      <div className="grid-cards">
+        <Metric
+          label={t('settings:ai.spent')}
+          value={formatMicroEur(ai.spentMicroEur)}
+          unknown={t('empty.unknown')}
+          note={t('settings:ai.used', { used: formatBp(ai.usedBp) })}
+          {...(ai.exceeded ? { tone: 'negative' as const } : {})}
+        />
+        <Metric
+          label={t('settings:ai.remaining')}
+          value={formatMicroEur(ai.remainingMicroEur)}
+          unknown={t('empty.unknown')}
+          rows={[
+            { label: t('settings:ai.month'), value: formatMonth(ai.month, language) },
+            { label: t('settings:ai.budget'), value: formatMicroEur(ai.budgetMicroEur) },
+            { label: t('settings:ai.model.fast'), value: ai.models.fast },
+            { label: t('settings:ai.model.deep'), value: ai.models.deep },
+          ]}
+        />
+      </div>
+
+      {ai.availability.enabled ? (
+        <Rerun state={state} owner={owner} estimate={estimate} />
+      ) : (
+        <RerunOff availability={ai.availability} />
+      )}
+
+      {ai.history.length === 0 ? null : (
+        <>
+          <h3 className="panel__subtitle">{t('settings:ai.history')}</h3>
+          <ul className="months">
+            {ai.history.map((month) => (
+              <li className="months__row" key={month.month}>
+                <span className="months__month">{formatMonth(month.month, language)}</span>
+                <span className="months__cost num">{formatMicroEur(month.costMicroEur)}</span>
+                <span className="months__meta muted num">
+                  {t('settings:ai.runs')} {count(month.runCount)} ·{' '}
+                  {t('settings:ai.tokens.input')} {count(month.inputTokens)} ·{' '}
+                  {t('settings:ai.tokens.output')} {count(month.outputTokens)} ·{' '}
+                  {t('settings:ai.tokens.cached')} {count(month.cachedTokens)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
+  )
+}
+
+/**
+ * The one control on this page that spends money.
+ *
+ * Two presses rather than one. Everything else on the settings page is undoable — a
+ * threshold can be set back, a prompt version can be re-activated — and this is not: the
+ * call is made, the tokens are billed, and the month's remaining budget printed two
+ * inches above is smaller than it was. A confirm step whose label carries the amount is
+ * the cheapest way to make that a decision rather than a click.
+ *
+ * The price comes first and the button only exists once it has arrived. It is the page's
+ * own read of `/api/ai/estimate` — the same number the prompt editor's test run prices
+ * itself with, so the two cannot disagree — and it answers a `409` on a deployment that
+ * has aggregated nothing, which is a sentence rather than a failure: there is no month to
+ * analyse yet and no reason to offer a run.
+ *
+ * **Over budget it stays pressable.** The server takes that decision, not this button:
+ * `POST /api/ai/refresh` accepts the request and the analysis degrades to the cached
+ * answer with a banner, which is the documented behaviour of the cost guard and the only
+ * way a reader can reach it. Disabling here would be a second cost rule in a different
+ * place, and the warning line says what will happen instead.
+ *
+ * It does not join the refresh bar's polling. That bar waits on job rows, which is right
+ * for four jobs that take a second each; an analysis takes as long as Gemini takes, and
+ * the honest thing to say is where the result will appear rather than to spin until it
+ * does.
+ */
+function Rerun({
+  state,
+  owner,
+  estimate,
+}: Pick<SettingsPanelProps, 'state' | 'owner' | 'estimate'>): ReactNode {
+  const { t, language } = useT()
+  const [armed, setArmed] = useState(false)
+  const [started, setStarted] = useState<RefreshAccepted | null>(null)
+
+  const priced: AiEstimate | null = estimate.data
+  // The fresh-deployment answer, same as the prompt editor's: nothing aggregated, so no
+  // month to price a run against. Any other failure leaves the section empty rather than
+  // offering a button with no price on it. The other `409` from that endpoint — an
+  // unavailable model — cannot reach here: this component is not rendered at all in that
+  // case, which is the only reason one code can stand for one sentence (#165).
+  const noMonth = estimate.error?.code === 'conflict'
+
+  return (
+    <section className="rerun">
+      <h3 className="panel__subtitle">{t('settings:ai.rerun.title')}</h3>
+      <p className="muted">{t('settings:ai.rerun.lede')}</p>
+
+      {noMonth ? <p className="muted">{t('settings:ai.rerun.noMonth')}</p> : null}
+      {priced === null ? null : (
+        <>
+          <p className="muted">
+            {t('settings:ai.rerun.price', {
+              month: formatMonth(priced.month, language),
+              cost: formatMicroEur(priced.estimateMicroEur),
+            })}
+          </p>
+          {priced.allowed || priced.reason === null ? null : (
+            <p className="notice notice--warn" role="status">
+              {t(`settings:ai.reason.${priced.reason}`)}
+            </p>
+          )}
+          {armed ? (
+            <div className="rerun__confirm">
+              <button
+                type="button"
+                className="button"
+                disabled={!owner || state.busy}
+                onClick={() => {
+                  state.ask<RefreshAccepted>(
+                    'ai-refresh',
+                    'POST',
+                    '/api/ai/refresh',
+                    undefined,
+                    (accepted) => {
+                      setArmed(false)
+                      setStarted(accepted)
+                    },
+                  )
+                }}
+              >
+                {state.pending === 'ai-refresh'
+                  ? t('settings:ai.rerun.starting')
+                  : t('settings:ai.rerun.confirm', {
+                      cost: formatMicroEur(priced.estimateMicroEur),
+                    })}
+              </button>
+              <button
+                type="button"
+                className="button button--quiet"
+                disabled={state.busy}
+                onClick={() => setArmed(false)}
+              >
+                {t('settings:ai.rerun.cancel')}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="button button--quiet"
+              disabled={!owner || state.busy}
+              onClick={() => setArmed(true)}
+            >
+              {t('settings:ai.rerun.start')}
+            </button>
+          )}
+        </>
+      )}
+
+      {started === null ? null : (
+        <p className="muted" role="status">
+          {t('settings:ai.rerun.started')}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/**
+ * The same section with the button removed and the reason in its place.
+ *
+ * Not a hidden control: a heading that disappears is read as a feature that was taken
+ * away, and the number above it — a budget, a spend of zero — invites exactly the
+ * question this answers. The wording is `ai:off.*`, shared with the panel on the
+ * insights page, because two catalogues explaining the same three states in different
+ * words is how one of them ends up wrong.
+ *
+ * No estimate is shown. Pricing a run that cannot start is what puts a figure in front
+ * of someone as though pressing something would spend it.
+ */
+function RerunOff({ availability }: { availability: AiAvailabilityWire }): ReactNode {
+  const { t } = useT()
+  // Never null while `enabled` is false; the type cannot say so at this point.
+  const reason = availability.reason ?? 'notConfigured'
+
+  return (
+    <section className="rerun">
+      <h3 className="panel__subtitle">{t('settings:ai.rerun.title')}</h3>
+      <p className="muted">{t(`ai:off.reason.${reason}`)}</p>
+      <p className="muted">{t(`ai:off.how.${reason}`)}</p>
+    </section>
   )
 }

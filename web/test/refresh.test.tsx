@@ -32,12 +32,31 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionExpiryProvider } from '../src/api/resource.tsx'
 import { StatusPanel } from '../src/settings/Status.tsx'
-import type { AiAvailabilityWire, Freshness, JobStatus, RefreshAccepted, Status } from '../src/shared.ts'
+import type {
+  AiAvailabilityWire,
+  AiEstimate,
+  Freshness,
+  JobStatus,
+  RefreshAccepted,
+  Status,
+} from '../src/shared.ts'
 import { FreshnessBar } from '../src/ui/Refresh.tsx'
-import { i18nReady, renderApp } from './helpers.tsx'
+import { i18nReady, renderApp, stubResource, stubSettings, stubSettingsState } from './helpers.tsx'
 
 /** This suite is not about the AI card, so it is always on and never checked here. */
 const AI_ON: AiAvailabilityWire = { enabled: true, reason: null }
+
+/** A `<StatusPanel>` wired with the AI-on fixture, for the per-job-button cases below. */
+function panel(): ReactNode {
+  return (
+    <StatusPanel
+      settings={stubSettings(AI_ON)}
+      state={stubSettingsState()}
+      owner={true}
+      estimate={stubResource<AiEstimate>()}
+    />
+  )
+}
 
 /** What the hook polls at, and how many of those before it stops. Mirrors `Refresh.tsx`. */
 const POLL_MS = 2_000
@@ -385,17 +404,17 @@ const STATUS: Status = {
   probes: [],
 }
 
-/** The list item a job's label sits in, so a click lands on that row's own button. */
+/** The card a job's label sits in, so a click lands on that row's own button. */
 function row(label: string): HTMLElement {
-  const item = screen.getByText(label).closest('li')
+  const item = screen.getByText(label).closest('.status__job')
   if (item === null) throw new Error(`no row for ${label}`)
-  return item
+  return item as HTMLElement
 }
 
 describe('the per-job buttons on the status panel', () => {
   it('offers a run for the jobs the endpoint takes, and for no others', async () => {
     serve({ '/api/status': json(STATUS) })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, { path: '/settings/status/queue' })
+    renderApp(panel(), { path: '/settings/status/queue' })
     await tick()
 
     // `probe` and `sync`. Not `ai`, which has a priced control of its own on the panel
@@ -411,7 +430,7 @@ describe('the per-job buttons on the status panel', () => {
       '/api/status': json(STATUS),
       '/api/refresh': json(accepted(['sync'], ['sync', 'networth', 'signals']), 202),
     })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, { path: '/settings/status/queue' })
+    renderApp(panel(), { path: '/settings/status/queue' })
     await tick()
 
     fireEvent.click(within(row('Budget sync')).getByRole('button', { name: 'Run now' }))

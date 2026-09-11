@@ -29,16 +29,37 @@
  * Queue tab's content.
  */
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { StatusPanel } from '../src/settings/Status.tsx'
-import type { AiAvailabilityWire, RefreshAccepted, Status } from '../src/shared.ts'
-import { clickLink, i18nReady, renderApp, resetLanguage } from './helpers.tsx'
+import type { AiAvailabilityWire, AiEstimate, RefreshAccepted, Status } from '../src/shared.ts'
+import {
+  clickLink,
+  i18nReady,
+  renderApp,
+  resetLanguage,
+  stubResource,
+  stubSettings,
+  stubSettingsState,
+} from './helpers.tsx'
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 /** The AI card's default fixture: configured, on, and within budget. */
 const AI_ON: AiAvailabilityWire = { enabled: true, reason: null }
+
+/** A `<StatusPanel>` wired with the AI-on fixture, for cases below that only vary `owner`. */
+function panel(owner: boolean): ReactNode {
+  return (
+    <StatusPanel
+      settings={stubSettings(AI_ON)}
+      state={stubSettingsState()}
+      owner={owner}
+      estimate={stubResource<AiEstimate>()}
+    />
+  )
+}
 
 /** A healthy instance whose jobs have all run. The baseline every case narrows from. */
 const HEALTHY: Status = {
@@ -100,7 +121,15 @@ async function show(
   const { owner = true, aiAvailability = AI_ON, path = '/settings/status' } = options
   const mock = vi.fn(() => Promise.resolve(body instanceof Response ? body : json(body)))
   vi.stubGlobal('fetch', mock)
-  renderApp(<StatusPanel owner={owner} aiAvailability={aiAvailability} />, { path })
+  renderApp(
+    <StatusPanel
+      settings={stubSettings(aiAvailability)}
+      state={stubSettingsState()}
+      owner={owner}
+      estimate={stubResource<AiEstimate>()}
+    />,
+    { path },
+  )
   await screen.findByRole('heading', { level: 2, name: /Status|status/ })
   return mock
 }
@@ -482,7 +511,7 @@ describe('a job’s run history', () => {
       return Promise.reject(new Error(`unstubbed request: ${path}`))
     })
     vi.stubGlobal('fetch', mock)
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+    renderApp(panel(true), {
       path: '/settings/status/queue',
     })
     await screen.findByText('Budget sync')
@@ -521,7 +550,7 @@ describe('a job’s run history', () => {
         ],
       }),
     })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+    renderApp(panel(true), {
       path: '/settings/status/queue',
     })
     await screen.findByText('Budget sync')
@@ -544,7 +573,7 @@ describe('a job’s run history', () => {
       '/api/status': json(oneJob),
       '/api/status/history?job=sync': json({ jobName: 'sync', runs: [] }),
     })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+    renderApp(panel(true), {
       path: '/settings/status/queue',
     })
     await screen.findByText('Budget sync')
@@ -591,7 +620,7 @@ describe('the danger zone', () => {
 
   it('disables the control for a viewer, without hiding what it would do', async () => {
     serve({ '/api/status': json(HEALTHY) })
-    renderApp(<StatusPanel owner={false} aiAvailability={AI_ON} />, {
+    renderApp(panel(false), {
       path: '/settings/status/queue',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
@@ -606,7 +635,7 @@ describe('the danger zone', () => {
       '/api/status': json(HEALTHY),
       '/api/refresh/reset': json(resetAccepted, 202),
     })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+    renderApp(panel(true), {
       path: '/settings/status/queue',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
@@ -624,7 +653,7 @@ describe('the danger zone', () => {
       '/api/status': json(HEALTHY),
       '/api/refresh/reset': json(resetAccepted, 202),
     })
-    renderApp(<StatusPanel owner={true} aiAvailability={AI_ON} />, {
+    renderApp(panel(true), {
       path: '/settings/status/queue',
     })
     await screen.findByRole('heading', { level: 2, name: /Status|status/ })
