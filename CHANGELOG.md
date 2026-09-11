@@ -6,6 +6,44 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.2] — 2026-09-11
+
+### Added
+
+- **Data Quality card explains what's costing points**
+  ([#329](https://github.com/nrosier/Balancr/issues/329)). Each deduction
+  row on the Overview page's Data Quality card is now a disclosure button
+  when there are matching findings behind it — clicking it renders the
+  specific finding sentences via the same catalogue the Insights and
+  Budget pages already use, instead of leaving someone to guess which
+  transaction or account a deduction is even about. A deduction with no
+  matching findings still renders as plain text, no button.
+- **Ghostfolio's endpoint checks moved onto its own Services card**
+  ([#331](https://github.com/nrosier/Balancr/issues/331)). The per-path
+  probe detail used to live only under the Queue tab, separate from the
+  Ghostfolio card's own at-a-glance verdict on Services. It now sits
+  behind a disclosure button on the card itself — the same click-to-expand
+  pattern as the Data Quality card above — so seeing *why* Ghostfolio is
+  degraded no longer means switching tabs.
+- **Queue tab's job and probe lists now render as cards**
+  ([#325](https://github.com/nrosier/Balancr/issues/325)), matching the
+  Services tab's own grid instead of the bordered list rows left over from
+  before that split.
+- **AI usage monitoring moved from its own Settings tab into Status**
+  ([#325](https://github.com/nrosier/Balancr/issues/325)). Nothing on the
+  old Spend tab was actually a setting — it was read-only cost/usage
+  monitoring plus a single "run an analysis now" control — so it now lives
+  behind the AI service card, the same way Services already answers "is my
+  stuff working" for Actual and Ghostfolio. Settings loses its standalone
+  Spend nav entry.
+- **Household split into Household/Comparison sub-tabs**
+  ([#327](https://github.com/nrosier/Balancr/issues/327)). Settings →
+  Benchmark → Household used to mix "who lives here" (roster and
+  shared-cost editing) with "what we compare against" (the Statbel
+  average-household correction) in one form; they're now separate
+  sub-tabs, both kept mounted so switching between them never discards an
+  in-progress edit.
+
 ## [1.0.1] — 2026-09-11
 
 The status page answers "is my stuff working" at a glance instead of a
