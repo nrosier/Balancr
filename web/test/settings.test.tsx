@@ -1265,6 +1265,17 @@ describe('the household', () => {
       name: 'Save',
     }) as HTMLButtonElement
 
+  /**
+   * `reference()`'s panel, for the tests below it (#290/#327): the Statbel correction
+   * form moved to Household's own Comparison sub-tab, which — like Household/Mapping one
+   * level up — stays mounted but `hidden` while its sibling shows. `getByRole` treats a
+   * `hidden` ancestor as inaccessible even though the node is in the document, so a test
+   * that queries the Save button (or clicks it) needs the Comparison tab actually active,
+   * not just `open()`'s default landing on Household.
+   */
+  const openComparison = (replies: Replies): Promise<Call[]> =>
+    openPage(replies, '/settings/benchmark/household/comparison', 'Comparison')
+
   /** The citation the fixture's file carries, which the boxes prefill from (#290). */
   const FILE_CITATION =
     'Statbel, Household Budget Survey 2024 — mean expenditure per household and per consumption unit'
@@ -1670,7 +1681,7 @@ describe('the household', () => {
   })
 
   it('names the source of every figure the comparison uses', async () => {
-    await open(READS)
+    await openComparison(READS)
 
     expect(
       screen.getByText(/Statbel, Household Budget Survey 2024/, { exact: false }),
@@ -1688,7 +1699,7 @@ describe('the household', () => {
   it('offers the average household as a correction, starting from the file (#290)', async () => {
     // The fixture's file carries no euro figure, so the panel says so and the boxes start
     // empty — typing a pair here is what switches the euro comparison on at all.
-    await open(READS)
+    await openComparison(READS)
 
     expect(screen.getByText(/The file carries no euro figure/)).toBeTruthy()
     expect(
@@ -1698,7 +1709,7 @@ describe('the household', () => {
   })
 
   it('prefills all three boxes from the file when it has the figures (#290)', async () => {
-    await open({ ...READS, '/api/settings': json(withReference) })
+    await openComparison({ ...READS, '/api/settings': json(withReference) })
 
     expect(
       (screen.getByLabelText('Average household spending per month') as HTMLInputElement).value,
@@ -1714,7 +1725,7 @@ describe('the household', () => {
   })
 
   it('sends both figures and the citation together (#290)', async () => {
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(withReference),
       '/api/settings/benchmark-reference': json(withReference),
@@ -1748,7 +1759,7 @@ describe('the household', () => {
   })
 
   it('refuses a size the scale could not use, and a citation that names nothing (#290)', async () => {
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(withReference),
     })
@@ -1786,7 +1797,7 @@ describe('the household', () => {
         },
       },
     }
-    const calls = await open({
+    const calls = await openComparison({
       ...READS,
       '/api/settings': json(overridden),
       '/api/settings/benchmark-reference': json(withReference),
@@ -1815,7 +1826,7 @@ describe('the household', () => {
   })
 
   it('leaves the average household read-only for a viewer (#290)', async () => {
-    await open({
+    await openComparison({
       ...READS,
       '/api/settings': json({
         ...withReference,
