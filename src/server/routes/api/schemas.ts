@@ -28,7 +28,7 @@ import {
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
-import { BENCHMARK_BASES } from '../../../domain/benchmark/compare.ts'
+import { BENCHMARK_BASES, BENCHMARK_PERIODS } from '../../../domain/benchmark/compare.ts'
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
   BENCHMARK_BLOCKS,
@@ -353,6 +353,9 @@ export const benchmarkComparisonSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('ok'),
     month: monthKey(),
+    period: z.enum(BENCHMARK_PERIODS),
+    /** How much of the period's nominal length has elapsed, 0..10000. 10000 is finished. */
+    periodProgressBp: basisPoints(),
     basis: z.enum(BENCHMARK_BASES),
     groups: z.array(benchmarkGroupSchema),
     comparedCents: cents(),

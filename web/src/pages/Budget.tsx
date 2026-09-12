@@ -72,6 +72,7 @@ import {
   formatMonth,
   formatMoney,
   type Budget as BudgetPayload,
+  type BenchmarkPeriodKind,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
@@ -119,11 +120,20 @@ export function Budget(): ReactNode {
   const { path } = useRouter()
   const section = sectionFor(path)
   const [month, setMonth] = useState<string | null>(null)
+  // The benchmark card's own window (#323) — a second page-owned selection, folded
+  // into the same query string as `month` rather than a state of its own component,
+  // for the reason `MonthPicker` already is: `useResource` refetches on a path
+  // change and that is the entire mechanism. `'month'` is left out of the query
+  // string entirely, since it is the server's own default and every existing
+  // bookmark predates this control.
+  const [benchmarkPeriod, setBenchmarkPeriod] = useState<BenchmarkPeriodKind>('month')
   // No month yet means "whatever the server considers latest", which is what the
   // endpoint defaults to. Naming a month here would guess at what has been aggregated.
-  const resource = useResource<BudgetPayload>(
-    month === null ? '/api/budget' : `/api/budget?month=${month}`,
-  )
+  const params = new URLSearchParams()
+  if (month !== null) params.set('month', month)
+  if (benchmarkPeriod !== 'month') params.set('benchmarkPeriod', benchmarkPeriod)
+  const query = params.toString()
+  const resource = useResource<BudgetPayload>(query === '' ? '/api/budget' : `/api/budget?${query}`)
 
   return (
     <>
@@ -135,6 +145,8 @@ export function Budget(): ReactNode {
             data={data}
             section={section}
             onSelect={setMonth}
+            benchmarkPeriod={benchmarkPeriod}
+            onBenchmarkPeriodSelect={setBenchmarkPeriod}
             onRefreshed={resource.reload}
           />
         )}
@@ -147,10 +159,19 @@ interface FiguresProps {
   data: BudgetPayload
   section: (typeof BUDGET_SECTIONS)[number]['id']
   onSelect: (month: string) => void
+  benchmarkPeriod: BenchmarkPeriodKind
+  onBenchmarkPeriodSelect: (period: BenchmarkPeriodKind) => void
   onRefreshed: () => void
 }
 
-function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactNode {
+function Figures({
+  data,
+  section,
+  onSelect,
+  benchmarkPeriod,
+  onBenchmarkPeriodSelect,
+  onRefreshed,
+}: FiguresProps): ReactNode {
   const { t, language } = useT()
   const {
     benchmark,
@@ -286,7 +307,13 @@ function Figures({ data, section, onSelect, onRefreshed }: FiguresProps): ReactN
         answers for itself now (#300) — the server sends `no_month` when there are no rows,
         and every reason has a box.
       */}
-      {section === 'benchmark' && <Benchmark benchmark={benchmark} />}
+      {section === 'benchmark' && (
+        <Benchmark
+          benchmark={benchmark}
+          period={benchmarkPeriod}
+          onPeriodSelect={onBenchmarkPeriodSelect}
+        />
+      )}
 
       {/*
         Same as the Benchmark tab above, and for the same reason: no `categories.length > 0`

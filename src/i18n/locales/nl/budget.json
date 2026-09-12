@@ -36,11 +36,23 @@
       "solo": "Één persoon: {{scale}} op de equivalentieschaal."
     },
     "lede": {
-      "level": "Waar {{month}} op uitkwam, naast wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{year}}: jouw <money>{{total}}</money> vergeleken uitgaven tegen die van hen, euro voor euro.",
-      "mix": "Hoe jouw <money>{{total}}</money> uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{year}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
+      "level": {
+        "month": "Waar {{month}} op uitkwam, naast wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{surveyYear}}: jouw <money>{{total}}</money> vergeleken uitgaven tegen die van hen, euro voor euro.",
+        "year": "Waar {{year}} op uitkomt, naast een volledig jaar van wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{surveyYear}}: jouw <money>{{total}}</money> vergeleken uitgaven tegen die van hen, euro voor euro."
+      },
+      "mix": {
+        "month": "Hoe jouw <money>{{total}}</money> uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij.",
+        "year": "Hoe jouw <money>{{total}}</money> uitgaven van {{year}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
+      }
     },
     "mapped": "{{share}} van jouw <money>{{consumption}}</money> huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
     "outside": "<money>{{amount}}</money> aan sparen, belastingen en overdrachten valt buiten de vergelijking: het is geen huishoudelijke consumptie en de aandelen van het onderzoek dekken het niet.",
+    "period": {
+      "month": "Maand",
+      "prorated": "Deze periode is {{progress}} voorbij — de referentiekant volgt mee: elke afgelopen maand telt volledig, en de lopende maand telt enkel voor haar eigen aandeel.",
+      "year": "Jaar"
+    },
+    "periodLabel": "Periode",
     "source": "{{citation}}. Laatst nagekeken {{verified}}.",
     "state": {
       "above": "Boven referentie",

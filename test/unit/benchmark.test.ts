@@ -29,8 +29,11 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, settings } from '../../src/db/schema.ts'
 import {
+  benchmarkPeriodWindow,
   compareToBenchmark,
+  sumSpendRows,
   type BenchmarkComparison,
+  type BenchmarkPeriodKind,
   type Comparison,
   type SpendRow,
 } from '../../src/domain/benchmark/compare.ts'
@@ -104,6 +107,8 @@ function compare(
     benchmark?: Benchmark | null
     household?: Household
     month?: string
+    period?: BenchmarkPeriodKind
+    periodMonths?: number
   } = {},
 ): BenchmarkComparison {
   return compareToBenchmark({
@@ -112,6 +117,8 @@ function compare(
     month: options.month ?? '2026-08',
     rows,
     coicop: new Map(Object.entries(coicop)),
+    period: options.period ?? 'month',
+    periodMonths: options.periodMonths ?? 1,
   })
 }
 
@@ -507,6 +514,101 @@ describe('compareToBenchmark: the two bases', () => {
     )
     expect(result.basis).toBe('mix')
     expect(line(result, 'food')?.benchmarkCents).toBe(48_000)
+  })
+
+  it('scales the reference total linearly with periodMonths', () => {
+    // Same fixture as "compares euros against euros" above, but for a period covering
+    // two months of spending instead of one: the euro reference must double right along
+    // with it, or a year's worth of spending would be judged against a month's reference.
+    const benchmark = synthetic({
+      shares: [6_000, 4_000],
+      referenceHousehold: {
+        mean_monthly_cents: 300_000,
+        equivalent_adults_bp: 23_000,
+        citation: 'the survey spreadsheet',
+        last_verified: '2026-09-03',
+        status: 'transcribed',
+      },
+    })
+    const result = ok(
+      compare(
+        [
+          row({ categoryId: 'groceries', spentCents: 160_000 }),
+          row({ categoryId: 'meds', spentCents: 40_000 }),
+        ],
+        { groceries: '01', meds: '06' },
+        {
+          benchmark,
+          household: HOUSEHOLD([{ birthYear: 2013, custodyBp: 5_000 }]),
+          period: 'year',
+          periodMonths: 2,
+        },
+      ),
+    )
+    expect(line(result, 'food')?.benchmarkCents).toBe(180_000)
+    expect(line(result, 'health')?.benchmarkCents).toBe(120_000)
+    expect(result.period).toBe('year')
+    // 2 of a year's nominal 12 months.
+    expect(result.periodProgressBp).toBe(1_667)
+  })
+})
+
+describe('benchmarkPeriodWindow and sumSpendRows', () => {
+  // Noon UTC on 2026-08-17: August is 53.2258...% elapsed (16.5 of 31 days).
+  const ASOF = new Date('2026-08-17T12:00:00Z')
+  const TZ = 'UTC'
+  const AUGUST_PROGRESS = 16.5 / 31
+
+  it('month: is just the anchor month, pro-rated when it is still open', () => {
+    expect(benchmarkPeriodWindow('month', '2026-08', ASOF, TZ)).toEqual({
+      months: ['2026-08'],
+      periodMonths: AUGUST_PROGRESS,
+    })
+  })
+
+  it('month: a finished past month is a whole month', () => {
+    expect(benchmarkPeriodWindow('month', '2026-05', ASOF, TZ)).toEqual({
+      months: ['2026-05'],
+      periodMonths: 1,
+    })
+  })
+
+  it('year: a finished past year sums to exactly its month count', () => {
+    const result = benchmarkPeriodWindow('year', '2025-12', ASOF, TZ)
+    expect(result.months).toHaveLength(12)
+    expect(result.months[0]).toBe('2025-01')
+    expect(result.months[11]).toBe('2025-12')
+    expect(result.periodMonths).toBe(12)
+  })
+
+  it('year: sums January through the anchor month, pro-rating an open anchor', () => {
+    const result = benchmarkPeriodWindow('year', '2026-08', ASOF, TZ)
+    expect(result.months).toEqual([
+      '2026-01',
+      '2026-02',
+      '2026-03',
+      '2026-04',
+      '2026-05',
+      '2026-06',
+      '2026-07',
+      '2026-08',
+    ])
+    // Seven finished months plus August's own fraction.
+    expect(result.periodMonths).toBeCloseTo(7 + AUGUST_PROGRESS, 10)
+  })
+
+  it('sumSpendRows: sums spentCents per category across months, keeping the first month’s name', () => {
+    const january: SpendRow[] = [
+      row({ categoryId: 'groceries', categoryName: 'Groceries', spentCents: 100 }),
+    ]
+    const february: SpendRow[] = [
+      row({ categoryId: 'groceries', categoryName: 'Groceries (renamed)', spentCents: 50 }),
+      row({ categoryId: 'health', categoryName: 'Health', spentCents: 30 }),
+    ]
+    expect(sumSpendRows([january, february])).toEqual([
+      row({ categoryId: 'groceries', categoryName: 'Groceries', spentCents: 150 }),
+      row({ categoryId: 'health', categoryName: 'Health', spentCents: 30 }),
+    ])
   })
 })
 
