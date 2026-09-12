@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.0.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.1.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -988,17 +988,17 @@ ends.
 | `0.11.0` | Forecasting and on-demand insight | ✅ |
 | `1.0.0-rc.N` | Feature complete, in testing | ✅ shipped as `1.0.0-rc.8` |
 | `1.0.0` | Blessed by the person whose money it is | ✅ |
+| `1.1.0` | Small fixes and polish shipped after v1.0.0 | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.0.3` is the current release, a patch on top of `1.0.0`.
-Every feature issue in the list above is still closed; this slice is a data-quality
-fix — a transfer that crosses the on-budget/off-budget boundary keeps a real
-category on its on-budget leg in Actual, and Balancr's own recomputed spend was
-dropping that leg as a same-side wash, so the category's own sum disagreed with
-Actual's by exactly the transferred amount.
+**Where it is now** — `1.1.0` is the current release. The slices of this milestone
+already shipped as `1.0.1`, `1.0.2` and `1.0.3`; this release closes it out with
+the last two issues — a scenario simulator (a what-if calculator seeded with the
+household's own investment contribution and net worth) and a Month/Year period
+picker for the Statbel benchmark card, pro-rated for a partial period.
 
-`docker pull` now resolves `latest` to `1.0.3`; a release candidate is published
+`docker pull` now resolves `latest` to `1.1.0`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
