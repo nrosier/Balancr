@@ -63,15 +63,17 @@ export function resolveLocale(request: FastifyRequest): string {
 export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/overview', () => buildOverview(db))
 
-  app.get('/api/budget', (request: FastifyRequest) =>
-    buildBudget(
+  app.get('/api/budget', (request: FastifyRequest) => {
+    const query = request.query as { month?: unknown; benchmarkPeriod?: unknown } | undefined
+    return buildBudget(
       db,
-      (request.query as { month?: unknown } | undefined)?.month,
+      query?.month,
       // Only so the page knows whether to draw the month note's editor.
       // `PATCH /api/budget/note` gates itself; this is presentation (#158, #270).
       request.user?.role === 'owner',
-    ),
-  )
+      query?.benchmarkPeriod,
+    )
+  })
 
   app.get('/api/portfolio', () => buildPortfolio(db))
 

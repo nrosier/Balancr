@@ -11,7 +11,11 @@
  * `insights` returns — codes and integers, never sentences. The client renders
  * them through the i18n catalogue, which is why this endpoint has no opinion about
  * language.
+ *
+ * `?benchmarkPeriod=month|year|ytd` (default `month`) widens the benchmark card alone
+ * (#323) — everything else on the page still answers for `month`.
  */
+import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import { loadCategoryTrends, loadFacts } from '../../../domain/aggregate/facts.ts'
 import {
@@ -23,6 +27,12 @@ import {
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { custodyContext, splitMonth } from '../../../domain/aggregate/custody-context.ts'
+import {
+  BENCHMARK_PERIODS,
+  benchmarkPeriodWindow,
+  sumSpendRows,
+  type BenchmarkPeriodKind,
+} from '../../../domain/benchmark/compare.ts'
 import { benchmarkContext, compareMonth } from '../../../domain/benchmark/context.ts'
 import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
@@ -58,7 +68,30 @@ export function resolveMonth(db: Db, raw: unknown): string | null {
   return raw
 }
 
-export function buildBudget(db: Db, monthParam: unknown, owner: boolean): Budget {
+/**
+ * Which months the benchmark card compares, per `?benchmarkPeriod=`.
+ *
+ * A malformed value is a 400 for the same reason a malformed `month` is: silently
+ * falling back to the default would answer a client bug with plausible data instead
+ * of a visible error.
+ */
+export function resolveBenchmarkPeriod(raw: unknown): BenchmarkPeriodKind {
+  if (raw === undefined || raw === null || raw === '') return 'month'
+  if (
+    typeof raw !== 'string' ||
+    !BENCHMARK_PERIODS.includes(raw as BenchmarkPeriodKind)
+  ) {
+    throw badRequest('benchmarkPeriod must be month, year, or ytd.')
+  }
+  return raw as BenchmarkPeriodKind
+}
+
+export function buildBudget(
+  db: Db,
+  monthParam: unknown,
+  owner: boolean,
+  benchmarkPeriodParam: unknown = undefined,
+): Budget {
   const month = resolveMonth(db, monthParam)
   // Nothing computed at all: report the empty state under the current month rather
   // than inventing one, so the client has a label for its own "no data yet" screen.
@@ -72,6 +105,20 @@ export function buildBudget(db: Db, monthParam: unknown, owner: boolean): Budget
   const trends = loadCategoryTrends(db, resolved, TREND_MONTHS)
   const totals = loadMonthTotals(db, [resolved])[0] ?? null
   const uncategorised = loadUncategorised(db, [resolved])[0] ?? null
+
+  const benchmarkPeriod = resolveBenchmarkPeriod(benchmarkPeriodParam)
+  const { months: benchmarkMonths, periodMonths } = benchmarkPeriodWindow(
+    benchmarkPeriod,
+    resolved,
+    new Date(),
+    config.TZ,
+  )
+  // The common case — a plain month — needs no extra query: `facts` already is that
+  // one month's rows. A year or YTD sums whichever other months the window covers.
+  const benchmarkRows =
+    benchmarkMonths.length === 1 && benchmarkMonths[0] === resolved
+      ? facts
+      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, m))))
 
   return budgetSchema.parse({
     freshness: freshness(db),
@@ -129,7 +176,13 @@ export function buildBudget(db: Db, monthParam: unknown, owner: boolean): Budget
         new Array<number>(trends.months.length).fill(0),
     })),
     signals: loadSignals(db, resolved),
-    benchmark: compareMonth(benchmarkContext(db), resolved, facts),
+    benchmark: compareMonth(
+      benchmarkContext(db),
+      resolved,
+      benchmarkRows,
+      benchmarkPeriod,
+      periodMonths,
+    ),
     custody: splitMonth(custodyContext(db), resolved, facts),
     uncategorised:
       uncategorised === null
