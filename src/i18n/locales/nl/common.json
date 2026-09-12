@@ -97,6 +97,7 @@
     "label": "Onderdelen",
     "overview": "Overzicht",
     "portfolio": "Portefeuille",
+    "scenario": "Scenario",
     "settings": "Instellingen"
   },
   "notFound": {
@@ -119,6 +120,9 @@
     },
     "portfolio": {
       "lede": "Spreiding, rendement en elke positie erachter."
+    },
+    "scenario": {
+      "lede": "Wat een aanpassing van je maandelijkse investering later waard zou zijn."
     },
     "settings": {
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
@@ -195,6 +199,8 @@
     "lastUpdated": "Bijgewerkt op {{when}}",
     "monthCount_one": "{{value}} maand",
     "monthCount_other": "{{value}} maanden",
-    "monthToDate": "Deze maand tot nu"
+    "monthToDate": "Deze maand tot nu",
+    "yearCount_one": "{{value}} jaar",
+    "yearCount_other": "{{value}} jaar"
   }
 }

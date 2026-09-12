@@ -264,6 +264,21 @@ export const forecastSchema = z.object({
 export type Forecast = z.infer<typeof forecastSchema>
 
 // ---------------------------------------------------------------------------
+//  Scenario (#51)
+// ---------------------------------------------------------------------------
+
+export const scenarioSchema = z.object({
+  freshness: freshnessSchema,
+  scenario: z.object({
+    month: monthKey().nullable(),
+    baselineCents: cents().nullable(),
+    snapshotDate: dateKey().nullable(),
+    startingValueCents: cents().nullable(),
+  }),
+})
+export type Scenario = z.infer<typeof scenarioSchema>
+
+// ---------------------------------------------------------------------------
 //  Budget
 // ---------------------------------------------------------------------------
 

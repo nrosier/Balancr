@@ -115,6 +115,7 @@ export type {
   ProposalDecision,
   RefreshAccepted,
   RiskProfileSetting,
+  Scenario,
   Settings,
   SpendMonthSetting,
   Status,
@@ -149,6 +150,19 @@ export {
   TRAILING_MONTHS,
 } from '../../src/domain/aggregate/savings.ts'
 export type { PeriodSavings, SavingsMonth, SavingsPeriod } from '../../src/domain/aggregate/savings.ts'
+
+// The scenario page recomputes on every input change (#51) — the same reason
+// `periodSavings` is re-exported: `projectScenario` is pure, so the page runs it
+// locally instead of round-tripping to the server per keystroke or slider drag. From
+// `scenario-projection.ts`, not `scenario.ts`: the latter reaches the database (for
+// the real seed values) and that chain must not enter the browser bundle.
+export {
+  DEFAULT_GROWTH_RATE_BP,
+  DEFAULT_HORIZON_MONTHS,
+  MAX_HORIZON_MONTHS,
+  projectScenario,
+} from '../../src/domain/aggregate/scenario-projection.ts'
+export type { ScenarioInput, ScenarioMonth } from '../../src/domain/aggregate/scenario-projection.ts'
 
 export {
   grossYieldBp,

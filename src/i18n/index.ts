@@ -34,6 +34,7 @@ export const NAMESPACES = [
   'common',
   'budget',
   'forecast',
+  'scenario',
   'portfolio',
   'ai',
   'settings',

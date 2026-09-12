@@ -26,7 +26,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { categoryMeta, clarificationQueue, proposals, users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
@@ -53,6 +53,7 @@ const ENDPOINTS = [
   '/api/budget',
   '/api/portfolio',
   '/api/forecast',
+  '/api/scenario',
   '/api/insights',
 ] as const
 
@@ -451,6 +452,27 @@ describe('GET /api/forecast', () => {
     ctx.db.run(sql`DELETE FROM net_worth_snapshots`)
     const body = (await get('/api/forecast')).json()
     expect(body.forecast).toBeNull()
+  })
+})
+
+describe('GET /api/scenario', () => {
+  it('reports the real starting value, with no baseline while no category is tagged investments', async () => {
+    const body = (await get('/api/scenario')).json()
+
+    expect(body.scenario.month).toBe(MONTH)
+    expect(body.scenario.baselineCents).toBeNull()
+    expect(body.scenario.snapshotDate).toBe(SNAPSHOT_DATE)
+    expect(body.scenario.startingValueCents).toBe(3_700_000)
+  })
+
+  it('sums the baseline once a category is tagged investments', async () => {
+    ctx.db
+      .update(categoryMeta)
+      .set({ nature: 'investments' })
+      .where(eq(categoryMeta.categoryId, 'cat-groceries'))
+      .run()
+    const body = (await get('/api/scenario')).json()
+    expect(body.scenario.baselineCents).toBe(61_000)
   })
 })
 
@@ -1063,6 +1085,14 @@ describe('a deployment that has never run a job', () => {
 
     const forecast = (await get('/api/forecast')).json()
     expect(forecast.forecast).toBeNull()
+
+    const scenario = (await get('/api/scenario')).json()
+    expect(scenario.scenario).toEqual({
+      month: null,
+      baselineCents: null,
+      snapshotDate: null,
+      startingValueCents: null,
+    })
   })
 
   it('does not describe an empty deployment as stale', async () => {
@@ -1108,11 +1138,18 @@ describe('money', () => {
     })
   }
 
+  // Most endpoints carry a dozen amounts; a calculator whose whole payload is one
+  // baseline and one starting value legitimately has fewer, so its floor is lower —
+  // still enough to catch the walk matching nothing.
+  const MIN_AMOUNTS: Partial<Record<(typeof ENDPOINTS)[number], number>> = {
+    '/api/scenario': 1,
+  }
+
   it('is integer cents and integer basis points, everywhere, on every endpoint', async () => {
     for (const url of ENDPOINTS) {
       const found = amounts((await get(url)).json())
       // A guard against the walk itself silently matching nothing.
-      expect(found.length, url).toBeGreaterThan(5)
+      expect(found.length, url).toBeGreaterThan(MIN_AMOUNTS[url] ?? 5)
       for (const { path, value } of found) {
         if (value === null) continue
         expect(typeof value, `${url} ${path}`).toBe('number')

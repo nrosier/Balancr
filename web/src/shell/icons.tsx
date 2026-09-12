@@ -80,6 +80,17 @@ export const IconForecast = (props: IconProps): ReactNode =>
     props,
   )
 
+/** Scenario — a path forking in two: the road as it is, and a dashed "what if" beside it. */
+export const IconScenario = (props: IconProps): ReactNode =>
+  svg(
+    <>
+      <path d="M3.5 16.5 9 11" />
+      <path d="M9 11 16.5 3.5" />
+      <path d="M9 11 16.5 12.5" strokeDasharray="1.6 1.8" />
+    </>,
+    props,
+  )
+
 /** Insights — a remark worth reading. */
 export const IconInsights = (props: IconProps): ReactNode =>
   svg(

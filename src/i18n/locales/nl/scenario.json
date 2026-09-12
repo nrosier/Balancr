@@ -1,0 +1,32 @@
+{
+  "chart": {
+    "baseline": "Zoals nu",
+    "delta": "Verschil",
+    "summary": "Vanaf {{start}} komt het pad zoals nu uit op {{baselineEnd}} na {{years}} jaar; met de aanpassing op {{scenarioEnd}} — een verschil van {{delta}}.",
+    "title": "Geprojecteerde waarde",
+    "withChange": "Met de aanpassing"
+  },
+  "hint": {
+    "noBaseline": "Nog geen categorie is gemarkeerd als Investeringen, dus dit start vanaf het cijfer hieronder in plaats van een echt cijfer. Markeer er een onder Instellingen › Benchmark om je eigen cijfer te gebruiken.",
+    "noStartingValue": "Nog geen momentopname van de nettowaarde, dus dit start vanaf het cijfer hieronder in plaats van een echt cijfer."
+  },
+  "input": {
+    "baseline": "Huidige maandelijkse inleg",
+    "change": "Maandelijkse aanpassing",
+    "growthRate": "Verwachte jaarlijkse groei",
+    "horizon": "Horizon (jaren)",
+    "recurringLabel": "Hoe de aanpassing toegepast wordt",
+    "recurringOption": {
+      "lumpSum": "Eenmalig",
+      "recurring": "Elke maand"
+    },
+    "startingValue": "Huidige geïnvesteerde waarde",
+    "title": "Pas de aannames aan"
+  },
+  "metric": {
+    "asIs": "Geprojecteerde waarde, zoals nu",
+    "contribution": "Huidige maandelijkse inleg",
+    "delta": "Verschil aan het einde",
+    "withChange": "Geprojecteerde waarde, met de aanpassing"
+  }
+}
