@@ -29,7 +29,7 @@
  *  - **The benchmark vocabulary.** `domain/benchmark/vocabulary.ts` is split out of the
  *    loader for this import: the mapping form draws a picker over the twelve COICOP
  *    divisions plus the reserved `00`, the benchmark card names the two thresholds the
- *    comparison applied, and (#323) the same card's own period picker draws its three
+ *    comparison applied, and (#323) the same card's own period picker draws its two
  *    options from here rather than from `compare.ts`, which is where they are consumed
  *    but which reaches the loader and `config` to get there. Everything else in
  *    `domain/benchmark/` reads a YAML file off disk.

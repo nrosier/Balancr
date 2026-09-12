@@ -84,11 +84,17 @@ export type BenchmarkUnavailable = (typeof BENCHMARK_UNAVAILABLE)[number]
 /**
  * Which months a comparison covers (#323). Here rather than in `compare.ts` with
  * `benchmarkPeriodWindow` itself, for the same reason the group list is here: the
- * benchmark card draws a picker over these three, and a picker cannot import the
- * comparison engine to learn three strings without pulling in the file loader and
- * through it `config`.
+ * page's own month/year picker draws its choice from these two, and a picker cannot
+ * import the comparison engine to learn two strings without pulling in the file
+ * loader and through it `config`.
+ *
+ * Only two, not three: `year` already sums January through the latest month a job
+ * has written, which for the still-open current year *is* a year-to-date figure. A
+ * separate `ytd` kind would answer exactly the same question as `year` the moment
+ * the picker's only gesture for "year" is a calendar year with no way to name a
+ * different anchor month within it.
  */
-export const BENCHMARK_PERIODS = ['month', 'year', 'ytd'] as const
+export const BENCHMARK_PERIODS = ['month', 'year'] as const
 export type BenchmarkPeriodKind = (typeof BENCHMARK_PERIODS)[number]
 
 /**

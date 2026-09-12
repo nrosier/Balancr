@@ -38,13 +38,11 @@
     "lede": {
       "level": {
         "month": "What {{month}} came to, against what a household of your size spent according to the {{survey}} {{surveyYear}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro.",
-        "year": "What {{year}} has come to, against a full year of what a household of your size spent according to the {{survey}} {{surveyYear}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro.",
-        "ytd": "What this year has come to so far, against a full year of what a household of your size spent according to the {{survey}} {{surveyYear}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro."
+        "year": "What {{year}} has come to, against a full year of what a household of your size spent according to the {{survey}} {{surveyYear}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro."
       },
       "mix": {
         "month": "How your <money>{{total}}</money> of {{month}} spending divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do.",
-        "year": "How your <money>{{total}}</money> of {{year}} spending divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do.",
-        "ytd": "How your <money>{{total}}</money> of this year's spending so far divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
+        "year": "How your <money>{{total}}</money> of {{year}} spending divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
       }
     },
     "mapped": "{{share}} of your <money>{{consumption}}</money> of household spending is mapped to a group, and only that part is compared.",
@@ -52,8 +50,7 @@
     "period": {
       "month": "Month",
       "prorated": "This period is {{progress}} through — the reference side matches: any month already finished counts in full, and the one still open counts only its own share of a month.",
-      "year": "Year",
-      "ytd": "Year to date"
+      "year": "Year"
     },
     "periodLabel": "Period",
     "source": "{{citation}}. Last checked {{verified}}.",

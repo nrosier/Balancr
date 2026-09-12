@@ -344,17 +344,15 @@ describe('GET /api/budget', () => {
     }
   })
 
-  it('widens the benchmark window to a year or year-to-date without erroring (#323)', async () => {
+  it('widens the benchmark window to a year without erroring (#323)', async () => {
     // Nothing in this fixture is COICOP-mapped, so the comparison itself stays
     // `no_mapping` whichever period is asked for — what this proves is that summing
     // a whole year of mostly-empty months (this fixture only has two) does not 500.
-    for (const period of ['year', 'ytd']) {
-      const body = (await get(`/api/budget?benchmarkPeriod=${period}`)).json()
-      expect(body.benchmark).toEqual({ kind: 'unavailable', reason: 'no_mapping', mappedShareBp: 0 })
-    }
+    const body = (await get('/api/budget?benchmarkPeriod=year')).json()
+    expect(body.benchmark).toEqual({ kind: 'unavailable', reason: 'no_mapping', mappedShareBp: 0 })
   })
 
-  it('refuses a benchmarkPeriod that is not month, year, or ytd', async () => {
+  it('refuses a benchmarkPeriod that is not month or year', async () => {
     const res = await get('/api/budget?benchmarkPeriod=quarter')
     expect(res.statusCode).toBe(400)
     expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')

@@ -190,10 +190,7 @@ export function Benchmark({ benchmark, period, onPeriodSelect }: BenchmarkProps)
             values={{
               month: formatMonth(benchmark.month, language),
               // The window's own calendar year for `year` — always the anchor month's,
-              // since that is what `year` sums from January through. `ytd` names no
-              // year at all: it always covers the real current year regardless of which
-              // month is on screen, and a number derived from the anchor here would be
-              // one the domain itself does not use (`compare.ts`).
+              // since that is what `year` sums from January through.
               year: benchmark.month.slice(0, 4),
               survey: source.survey,
               surveyYear: String(source.year),

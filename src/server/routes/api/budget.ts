@@ -12,7 +12,7 @@
  * them through the i18n catalogue, which is why this endpoint has no opinion about
  * language.
  *
- * `?benchmarkPeriod=month|year|ytd` (default `month`) widens the benchmark card alone
+ * `?benchmarkPeriod=month|year` (default `month`) widens the benchmark card alone
  * (#323) — everything else on the page still answers for `month`.
  */
 import { config } from '../../../config.ts'
@@ -81,7 +81,7 @@ export function resolveBenchmarkPeriod(raw: unknown): BenchmarkPeriodKind {
     typeof raw !== 'string' ||
     !BENCHMARK_PERIODS.includes(raw as BenchmarkPeriodKind)
   ) {
-    throw badRequest('benchmarkPeriod must be month, year, or ytd.')
+    throw badRequest('benchmarkPeriod must be month or year.')
   }
   return raw as BenchmarkPeriodKind
 }

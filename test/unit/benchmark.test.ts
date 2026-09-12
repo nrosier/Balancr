@@ -597,13 +597,6 @@ describe('benchmarkPeriodWindow and sumSpendRows', () => {
     expect(result.periodMonths).toBeCloseTo(7 + AUGUST_PROGRESS, 10)
   })
 
-  it('ytd: always the real current year, regardless of the anchor month picked elsewhere', () => {
-    const result = benchmarkPeriodWindow('ytd', '2020-03', ASOF, TZ)
-    expect(result.months[0]).toBe('2026-01')
-    expect(result.months.at(-1)).toBe('2026-08')
-    expect(result.periodMonths).toBeCloseTo(7 + AUGUST_PROGRESS, 10)
-  })
-
   it('sumSpendRows: sums spentCents per category across months, keeping the first month’s name', () => {
     const january: SpendRow[] = [
       row({ categoryId: 'groceries', categoryName: 'Groceries', spentCents: 100 }),

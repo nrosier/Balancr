@@ -37,7 +37,7 @@
  * arguments, so the two callers — the nightly signals job and `GET /api/budget` — cannot
  * disagree about what the comparison says.
  */
-import { monthIn, monthProgress, monthRange } from '../../util/month.ts'
+import { monthProgress, monthRange } from '../../util/month.ts'
 import { equivalentAdults, type EquivalentAdults, type Household } from './household.ts'
 import { groupOf, transcribedBlocks, type Benchmark } from './model.ts'
 import {
@@ -62,7 +62,7 @@ export const BENCHMARK_BASES = ['mix', 'level'] as const
 export type BenchmarkBasis = (typeof BENCHMARK_BASES)[number]
 
 /** A period's nominal length in months, for turning `periodMonths` into a completeness fraction. */
-const PERIOD_DENOMINATOR: Record<BenchmarkPeriodKind, number> = { month: 1, year: 12, ytd: 12 }
+const PERIOD_DENOMINATOR: Record<BenchmarkPeriodKind, number> = { month: 1, year: 12 }
 
 /**
  * The months one comparison period covers, and how much of it has elapsed.
@@ -71,10 +71,10 @@ const PERIOD_DENOMINATOR: Record<BenchmarkPeriodKind, number> = { month: 1, year
  * than reading the clock internally, so the nightly job and `GET /api/budget` (#43's "cannot
  * disagree" invariant, see the module comment) get the same window from the same instant.
  *
- * `month` is just the anchor month itself. `year` sums January through the anchor month.
- * `ytd` always sums January through the *real* current month, regardless of which month is
- * being anchored elsewhere on the page — a "year to date" that used the anchor's month would
- * silently become a different question once anyone picked a month that wasn't the current one.
+ * `month` is just the anchor month itself. `year` sums January through the anchor month —
+ * callers anchor a *closed* year at its December and the still-open current year at whatever
+ * month a job most recently wrote, which is what makes `year` double as "year to date" without
+ * a third kind: the anchor, not the label, decides how much of the year is being asked about.
  *
  * `periodMonths` is not `months.length`: each month contributes its own `monthProgress`, so a
  * period that ends in the current, still-open month gets a fractional last month rather than a
@@ -87,13 +87,7 @@ export function benchmarkPeriodWindow(
   asOf: Date,
   timeZone: string,
 ): { months: readonly string[]; periodMonths: number } {
-  const nowMonth = monthIn(asOf, timeZone)
-  const months =
-    kind === 'month'
-      ? [anchorMonth]
-      : kind === 'year'
-        ? monthRange(`${anchorMonth.slice(0, 4)}-01`, anchorMonth)
-        : monthRange(`${nowMonth.slice(0, 4)}-01`, nowMonth)
+  const months = kind === 'month' ? [anchorMonth] : monthRange(`${anchorMonth.slice(0, 4)}-01`, anchorMonth)
   const periodMonths = months.reduce((sum, month) => sum + monthProgress(month, asOf, timeZone), 0)
   return { months, periodMonths }
 }

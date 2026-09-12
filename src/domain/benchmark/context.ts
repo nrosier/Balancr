@@ -52,7 +52,7 @@ export function benchmarkContext(db: Db): BenchmarkContext {
 /**
  * One period compared, given a context that was loaded once.
  *
- * `rows` must already cover the whole period (summed across months, for `year`/`ytd`) — this
+ * `rows` must already cover the whole period (summed across months, for `year`) — this
  * function does not know how to load or combine months, only how to compare what it is given.
  */
 export function compareMonth(
