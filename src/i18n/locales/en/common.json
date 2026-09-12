@@ -97,6 +97,7 @@
     "label": "Sections",
     "overview": "Overview",
     "portfolio": "Portfolio",
+    "scenario": "Scenario",
     "settings": "Settings"
   },
   "notFound": {
@@ -119,6 +120,9 @@
     },
     "portfolio": {
       "lede": "Allocation, return and every position behind them."
+    },
+    "scenario": {
+      "lede": "What a change to your monthly investing would be worth, years from now."
     },
     "settings": {
       "lede": "Language, prompts, thresholds and which source owns each account."
@@ -195,6 +199,8 @@
     "lastUpdated": "Updated {{when}}",
     "monthCount_one": "{{value}} month",
     "monthCount_other": "{{value}} months",
-    "monthToDate": "Month to date"
+    "monthToDate": "Month to date",
+    "yearCount_one": "{{value}} year",
+    "yearCount_other": "{{value}} years"
   }
 }
