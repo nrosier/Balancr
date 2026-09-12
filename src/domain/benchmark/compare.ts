@@ -37,19 +37,92 @@
  * arguments, so the two callers — the nightly signals job and `GET /api/budget` — cannot
  * disagree about what the comparison says.
  */
+import { monthProgress, monthRange } from '../../util/month.ts'
 import { equivalentAdults, type EquivalentAdults, type Household } from './household.ts'
 import { groupOf, transcribedBlocks, type Benchmark } from './model.ts'
 import {
+  BENCHMARK_PERIODS,
   isOutsideConsumption,
   MIN_MAPPED_BP,
   type BenchmarkBlock,
   type BenchmarkGroup,
+  type BenchmarkPeriodKind,
   type BenchmarkUnavailable,
 } from './vocabulary.ts'
+
+// Re-exported so every existing caller of this module — the API route, `context.ts`,
+// this file's own tests — can keep importing them from here rather than reaching
+// into `vocabulary.ts` directly. `web/src/shared.ts` is the one importer that must
+// use `vocabulary.ts` instead: see that file's comment for why.
+export { BENCHMARK_PERIODS }
+export type { BenchmarkPeriodKind }
 
 /** What the comparison is measuring — see the module comment. */
 export const BENCHMARK_BASES = ['mix', 'level'] as const
 export type BenchmarkBasis = (typeof BENCHMARK_BASES)[number]
+
+/** A period's nominal length in months, for turning `periodMonths` into a completeness fraction. */
+const PERIOD_DENOMINATOR: Record<BenchmarkPeriodKind, number> = { month: 1, year: 12 }
+
+/**
+ * The months one comparison period covers, and how much of it has elapsed.
+ *
+ * Pure, clock passed in — `asOf`/`timeZone` mirror `monthProgress`'s own convention rather
+ * than reading the clock internally, so the nightly job and `GET /api/budget` (#43's "cannot
+ * disagree" invariant, see the module comment) get the same window from the same instant.
+ *
+ * `month` is just the anchor month itself. `year` sums January through the anchor month —
+ * callers anchor a *closed* year at its December and the still-open current year at whatever
+ * month a job most recently wrote, which is what makes `year` double as "year to date" without
+ * a third kind: the anchor, not the label, decides how much of the year is being asked about.
+ *
+ * `periodMonths` is not `months.length`: each month contributes its own `monthProgress`, so a
+ * period that ends in the current, still-open month gets a fractional last month rather than a
+ * whole one, and a period entirely in the past sums to exactly its month count with no special
+ * case needed for "was this year already over".
+ */
+export function benchmarkPeriodWindow(
+  kind: BenchmarkPeriodKind,
+  anchorMonth: string,
+  asOf: Date,
+  timeZone: string,
+): { months: readonly string[]; periodMonths: number } {
+  const months = kind === 'month' ? [anchorMonth] : monthRange(`${anchorMonth.slice(0, 4)}-01`, anchorMonth)
+  const periodMonths = months.reduce((sum, month) => sum + monthProgress(month, asOf, timeZone), 0)
+  return { months, periodMonths }
+}
+
+/** How much of a period's nominal length `periodMonths` represents, in basis points. */
+function periodProgressBp(period: BenchmarkPeriodKind, periodMonths: number): number {
+  return Math.round((periodMonths / PERIOD_DENOMINATOR[period]) * 10_000)
+}
+
+/**
+ * Sums each category's spending across however many months a period covers.
+ *
+ * A category's name, income flag and hidden flag are taken from whichever month it first
+ * appears in — they describe the category, not the month, so they do not vary across the
+ * months being summed.
+ */
+export function sumSpendRows(monthlyRows: readonly (readonly SpendRow[])[]): SpendRow[] {
+  const totals = new Map<string, { categoryName: string; spentCents: number } & Pick<SpendRow, 'isIncome' | 'hidden'>>()
+  for (const rows of monthlyRows) {
+    for (const row of rows) {
+      const running = totals.get(row.categoryId)
+      if (running === undefined) {
+        totals.set(row.categoryId, {
+          categoryName: row.categoryName,
+          spentCents: row.spentCents,
+          isIncome: row.isIncome,
+          hidden: row.hidden,
+        })
+      } else {
+        running.spentCents += row.spentCents
+      }
+    }
+  }
+  return Array.from(totals, ([categoryId, entry]) => ({ categoryId, ...entry }))
+}
 
 /**
  * One month of one category's spending, as both callers already have it.
@@ -103,6 +176,9 @@ export interface BenchmarkSourceWire {
 export interface Comparison {
   readonly kind: 'ok'
   readonly month: string
+  readonly period: BenchmarkPeriodKind
+  /** How much of the period's nominal length has elapsed, 0..10000. 10000 is a finished period. */
+  readonly periodProgressBp: number
   readonly basis: BenchmarkBasis
   readonly groups: readonly GroupComparison[]
   /** Mapped spending — the total both sides of every group line are shares of. */
@@ -135,11 +211,14 @@ export interface CompareInput {
   /** Null when no benchmark file is configured — `no_file`, not an error. */
   readonly benchmark: Benchmark | null
   readonly household: Household
-  /** `yyyy-mm`. Its year is what the equivalence scale ages the household at. */
+  /** `yyyy-mm`, the anchor month. Its year is what the equivalence scale ages the household at. */
   readonly month: string
   readonly rows: readonly SpendRow[]
   /** `categoryId` → the stored COICOP code, or null. */
   readonly coicop: ReadonlyMap<string, string | null>
+  readonly period: BenchmarkPeriodKind
+  /** From `benchmarkPeriodWindow`. Scales the reference total below. */
+  readonly periodMonths: number
 }
 
 const unavailable = (
@@ -162,7 +241,7 @@ function shareBp(part: number, whole: number): number {
  * one refund look like thrift across the whole line.
  */
 export function compareToBenchmark(input: CompareInput): BenchmarkComparison {
-  const { benchmark, household, month, rows, coicop } = input
+  const { benchmark, household, month, rows, coicop, period, periodMonths } = input
   if (benchmark === null) return unavailable('no_file')
 
   const totals = new Map<BenchmarkGroup, { cents: number; categories: number }>()
@@ -220,7 +299,9 @@ export function compareToBenchmark(input: CompareInput): BenchmarkComparison {
   const levelTotalCents =
     reference === null
       ? 0
-      : Math.round((reference.mean_monthly_cents * scaled.bp) / reference.equivalent_adults_bp)
+      : Math.round(
+          (reference.mean_monthly_cents * periodMonths * scaled.bp) / reference.equivalent_adults_bp,
+        )
 
   const groups = benchmark.groups.map((entry): GroupComparison => {
     const mine = totals.get(entry.id) ?? { cents: 0, categories: 0 }
@@ -246,6 +327,8 @@ export function compareToBenchmark(input: CompareInput): BenchmarkComparison {
   return {
     kind: 'ok',
     month,
+    period,
+    periodProgressBp: periodProgressBp(period, periodMonths),
     basis,
     groups,
     comparedCents,

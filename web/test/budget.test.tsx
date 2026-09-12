@@ -55,6 +55,8 @@ const BENCHMARK: Extract<BudgetPayload['benchmark'], { kind: 'ok' }> = {
   kind: 'ok',
   month: '2026-08',
   basis: 'mix',
+  period: 'month',
+  periodProgressBp: 10_000,
   groups: [
     { group: 'food', yourCents: 65_000, yourShareBp: 3_514, referenceShareBp: 1_400, benchmarkCents: 25_900, deltaBp: 15_097, deltaCents: 39_100, categories: 1 },
     { group: 'alcohol_tobacco', yourCents: 0, yourShareBp: 0, referenceShareBp: 170, benchmarkCents: 3_145, deltaBp: -10_000, deltaCents: -3_145, categories: 0 },
