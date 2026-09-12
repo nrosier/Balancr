@@ -6,6 +6,29 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.0] — 2026-09-12
+
+Closes the v1.1 milestone: small fixes and polish shipped after v1.0.0. Everything
+in this milestone besides the two features below already shipped as `1.0.1`,
+`1.0.2` and `1.0.3`.
+
+### Added
+
+- **Scenario simulator** ([#51](https://github.com/nrosier/Balancr/issues/51)). A
+  what-if calculator, seeded with the household's own numbers rather than an
+  arbitrary round figure: its current monthly investment contribution and its
+  current invested net worth. Editing the amount, growth rate, horizon, or the
+  recurring/one-time toggle recomputes the projection instantly in the browser,
+  with no additional request. A one-time lump sum is the same compounding math as
+  a recurring change, applied only in month one; loan/bond scenarios are left for
+  a later issue.
+- **Benchmark card period picker: Month / Year, pro-rated**
+  ([#323](https://github.com/nrosier/Balancr/issues/323)). The Statbel benchmark
+  card can now compare against a full year to date instead of only the latest
+  month, pro-rating the reference side for any period that isn't a finished whole
+  month. The nightly `above_benchmark` signal is pro-rated the same way, so the
+  API and the nightly job can't disagree about what the comparison says.
+
 ## [1.0.3] — 2026-09-12
 
 ### Fixed
