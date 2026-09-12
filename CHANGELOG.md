@@ -6,6 +6,19 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.0.3] — 2026-09-12
+
+### Fixed
+
+- **Off-budget transfers no longer break data-quality reconciliation**
+  ([#333](https://github.com/nrosier/Balancr/issues/333)). A transfer that
+  crosses the on-budget/off-budget boundary keeps a real category on its
+  on-budget leg in Actual, but Balancr's own recomputed spend was
+  unconditionally excluding every transfer as a same-side wash — so a
+  transfer between an on-budget and an off-budget account made that
+  category's own sum disagree with Actual's by exactly the transferred
+  amount, surfacing as a false "does not reconcile" data-quality finding.
+
 ## [1.0.2] — 2026-09-11
 
 ### Added
