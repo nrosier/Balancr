@@ -28,8 +28,11 @@
  *    database and stays on the server.
  *  - **The benchmark vocabulary.** `domain/benchmark/vocabulary.ts` is split out of the
  *    loader for this import: the mapping form draws a picker over the twelve COICOP
- *    divisions plus the reserved `00`, and the benchmark card names the two thresholds the
- *    comparison applied. Everything else in `domain/benchmark/` reads a YAML file off disk.
+ *    divisions plus the reserved `00`, the benchmark card names the two thresholds the
+ *    comparison applied, and (#323) the same card's own period picker draws its three
+ *    options from here rather than from `compare.ts`, which is where they are consumed
+ *    but which reaches the loader and `config` to get there. Everything else in
+ *    `domain/benchmark/` reads a YAML file off disk.
  *  - **The custody share.** `domain/aggregate/custody.ts` is pure for this one import:
  *    the household panel has to print what the roster currently implies before anybody
  *    states an override, and a second implementation of that mean is how the settings
@@ -164,6 +167,13 @@ export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/voc
 
 export {
   BENCHMARK_GROUPS,
+  // The benchmark card's own period chooser (#323), re-exported for the same reason
+  // `SAVINGS_PERIODS` is: the option list and the type it narrows to have to be the
+  // same list the server accepts, or a card and a query string could disagree about
+  // it. From `vocabulary.ts` rather than `compare.ts`, which the comment above the
+  // group list already explains: `compare.ts` imports the file loader and through it
+  // `config`, which a browser bundle cannot carry.
+  BENCHMARK_PERIODS,
   COICOP_DIVISIONS,
   divisionOf,
   MAX_HOUSEHOLD_MEMBERS,
@@ -174,6 +184,7 @@ export {
 } from '../../src/domain/benchmark/vocabulary.ts'
 export type {
   BenchmarkGroup,
+  BenchmarkPeriodKind,
   CoicopDivision,
   SharedCostDirection,
 } from '../../src/domain/benchmark/vocabulary.ts'

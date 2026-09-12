@@ -41,20 +41,25 @@ import { monthIn, monthProgress, monthRange } from '../../util/month.ts'
 import { equivalentAdults, type EquivalentAdults, type Household } from './household.ts'
 import { groupOf, transcribedBlocks, type Benchmark } from './model.ts'
 import {
+  BENCHMARK_PERIODS,
   isOutsideConsumption,
   MIN_MAPPED_BP,
   type BenchmarkBlock,
   type BenchmarkGroup,
+  type BenchmarkPeriodKind,
   type BenchmarkUnavailable,
 } from './vocabulary.ts'
+
+// Re-exported so every existing caller of this module — the API route, `context.ts`,
+// this file's own tests — can keep importing them from here rather than reaching
+// into `vocabulary.ts` directly. `web/src/shared.ts` is the one importer that must
+// use `vocabulary.ts` instead: see that file's comment for why.
+export { BENCHMARK_PERIODS }
+export type { BenchmarkPeriodKind }
 
 /** What the comparison is measuring — see the module comment. */
 export const BENCHMARK_BASES = ['mix', 'level'] as const
 export type BenchmarkBasis = (typeof BENCHMARK_BASES)[number]
-
-/** Which months a comparison covers — see `benchmarkPeriodWindow`. */
-export const BENCHMARK_PERIODS = ['month', 'year', 'ytd'] as const
-export type BenchmarkPeriodKind = (typeof BENCHMARK_PERIODS)[number]
 
 /** A period's nominal length in months, for turning `periodMonths` into a completeness fraction. */
 const PERIOD_DENOMINATOR: Record<BenchmarkPeriodKind, number> = { month: 1, year: 12, ytd: 12 }
