@@ -255,12 +255,100 @@ export interface RecomputedSpend {
   txnCount: number
 }
 
+export interface TransferLeg {
+  id: string
+  transferId: string | null
+}
+
+/**
+ * Which on-budget transfer legs must be kept rather than dropped as a
+ * same-side wash, because their counterpart sits on an off-budget account.
+ *
+ * Actual's own `clearCategory` (`@actual-app/core`) only nulls both legs'
+ * category when the two accounts share an `offbudget` status — a transfer
+ * that crosses the budget boundary is a real budgetary event, so the
+ * on-budget leg keeps its category and stays in that category's spent total.
+ * Unconditionally excluding every `transfer_id` (the old behaviour) silently
+ * dropped that leg from our own recomputed sum while Actual kept counting
+ * it, so the two figures disagreed by exactly the transfer amount.
+ *
+ * Exported for its test: this is the one place the on/off-budget crossing
+ * rule lives, and a silent miss here re-opens the reconciliation mismatch
+ * the rest of this module exists to close.
+ */
+export function offBudgetTransferLegIds(
+  legs: readonly TransferLeg[],
+  counterpartIsOffBudget: ReadonlyMap<string, boolean>,
+): string[] {
+  return legs
+    .filter((leg) => leg.transferId !== null && counterpartIsOffBudget.get(leg.transferId) === true)
+    .map((leg) => leg.id)
+}
+
+/**
+ * Reads the on-budget transfer legs in `[from, to]` and their counterparts'
+ * `offbudget` status, then defers to `offBudgetTransferLegIds` for the rule
+ * itself.
+ *
+ * A second query rather than a single joined one: `transfer_id` has no `ref`
+ * in Actual's AQL schema (unlike `account`), so a dotted path through it
+ * (`transfer_id.account.offbudget`) does not compile — the counterpart's
+ * account has to be looked up by id instead.
+ */
+async function fetchOffBudgetTransferLegIds(from: string, to: string): Promise<string[]> {
+  const legRows = await runAql(
+    'on-budget-transfer-legs',
+    (q) =>
+      q('transactions')
+        .filter({
+          date: { $gte: from, $lte: to },
+          transfer_id: { $ne: null },
+          starting_balance_flag: false,
+          'account.offbudget': false,
+        })
+        .select(['id', 'transfer_id']),
+    z.object({ id: z.string(), transfer_id: z.string().nullable() }),
+  )
+  if (legRows.length === 0) return []
+
+  const counterpartIds = [
+    ...new Set(legRows.map((row) => row.transfer_id).filter((id): id is string => id !== null)),
+  ]
+  const counterparts = await runAql(
+    'transfer-counterpart-accounts',
+    (q) =>
+      q('transactions')
+        .filter({ id: { $oneof: counterpartIds } })
+        .select(['id', { offbudget: 'account.offbudget' }]),
+    z.object({ id: z.string(), offbudget: z.boolean() }),
+  )
+  const counterpartIsOffBudget = new Map(counterparts.map((row) => [row.id, row.offbudget]))
+
+  return offBudgetTransferLegIds(
+    legRows.map((row) => ({ id: row.id, transferId: row.transfer_id })),
+    counterpartIsOffBudget,
+  )
+}
+
+/**
+ * `{transfer_id: null}`, widened to also keep the specific on-budget legs
+ * `fetchOffBudgetTransferLegIds` found — see its comment for why those must
+ * not be excluded.
+ */
+export function transferFilter(keepLegIds: readonly string[]): Record<string, unknown> {
+  return keepLegIds.length === 0
+    ? { transfer_id: null }
+    : { $or: [{ transfer_id: null }, { id: { $oneof: keepLegIds } }] }
+}
+
 /**
  * Our own monthly sum per category, for comparison against Actual's figures.
  *
  * The hygiene rules live in this filter, and each clause is deliberate:
  *  - `transfer_id: null` drops both legs of every transfer, which is also what
- *    stops a credit-card payment being counted as spending.
+ *    stops a credit-card payment being counted as spending — except the legs
+ *    `fetchOffBudgetTransferLegIds` finds, which cross the budget boundary and
+ *    must stay in.
  *  - `starting_balance_flag: false` drops the opening balance, which is not spend.
  *  - `account.offbudget: false` keeps off-budget accounts out of budget figures;
  *    they still count toward net worth, which is computed elsewhere.
@@ -269,17 +357,18 @@ export interface RecomputedSpend {
  *    "fix" this by passing `splits: 'all'` — that double-counts every split.
  *  - refunds need no clause either: summing signed amounts nets them off.
  */
-export function fetchRecomputedSpend(
+export async function fetchRecomputedSpend(
   from: string,
   to: string,
 ): Promise<RecomputedSpend[]> {
-  return runAql(
+  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const rows = await runAql(
     'recomputed-spend',
     (q) =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
-          transfer_id: null,
+          ...transferFilter(keepLegIds),
           starting_balance_flag: false,
           'account.offbudget': false,
         })
@@ -291,14 +380,13 @@ export function fetchRecomputedSpend(
           { count: { $count: '$id' } },
         ]),
     monthCategoryRow,
-  ).then((rows) =>
-    rows.map((row) => ({
-      month: row.month,
-      categoryId: row.category,
-      amountCents: row.amount ?? 0,
-      txnCount: row.count,
-    })),
   )
+  return rows.map((row) => ({
+    month: row.month,
+    categoryId: row.category,
+    amountCents: row.amount ?? 0,
+    txnCount: row.count,
+  }))
 }
 
 const dayCategoryRow = z.object({
@@ -323,30 +411,30 @@ export interface RecomputedSpendDaily {
  * the monthly query this one never feeds `mismatches`; it is trusted at the
  * same level `txnCount` already is elsewhere in this file.
  */
-export function fetchRecomputedSpendDaily(
+export async function fetchRecomputedSpendDaily(
   from: string,
   to: string,
 ): Promise<RecomputedSpendDaily[]> {
-  return runAql(
+  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const rows = await runAql(
     'recomputed-spend-daily',
     (q) =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
-          transfer_id: null,
+          ...transferFilter(keepLegIds),
           starting_balance_flag: false,
           'account.offbudget': false,
         })
         .groupBy(['date', 'category'])
         .select(['date', 'category', { amount: { $sum: '$amount' } }]),
     dayCategoryRow,
-  ).then((rows) =>
-    rows.map((row) => ({
-      date: row.date,
-      categoryId: row.category,
-      amountCents: row.amount ?? 0,
-    })),
   )
+  return rows.map((row) => ({
+    date: row.date,
+    categoryId: row.category,
+    amountCents: row.amount ?? 0,
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -490,32 +578,32 @@ export interface UncategorisedTransaction {
  * already relies on, resolved through Actual's own AQL schema rather than a
  * second query per row.
  */
-export function fetchUncategorisedTransactions(
+export async function fetchUncategorisedTransactions(
   from: string,
   to: string,
 ): Promise<UncategorisedTransaction[]> {
-  return runAql(
+  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const rows = await runAql(
     'uncategorised-transactions',
     (q) =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
           category: null,
-          transfer_id: null,
+          ...transferFilter(keepLegIds),
           starting_balance_flag: false,
           'account.offbudget': false,
         })
         .select(['id', 'payee', { payeeName: 'payee.name' }, 'amount', 'date']),
     uncategorisedTransactionRow,
-  ).then((rows) =>
-    rows.map((row) => ({
-      id: row.id,
-      payeeId: row.payee,
-      payeeName: row.payeeName,
-      amountCents: row.amount,
-      date: row.date,
-    })),
   )
+  return rows.map((row) => ({
+    id: row.id,
+    payeeId: row.payee,
+    payeeName: row.payeeName,
+    amountCents: row.amount,
+    date: row.date,
+  }))
 }
 
 /**
