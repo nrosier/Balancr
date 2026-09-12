@@ -48,6 +48,13 @@
  *    through `<Money>`.
  *  - `pages/Budget.tsx`'s `pace.summary` — an aria-label on `PaceBar`, never rendered
  *    visually.
+ *  - `charts/ScenarioChart.tsx` (#51) — the same case as `NetWorthChart.tsx`: its axis
+ *    label call renders inside the SVG `Chart` draws with `blurWhenPrivate`, which blurs
+ *    the whole drawing, and its tooltip call is wrapped in `privateText` at the call site.
+ *  - `pages/Scenario.tsx` (#51) — two kinds of unwrappable call, same reasoning as
+ *    existing entries above: the seed values pre-fill two editable `<input value>`s
+ *    (the `settings/Thresholds.tsx` case), and the rest build the chart's `summary`
+ *    string, an aria-label never rendered visually (the `pages/Budget.tsx` case).
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -76,6 +83,8 @@ const ALLOWED = new Set(
     'settings/Property.tsx',
     'settings/Benchmark.tsx',
     'pages/Budget.tsx',
+    'charts/ScenarioChart.tsx',
+    'pages/Scenario.tsx',
   ].map((path) => join(ROOT, path)),
 )
 

@@ -1,0 +1,32 @@
+{
+  "chart": {
+    "baseline": "As-is",
+    "delta": "Difference",
+    "summary": "Starting from {{start}}, the as-is path reaches {{baselineEnd}} in {{years}} years; with the change, {{scenarioEnd}} — a difference of {{delta}}.",
+    "title": "Projected value",
+    "withChange": "With the change"
+  },
+  "hint": {
+    "noBaseline": "No category is tagged Investments yet, so this starts from the figure below instead of a real one. Tag one under Settings › Benchmark to use your own.",
+    "noStartingValue": "No net-worth snapshot yet, so this starts from the figure below instead of a real one."
+  },
+  "input": {
+    "baseline": "Current monthly contribution",
+    "change": "Monthly change",
+    "growthRate": "Expected annual growth",
+    "horizon": "Horizon (years)",
+    "recurringLabel": "How the change applies",
+    "recurringOption": {
+      "lumpSum": "One-time",
+      "recurring": "Every month"
+    },
+    "startingValue": "Current invested value",
+    "title": "Adjust the assumptions"
+  },
+  "metric": {
+    "asIs": "Projected value, as-is",
+    "contribution": "Current monthly contribution",
+    "delta": "Difference at the end",
+    "withChange": "Projected value, with the change"
+  }
+}

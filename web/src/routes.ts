@@ -16,6 +16,7 @@ import {
   IconInsights,
   IconOverview,
   IconPortfolio,
+  IconScenario,
   IconSettings,
   type IconProps,
 } from './shell/icons.tsx'
@@ -24,6 +25,7 @@ import { Forecast } from './pages/Forecast.tsx'
 import { Insights } from './pages/Insights.tsx'
 import { Overview } from './pages/Overview.tsx'
 import { Portfolio } from './pages/Portfolio.tsx'
+import { Scenario } from './pages/Scenario.tsx'
 import { Settings } from './pages/Settings.tsx'
 
 export interface AppRoute {
@@ -48,6 +50,7 @@ export const ROUTES: readonly AppRoute[] = [
   { path: '/budget', labelKey: 'nav.budget', Icon: IconBudget, Page: Budget, nested: true },
   { path: '/portfolio', labelKey: 'nav.portfolio', Icon: IconPortfolio, Page: Portfolio, nested: true },
   { path: '/forecast', labelKey: 'nav.forecast', Icon: IconForecast, Page: Forecast },
+  { path: '/scenario', labelKey: 'nav.scenario', Icon: IconScenario, Page: Scenario },
   { path: '/insights', labelKey: 'nav.insights', Icon: IconInsights, Page: Insights, nested: true },
   { path: '/settings', labelKey: 'nav.settings', Icon: IconSettings, Page: Settings, nested: true },
 ]

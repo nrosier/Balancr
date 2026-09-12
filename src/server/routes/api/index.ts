@@ -31,6 +31,7 @@ import { buildForecast } from './forecast.ts'
 import { buildInsights, buildRunPayload } from './insights.ts'
 import { buildOverview } from './overview.ts'
 import { buildPortfolio } from './portfolio.ts'
+import { buildScenario } from './scenario.ts'
 import { buildStatus } from './status.ts'
 import { buildJobHistory } from './status-history.ts'
 
@@ -78,6 +79,8 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/portfolio', () => buildPortfolio(db))
 
   app.get('/api/forecast', () => buildForecast(db))
+
+  app.get('/api/scenario', () => buildScenario(db))
 
   app.get('/api/insights', (request: FastifyRequest) =>
     buildInsights(db, {
