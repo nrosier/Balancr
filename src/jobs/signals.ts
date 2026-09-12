@@ -164,7 +164,10 @@ export async function judgeMonth(
     mismatches: loadMismatches(db, [month]),
     accounts: shared.accounts,
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
-    benchmark: compareMonth(shared.benchmark, month, facts),
+    // 'month' rather than the default whole month: this job and `GET /api/budget` cannot
+    // disagree about what the comparison says (see `compare.ts`'s module comment), so an
+    // in-progress current month must be pro-rated here exactly as it is on the card.
+    benchmark: compareMonth(shared.benchmark, month, facts, 'month', monthElapsed),
     custody: splitMonth(shared.custody, month, facts),
     savings: splitSavingsMonth(shared.savings, facts),
     drift: month === shared.driftMonth ? shared.drift : null,

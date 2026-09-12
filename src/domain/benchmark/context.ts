@@ -17,7 +17,12 @@
  */
 import type { Db } from '../../db/index.ts'
 import { loadCategoryMeta } from '../aggregate/facts.ts'
-import { compareToBenchmark, type BenchmarkComparison, type SpendRow } from './compare.ts'
+import {
+  compareToBenchmark,
+  type BenchmarkComparison,
+  type BenchmarkPeriodKind,
+  type SpendRow,
+} from './compare.ts'
 import { loadHousehold, type Household } from './household.ts'
 import { benchmarkOrNull, type Benchmark } from './model.ts'
 import { applyReferenceOverride, loadReferenceOverride } from './reference.ts'
@@ -44,11 +49,18 @@ export function benchmarkContext(db: Db): BenchmarkContext {
   return { benchmark, household: loadHousehold(db), coicop }
 }
 
-/** One month compared, given a context that was loaded once. */
+/**
+ * One period compared, given a context that was loaded once.
+ *
+ * `rows` must already cover the whole period (summed across months, for `year`/`ytd`) — this
+ * function does not know how to load or combine months, only how to compare what it is given.
+ */
 export function compareMonth(
   context: BenchmarkContext,
   month: string,
   rows: readonly SpendRow[],
+  period: BenchmarkPeriodKind = 'month',
+  periodMonths = 1,
 ): BenchmarkComparison {
   return compareToBenchmark({
     benchmark: context.benchmark,
@@ -56,5 +68,7 @@ export function compareMonth(
     month,
     rows,
     coicop: context.coicop,
+    period,
+    periodMonths,
   })
 }
