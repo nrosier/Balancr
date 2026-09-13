@@ -76,7 +76,10 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
     )
   })
 
-  app.get('/api/portfolio', () => buildPortfolio(db))
+  app.get('/api/portfolio', (request: FastifyRequest) => {
+    const query = request.query as { asOf?: unknown } | undefined
+    return buildPortfolio(db, query?.asOf)
+  })
 
   app.get('/api/forecast', () => buildForecast(db))
 

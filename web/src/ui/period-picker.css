@@ -1,0 +1,117 @@
+/*
+ * `react-multi-date-picker` ships no stylesheet of its own — only optional skins layered
+ * on top of a base it paints with inline styles. Everything here overrides that inline
+ * base so the calendar reads as part of this app's own theme, in both light and dark.
+ *
+ * Every rule that sets `color` also states its own `background`, and every pair reuses a
+ * combination `components.css` already uses elsewhere (button/chip, hover, notice) rather
+ * than inventing a new one — `npm run contrast:check` has already cleared these pairs in
+ * both themes, so restating them here adds no new risk of falling under the floor.
+ */
+
+.period-picker {
+  position: relative;
+}
+
+.period-picker__toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.period-picker__toggle-btn {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: none;
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.period-picker__toggle-btn:last-child {
+  border-right: none;
+}
+
+.period-picker__toggle-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.period-picker__toggle-btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.period-picker__input {
+  width: 8rem;
+  cursor: pointer;
+}
+
+/* The popup calendar itself — positioned by the library, painted by these tokens. */
+.period-picker__container .rmdp-wrapper {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+}
+
+.period-picker__container .rmdp-header,
+.period-picker__container .rmdp-day-picker,
+.period-picker__container .rmdp-month-picker,
+.period-picker__container .rmdp-year-picker {
+  background: var(--surface-card);
+}
+
+.period-picker__container .rmdp-header-values {
+  color: var(--text);
+  background: var(--surface-card);
+  font-weight: var(--weight-medium);
+}
+
+.period-picker__container .rmdp-week-day {
+  color: var(--text-muted);
+}
+
+.period-picker__container .rmdp-arrow {
+  border-color: var(--border-strong);
+}
+
+.period-picker__container .rmdp-arrow-container:hover {
+  background: var(--surface-hover);
+  box-shadow: none;
+}
+
+.period-picker__container .rmdp-day span,
+.period-picker__container .rmdp-ym span {
+  color: var(--text);
+}
+
+.period-picker__container .rmdp-day span:hover,
+.period-picker__container .rmdp-ym span:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.period-picker__container .rmdp-day.rmdp-today span,
+.period-picker__container .rmdp-ym.rmdp-today span {
+  background: var(--surface-card);
+  color: var(--accent);
+}
+
+.period-picker__container .rmdp-day.rmdp-selected span,
+.period-picker__container .rmdp-ym.rmdp-selected span {
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: none;
+}
+
+.period-picker__container .rmdp-day.rmdp-disabled span,
+.period-picker__container .rmdp-day.rmdp-day-hidden span,
+.period-picker__container .rmdp-deactive {
+  color: var(--text-muted);
+}

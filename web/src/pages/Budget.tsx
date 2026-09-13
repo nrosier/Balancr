@@ -312,6 +312,7 @@ function Figures({
           benchmark={benchmark}
           period={benchmarkPeriod}
           onPeriodSelect={onBenchmarkPeriodSelect}
+          month={month}
         />
       )}
 

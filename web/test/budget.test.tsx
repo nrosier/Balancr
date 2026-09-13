@@ -694,6 +694,48 @@ describe('the Belgian comparison', () => {
 })
 
 /**
+ * The Month/Year toggle above the table, now a real calendar (`PeriodPicker`) rather
+ * than a native `<select>`. Two things are worth locking in: the toggle still drives
+ * the same `benchmarkPeriod` query param it always did, and the calendar body — which
+ * has no value of its own to set, only a kind (#323, restated in `Benchmark.tsx`'s own
+ * doc comment) — is a genuine no-op when a different cell is picked without changing
+ * kind, rather than a control that quietly forgets the click.
+ */
+describe("the benchmark card's period picker", () => {
+  it('asks for the full year once the Year toggle is clicked', async () => {
+    const mock = serve({
+      '/api/budget': json(FULL),
+      '/api/budget?benchmarkPeriod=year': json(FULL),
+    })
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+    await screen.findByText('Compared with Belgian households')
+
+    const group = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() => expect(paths(mock)).toContain('/api/budget?benchmarkPeriod=year'))
+  })
+
+  it('fires no new request when a different calendar cell is picked in the same kind', async () => {
+    // FULL's own month is August 2026 — picking the neighbouring month in the same
+    // calendar view stays inside `benchmarkPeriod: 'month'`, so `Budget.tsx`'s query
+    // string is unchanged and nothing should follow the click.
+    const mock = serve(json(FULL))
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+    await screen.findByText('Compared with Belgian households')
+
+    const before = paths(mock).length
+    fireEvent.focus(screen.getByRole('textbox'))
+    fireEvent.click(screen.getByLabelText('Select July of 2026'))
+
+    // Nothing to await for — the assertion is that no refetch was queued at all — so
+    // one microtask turn is given to a would-be state update before checking.
+    await Promise.resolve()
+    expect(paths(mock).length).toBe(before)
+  })
+})
+
+/**
  * The custody card (#44, #289), which makes a claim Actual does not: that half of what you
  * paid was never yours — or that the whole cost was twice it.
  *
