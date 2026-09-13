@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.1] — 2026-09-13
+
+Promotes `1.1.1-rc.1`'s period picker out of pre-release, plus routine
+dependency maintenance picked up while it was being tested.
+
+### Changed
+
+- **Dependency maintenance**: Fastify, `zod`, `@google/genai`, `yaml`, and a
+  Node.js engine/toolchain bump (`.nvmrc`, `Dockerfile`), plus a lock-file
+  maintenance pass — each verified by CI before merging, none behavior-visible.
+
 ## [1.1.1-rc.1] — 2026-09-13
 
 Real-world testing of one slice of `1.1.1`, ahead of the patch itself.
