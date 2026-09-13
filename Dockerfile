@@ -7,7 +7,7 @@
 #
 # amd64 only for now — that is what the target host runs, and cross-building the
 # native modules (better-sqlite3, argon2) for arm64 doubles CI time for nothing.
-ARG NODE_VERSION=26.8.1-alpine
+ARG NODE_VERSION=26.8.2-alpine
 
 FROM node:${NODE_VERSION} AS deps
 # BuildKit sets this from `--platform`; the prune keeps the binaries for it and
