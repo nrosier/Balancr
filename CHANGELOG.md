@@ -6,6 +6,24 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.1-rc.1] — 2026-09-13
+
+Real-world testing of one slice of `1.1.1`, ahead of the patch itself.
+
+### Added
+
+- **Calendar-backed Month/Year period picker, shared by Benchmark and
+  Portfolio.** Benchmark's plain Month/Year `<select>` becomes an actual
+  calendar control (`react-multi-date-picker`) rather than two radio options
+  wearing a dropdown. The same picker now sits on Portfolio too, where it's
+  new functionality rather than a restyle: Portfolio never had a period
+  selector at all, so picking a past month or year now sends a real
+  `?asOf=` request and shows that period's own snapshot instead of always
+  the latest one. A period with nothing at or before it reads as the same
+  empty state a never-synced portfolio already shows; the value chart,
+  property card, and advice stay unfiltered by a historical `asOf`, on
+  purpose.
+
 ## [1.1.0] — 2026-09-12
 
 Closes the v1.1 milestone: small fixes and polish shipped after v1.0.0. Everything
