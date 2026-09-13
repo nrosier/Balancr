@@ -54,7 +54,6 @@ import { useId, type ReactNode } from 'react'
 import { Trans } from 'react-i18next'
 import { useT, type TFunction } from '../i18n.ts'
 import {
-  BENCHMARK_PERIODS,
   formatBp,
   formatDate,
   formatDecimal,
@@ -67,6 +66,7 @@ import {
   type BenchmarkWire,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
+import { PeriodPicker } from '../ui/PeriodPicker.tsx'
 
 /** Whole euro, like every other total on this page. Cents on a monthly figure are noise. */
 const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
@@ -110,44 +110,37 @@ function householdLines(
   return lines
 }
 
-/** A `<select>` value narrowed to a real period, the same guard `SavingsRate` uses. */
-function asBenchmarkPeriod(value: string): BenchmarkPeriodKind {
-  return (BENCHMARK_PERIODS as readonly string[]).includes(value)
-    ? (value as BenchmarkPeriodKind)
-    : 'month'
-}
-
 export interface BenchmarkProps {
   benchmark: BenchmarkWire
   /** The page's own selection (#323) — not on the wire, since `unavailable` has none. */
   period: BenchmarkPeriodKind
   onPeriodSelect: (period: BenchmarkPeriodKind) => void
+  /**
+   * The page's own resolved anchor month (`Budget.tsx`'s `data.month`) — the calendar's
+   * value while `benchmark` is `unavailable`, which carries no `month` of its own.
+   */
+  month: string
 }
 
-export function Benchmark({ benchmark, period, onPeriodSelect }: BenchmarkProps): ReactNode {
+export function Benchmark({ benchmark, period, onPeriodSelect, month }: BenchmarkProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
   const periodSelectId = useId()
 
+  const anchor = benchmark.kind === 'ok' ? benchmark.month : month
+
   const picker = (
     <div className="toolbar">
-      <div className="field field--inline">
-        <label className="field__label" htmlFor={periodSelectId}>
-          {t('budget:benchmark.periodLabel')}
-        </label>
-        <select
-          id={periodSelectId}
-          className="field__input"
-          value={period}
-          onChange={(event) => onPeriodSelect(asBenchmarkPeriod(event.target.value))}
-        >
-          {BENCHMARK_PERIODS.map((option) => (
-            <option key={option} value={option}>
-              {t(`budget:benchmark.period.${option}`)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <PeriodPicker
+        // Picking a different calendar cell while staying in the same kind is a no-op:
+        // `value` is derived from the anchor month, not owned by this control, and
+        // snaps back on the next render (#323's "page control, not a data fact").
+        period={{ kind: period, value: period === 'month' ? anchor : anchor.slice(0, 4) }}
+        onSelect={(next) => onPeriodSelect(next.kind)}
+        id={periodSelectId}
+        label={t('budget:benchmark.periodLabel')}
+        kindLabel={(kind) => t(`budget:benchmark.period.${kind}`)}
+      />
     </div>
   )
 

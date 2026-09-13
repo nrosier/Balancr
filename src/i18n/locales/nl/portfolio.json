@@ -94,6 +94,11 @@
     "holdings": "Posities",
     "overview": "Overzicht"
   },
+  "picker": {
+    "period": "Periode",
+    "periodMonth": "Maand",
+    "periodYear": "Jaar"
+  },
   "property": {
     "caption_one": "Eén eigendom.",
     "caption_other": "{{value}} eigendommen.",

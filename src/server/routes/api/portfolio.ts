@@ -33,6 +33,7 @@ import {
   loadPortfolioMetrics,
   loadPortfolioValueHistory,
   loadSnapshot,
+  resolveSnapshotDate,
 } from '../../../domain/portfolio/store.ts'
 import {
   grossYieldBp,
@@ -42,11 +43,28 @@ import {
   propertyEquityCents,
   totalEquityCents,
 } from '../../../domain/property/properties.ts'
+import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
-export function buildPortfolio(db: Db): Portfolio {
-  const date = latestSnapshotDate(db)
+const PERIOD_PATTERN = /^\d{4}(-(0[1-9]|1[0-2]))?$/
+
+/**
+ * The period to show the portfolio as of, per `?asOf=`. `YYYY` or `YYYY-MM`, the same
+ * two shapes the Benchmark card's own picker produces — see `resolveBenchmarkPeriod` in
+ * `budget.ts` for why a malformed value is a 400 rather than a silent fallback.
+ */
+export function resolveAsOf(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  if (typeof raw !== 'string' || !PERIOD_PATTERN.test(raw)) {
+    throw badRequest('asOf must be YYYY or YYYY-MM.')
+  }
+  return raw
+}
+
+export function buildPortfolio(db: Db, asOfParam: unknown = undefined): Portfolio {
+  const asOf = resolveAsOf(asOfParam)
+  const date = asOf === null ? latestSnapshotDate(db) : resolveSnapshotDate(db, asOf)
   const metrics = date === null ? null : loadPortfolioMetrics(db, date)
   const holdings = date === null ? [] : loadSnapshot(db, date)
   const split = knownSplit(metrics)
@@ -86,13 +104,21 @@ export function buildPortfolio(db: Db): Portfolio {
       }))
       // Largest first: a holdings table is read to see what dominates.
       .sort((a, b) => b.valueCents - a.valueCents),
+    // Unfiltered regardless of `asOf`: the chart's whole point is the trend up to now,
+    // and truncating it at a historical period would make a portfolio that grew since
+    // look like it evaporated.
     history: loadPortfolioValueHistory(db),
+    // Against today's risk profile even when `metrics`/`holdings` are historical — there
+    // is no historical profile to compare against, so "what would today's bands have
+    // said back then" is the only reading available.
     advice: adviceFor(db, metrics, split.investedValueCents, holdings),
     properties: properties.map((property) => ({
       id: property.id,
       kind: property.kind,
       label: property.label,
       propertyValueCents: property.propertyValueCents,
+      // Priced as of the request (`today`), never as of `date` — see the file doc
+      // comment (#227): a mortgage amortizes with the calendar, not with `asOf`.
       mortgageBalanceCents: outstandingBalanceCents(property.mortgage, today),
       equityCents: propertyEquityCents(property, today),
       rentCents: property.rentCents,

@@ -22,7 +22,7 @@
  * way `budget.test.tsx` does — not to assert geometry, but to keep ECharts' "Can't get
  * DOM width or height" warning out of output that is about something else.
  */
-import { screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Portfolio } from '../src/pages/Portfolio.tsx'
 import { formatQuantity } from '../src/ui/HoldingsTable.tsx'
@@ -352,13 +352,21 @@ const ADVICE: Advice = {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-function serve(reply: Response | Error): ReturnType<typeof vi.fn> {
-  const mock = vi.fn(() =>
-    reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply.clone()),
-  )
+function serve(
+  replies: Record<string, Response | Error> | Response | Error,
+): ReturnType<typeof vi.fn> {
+  const mock = vi.fn((path: string) => {
+    const reply = replies instanceof Response || replies instanceof Error ? replies : replies[path]
+    if (reply === undefined) return Promise.reject(new Error(`unstubbed request: ${path}`))
+    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply.clone())
+  })
   vi.stubGlobal('fetch', mock)
   return mock
 }
+
+/** The paths asked of the server, in order. */
+const paths = (mock: ReturnType<typeof vi.fn>): string[] =>
+  mock.mock.calls.map((call) => String(call[0]))
 
 /** Every chart's accessible summary, with `Intl`'s non-breaking spaces normalised. */
 const summaries = (): string[] =>
@@ -494,6 +502,117 @@ describe('a portfolio with positions in it', () => {
     )
     // The treemap names its largest slice and that slice's share, both server-computed.
     expect(spoken.some((text) => text.includes('Equities') && text.includes('76%'))).toBe(true)
+  })
+})
+
+/**
+ * The toolbar's period picker (#337), which turns a page that always showed the latest
+ * snapshot into one that can look at a chosen month or year. Four things are worth
+ * locking in: the toggle drives a real `?asOf=` query the server resolves against; a
+ * specific month renders whatever date the snapshot actually carries rather than
+ * snapping to the month's edges; a period with nothing at or before it reads as the
+ * same empty state a never-synced portfolio already shows; and the value chart and the
+ * property card still draw whatever the server sent even at a historical `asOf` — this
+ * page never truncates `history` or reprices `properties` itself, which is the two
+ * non-changes `buildPortfolio` documents on the server side.
+ */
+describe("the toolbar's period picker", () => {
+  it('asks the server for the year once Year is picked', async () => {
+    const mock = serve({
+      '/api/portfolio': json(FULL),
+      '/api/portfolio?asOf=2026': json(FULL),
+    })
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Market value' })
+
+    const group = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() => expect(paths(mock)).toContain('/api/portfolio?asOf=2026'))
+  })
+
+  it("renders a mid-month snapshot's own date rather than the month's edges", async () => {
+    const march: PortfolioPayload = { ...FULL, date: '2026-03-15' }
+    const mock = serve({
+      '/api/portfolio': json(FULL),
+      '/api/portfolio?asOf=2026-03': json(march),
+    })
+    renderApp(<Portfolio />)
+    await screen.findByText('Updated 01/09/2026')
+
+    fireEvent.focus(screen.getByRole('textbox'))
+    fireEvent.click(screen.getByLabelText('Select March of 2026'))
+
+    await waitFor(() => expect(paths(mock)).toContain('/api/portfolio?asOf=2026-03'))
+    expect(await screen.findByText('Updated 15/03/2026')).toBeTruthy()
+  })
+
+  it('reads a period with nothing at or before it as the same empty state a never-synced portfolio shows', async () => {
+    const mock = serve({
+      '/api/portfolio': json(FULL),
+      '/api/portfolio?asOf=2026': json(FULL),
+      '/api/portfolio?asOf=2022': json(EMPTY),
+    })
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Market value' })
+
+    const group = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(group).getByRole('button', { name: 'Year' }))
+    await waitFor(() => expect(paths(mock)).toContain('/api/portfolio?asOf=2026'))
+
+    fireEvent.focus(screen.getByRole('textbox'))
+    fireEvent.click(screen.getByLabelText('Select year 2022'))
+
+    expect(await screen.findByText('No data yet')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('leaves the value chart and the property card unfiltered by a historical asOf', async () => {
+    const historical: PortfolioPayload = {
+      ...FULL,
+      date: '2026-03-15',
+      // Still running past March, proving the page does not truncate a series the
+      // server already decided to leave alone.
+      history: [
+        { date: '2026-03-01', totalCents: 4_000_000 },
+        { date: '2026-09-01', totalCents: 5_000_000 },
+      ],
+      properties: [
+        {
+          id: 'prop-1',
+          kind: 'primary',
+          label: 'House',
+          propertyValueCents: 40_000_000,
+          mortgageBalanceCents: 18_000_000,
+          equityCents: 22_000_000,
+          rentCents: null,
+          netCashFlowCents: null,
+          grossYieldBp: null,
+        },
+      ],
+      totalPropertyEquityCents: 22_000_000,
+    }
+    serve({
+      '/api/portfolio': json(FULL),
+      '/api/portfolio?asOf=2026-03': json(historical),
+    })
+    renderApp(<Portfolio />)
+    await screen.findByText('Updated 01/09/2026')
+
+    fireEvent.focus(screen.getByRole('textbox'))
+    fireEvent.click(screen.getByLabelText('Select March of 2026'))
+    await screen.findByText('Updated 15/03/2026')
+
+    // The chart still speaks the later point, not just the ones at or before March.
+    await screen.findAllByRole('img')
+    const spoken = summaries()
+    expect(spoken.some((text) => text.includes('01/09/2026') && text.includes('€ 50.000'))).toBe(
+      true,
+    )
+
+    // The property card still draws, priced as of today rather than the picked period.
+    expect(screen.getByRole('heading', { level: 2, name: 'Property' })).toBeTruthy()
   })
 })
 
