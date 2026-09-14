@@ -6,6 +6,27 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.6] — 2026-09-14
+
+Findings gets the Month/Year period picker the other Insights tabs already had,
+and net worth's total finally shows what its off-budget accounts are.
+
+### Fixed
+
+- **Insights → Findings gets the Month/Year period picker** ([#352](https://github.com/nrosier/Balancr/issues/352)).
+  Narrative and Ledger already picked up the month+year `PeriodPicker` in
+  1.1.0; Findings kept the month-only picker because most of what it shows
+  — over-assigned, burn-rate, baseline/irregular-expense, hygiene, drift —
+  is irreducibly month-shaped. Year mode now shows each month's own
+  findings, grouped by month, rather than inventing a year-shaped
+  computation none of those signals have.
+- **Off-budget Actual accounts are named, not just summed** ([#353](https://github.com/nrosier/Balancr/issues/353)).
+  Net worth's total has always included off-budget accounts (a mortgage, a
+  house-value tracker) but never showed what they were. A new net-worth
+  breakdown row and a Portfolio card now name them and their balance —
+  deliberately independent of, and possibly overlapping, the existing
+  Debt figure, since the two answer different questions.
+
 ## [1.1.5] — 2026-09-14
 
 Fixes Budget → Overview's Spent and Income cards, which kept printing one
