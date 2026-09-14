@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.1.6-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -989,17 +989,17 @@ ends.
 | `1.0.0-rc.N` | Feature complete, in testing | ✅ shipped as `1.0.0-rc.8` |
 | `1.0.0` | Blessed by the person whose money it is | ✅ |
 | `1.1.0` | Small fixes and polish shipped after v1.0.0 | ✅ |
+| `1.2.0` | v1.1's polish batch closed; net worth's Directly available splits into on-budget and off-budget | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.1.6` is the current release, a patch on top of `1.1.0`.
-Every feature issue in the list above is still closed; this slice gives
-Insights → Findings the Month/Year period picker the other Insights tabs
-already had (Year mode groups each month's own findings rather than
-inventing a year-shaped computation), and names the off-budget Actual
-accounts that were already summed into net worth's total but never shown.
+**Where it is now** — `1.2.0` is the current release. Every feature issue in
+the list above is still closed; this one claims the minor because the v1.1
+polish batch's last issue is closed, and Overview's Directly available figure
+no longer mixes on-budget and off-budget liquid money into one number —
+it now always splits into both when there is anything off-budget to show.
 
-`docker pull` now resolves `latest` to `1.1.6`; a release candidate is published
+`docker pull` now resolves `latest` to `1.2.0`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
