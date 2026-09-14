@@ -138,19 +138,20 @@ export function Budget(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.budget')} lede={t('page.budget.lede')} />
-      <SectionNav sections={BUDGET_SECTIONS} ariaLabel={t('nav.budget')} />
-      <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => (
-          <Figures
-            data={data}
-            section={section}
-            onSelect={setMonth}
-            benchmarkPeriod={benchmarkPeriod}
-            onBenchmarkPeriodSelect={setBenchmarkPeriod}
-            onRefreshed={resource.reload}
-          />
-        )}
-      </DataState>
+      <SectionNav sections={BUDGET_SECTIONS} ariaLabel={t('nav.budget')}>
+        <DataState resource={resource} isEmpty={isEmpty}>
+          {(data) => (
+            <Figures
+              data={data}
+              section={section}
+              onSelect={setMonth}
+              benchmarkPeriod={benchmarkPeriod}
+              onBenchmarkPeriodSelect={setBenchmarkPeriod}
+              onRefreshed={resource.reload}
+            />
+          )}
+        </DataState>
+      </SectionNav>
     </>
   )
 }

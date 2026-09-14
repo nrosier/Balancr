@@ -116,17 +116,18 @@ export function Insights(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.insights')} lede={t('page.insights.lede')} />
-      <SectionNav sections={INSIGHTS_SECTIONS} ariaLabel={t('nav.insights')} />
-      <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => (
-          <Sections
-            data={data}
-            section={section}
-            onRefreshed={resource.reload}
-            onSelect={setMonth}
-          />
-        )}
-      </DataState>
+      <SectionNav sections={INSIGHTS_SECTIONS} ariaLabel={t('nav.insights')}>
+        <DataState resource={resource} isEmpty={isEmpty}>
+          {(data) => (
+            <Sections
+              data={data}
+              section={section}
+              onRefreshed={resource.reload}
+              onSelect={setMonth}
+            />
+          )}
+        </DataState>
+      </SectionNav>
     </>
   )
 }

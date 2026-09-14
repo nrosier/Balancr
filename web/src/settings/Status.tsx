@@ -209,38 +209,34 @@ function Report({
         {status.degraded ? ` ${t('settings:status.degraded')}` : ''}
       </p>
 
-      <SectionNav
-        sections={STATUS_SUBSECTIONS}
-        variant="sub"
-        ariaLabel={t('settings:status.title')}
-      />
+      <SectionNav sections={STATUS_SUBSECTIONS} variant="sub" ariaLabel={t('settings:status.title')}>
+        {active === 'services' ? (
+          <ServicesGrid status={status} aiAvailability={settings.ai.availability} />
+        ) : active === 'queue' ? (
+          <>
+            <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
+            <RefreshStatus state={refresher.state} />
+            <div className="grid-cards">
+              {status.jobs.map((job) => (
+                <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
+              ))}
+            </div>
 
-      {active === 'services' ? (
-        <ServicesGrid status={status} aiAvailability={settings.ai.availability} />
-      ) : active === 'queue' ? (
-        <>
-          <h3 className="panel__subtitle">{t('settings:status.jobs.title')}</h3>
-          <RefreshStatus state={refresher.state} />
-          <div className="grid-cards">
-            {status.jobs.map((job) => (
-              <JobRow job={job} queued={status.queued} refresher={refresher} key={job.name} />
-            ))}
-          </div>
+            <ResetControl owner={owner} refresher={refresher} />
+          </>
+        ) : (
+          <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
+        )}
 
-          <ResetControl owner={owner} refresher={refresher} />
-        </>
-      ) : (
-        <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
-      )}
-
-      {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
-          Shared across Services and Queue — the AI tab's own figures come from the
-          settings payload instead, which this button does not touch. */}
-      {active === 'ai' ? null : (
-        <button type="button" className="button button--quiet" onClick={reload}>
-          {t('action.refresh')}
-        </button>
-      )}
+        {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
+            Shared across Services and Queue — the AI tab's own figures come from the
+            settings payload instead, which this button does not touch. */}
+        {active === 'ai' ? null : (
+          <button type="button" className="button button--quiet" onClick={reload}>
+            {t('action.refresh')}
+          </button>
+        )}
+      </SectionNav>
     </>
   )
 }

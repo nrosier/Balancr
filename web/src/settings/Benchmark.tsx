@@ -1140,106 +1140,55 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
 //  Subsections
 // ---------------------------------------------------------------------------
 
-type BenchmarkSubsectionId = 'household' | 'mapping'
+type BenchmarkSubsectionId = 'household' | 'mapping' | 'comparison'
 
 const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
   {
     id: 'household',
     path: '/settings/benchmark/household',
     labelKey: 'settings:benchmark.household.title',
-    // Household owns a further tab strip of its own (Household/Comparison, below) —
-    // without this, useSubsection's canonicalizing effect would see a path like
-    // `/settings/benchmark/household/comparison` as "not one of my own section paths"
-    // and redirect it back to the bare `/settings/benchmark/household`.
-    nested: true,
   },
   {
     id: 'mapping',
     path: '/settings/benchmark/mapping',
     labelKey: 'settings:benchmark.mapping.title',
   },
+  {
+    id: 'comparison',
+    path: '/settings/benchmark/comparison',
+    labelKey: 'settings:benchmark.comparison.title',
+  },
 ]
 
 /**
- * Benchmark's own subsection tabs — the household roster and the mapping table are
- * already two independent panels; this only stops them showing at once.
+ * Benchmark's own subsection tabs — the household roster, the category mapping table
+ * and the Statbel reference correction are three independent panels (#327 flattened
+ * Household/Comparison from a nested tab strip under Household into a third sibling
+ * here, alongside Household and Categories, rather than a shelf nested inside a shelf);
+ * this only stops them showing at once.
  *
- * Both stay mounted, hidden rather than unrendered, on purpose: `HouseholdPanel` holds
- * a typed-but-unsaved roster in its own `useState`, and unmounting it to show the
- * mapping table would throw that draft away the moment somebody switched tabs to check
- * something and switched back — the same failure `ThresholdsPanel` avoids by staying
- * mounted and filtering which group it shows.
+ * All three stay mounted, hidden rather than unrendered, on purpose: `HouseholdPanel`
+ * holds a typed-but-unsaved roster and `ComparisonPanel` a typed-but-unsaved reference
+ * draft, both in their own `useState`, and unmounting either to show a sibling would
+ * throw that draft away the moment somebody switched tabs to check something and
+ * switched back — the same failure `ThresholdsPanel` avoids by staying mounted and
+ * filtering which group it shows.
  */
 export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const active = useSubsection(BENCHMARK_SUBSECTIONS)
 
   return (
-    <>
-      <SectionNav
-        sections={BENCHMARK_SUBSECTIONS}
-        variant="sub"
-        ariaLabel={t('settings:nav.benchmark')}
-      />
+    <SectionNav sections={BENCHMARK_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.benchmark')}>
       <div hidden={active !== 'household'}>
-        <HouseholdSection {...props} active={active === 'household'} />
+        <HouseholdPanel {...props} />
       </div>
       <div hidden={active !== 'mapping'}>
         <MappingPanel {...props} />
       </div>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-//  Household's own sub-tabs: who lives here, vs what we compare against
-// ---------------------------------------------------------------------------
-
-type HouseholdSubsectionId = 'household' | 'comparison'
-
-const HOUSEHOLD_SUBSECTIONS: readonly Section<HouseholdSubsectionId>[] = [
-  {
-    id: 'household',
-    path: '/settings/benchmark/household',
-    labelKey: 'settings:benchmark.household.title',
-  },
-  {
-    id: 'comparison',
-    path: '/settings/benchmark/household/comparison',
-    labelKey: 'settings:benchmark.comparison.title',
-  },
-]
-
-/**
- * Household's own sub-tabs (#327): "who lives here" (roster, shared-cost split) and
- * "what we compare against" (the Statbel reference correction + provenance) used to be
- * one form doing both jobs — split the same way `BenchmarkSection` above splits
- * Household from Mapping, and for the same reason both panels stay mounted rather than
- * unmounted: `HouseholdPanel`'s roster edits and `ComparisonPanel`'s reference draft are
- * both local `useState`, and switching tabs must not throw an in-progress edit away.
- *
- * `active` says whether `BenchmarkSection` currently shows this section at all — this
- * component stays mounted (in a `hidden` wrapper) even while Mapping is showing, and its
- * own `useSubsection` call must not treat that as "the URL needs correcting back to
- * household" (see the comment on `useSubsection`'s `enabled` parameter).
- */
-function HouseholdSection({ active: sectionActive, ...props }: SettingsPanelProps & { active: boolean }): ReactNode {
-  const { t } = useT()
-  const active = useSubsection(HOUSEHOLD_SUBSECTIONS, sectionActive)
-
-  return (
-    <>
-      <SectionNav
-        sections={HOUSEHOLD_SUBSECTIONS}
-        variant="sub"
-        ariaLabel={t('settings:benchmark.household.title')}
-      />
-      <div hidden={active !== 'household'}>
-        <HouseholdPanel {...props} />
-      </div>
       <div hidden={active !== 'comparison'}>
         <ComparisonPanel {...props} />
       </div>
-    </>
+    </SectionNav>
   )
 }

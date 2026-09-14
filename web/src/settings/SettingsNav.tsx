@@ -7,8 +7,12 @@ import { useT } from '../i18n.ts'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { SETTINGS_SECTIONS } from './sections.ts'
 
-export function SettingsNav(): ReactNode {
+export function SettingsNav({ children }: { children?: ReactNode }): ReactNode {
   const { t } = useT()
 
-  return <SectionNav sections={SETTINGS_SECTIONS} ariaLabel={t('nav.settings')} />
+  return (
+    <SectionNav sections={SETTINGS_SECTIONS} ariaLabel={t('nav.settings')}>
+      {children}
+    </SectionNav>
+  )
 }

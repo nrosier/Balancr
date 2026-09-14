@@ -96,24 +96,25 @@ export function Portfolio(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
-      <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')} />
-      {/*
-        Unconditional on `section`, unlike Benchmark's own picker: `date`/`history`/
-        `holdings`/`advice` all depend on it, so it has to stay visible no matter which
-        of the three tabs is open.
-      */}
-      <div className="toolbar">
-        <PeriodPicker
-          period={period ?? { kind: 'month', value: new Date().toISOString().slice(0, 7) }}
-          onSelect={setPeriod}
-          id="portfolio-period"
-          label={t('portfolio:picker.period')}
-          kindLabel={(kind) => t(`portfolio:picker.period${kind === 'month' ? 'Month' : 'Year'}`)}
-        />
-      </div>
-      <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <Figures data={data} section={section} onRefreshed={resource.reload} />}
-      </DataState>
+      <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')}>
+        {/*
+          Unconditional on `section`, unlike Benchmark's own picker: `date`/`history`/
+          `holdings`/`advice` all depend on it, so it has to stay visible no matter which
+          of the three tabs is open.
+        */}
+        <div className="toolbar">
+          <PeriodPicker
+            period={period ?? { kind: 'month', value: new Date().toISOString().slice(0, 7) }}
+            onSelect={setPeriod}
+            id="portfolio-period"
+            label={t('portfolio:picker.period')}
+            kindLabel={(kind) => t(`portfolio:picker.period${kind === 'month' ? 'Month' : 'Year'}`)}
+          />
+        </div>
+        <DataState resource={resource} isEmpty={isEmpty}>
+          {(data) => <Figures data={data} section={section} onRefreshed={resource.reload} />}
+        </DataState>
+      </SectionNav>
     </>
   )
 }
