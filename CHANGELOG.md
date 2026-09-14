@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.5] — 2026-09-14
+
+Fixes Budget → Overview's Spent and Income cards, which kept printing one
+resolved month's figures even once the page's own picker was turned to Year.
+
+### Fixed
+
+- **Spent and Income sum the page's own year** ([#355](https://github.com/nrosier/Balancr/issues/355)).
+  Turning the picker to Year changed which month the server resolved
+  `totals` for, but the Spent and Income cards kept the one resolved
+  month's figures — unlike the savings-rate card beside them, already
+  fixed in 1.1.4 to sum the same period. Both cards now reuse that same
+  computation; assigned, available, left-to-assign and committed stay on
+  the resolved month, since those are envelope states with no meaning
+  summed over a year.
+
 ## [1.1.4] — 2026-09-14
 
 Fixes Budget → Overview's savings-rate card, which was still choosable on its
