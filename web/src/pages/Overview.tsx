@@ -107,7 +107,29 @@ function Figures({
     netWorth === null
       ? []
       : [
-          { label: t('portfolio:metric.liquid'), value: euro(netWorth.liquidCents) },
+          {
+            label: t('portfolio:metric.liquid'),
+            value: euro(netWorth.liquidCents),
+            // Split rather than left as one figure someone has to already know is
+            // mixed (#353's follow-up): a reader who only ever sees "directly
+            // available" has no way to tell an off-budget pot from a checking
+            // account without opening Portfolio's own list of them.
+            ...(netWorth.liquidOffBudgetCents === null
+              ? {}
+              : {
+                  rows: [
+                    {
+                      label: t('portfolio:metric.onBudget'),
+                      value: euro(netWorth.liquidCents - netWorth.liquidOffBudgetCents),
+                    },
+                    {
+                      label: t('portfolio:metric.offBudget'),
+                      value: euro(netWorth.liquidOffBudgetCents),
+                      ...(netWorth.liquidOffBudgetCents < 0 ? { tone: 'negative' as const } : {}),
+                    },
+                  ],
+                }),
+          },
           { label: t('portfolio:metric.invested'), value: euro(netWorth.investedCents) },
           // Debt is stored as the negative it is, so it needs no sign of its own. It is
           // coloured because a debt row that looks like an asset row gets read as one.
@@ -126,17 +148,6 @@ function Figures({
                   label: t('portfolio:metric.mortgageBalance'),
                   value: euro(netWorth.mortgageBalanceCents),
                   ...(netWorth.mortgageBalanceCents === 0 ? {} : { tone: 'negative' as const }),
-                },
-              ]),
-          // Independent of the Debt row above, and can overlap it: a negative
-          // off-budget account (a mortgage) counts toward both (#353).
-          ...(netWorth.offBudgetCents === null
-            ? []
-            : [
-                {
-                  label: t('portfolio:metric.offBudget'),
-                  value: euro(netWorth.offBudgetCents),
-                  ...(netWorth.offBudgetCents < 0 ? { tone: 'negative' as const } : {}),
                 },
               ]),
         ]

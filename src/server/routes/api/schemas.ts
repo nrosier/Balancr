@@ -204,15 +204,15 @@ export const overviewSchema = z.object({
       /** Summed outstanding mortgage balance; null when no property has a mortgage. */
       mortgageBalanceCents: cents().nullable(),
       /**
-       * Net sum of off-budget Actual accounts, null when there are none (#353).
-       *
-       * Independent of `debtCents`, deliberately, and the two can overlap: a negative
-       * off-budget account (a mortgage) already counts toward `debtCents` above, and
-       * counts again here, because the two figures answer different questions — "how
-       * much is owed" and "what do the off-budget accounts add up to" — and netting one
-       * out of the other would answer neither.
+       * How much of `liquidCents` above sits in an off-budget account, null when none
+       * of it does (#353) — e.g. a savings pot Actual keeps off-budget that still
+       * counts toward net worth. Scoped to liquid accounts only: an off-budget
+       * mortgage or brokerage account has its own place to be seen already
+       * (`debtCents`, `investedCents`, and `portfolioSchema`'s `offBudgetAccounts`),
+       * and folding every kind in here would make "directly available" the wrong
+       * figure to split it out of.
        */
-      offBudgetCents: cents().nullable(),
+      liquidOffBudgetCents: cents().nullable(),
     })
     .nullable(),
   history: z.array(netWorthPointSchema),
@@ -851,8 +851,8 @@ export const portfolioSchema = z.object({
   totalPropertyEquityCents: cents().nullable(),
   /**
    * Off-budget Actual accounts already counted into net worth, named (#353) — a
-   * mortgage or a house-value tracker, say. See `netWorth.offBudgetCents` on
-   * `overviewSchema` for why this deliberately overlaps `properties`/debt figures.
+   * mortgage or a house-value tracker, say, every kind included. See
+   * `netWorth.liquidOffBudgetCents` on `overviewSchema` for the liquid slice of this.
    */
   offBudgetAccounts: z.array(offBudgetAccountSchema),
 })
