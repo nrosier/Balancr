@@ -1267,14 +1267,14 @@ describe('the household', () => {
 
   /**
    * `reference()`'s panel, for the tests below it (#290/#327): the Statbel correction
-   * form moved to Household's own Comparison sub-tab, which — like Household/Mapping one
-   * level up — stays mounted but `hidden` while its sibling shows. `getByRole` treats a
+   * form lives on Benchmark's own Comparison tab, a sibling of Household and Categories,
+   * and stays mounted but `hidden` while another one shows. `getByRole` treats a
    * `hidden` ancestor as inaccessible even though the node is in the document, so a test
    * that queries the Save button (or clicks it) needs the Comparison tab actually active,
    * not just `open()`'s default landing on Household.
    */
   const openComparison = (replies: Replies): Promise<Call[]> =>
-    openPage(replies, '/settings/benchmark/household/comparison', 'Comparison')
+    openPage(replies, '/settings/benchmark/comparison', 'Comparison')
 
   /** The citation the fixture's file carries, which the boxes prefill from (#290). */
   const FILE_CITATION =

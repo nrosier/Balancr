@@ -245,10 +245,9 @@ export function ThresholdsSection(props: SettingsPanelProps): ReactNode {
   const activeGroup = useSubsection(subsections)
 
   return (
-    <>
-      <SectionNav sections={subsections} variant="sub" ariaLabel={t('settings:nav.thresholds')} />
+    <SectionNav sections={subsections} variant="sub" ariaLabel={t('settings:nav.thresholds')}>
       <ThresholdsPanel {...props} activeGroup={activeGroup} />
-    </>
+    </SectionNav>
   )
 }
 

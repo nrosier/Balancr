@@ -89,9 +89,7 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
   const { settings } = props
 
   return (
-    <>
-      <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')} />
-
+    <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')}>
       {active === 'status' ? (
         <StatusPanel {...props} />
       ) : (
@@ -128,7 +126,7 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
           </section>
         </>
       )}
-    </>
+    </SectionNav>
   )
 }
 
@@ -152,43 +150,44 @@ export function Settings(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.settings')} lede={t('page.settings.lede')} />
-      <SettingsNav />
 
-      <DataState resource={state.resource}>
-        {(settings) => {
-          const owner = settings.profile.role === 'owner'
-          const props = { settings, state, owner, estimate }
+      <SettingsNav>
+        <DataState resource={state.resource}>
+          {(settings) => {
+            const owner = settings.profile.role === 'owner'
+            const props = { settings, state, owner, estimate }
 
-          return (
-            <>
-              {/*
-                The failure of a *write*, above the panels rather than inside the one
-                that caused it. A rejected field is already reported beside itself by
-                `state.issue`; what lands here is what the server did not attribute to
-                a field — a rate limit, a lost session, an upstream that went away —
-                and none of those belong under a single input.
-              */}
-              {state.error === null || state.error.issues.length > 0 ? null : (
-                <div className="notice notice--error" role="alert">
-                  {state.error.message}
-                  {state.error.requestId === null ? null : (
-                    <p className="notice__meta">{state.error.requestId}</p>
-                  )}
-                </div>
-              )}
+            return (
+              <>
+                {/*
+                  The failure of a *write*, above the panels rather than inside the one
+                  that caused it. A rejected field is already reported beside itself by
+                  `state.issue`; what lands here is what the server did not attribute to
+                  a field — a rate limit, a lost session, an upstream that went away —
+                  and none of those belong under a single input.
+                */}
+                {state.error === null || state.error.issues.length > 0 ? null : (
+                  <div className="notice notice--error" role="alert">
+                    {state.error.message}
+                    {state.error.requestId === null ? null : (
+                      <p className="notice__meta">{state.error.requestId}</p>
+                    )}
+                  </div>
+                )}
 
-              {section === 'general' && <GeneralSection {...props} />}
+                {section === 'general' && <GeneralSection {...props} />}
 
-              {section === 'prompts' && <PromptsPanel {...props} />}
-              {section === 'risk' && <RiskPanel {...props} />}
-              {section === 'thresholds' && <ThresholdsSection {...props} />}
-              {section === 'accounts' && <AccountsPanel {...props} />}
-              {section === 'benchmark' && <BenchmarkSection {...props} />}
-              {section === 'property' && <PropertyPanel {...props} />}
-            </>
-          )
-        }}
-      </DataState>
+                {section === 'prompts' && <PromptsPanel {...props} />}
+                {section === 'risk' && <RiskPanel {...props} />}
+                {section === 'thresholds' && <ThresholdsSection {...props} />}
+                {section === 'accounts' && <AccountsPanel {...props} />}
+                {section === 'benchmark' && <BenchmarkSection {...props} />}
+                {section === 'property' && <PropertyPanel {...props} />}
+              </>
+            )
+          }}
+        </DataState>
+      </SettingsNav>
     </>
   )
 }

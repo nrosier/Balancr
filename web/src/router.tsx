@@ -83,14 +83,22 @@ export interface LinkProps {
    * prefix matching — a detail path still lights the section it sits under — but a
    * flat tab strip whose own base path (e.g. `/settings`) is a literal prefix of every
    * other tab would otherwise always read as current alongside whichever tab is
-   * actually open.
+   * actually open. Ignored when `active` is passed.
    */
   exact?: boolean
+  /**
+   * Overrides the automatic `exact`/prefix check entirely. A tab strip with several
+   * sibling paths (one of them a literal prefix of the rest, e.g. `/settings` under
+   * `/settings/thresholds`) needs "closest match among all of my siblings wins" rather
+   * than each link judging only itself against the current path — `SectionNav` computes
+   * that once via `sectionFor` and passes the answer down.
+   */
+  active?: boolean
 }
 
-export function Link({ to, children, className, onNavigate, exact = false }: LinkProps): ReactNode {
+export function Link({ to, children, className, onNavigate, exact = false, active }: LinkProps): ReactNode {
   const { path, navigate } = useRouter()
-  const active = exact ? path === to : isActive(path, to)
+  const isCurrent = active ?? (exact ? path === to : isActive(path, to))
 
   const onClick = (event: MouseEvent<HTMLAnchorElement>): void => {
     // Anything but a plain left click belongs to the browser: a modifier means "new
@@ -118,7 +126,7 @@ export function Link({ to, children, className, onNavigate, exact = false }: Lin
       className={className}
       // Announced by screen readers as the current page, and the hook the nav styles
       // its active item with — one source of truth for "where am I".
-      aria-current={active ? 'page' : undefined}
+      aria-current={isCurrent ? 'page' : undefined}
     >
       {children}
     </a>

@@ -36,64 +36,91 @@
 /* ── Section tabs ────────────────────────────────────────────────────────── */
 
 /*
- * The tab strip a page splits itself into (#200, generalized for #228/#229/#230). Its
- * own thing rather than a second copy of `.nav`'s fixed bar: this sits inline under the
- * page heading and scrolls sideways instead of wrapping, because the longest set of
- * Dutch labels does not fit one row at 375px and wrapping would push every panel down by
- * a variable amount depending on how many tabs broke. An underline marks the active tab
- * rather than a filled background, so it reads as a peer of the page's own `<h2>`
- * headings rather than as another sidebar.
+ * The tab strip a page (or a page's own section) splits itself into (#200,
+ * generalized for #228/#229/#230; reworked into a "shelf" shape per #347). One
+ * rounded, bordered shape holds both the tab row and the content below it: the shelf
+ * is a step darker than the content, the active tab matches the content's own
+ * background and has no border on its bottom edge, so it reads as fused into the panel
+ * beneath it rather than floating above it — the same illusion a browser or Notion tab
+ * uses. The active tab's text takes the same accent the primary sidebar nav highlights
+ * its own current page with (`.nav__link[aria-current='page']` in `shell.css`), so both
+ * tiers agree on what "selected" looks like.
+ *
+ * `--sub` modifiers scale the same shape down for a section's own nested subsections
+ * (Thresholds' parameter groups, General's status/language split, Benchmark's
+ * household/mapping): this tier sits a level inside a page that already has its own
+ * primary shelf above it, so it stays smaller and quieter rather than stacking two
+ * equally heavy shelves.
  */
-.section-nav {
+.section-shelf {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+  /* Clips the content div's square corners to the shelf's own rounding. */
+  overflow: hidden;
+}
+
+.section-shelf--sub {
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.section-shelf__tabs {
   display: flex;
-  gap: var(--space-4);
+  gap: var(--space-1);
   overflow-x: auto;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-2) 0;
   /* Scrollable without a visible scrollbar stealing a row of its own on desktop. */
   scrollbar-width: none;
 }
 
-.section-nav::-webkit-scrollbar {
+.section-shelf__tabs::-webkit-scrollbar {
   display: none;
 }
 
-.section-nav__link {
+.section-shelf__tabs--sub {
+  gap: 0;
+  padding: var(--space-1) var(--space-1) 0;
+}
+
+.section-shelf__tab {
   flex: 0 0 auto;
-  padding: var(--space-2) 0;
-  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   color: var(--text-muted);
   text-decoration: none;
   font-size: var(--type-sm);
   white-space: nowrap;
   transition:
     color var(--transition),
-    border-color var(--transition);
+    background-color var(--transition);
 }
 
-.section-nav__link:hover {
+.section-shelf__tab--sub {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  font-size: var(--type-xs);
+}
+
+.section-shelf__tab:hover {
   color: var(--text);
 }
 
-.section-nav__link[aria-current='page'] {
+.section-shelf__tab[aria-current='page'] {
+  background: var(--surface-card);
   color: var(--accent);
-  border-bottom-color: var(--accent);
   font-weight: var(--weight-medium);
+  /* Overlaps the seam below so the shelf's border never shows under the active tab. */
+  margin-bottom: -1px;
 }
 
-/*
- * A section's own subsection tabs (#200 nesting) — smaller and tighter than the primary
- * strip above it, so the two rows read as two tiers of the same page rather than as a
- * second, equally-weighted nav.
- */
-.section-nav--sub {
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+.section-shelf__content {
+  padding: var(--space-4);
+  background: var(--surface-card);
 }
 
-.section-nav--sub .section-nav__link {
-  padding: var(--space-1) 0;
-  font-size: var(--type-xs);
+.section-shelf__content--sub {
+  padding: var(--space-3);
 }
 
 /* ── Cards ───────────────────────────────────────────────────────────────── */
