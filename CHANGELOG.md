@@ -6,6 +6,21 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.2] — 2026-09-14
+
+Restyles `SectionNav`'s tab strip ([#349](https://github.com/nrosier/Balancr/issues/349)).
+
+### Changed
+
+- **Shelf-style tab bar.** Both tab tiers move from underline tabs to a
+  rounded, bordered "shelf": the active tab's background matches the
+  content panel below it, so it fuses into the panel rather than floating
+  above it, on Budget, Insights, Portfolio and Settings (primary and
+  `sub` tiers alike). Fixes a bug where a nested settings URL didn't
+  highlight its owning top-level tab. Benchmark's two-tier
+  household/comparison nesting is flattened into one flat row of three
+  siblings — Household, Categories, Comparison.
+
 ## [1.1.1] — 2026-09-13
 
 Promotes `1.1.1-rc.1`'s period picker out of pre-release, plus routine
