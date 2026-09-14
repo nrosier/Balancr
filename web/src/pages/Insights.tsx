@@ -22,10 +22,13 @@
  * on the endpoint and `useState` here, because `useResource` refetches on a path change
  * and that is the whole mechanism (#158). **A year is a picker mode, not a second shape
  * (#345)**: a year resolves to a concrete anchor month client-side via `resolveYearAnchor`,
- * the server only ever sees one `?month=YYYY-MM`, and `?runsPeriod=year` rides alongside it
- * to widen the ledger tab's own query — see `routes/api/insights.ts`. Findings keeps its
- * month-only `MonthPicker`, since its month-only shape has not changed; Narrative and
- * Ledger get the month+year `PeriodPicker`, and Pending gets neither.
+ * the server only ever sees one `?month=YYYY-MM`, and `?runsPeriod=year`/`?signalsPeriod=year`
+ * ride alongside it to widen the ledger and findings tabs' own queries — see
+ * `routes/api/insights.ts`. Findings, Narrative and Ledger all get the month+year
+ * `PeriodPicker` (#352); Pending gets neither, being standing work with no month of its
+ * own. A year does not re-aggregate Findings — most signals have no year-shaped
+ * equivalent to compute — it lists each month of the year's own findings instead; see
+ * `Findings.tsx`.
  *
  * Three of the sections narrow with the picker and two do not, and the page says which.
  * The findings, the review and the ledger are *about* a month — each is stored under one,
@@ -66,7 +69,6 @@ import {
   type Insights as InsightsPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
-import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { Private } from '../ui/Money.tsx'
 import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
@@ -128,7 +130,10 @@ export function Insights(): ReactNode {
         : resolveYearAnchor(knownMonths, period.value)
   const params = new URLSearchParams()
   if (month !== null) params.set('month', month)
-  if (period?.kind === 'year') params.set('runsPeriod', 'year')
+  if (period?.kind === 'year') {
+    params.set('runsPeriod', 'year')
+    params.set('signalsPeriod', 'year')
+  }
   const query = params.toString()
   const resource = useResource<InsightsPayload>(
     query === '' ? '/api/insights' : `/api/insights?${query}`,
@@ -191,15 +196,7 @@ function Sections({
 
       {data.month === null ? null : (
         <div className="toolbar">
-          {section === 'findings' ? (
-            <MonthPicker
-              month={data.month}
-              months={data.months}
-              onSelect={(value) => onSelect({ kind: 'month', value })}
-              id="insights-month"
-              label={t('budget:picker.month')}
-            />
-          ) : section === 'narrative' || section === 'ledger' ? (
+          {section === 'findings' || section === 'narrative' || section === 'ledger' ? (
             <PeriodPicker
               period={displayPeriod}
               onSelect={onSelect}
@@ -233,7 +230,9 @@ function Sections({
 
       {data.ai.enabled ? null : <AiOff availability={data.ai} />}
 
-      {section === 'findings' && <Findings signals={data.signals} month={data.month} />}
+      {section === 'findings' && (
+        <Findings signals={data.signals} history={data.signalsHistory} month={data.month} period={period} />
+      )}
 
       {/*
         Four sections that only a model can fill, each with its own "nothing yet" copy.

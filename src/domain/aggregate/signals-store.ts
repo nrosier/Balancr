@@ -224,6 +224,39 @@ export function loadSignals(db: Db, month: string): Signal[] {
     .orderBy(monthlySignals.code, monthlySignals.subjectKey)
     .all()
 
+  return toSignals(rows)
+}
+
+/**
+ * The stored signals for several months at once (#352) — one query rather than
+ * one `loadSignals` call per month, grouped back out by month afterwards. A
+ * month with nothing stored gets an empty array, same as `loadSignals`, rather
+ * than being left out of the map: a year picker needs to tell "no findings"
+ * apart from "not asked about".
+ */
+export function loadSignalsForMonths(db: Db, months: readonly string[]): Map<string, Signal[]> {
+  const byMonth = new Map<string, Signal[]>(months.map((month) => [month, []]))
+  if (months.length === 0) return byMonth
+
+  const rows = db
+    .select()
+    .from(monthlySignals)
+    .where(inArray(monthlySignals.month, [...months]))
+    .orderBy(monthlySignals.month, monthlySignals.code, monthlySignals.subjectKey)
+    .all()
+
+  const byMonthRaw = new Map<string, (typeof rows)[number][]>()
+  for (const row of rows) {
+    const forMonth = byMonthRaw.get(row.month) ?? []
+    forMonth.push(row)
+    byMonthRaw.set(row.month, forMonth)
+  }
+  for (const [month, monthRows] of byMonthRaw) byMonth.set(month, toSignals(monthRows))
+
+  return byMonth
+}
+
+function toSignals(rows: readonly (typeof monthlySignals.$inferSelect)[]): Signal[] {
   const signals: Signal[] = []
   for (const row of rows) {
     if (!KNOWN.has(row.code)) continue
