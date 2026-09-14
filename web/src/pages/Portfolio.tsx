@@ -35,6 +35,7 @@ import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { DriftTable } from '../portfolio/Drift.tsx'
+import { OffBudgetAccountsTable } from '../portfolio/OffBudgetAccounts.tsx'
 import { PropertyTable } from '../portfolio/Property.tsx'
 import { PORTFOLIO_SECTIONS, sectionFor } from '../portfolio/sections.ts'
 import { Suggestions } from '../portfolio/Suggestions.tsx'
@@ -108,7 +109,8 @@ function Figures({
 }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { advice, allocation, cashValueCents, date, history, holdings, properties } = data
+  const { advice, allocation, cashValueCents, date, history, holdings, offBudgetAccounts, properties } =
+    data
   const { investedValueCents, totalValueCents, twrBp } = data
 
   return (
@@ -187,6 +189,20 @@ function Figures({
               <AllocationChart allocation={allocation} />
             )}
           </section>
+
+          {/*
+            Off-budget Actual accounts were already summed into net worth's total
+            before this card existed (#353) — this only names them, so a mortgage or a
+            house-value tracker sitting off-budget in Actual stops being an unexplained
+            number. Above Property since it can include the very mortgage Property
+            tracks the equity side of. No fallback branch, same reasoning as Property.
+          */}
+          {offBudgetAccounts.length === 0 ? null : (
+            <section className="card">
+              <h2 className="card__title">{t('portfolio:offBudget.title')}</h2>
+              <OffBudgetAccountsTable accounts={offBudgetAccounts} />
+            </section>
+          )}
 
           {/*
             Outside `allocation`/`advice` on purpose (#227) — a paid-down room in an

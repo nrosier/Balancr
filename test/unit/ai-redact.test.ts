@@ -158,6 +158,7 @@ const account = (overrides: Partial<AccountMapRow> = {}): AccountMapRow => ({
   includeInNetWorth: true,
   dedupeGroup: null,
   isSourceOfTruth: true,
+  offBudget: false,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   ...overrides,
 })

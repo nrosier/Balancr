@@ -105,6 +105,7 @@ const FULL: PortfolioPayload = {
   advice: null,
   properties: [],
   totalPropertyEquityCents: null,
+  offBudgetAccounts: [],
 }
 
 /** Nothing has ever been snapshotted. */
@@ -121,6 +122,7 @@ const EMPTY: PortfolioPayload = {
   advice: null,
   properties: [],
   totalPropertyEquityCents: null,
+  offBudgetAccounts: [],
 }
 
 /**
@@ -964,6 +966,31 @@ describe('property', () => {
       '€ 900',
       '4,5%',
     ])
+  })
+})
+
+describe('off-budget accounts (#353)', () => {
+  const MORTGAGE: PortfolioPayload['offBudgetAccounts'][number] = {
+    id: 'acct-mortgage',
+    name: 'KBC Hypotheek',
+    balanceCents: -18_000_000,
+    currency: 'EUR',
+  }
+
+  it('draws no card when there are none', async () => {
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Off-budget accounts' })).toBeNull()
+  })
+
+  it('names the account and its balance, which already counts toward net worth', async () => {
+    serve(json({ ...FULL, offBudgetAccounts: [MORTGAGE] }))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Off-budget accounts' })
+
+    expect(row('KBC Hypotheek')).toEqual(['KBC Hypotheek', '€ -180.000'])
   })
 })
 

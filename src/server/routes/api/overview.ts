@@ -28,7 +28,11 @@
  */
 import type { Db } from '../../../db/index.ts'
 import { HYGIENE_CODES } from '../../../domain/aggregate/hygiene.ts'
-import { loadLatestNetWorth, loadNetWorthHistory } from '../../../domain/aggregate/networth-store.ts'
+import {
+  loadLatestNetWorth,
+  loadNetWorthHistory,
+  loadOffBudgetAccounts,
+} from '../../../domain/aggregate/networth-store.ts'
 import {
   latestStoredMonth,
   loadMonthTotals,
@@ -87,6 +91,7 @@ export function buildOverview(db: Db): Overview {
   const today = new Date().toISOString().slice(0, 10)
   const properties = loadProperties(db).properties
   const propertyEquity = totalEquityCents(properties, today)
+  const offBudgetAccounts = netWorth === null ? [] : loadOffBudgetAccounts(db)
 
   return overviewSchema.parse({
     freshness: freshness(db),
@@ -108,6 +113,14 @@ export function buildOverview(db: Db): Overview {
                   0,
                 )
               : null,
+            // Deliberately independent of `debtCents` above, and can overlap it: a
+            // negative off-budget account (a mortgage) counts toward both, because the
+            // two answer different questions — "how much is owed" and "what do the
+            // off-budget accounts add up to" (#353).
+            offBudgetCents:
+              offBudgetAccounts.length === 0
+                ? null
+                : offBudgetAccounts.reduce((sum, account) => sum + account.balanceCents, 0),
           },
     history: loadNetWorthHistory(db),
     month,

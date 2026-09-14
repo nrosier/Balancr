@@ -179,6 +179,12 @@ export const accountMap = sqliteTable(
     includeInNetWorth: integer('include_in_net_worth', { mode: 'boolean' })
       .notNull()
       .default(true),
+    /**
+     * Actual's own off-budget flag, refreshed on every sync (#353) — source-system
+     * truth like `name`, not a person's decision, so it is not in `DECIDABLE_FIELDS`.
+     * Always `false` for a Ghostfolio row, which has no such concept.
+     */
+    offBudget: integer('off_budget', { mode: 'boolean' }).notNull().default(false),
     dedupeGroup: text('dedupe_group'),
     isSourceOfTruth: integer('is_source_of_truth', { mode: 'boolean' })
       .notNull()
