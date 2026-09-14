@@ -48,6 +48,14 @@
  *
  * The page says which is which, because a section that ignores the picker above it has to
  * explain itself or it reads as a bug.
+ *
+ * `signalsHistory` (#352) is what a year selection actually widens `signals` into: most of
+ * what `computeSignals` finds is irreducibly about one calendar month — envelope carry-in,
+ * an EWMA baseline, "is today's price stale" — and has no year-shaped equivalent to
+ * recompute, unlike the benchmark or custody cards' own year mode. So a year does not sum
+ * anything here; it lists each of its months' own already-judged findings, newest first,
+ * which needs nothing new from `computeSignals` and keeps every signal working rather than
+ * silently dropping the ones a real aggregation couldn't answer for a year.
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
@@ -56,6 +64,7 @@ import { loadMonthTotals, storedMonths } from '../../../domain/aggregate/month-s
 import {
   loadCategoryGuessCandidates,
   loadSignals,
+  loadSignalsForMonths,
   type CategoryGuessCandidate,
 } from '../../../domain/aggregate/signals-store.ts'
 import { aiAvailability } from '../../../domain/ai/availability.ts'
@@ -64,6 +73,8 @@ import { openQuestions } from '../../../domain/ai/clarify.ts'
 import { loadNarrative, noteChangedSince, renderNarrative } from '../../../domain/ai/narrative.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
+import type { Signal } from '../../../domain/aggregate/overspend.ts'
+import { monthRange } from '../../../util/month.ts'
 import { resolveBenchmarkPeriod, resolveMonth } from './budget.ts'
 import {
   aiRunPayloadSchema,
@@ -80,6 +91,8 @@ export interface InsightsOptions {
   month?: unknown
   /** `?runsPeriod=`, unvalidated — whether the ledger widens to the month's whole year. */
   runsPeriod?: unknown
+  /** `?signalsPeriod=`, unvalidated — whether Findings widens to the month's whole year. */
+  signalsPeriod?: unknown
   locale?: string
   /**
    * Whether this reader may start a run. Drawn from the session's role by the caller,
@@ -92,6 +105,7 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
   const locale = options.locale ?? config.DEFAULT_LOCALE
   const month = resolveMonth(db, options.month)
   const runsPeriod = resolveBenchmarkPeriod(options.runsPeriod)
+  const signalsPeriod = resolveBenchmarkPeriod(options.signalsPeriod)
   // Per month and per locale, unlike before, when it was the newest narrative in this
   // language whatever month it described. That was a real hazard rather than a
   // simplification: on the 3rd of September the page printed August's review with no
@@ -109,6 +123,7 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
     factsChangedAt: factsChangedAt?.toISOString() ?? null,
     months: storedMonths(db),
     signals: month === null ? [] : loadSignals(db, month),
+    signalsHistory: month === null || signalsPeriod !== 'year' ? [] : signalsHistoryFor(db, month),
     categoryGuessCandidates:
       month === null ? [] : wireCandidates(loadCategoryGuessCandidates(db, month), loadCategoryMeta(db)),
     narrative:
@@ -174,6 +189,26 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
         )
     ).map(wireRun),
   })
+}
+
+/**
+ * `month`'s year, one entry per month that actually has stored signals, newest
+ * first — what `?signalsPeriod=year` widens `signals` into (#352). A month with
+ * nothing stored (never judged, or judged and clean) is left out rather than
+ * printed as an empty section; `loadSignalsForMonths` still gets asked about it,
+ * since a plain `WHERE month IN (...)` is cheaper than special-casing which
+ * months of the year are worth asking about.
+ */
+function signalsHistoryFor(db: Db, month: string): { month: string; signals: Signal[] }[] {
+  const months = monthRange(`${month.slice(0, 4)}-01`, month)
+  const byMonth = loadSignalsForMonths(db, months)
+
+  const history: { month: string; signals: Signal[] }[] = []
+  for (const candidate of months) {
+    const signals = byMonth.get(candidate) ?? []
+    if (signals.length > 0) history.push({ month: candidate, signals })
+  }
+  return history.reverse()
 }
 
 /**

@@ -86,10 +86,11 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/scenario', () => buildScenario(db))
 
   app.get('/api/insights', (request: FastifyRequest) => {
-    const query = request.query as { month?: unknown; runsPeriod?: unknown } | undefined
+    const query = request.query as { month?: unknown; runsPeriod?: unknown; signalsPeriod?: unknown } | undefined
     return buildInsights(db, {
       month: query?.month,
       runsPeriod: query?.runsPeriod,
+      signalsPeriod: query?.signalsPeriod,
       locale: resolveLocale(request),
       // Only so the page knows whether to draw the button that spends money.
       // `POST /api/ai/narrative` gates itself; this is presentation (#158).

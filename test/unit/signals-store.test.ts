@@ -20,6 +20,7 @@ import type { MonthTotals } from '../../src/domain/aggregate/spend.ts'
 import {
   loadHygiene,
   loadSignals,
+  loadSignalsForMonths,
   persistSignals,
   staleMonths,
 } from '../../src/domain/aggregate/signals-store.ts'
@@ -190,6 +191,43 @@ describe('loadSignals is defensive about what it reads', () => {
       .where(eq(monthlySignals.month, '2026-03'))
       .run()
     expect(loadSignals(ctx.db, '2026-03')[0]?.metrics).toEqual({ overspendCents: 8_000 })
+  })
+})
+
+describe('loadSignalsForMonths (#352)', () => {
+  it('keys each requested month to its own signals', () => {
+    persistSignals(ctx.db, '2026-01', [signal({ code: 'over_assigned', severity: 'warn' })], clean)
+    persistSignals(ctx.db, '2026-03', [signal()], clean)
+
+    const byMonth = loadSignalsForMonths(ctx.db, ['2026-01', '2026-02', '2026-03'])
+    expect(byMonth.get('2026-01')).toEqual([signal({ code: 'over_assigned', severity: 'warn' })])
+    expect(byMonth.get('2026-03')).toEqual([signal()])
+  })
+
+  it('gives an empty array, not a missing entry, for a month with nothing stored', () => {
+    persistSignals(ctx.db, '2026-03', [signal()], clean)
+
+    const byMonth = loadSignalsForMonths(ctx.db, ['2026-02', '2026-03'])
+    // A year picker needs to tell "no findings" apart from "not asked about" —
+    // `has` would be false for a month this call never requested, but true here.
+    expect(byMonth.has('2026-02')).toBe(true)
+    expect(byMonth.get('2026-02')).toEqual([])
+  })
+
+  it('is empty for an empty month list, without querying anything', () => {
+    persistSignals(ctx.db, '2026-03', [signal()], clean)
+    expect(loadSignalsForMonths(ctx.db, [])).toEqual(new Map())
+  })
+
+  it('drops a row whose code is no longer in the vocabulary, same as loadSignals', () => {
+    persistSignals(ctx.db, '2026-03', [signal()], clean)
+    ctx.db
+      .update(monthlySignals)
+      .set({ code: 'retired_code' })
+      .where(eq(monthlySignals.month, '2026-03'))
+      .run()
+
+    expect(loadSignalsForMonths(ctx.db, ['2026-03']).get('2026-03')).toEqual([])
   })
 })
 

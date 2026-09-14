@@ -24,6 +24,16 @@
    Findings
    --------------------------------------------------------------------------- */
 
+.findings-month + .findings-month {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.findings-month__title {
+  margin: 0 0 var(--space-3);
+}
+
 .finding-group + .finding-group {
   margin-top: var(--space-5);
 }
