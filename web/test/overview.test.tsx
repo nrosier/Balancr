@@ -47,6 +47,7 @@ const FULL: OverviewPayload = {
     debtCents: -1_000_000,
     propertyValueCents: 40_000_000,
     mortgageBalanceCents: 18_000_000,
+    offBudgetCents: -18_000_000,
   },
   history: [
     { date: '2026-06-30', totalCents: 11_000_000 },
@@ -223,6 +224,10 @@ describe('when the server answers with a month', () => {
     expect(screen.getByText('€ 25.000')).toBeTruthy()
     expect(screen.getByText('€ 98.457')).toBeTruthy()
     expect(screen.getByText('€ -10.000')).toBeTruthy()
+    // A negative off-budget sum (a mortgage sitting off-budget in Actual) reads with
+    // the same tone as debt, even though the two figures deliberately overlap (#353).
+    expect(screen.getByText('Off-budget accounts')).toBeTruthy()
+    expect(screen.getByText('€ -180.000')).toBeTruthy()
     expect(screen.getByText('Updated 31/08/2026')).toBeTruthy()
   })
 
@@ -322,6 +327,7 @@ describe('when a figure is absent', () => {
           debtCents: 0,
           propertyValueCents: null,
           mortgageBalanceCents: null,
+          offBudgetCents: null,
         },
       } satisfies OverviewPayload),
     )

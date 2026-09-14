@@ -9,12 +9,14 @@
  * writes, which is exactly the double counting the dedupe exists to prevent.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { netWorthSnapshots } from '../../src/db/schema.ts'
+import { accountMap, netWorthSnapshots } from '../../src/db/schema.ts'
 import {
   loadLatestAccountBalances,
   loadNetWorthHistory,
+  loadOffBudgetAccounts,
   persistNetWorth,
 } from '../../src/domain/aggregate/networth-store.ts'
 import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
@@ -184,5 +186,50 @@ describe('loadLatestAccountBalances', () => {
 
   it('returns nothing before the first pass has run', () => {
     expect(loadLatestAccountBalances(ctx.db)).toEqual([])
+  })
+})
+
+describe('loadOffBudgetAccounts', () => {
+  it('names the off-budget accounts that count toward net worth, with their balance', () => {
+    persistNetWorth(
+      ctx.db,
+      computeNetWorth('2026-03-01', [account('a1', 250_000), account('a2', -18_000_000)]),
+    )
+
+    expect(loadOffBudgetAccounts(ctx.db)).toEqual([
+      { accountMapId: ids.a2, name: 'Beleggingen', balanceCents: -18_000_000, currency: 'EUR' },
+    ])
+  })
+
+  it('skips an on-budget account even though it counts toward net worth', () => {
+    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+
+    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+  })
+
+  it('drops an off-budget account someone has since excluded from net worth', () => {
+    // The snapshot row was written while the account still counted; the exclusion
+    // is a decision made afterwards, before the next nightly pass re-derives it.
+    // Same three judgement calls `computeNetWorth` respects — a person's exclusion
+    // must not resurface here just because the account happens to be off-budget.
+    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
+    ctx.db.update(accountMap).set({ includeInNetWorth: false }).where(eq(accountMap.id, ids.a2 as string)).run()
+
+    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+  })
+
+  it('drops an off-budget account that has since lost its dedupe tie', () => {
+    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
+    ctx.db
+      .update(accountMap)
+      .set({ dedupeGroup: 'mortgage', isSourceOfTruth: false })
+      .where(eq(accountMap.id, ids.a2 as string))
+      .run()
+
+    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+  })
+
+  it('returns nothing before the first pass has run', () => {
+    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
   })
 })

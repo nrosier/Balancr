@@ -94,6 +94,8 @@ export function syncAccountMap(
       seen.add(key)
       const row = bySource.get(key)
 
+      const offBudget = sighting.source === 'actual' ? (sighting.offBudget ?? false) : false
+
       if (!row) {
         tx.insert(accountMap)
           .values({
@@ -101,18 +103,19 @@ export function syncAccountMap(
             externalId: sighting.externalId,
             name: sighting.name,
             kind: defaultKind(sighting),
+            offBudget,
           })
           .run()
         result.created += 1
         continue
       }
 
-      if (row.name !== sighting.name) {
+      if (row.name !== sighting.name || row.offBudget !== offBudget) {
         tx.update(accountMap)
-          .set({ name: sighting.name })
+          .set({ name: sighting.name, offBudget })
           .where(eq(accountMap.id, row.id))
           .run()
-        result.renamed += 1
+        if (row.name !== sighting.name) result.renamed += 1
       }
     }
 

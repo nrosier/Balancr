@@ -83,6 +83,7 @@
     "mortgageBalance": "Mortgage balance",
     "mwr": "Money-weighted return",
     "netWorth": "Net worth",
+    "offBudget": "Off-budget accounts",
     "propertyValue": "Property value",
     "ter": "Annual costs",
     "twr": "Time-weighted return",
@@ -93,6 +94,15 @@
     "advice": "Advice",
     "holdings": "Holdings",
     "overview": "Overview"
+  },
+  "offBudget": {
+    "caption_one": "One off-budget account.",
+    "caption_other": "{{value}} off-budget accounts.",
+    "column": {
+      "balance": "Balance",
+      "name": "Account"
+    },
+    "title": "Off-budget accounts"
   },
   "property": {
     "caption_one": "One property.",

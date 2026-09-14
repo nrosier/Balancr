@@ -1,0 +1,1 @@
+ALTER TABLE `account_map` ADD `off_budget` integer DEFAULT false NOT NULL;

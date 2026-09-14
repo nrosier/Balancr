@@ -31,6 +31,7 @@
  */
 import type { Db } from '../../../db/index.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
+import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
 import { knownSplit } from '../../../domain/portfolio/metrics.ts'
 import {
   latestSnapshotDate,
@@ -110,5 +111,13 @@ export function buildPortfolio(db: Db): Portfolio {
       grossYieldBp: grossYieldBp(property),
     })),
     totalPropertyEquityCents: totalEquityCents(properties, today),
+    // See `netWorth.offBudgetCents` on `overviewSchema` for why this deliberately
+    // overlaps `properties`/debt figures rather than netting against them (#353).
+    offBudgetAccounts: loadOffBudgetAccounts(db).map((account) => ({
+      id: account.accountMapId,
+      name: account.name,
+      balanceCents: account.balanceCents,
+      currency: account.currency,
+    })),
   })
 }

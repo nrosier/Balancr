@@ -128,6 +128,17 @@ function Figures({
                   ...(netWorth.mortgageBalanceCents === 0 ? {} : { tone: 'negative' as const }),
                 },
               ]),
+          // Independent of the Debt row above, and can overlap it: a negative
+          // off-budget account (a mortgage) counts toward both (#353).
+          ...(netWorth.offBudgetCents === null
+            ? []
+            : [
+                {
+                  label: t('portfolio:metric.offBudget'),
+                  value: euro(netWorth.offBudgetCents),
+                  ...(netWorth.offBudgetCents < 0 ? { tone: 'negative' as const } : {}),
+                },
+              ]),
         ]
 
   return (
