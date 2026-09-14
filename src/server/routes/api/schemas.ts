@@ -203,6 +203,16 @@ export const overviewSchema = z.object({
       propertyValueCents: cents().nullable(),
       /** Summed outstanding mortgage balance; null when no property has a mortgage. */
       mortgageBalanceCents: cents().nullable(),
+      /**
+       * Net sum of off-budget Actual accounts, null when there are none (#353).
+       *
+       * Independent of `debtCents`, deliberately, and the two can overlap: a negative
+       * off-budget account (a mortgage) already counts toward `debtCents` above, and
+       * counts again here, because the two figures answer different questions — "how
+       * much is owed" and "what do the off-budget accounts add up to" — and netting one
+       * out of the other would answer neither.
+       */
+      offBudgetCents: cents().nullable(),
     })
     .nullable(),
   history: z.array(netWorthPointSchema),
@@ -787,6 +797,14 @@ export const portfolioPropertySchema = z.object({
   grossYieldBp: basisPoints().nullable(),
 })
 
+/** One off-budget Actual account counted into net worth (#353). */
+export const offBudgetAccountSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  balanceCents: cents(),
+  currency: z.string(),
+})
+
 export const portfolioSchema = z.object({
   freshness: freshnessSchema,
   date: dateKey().nullable(),
@@ -831,6 +849,12 @@ export const portfolioSchema = z.object({
   properties: z.array(portfolioPropertySchema),
   /** Summed across every property with a tracked value; null when none of them are. */
   totalPropertyEquityCents: cents().nullable(),
+  /**
+   * Off-budget Actual accounts already counted into net worth, named (#353) — a
+   * mortgage or a house-value tracker, say. See `netWorth.offBudgetCents` on
+   * `overviewSchema` for why this deliberately overlaps `properties`/debt figures.
+   */
+  offBudgetAccounts: z.array(offBudgetAccountSchema),
 })
 
 // ---------------------------------------------------------------------------

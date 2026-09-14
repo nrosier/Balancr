@@ -40,7 +40,10 @@ import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { saveHousehold } from '../../src/domain/benchmark/household.ts'
+import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
+import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
+import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
@@ -141,6 +144,7 @@ describe('GET /api/overview', () => {
       debtCents: 120_000,
       propertyValueCents: null,
       mortgageBalanceCents: null,
+      offBudgetCents: null,
     })
     expect(body.month).toBe(MONTH)
     // Descending, same as `/api/budget`'s — the period picker's availability set (#345).
@@ -611,6 +615,105 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
 
     expect(body.properties).toEqual([])
     expect(body.totalPropertyEquityCents).toBeNull()
+  })
+})
+
+describe('off-budget accounts, already counted into net worth (#353)', () => {
+  /**
+   * The fixture's three accounts already have a snapshot row for `SNAPSHOT_DATE`
+   * (`api-fixture.ts`), and `persistNetWorth` deletes any row for the date that
+   * isn't in the `contributions` it's given — so adding the mortgage means
+   * re-stating all four, not just the new one, or the existing three vanish.
+   */
+  function addOffBudgetMortgage(): string {
+    syncAccountMap(ctx.db, [
+      { source: 'actual', externalId: 'acct-mortgage', name: 'KBC Hypotheek', offBudget: true },
+    ])
+    const byExternalId = new Map(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
+    const mapId = (externalId: string): string => {
+      const id = byExternalId.get(externalId)
+      if (id === undefined) throw new Error(`the fixture failed to map ${externalId}`)
+      return id
+    }
+
+    persistNetWorth(
+      ctx.db,
+      computeNetWorth(SNAPSHOT_DATE, [
+        {
+          accountMapId: mapId('acct-checking'),
+          source: 'actual',
+          externalId: 'acct-checking',
+          name: 'Checking',
+          kind: 'checking',
+          valueCents: 1_240_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+        {
+          accountMapId: mapId('acct-broker'),
+          source: 'ghostfolio',
+          externalId: 'acct-broker',
+          name: 'Broker',
+          kind: 'investment',
+          valueCents: 3_700_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+        {
+          accountMapId: mapId('acct-card'),
+          source: 'actual',
+          externalId: 'acct-card',
+          name: 'Credit card',
+          kind: 'credit',
+          valueCents: -120_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+        {
+          accountMapId: mapId('acct-mortgage'),
+          source: 'actual',
+          externalId: 'acct-mortgage',
+          name: 'KBC Hypotheek',
+          kind: 'other',
+          valueCents: -18_000_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+
+    return mapId('acct-mortgage')
+  }
+
+  it('sums into its own row on GET /api/overview, independent of the debt figure', async () => {
+    addOffBudgetMortgage()
+    const body = (await get('/api/overview')).json()
+
+    expect(body.netWorth.offBudgetCents).toBe(-18_000_000)
+    // Deliberately unmoved: `debtCents` only ever reads an account's own sign,
+    // never `offBudget` — the mortgage counts toward both figures on purpose.
+    expect(body.netWorth.debtCents).toBe(120_000 + 18_000_000)
+  })
+
+  it('names the account and its balance on GET /api/portfolio', async () => {
+    const mortgageMapId = addOffBudgetMortgage()
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.offBudgetAccounts).toEqual([
+      { id: mortgageMapId, name: 'KBC Hypotheek', balanceCents: -18_000_000, currency: 'EUR' },
+    ])
+  })
+
+  it('answers an empty list and a null sum when nothing is off-budget', async () => {
+    const overview = (await get('/api/overview')).json()
+    expect(overview.netWorth.offBudgetCents).toBeNull()
+
+    const portfolio = (await get('/api/portfolio')).json()
+    expect(portfolio.offBudgetAccounts).toEqual([])
   })
 })
 

@@ -14,7 +14,7 @@ import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots } from '../../db/schema.ts'
 import type { AccountBalance } from './accounts.ts'
 import { config } from '../../config.ts'
-import { LIQUID, type NetWorthResult, type NetWorthSummary } from './networth.ts'
+import { LIQUID, resolveInclusion, type NetWorthResult, type NetWorthSummary } from './networth.ts'
 
 export interface NetWorthPersistResult {
   written: number
@@ -180,4 +180,53 @@ export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
     if (row.valueCents < 0) summary.debtCents += -row.valueCents
   }
   return summary
+}
+
+export interface OffBudgetAccount {
+  accountMapId: string
+  name: string
+  balanceCents: number
+  currency: string
+}
+
+/**
+ * Off-budget Actual accounts that count toward net worth today, with their balance.
+ *
+ * Off-budget accounts are already summed into `loadLatestNetWorth`'s `totalCents` —
+ * that has never excluded them (#353) — this only names them, so the mortgage or the
+ * house-value tracker behind the total is no longer invisible. Filtered through
+ * `resolveInclusion` rather than a raw `WHERE`, so an off-budget account someone has
+ * explicitly excluded from net worth, or lost a dedupe tie for, does not appear here
+ * either — the same three judgement calls `computeNetWorth` itself respects.
+ */
+export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
+  const latest = db
+    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
+    .from(netWorthSnapshots)
+    .get()
+  const date = latest?.date ?? null
+  if (date === null) return []
+
+  const candidates = db
+    .select({
+      accountMapId: accountMap.id,
+      name: accountMap.name,
+      includeInNetWorth: accountMap.includeInNetWorth,
+      dedupeGroup: accountMap.dedupeGroup,
+      isSourceOfTruth: accountMap.isSourceOfTruth,
+      valueCents: netWorthSnapshots.valueCents,
+      currency: netWorthSnapshots.currency,
+    })
+    .from(accountMap)
+    .innerJoin(netWorthSnapshots, eq(netWorthSnapshots.accountMapId, accountMap.id))
+    .where(and(eq(accountMap.offBudget, true), eq(netWorthSnapshots.date, date)))
+    .all()
+
+  const { included } = resolveInclusion(candidates)
+  return included.map((row) => ({
+    accountMapId: row.accountMapId,
+    name: row.name,
+    balanceCents: row.valueCents,
+    currency: row.currency,
+  }))
 }

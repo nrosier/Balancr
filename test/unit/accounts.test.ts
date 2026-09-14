@@ -129,6 +129,24 @@ describe('syncAccountMap', () => {
     })
   })
 
+  it('refreshes off-budget on every sync without counting it as a rename', () => {
+    // Actual's own flag, source-system truth like `name` — not a person's decision,
+    // so it must keep tracking Actual rather than freezing at whatever it was on
+    // first sync (#353).
+    syncAccountMap(ctx.db, [actual('a1', 'Beleggingen', false)])
+    expect(rows()[0]).toMatchObject({ offBudget: false })
+
+    const result = syncAccountMap(ctx.db, [actual('a1', 'Beleggingen', true)])
+
+    expect(result).toMatchObject({ created: 0, renamed: 0 })
+    expect(rows()[0]).toMatchObject({ name: 'Beleggingen', offBudget: true })
+  })
+
+  it('never sets off-budget for a Ghostfolio sighting, which has no such concept', () => {
+    syncAccountMap(ctx.db, [ghostfolio('g1', 'Bolero')])
+    expect(rows()[0]).toMatchObject({ offBudget: false })
+  })
+
   it('keeps a dedupe decision across a rename', () => {
     // The regression this whole module exists to prevent.
     syncAccountMap(ctx.db, [actual('a1', 'Beleggingen', true), ghostfolio('g1', 'Bolero')])

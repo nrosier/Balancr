@@ -83,6 +83,7 @@
     "mortgageBalance": "Hypotheeksaldo",
     "mwr": "Geldgewogen rendement",
     "netWorth": "Nettovermogen",
+    "offBudget": "Rekeningen buiten budget",
     "propertyValue": "Vastgoedwaarde",
     "ter": "Jaarlijkse kosten",
     "twr": "Tijdgewogen rendement",
@@ -93,6 +94,15 @@
     "advice": "Advies",
     "holdings": "Posities",
     "overview": "Overzicht"
+  },
+  "offBudget": {
+    "caption_one": "Eén rekening buiten budget.",
+    "caption_other": "{{value}} rekeningen buiten budget.",
+    "column": {
+      "balance": "Saldo",
+      "name": "Rekening"
+    },
+    "title": "Rekeningen buiten budget"
   },
   "property": {
     "caption_one": "Eén eigendom.",
