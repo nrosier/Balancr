@@ -6,7 +6,7 @@
  * jsdom sizing workaround copied from `forecast.test.tsx` for the same reason — ECharts'
  * size warning is not what these tests are about.
  */
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Scenario } from '../src/pages/Scenario.tsx'
 import {
@@ -53,6 +53,14 @@ function serve(body: unknown): ReturnType<typeof vi.fn> {
 function metricValue(name: string): string | null {
   const heading = screen.getByRole('heading', { name })
   return heading.closest('.metric')?.querySelector('.metric__value')?.textContent ?? null
+}
+
+/** The "More info" trigger next to one field's label, scoped so the six on this page never collide. */
+function infoTipFor(fieldLabel: string): HTMLElement {
+  const label = screen.getByText(fieldLabel, { selector: 'label' })
+  const field = label.closest<HTMLElement>('.field')
+  if (field === null) throw new Error(`no .field ancestor for "${fieldLabel}"`)
+  return within(field).getByRole('button', { name: 'More info' })
 }
 
 const original = {
@@ -170,6 +178,20 @@ describe('when the seed figures are real', () => {
     const lumpSumValue = metricValue('Projected value, with the change')
 
     expect(lumpSumValue).not.toBe(recurringValue)
+  })
+
+  it('reveals an explanation next to a field on hover, without disturbing its label', async () => {
+    serve(FULL)
+    renderApp(<Scenario />)
+    await screen.findByRole('heading', { name: 'Projected value' })
+
+    expect(screen.getByLabelText('Monthly change')).toBeTruthy()
+
+    fireEvent.mouseEnter(infoTipFor('Monthly change'))
+    expect(screen.getByRole('tooltip').textContent).toMatch(/hypothetical change to the monthly contribution/)
+
+    fireEvent.mouseLeave(infoTipFor('Monthly change'))
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 
   it('leaves every string translated', async () => {

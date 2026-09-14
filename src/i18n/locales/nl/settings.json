@@ -457,6 +457,43 @@
         "materialityFloorCents": "Bedragen negeren onder"
       }
     },
+    "fieldHint": {
+      "baseline": {
+        "halfLifeMonths": "Na hoeveel maanden het gewicht van een maand in de norm halveert — recente maanden tellen zwaarder.",
+        "minMonths": "Minimum aantal maanden geschiedenis vereist voordat er überhaupt een norm getoond wordt.",
+        "windowMonths": "Hoeveel maanden geschiedenis de norm voedt.",
+        "winsorLowerPct": "Maanden onder dit percentiel worden opwaarts geklemd voor het gemiddelde berekend wordt, zodat één ongewoon lage maand de norm niet scheeftrekt.",
+        "winsorUpperPct": "Maanden boven dit percentiel worden neerwaarts geklemd voor het gemiddelde berekend wordt, zodat één ongewoon hoge maand de norm niet scheeftrekt."
+      },
+      "burnRate": {
+        "minMonthProgress": "Er wordt geen tempoprojectie getoond voordat dit deel van de maand verstreken is — te vroeg om te extrapoleren.",
+        "toleranceBp": "Hoeveel een verwachte overschrijding boven het toegewezen bedrag mag liggen voordat het gemeld wordt."
+      },
+      "dayCurve": {
+        "maxDispersionBp": "Hoeveel de gemeten dag-van-de-maand-aandelen mogen variëren voordat het patroon niet meer als voorspelbaar geldt.",
+        "minMonths": "Minimum aantal maanden met uitgaven vereist voordat een dag-van-de-maand-patroon betrouwbaar heet.",
+        "windowMonths": "Hoeveel maanden geschiedenis het dag-van-de-maand-uitgavenpatroon voedt."
+      },
+      "drift": {
+        "persistentMonths": "Hoeveel opeenvolgende maandeindes een portefeuilleklasse buiten haar streefbandbreedte moet zitten voordat het gemeld wordt."
+      },
+      "household": {
+        "emergencyFundTargetMonths": "Hoeveel maanden aan uitgaven de noodbuffer wil dekken.",
+        "savingsRateTargetBp": "De spaarquote waar het huishouden naar streeft."
+      },
+      "hygiene": {
+        "priceStaleDays": "Een portefeuillekoers die ouder is dan dit aantal dagen geldt niet meer als actueel.",
+        "recomputationToleranceCents": "Hoeveel Actuals eigen totaal van het herberekende totaal mag afwijken voordat het gemeld wordt.",
+        "reconcileStaleDays": "Een rekening die dit aantal dagen niet afgestemd is, heeft een saldo dat als gok geldt.",
+        "uncategorisedWarnCount": "Hoeveel ongecategoriseerde transacties toegelaten worden voordat het gemeld wordt."
+      },
+      "overspend": {
+        "availableFloorCents": "Een categorie geldt als overbesteed zodra wat er nog beschikbaar is onder dit bedrag zakt.",
+        "baselineAlertBp": "Hoe ver een categorie boven de norm moet uitkomen voordat het als alarm gemeld wordt.",
+        "baselineWarnBp": "Hoe ver een categorie boven de norm moet uitkomen voordat het als waarschuwing gemeld wordt.",
+        "materialityFloorCents": "Bedragen onder dit bedrag worden genegeerd, zodat een klein envelopje dat licht overschrijdt niet gemeld wordt."
+      }
+    },
     "group": {
       "baseline": "Je eigen norm",
       "burnRate": "Tempo",

@@ -27,13 +27,12 @@
  * about categories above a threshold, and seeing the share makes the threshold legible
  * instead of mysterious.
  *
- * **Neither queue narrows to the month picked at the top of the page, and both say so
- * (#158).** The findings, the review and the run ledger do narrow, because each is a
- * statement about a month. A question and a proposal are not: they are pending work with
- * no period of their own, they stay open until somebody deals with them, and an
- * unanswered question about groceries raised in July would otherwise be invisible on
- * every month of the picker except July. `scoped` is what draws the sentence — there is
- * no picker on a deployment with nothing aggregated, so there is nothing to disclaim.
+ * **Neither queue narrows to a month, and neither has a picker above it (#158, #345).**
+ * The findings, the review and the run ledger do narrow, because each is a statement
+ * about a month. A question and a proposal are not: they are pending work with no
+ * period of their own, they stay open until somebody deals with them, and an unanswered
+ * question about groceries raised in July would otherwise be invisible on every month
+ * anyone has a reason to open.
  *
  * **The proposal queue is no longer read-only (#45).** Answering a question still waits
  * on the assistant's chat, but a proposal can now be applied or rejected from the same
@@ -65,18 +64,15 @@ import { Money, Private } from '../ui/Money.tsx'
 
 export interface QuestionsProps {
   questions: Insights['questions']
-  /** True when a month picker is on screen above, so the list needs the disclaimer. */
-  scoped: boolean
 }
 
-export function Questions({ questions, scoped }: QuestionsProps): ReactNode {
+export function Questions({ questions }: QuestionsProps): ReactNode {
   const { t } = useT()
 
   return (
     <section className="card">
       <h2 className="card__title">{t('ai:clarify.title')}</h2>
       <p className="muted">{t('ai:clarify.hint')}</p>
-      {scoped ? <p className="muted">{t('ai:clarify.standing')}</p> : null}
       {questions.length === 0 ? (
         <p className="muted">{t('ai:clarify.none')}</p>
       ) : (
@@ -106,8 +102,6 @@ export function Questions({ questions, scoped }: QuestionsProps): ReactNode {
 
 export interface ProposalsProps {
   proposals: Insights['proposals']
-  /** True when a month picker is on screen above, so the list needs the disclaimer. */
-  scoped: boolean
   /** Whether this reader may apply or reject — presentation only; the endpoint gates itself. */
   owner: boolean
   /** Re-read `/api/insights` once a decision has been recorded. */
@@ -121,7 +115,7 @@ function decisionFailure(cause: unknown): ApiError {
     : new ApiError('network_error', 'Balancr could not be reached.', 0, null)
 }
 
-export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProps): ReactNode {
+export function Proposals({ proposals, owner, onDecided }: ProposalsProps): ReactNode {
   const { t } = useT()
   const csrf = useCsrf()
   const expired = useSessionExpiry()
@@ -321,7 +315,6 @@ export function Proposals({ proposals, scoped, owner, onDecided }: ProposalsProp
     <section className="card">
       <h2 className="card__title">{t('ai:proposal.title')}</h2>
       <p className="muted">{t('ai:proposal.hint')}</p>
-      {scoped ? <p className="muted">{t('ai:proposal.standing')}</p> : null}
       {proposals.length === 0 ? (
         <p className="muted">{t('ai:proposal.none')}</p>
       ) : (

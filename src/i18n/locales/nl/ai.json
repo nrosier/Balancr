@@ -41,7 +41,6 @@
     "readOnly": "Deze beantwoorden komt samen met het gesprek met de assistent, in een latere versie. Voorlopig is dit de lijst die hij heeft opgebouwd.",
     "sensitive_unknown": "Moet de naam {{category}} verborgen blijven voor de AI?",
     "share": "{{share}} van de uitgaven deze maand",
-    "standing": "Vast werk, niet gefilterd op de maand hierboven: een vraag blijft hier staan tot ze beantwoord is.",
     "suggestion": "Vermoeden: {{guess}}",
     "title": "Help de assistent begrijpen"
   },
@@ -118,7 +117,8 @@
     "titleMonth": "{{month}} in woorden",
     "translate": "Dit in het {{language}} schrijven",
     "unnamedAccount": "een naamloze rekening",
-    "unnamedCategory": "een naamloze categorie"
+    "unnamedCategory": "een naamloze categorie",
+    "yearUnavailable": "Een verhaal wordt over één maand geschreven, niet over een jaar. Kies hierboven een maand om er een te zien of te schrijven."
   },
   "off": {
     "title": "De assistent staat uit",
@@ -191,7 +191,6 @@
     "rejecting": "Afwijzen…",
     "select": "Selecteer {{target}}",
     "selectAll": "Alles selecteren",
-    "standing": "Vast werk, niet gefilterd op de maand hierboven: een voorstel blijft hier staan tot het beoordeeld is.",
     "title": "Voorgestelde wijzigingen",
     "value": {
       "unset": "niet ingesteld"

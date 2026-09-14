@@ -8,19 +8,14 @@
  * monthly rates average to one figure and whose flows sum to a different one — so an
  * implementation that averaged would fail rather than round differently.
  *
- * The rest is window selection, which is where a period figure quietly lies: a "year to
- * date" that runs into the next year, a "previous month" that skips a gap in the
- * history, a twelve-month window anchored on the end of the array rather than on the
- * month the reader selected.
+ * The rest is window selection and pro-ration: a month or year window anchored on the
+ * month the reader selected rather than on the end of history, and — same as
+ * `benchmarkPeriodWindow` — a still-open anchor month or year counting for only the
+ * fraction of it that has elapsed, so a partial period does not read as an
+ * underperforming whole one.
  */
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_SAVINGS_PERIOD,
-  periodSavings,
-  SAVINGS_PERIODS,
-  TRAILING_MONTHS,
-  type SavingsMonth,
-} from '../../src/domain/aggregate/savings.ts'
+import { absolutePeriodSavings, type SavingsMonth } from '../../src/domain/aggregate/savings.ts'
 
 /** A month of flows. Round, invented figures — this file never sees real ones. */
 const month = (key: string, incomeCents: number, spentCents: number): SavingsMonth => ({
@@ -46,15 +41,19 @@ const YEAR: SavingsMonth[] = [
   month('2026-08', 400_000, 360_000),
 ]
 
+// Noon UTC on 2026-08-17, well past every month below — every one is finished.
+const ASOF = new Date('2026-08-17T12:00:00Z')
+const TZ = 'UTC'
+
 describe('summing before dividing', () => {
   it('is not the mean of the monthly rates, which is the whole point', () => {
     // A paycheck in one month paying for rent recorded in the next: the first month
     // looks catastrophic and the second looks unreal, and the pair is ordinary.
-    const boundary = [month('2026-07', 0, 200_000), month('2026-08', 400_000, 200_000)]
+    const boundary = [month('2026-06', 0, 200_000), month('2026-07', 400_000, 200_000)]
 
     // The monthly rates are null (no income) and 50%. Any mean of those is 50% or
     // undefined; neither is what the two months together did.
-    const result = periodSavings(boundary, '2026-08', 'twelve_months')
+    const result = absolutePeriodSavings(boundary, 'year', '2026-07', ASOF, TZ)
     expect(result.incomeCents).toBe(400_000)
     expect(result.spentCents).toBe(400_000)
     expect(result.rateBp).toBe(0)
@@ -64,12 +63,12 @@ describe('summing before dividing', () => {
   it('reports a negative rate rather than clamping it', () => {
     // Spending more than came in is a state to act on, and the card colours it — a
     // floor at zero would print the same figure as breaking even.
-    const result = periodSavings([month('2026-08', 400_000, 500_000)], '2026-08', 'this_month')
+    const result = absolutePeriodSavings([month('2026-08', 400_000, 500_000)], 'month', '2026-08', ASOF, TZ)
     expect(result.rateBp).toBe(-2_500)
   })
 
   it('has no rate when the window has no income to divide by', () => {
-    const result = periodSavings([month('2026-08', 0, 120_000)], '2026-08', 'this_month')
+    const result = absolutePeriodSavings([month('2026-08', 0, 120_000)], 'month', '2026-08', ASOF, TZ)
     expect(result.rateBp).toBeNull()
     // The flows are still reported: "no rate" is not "no data", and the span line
     // still has a month to name.
@@ -80,34 +79,18 @@ describe('summing before dividing', () => {
 
 describe('which months a period covers', () => {
   it('reads one month, and agrees with what the month itself stores', () => {
-    const result = periodSavings(YEAR, '2026-08', 'this_month')
+    const result = absolutePeriodSavings(YEAR, 'month', '2026-08', ASOF, TZ)
     expect(result.months).toBe(1)
     expect(result.from).toBe('2026-08')
     expect(result.to).toBe('2026-08')
     // Same formula and same inputs as `MonthTotals.savingsRateBp`, which is what lets
-    // the card use one code path for all four periods without the shortest one
-    // disagreeing with the figure the digest quotes.
+    // the card use one code path for both kinds without disagreeing with the figure
+    // the digest quotes.
     expect(result.rateBp).toBe(1_000)
   })
 
-  it('reads the calendar month before the selected one, not the previous entry', () => {
-    // A history with July missing: "previous month" is July, and July has no figures,
-    // so the honest answer is an empty window — not June relabelled.
-    const gapped = [month('2026-06', 400_000, 100_000), month('2026-08', 400_000, 360_000)]
-    const result = periodSavings(gapped, '2026-08', 'previous_month')
-    expect(result.months).toBe(0)
-    expect(result.from).toBeNull()
-    expect(result.rateBp).toBeNull()
-  })
-
-  it('crosses a year boundary backwards for the previous month', () => {
-    const result = periodSavings(YEAR, '2026-01', 'previous_month')
-    expect(result.from).toBe('2025-12')
-    expect(result.rateBp).toBe(-2_500)
-  })
-
-  it('starts year to date at January of the year the selected month is in', () => {
-    const result = periodSavings(YEAR, '2026-03', 'year_to_date')
+  it('starts a year at January of the anchor month, not at the array boundary', () => {
+    const result = absolutePeriodSavings(YEAR, 'year', '2026-03', ASOF, TZ)
     expect(result.months).toBe(3)
     expect(result.from).toBe('2026-01')
     expect(result.to).toBe('2026-03')
@@ -115,47 +98,19 @@ describe('which months a period covers', () => {
     expect(result.rateBp).toBe(2_000)
   })
 
-  it('does not let year to date reach into the previous year', () => {
+  it('does not let a year reach into the previous one', () => {
     // December sits in the array immediately before January and is 100 000 in the red;
     // including it would turn a 20% year into something else entirely.
-    const result = periodSavings(YEAR, '2026-03', 'year_to_date')
+    const result = absolutePeriodSavings(YEAR, 'year', '2026-03', ASOF, TZ)
     expect(result.from).not.toBe('2025-12')
   })
 
-  it('takes year to date of the year the reader selected, not of the array', () => {
-    const result = periodSavings(YEAR, '2025-12', 'year_to_date')
-    expect(result.from).toBe('2025-11')
-    expect(result.to).toBe('2025-12')
-    expect(result.months).toBe(2)
-  })
-
-  it('anchors the trailing window on the selected month, not on the end of history', () => {
-    // The array runs to August; the reader has selected March. A window taken off the
-    // end would show them nine months they cannot see on the page around it.
-    const result = periodSavings(YEAR, '2026-03', 'twelve_months')
-    expect(result.to).toBe('2026-03')
-    expect(result.from).toBe('2025-11')
-    expect(result.months).toBe(5)
-  })
-
-  it('takes at most twelve months, dropping the oldest end', () => {
-    // The whole 24 months `/api/budget` can send, which is twice the window: the card
-    // must not quietly report two years as one.
-    const long = Array.from({ length: 24 }, (_, index) =>
-      month(`${2025 + Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`, 400_000, 200_000),
-    )
-    const result = periodSavings(long, '2026-12', 'twelve_months')
-    expect(result.months).toBe(TRAILING_MONTHS)
-    expect(result.from).toBe('2026-01')
-    expect(result.to).toBe('2026-12')
-    expect(result.incomeCents).toBe(400_000 * TRAILING_MONTHS)
-  })
-
-  it('covers nothing at all on a deployment whose jobs have never run', () => {
-    for (const period of SAVINGS_PERIODS) {
-      const result = periodSavings([], '2026-08', period)
+  it('covers nothing at all when history has no month matching the window', () => {
+    for (const kind of ['month', 'year'] as const) {
+      const result = absolutePeriodSavings([], kind, '2026-08', ASOF, TZ)
       expect(result).toMatchObject({
-        period,
+        kind,
+        month: '2026-08',
         rateBp: null,
         incomeCents: 0,
         spentCents: 0,
@@ -166,27 +121,47 @@ describe('which months a period covers', () => {
     }
   })
 
-  it('never counts a month after the one selected, whatever the caller sent', () => {
-    // `/api/budget` already ends its history at the selected month, and the selection
-    // must not depend on that: a longer array would otherwise give a "year to date"
-    // that ran into months the reader has not chosen.
-    const result = periodSavings(YEAR, '2026-02', 'twelve_months')
+  it('never counts a month after the anchor, whatever the caller sent', () => {
+    // A history that runs past the anchor month: the window must not silently include
+    // months the reader has not selected.
+    const result = absolutePeriodSavings(YEAR, 'year', '2026-02', ASOF, TZ)
     expect(result.to).toBe('2026-02')
-    expect(result.months).toBe(4)
+    expect(result.months).toBe(2)
+  })
+})
+
+describe('pro-rating a still-open period, mirroring benchmarkPeriodWindow', () => {
+  // Noon UTC on 2026-08-17: August is 53.2258...% elapsed (16.5 of 31 days).
+  const AUGUST_PROGRESS = 16.5 / 31
+
+  it('a finished past month counts as a whole month', () => {
+    const result = absolutePeriodSavings(YEAR, 'month', '2026-05', ASOF, TZ)
+    expect(result.periodProgressBp).toBe(10_000)
+  })
+
+  it('the open current month is pro-rated by the day', () => {
+    const result = absolutePeriodSavings(YEAR, 'month', '2026-08', ASOF, TZ)
+    expect(result.periodProgressBp).toBe(Math.round(AUGUST_PROGRESS * 10_000))
+  })
+
+  it('a finished past year sums to exactly its month count out of twelve', () => {
+    const result = absolutePeriodSavings(YEAR, 'year', '2025-12', ASOF, TZ)
+    expect(result.periodProgressBp).toBe(10_000)
+  })
+
+  it('a year anchored on the open current month is pro-rated by the fraction of a year elapsed', () => {
+    const result = absolutePeriodSavings(YEAR, 'year', '2026-08', ASOF, TZ)
+    // 7 finished months (Jan–Jul) plus August's own fraction, out of a nominal 12.
+    expect(result.periodProgressBp).toBe(Math.round(((7 + AUGUST_PROGRESS) / 12) * 10_000))
   })
 })
 
 describe('the vocabulary', () => {
-  it('defaults to the twelve-month window', () => {
-    // The report behind #288 is that the current month is the least useful of the four,
-    // and twelve is the window the benchmark norms are already taken over.
-    expect(DEFAULT_SAVINGS_PERIOD).toBe('twelve_months')
-    expect(SAVINGS_PERIODS).toContain(DEFAULT_SAVINGS_PERIOD)
-  })
-
-  it('carries the period it was asked for, so the card can name it', () => {
-    for (const period of SAVINGS_PERIODS) {
-      expect(periodSavings(YEAR, '2026-08', period).period).toBe(period)
+  it('carries the kind and anchor it was asked for, so the card can name it', () => {
+    for (const kind of ['month', 'year'] as const) {
+      const result = absolutePeriodSavings(YEAR, kind, '2026-08', ASOF, TZ)
+      expect(result.kind).toBe(kind)
+      expect(result.month).toBe('2026-08')
     }
   })
 })

@@ -12,8 +12,17 @@
  *
  * **The stepper is disabled while a draft is unsaved.** Direct lesson from #268: an
  * unsaved edit in one Benchmark tab was silently discarded by switching to another.
- * Stepping a month here swaps which note is being edited exactly the same way a tab
- * switch swapped which household draft was live, so the same guard applies.
+ * Stepping — or switching between month and year mode (#345) — swaps which note is
+ * being edited exactly the same way a tab switch swapped which household draft was
+ * live, so the same guard applies to both.
+ *
+ * **Year mode is a lighter toggle beside the stepper, not a swap to `PeriodPicker`
+ * (#345).** The two controls solve different problems: that one is a calendar you jump
+ * around in, this one is "the note before this one" / "the note after this one," which
+ * a grid of twelve cells does not read as. `switchKind` is shared with `PeriodPicker`
+ * for the one rule the two do have in common — landing back on a real month when the
+ * reader steps out of year mode. The server already accepts `YYYY` beside `YYYY-MM` for
+ * this endpoint's `month` param, so nothing downstream of this file changes shape.
  */
 import { useState, type ReactNode } from 'react'
 import { ApiError, apiSend } from '../api/client.ts'
@@ -22,6 +31,8 @@ import { useResource, useSessionExpiry } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { formatMonth } from '../shared.ts'
 import { Issue, Panel } from '../settings/Panel.tsx'
+import { switchKind, type Period, type PeriodKind } from '../ui/PeriodPicker.tsx'
+import '../ui/period-picker.css'
 
 const MONTH_NOTE_MAX_CHARS = 1000
 
@@ -31,25 +42,31 @@ export interface MonthNotePanelProps {
   owner: boolean
 }
 
-/** Plain `YYYY-MM` arithmetic, local to this file rather than pulling the server's
- * `util/month.ts` into the client bundle for one `+1`/`-1` step. */
+/** Plain `YYYY-MM`/`YYYY` arithmetic, local to this file rather than pulling the
+ * server's `util/month.ts` into the client bundle for one `+1`/`-1` step. */
 function shiftMonth(month: string, delta: number): string {
   const year = Number(month.slice(0, 4))
   const index = Number(month.slice(5, 7)) - 1 + delta
   const shifted = new Date(Date.UTC(year, index, 1))
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
 }
+const shiftYear = (year: string, delta: number): string => String(Number(year) + delta)
+
+/** What the stepper and the textarea's own label print — a year needs no formatting
+ * beyond the bare digits it already is. */
+const periodLabel = (period: Period, language: string): string =>
+  period.kind === 'month' ? formatMonth(period.value, language) : period.value
 
 export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): ReactNode {
   const { t, language } = useT()
   const csrf = useCsrf()
   const expired = useSessionExpiry()
-  const [month, setMonth] = useState(initialMonth)
+  const [period, setPeriod] = useState<Period>({ kind: 'month', value: initialMonth })
   const [draft, setDraft] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ApiError | null>(null)
 
-  const resource = useResource<{ text: string }>(`/api/budget/note?month=${month}`)
+  const resource = useResource<{ text: string }>(`/api/budget/note?month=${period.value}`)
   const text = draft ?? resource.data?.text ?? ''
   const tooLong = text.length > MONTH_NOTE_MAX_CHARS
   const locked = !owner || busy
@@ -57,13 +74,28 @@ export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): Re
   const step = (delta: number): void => {
     if (draft !== null) return
     setFailure(null)
-    setMonth(shiftMonth(month, delta))
+    setPeriod(
+      period.kind === 'month'
+        ? { kind: 'month', value: shiftMonth(period.value, delta) }
+        : { kind: 'year', value: shiftYear(period.value, delta) },
+    )
+  }
+
+  const selectKind = (kind: PeriodKind): void => {
+    if (draft !== null) return
+    setFailure(null)
+    setPeriod(switchKind(period, kind))
   }
 
   const submit = (): void => {
     setBusy(true)
     setFailure(null)
-    void apiSend<{ text: string }>('PATCH', '/api/budget/note', { month, text: text.trim() }, csrf)
+    void apiSend<{ text: string }>(
+      'PATCH',
+      '/api/budget/note',
+      { month: period.value, text: text.trim() },
+      csrf,
+    )
       .then(() => {
         setBusy(false)
         setDraft(null)
@@ -87,21 +119,36 @@ export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): Re
       notice={owner ? null : <p className="panel__meta muted">{t('settings:viewerOnly')}</p>}
     >
       <form className="stack" onSubmit={(event) => { event.preventDefault(); submit() }}>
+        <div className={`period-picker__mode${period.kind === 'year' ? ' is-year' : ''}`}>
+          <span className="period-picker__mode-thumb" />
+          {(['month', 'year'] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className={`period-picker__mode-btn${period.kind === kind ? ' active' : ''}`}
+              disabled={draft !== null}
+              onClick={() => selectKind(kind)}
+            >
+              {t(`budget:monthNote.period.${kind}`)}
+            </button>
+          ))}
+        </div>
+
         <div className="toolbar">
           <button
             type="button"
             className="button button--quiet"
-            aria-label={t('budget:monthNote.stepper.previous')}
+            aria-label={t(`budget:monthNote.stepper.previous.${period.kind}`)}
             disabled={draft !== null}
             onClick={() => step(-1)}
           >
             ‹
           </button>
-          <span className="muted">{formatMonth(month, language)}</span>
+          <span className="muted">{periodLabel(period, language)}</span>
           <button
             type="button"
             className="button button--quiet"
-            aria-label={t('budget:monthNote.stepper.next')}
+            aria-label={t(`budget:monthNote.stepper.next.${period.kind}`)}
             disabled={draft !== null}
             onClick={() => step(1)}
           >
@@ -111,7 +158,7 @@ export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): Re
 
         <div className="field">
           <label className="field__label" htmlFor="month-note">
-            {t('budget:monthNote.label', { month: formatMonth(month, language) })}
+            {t('budget:monthNote.label', { month: periodLabel(period, language) })}
           </label>
           <textarea
             id="month-note"

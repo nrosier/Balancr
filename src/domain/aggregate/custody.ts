@@ -147,13 +147,56 @@ export type CustodySplit =
       readonly paidCents: number | null
     }
 
+/**
+ * The five fields `splitCustody` actually reads off a month's facts.
+ *
+ * A `Pick` rather than importing `MonthlyFact` wholesale, so a year's worth of rows
+ * summed across months by `sumCustodyRows` (#345) is structurally the same shape as one
+ * month's — `MonthlyFact` itself satisfies this without change, so no existing caller
+ * breaks.
+ */
+export type CustodySpendRow = Pick<
+  MonthlyFact,
+  'categoryId' | 'categoryName' | 'isIncome' | 'hidden' | 'spentCents'
+>
+
 export interface CustodyInput {
   readonly month: string
-  /** The month's facts, as the aggregation stored them. */
-  readonly rows: readonly MonthlyFact[]
+  /** The month's facts, as the aggregation stored them — or several months, summed. */
+  readonly rows: readonly CustodySpendRow[]
   /** `categoryId` → whether the cost is shared with a co-parent. */
   readonly shared: ReadonlySet<string>
   readonly household: Household
+}
+
+/**
+ * Sums each category's spending across however many months a period covers.
+ *
+ * Same shape as `sumSpendRows` in `domain/benchmark/compare.ts` — a category's name,
+ * income flag and hidden flag are taken from whichever month it first appears in, since
+ * they describe the category rather than the month.
+ */
+export function sumCustodyRows(monthlyRows: readonly (readonly CustodySpendRow[])[]): CustodySpendRow[] {
+  const totals = new Map<
+    string,
+    { categoryName: string; spentCents: number } & Pick<CustodySpendRow, 'isIncome' | 'hidden'>
+  >()
+  for (const rows of monthlyRows) {
+    for (const row of rows) {
+      const running = totals.get(row.categoryId)
+      if (running === undefined) {
+        totals.set(row.categoryId, {
+          categoryName: row.categoryName,
+          spentCents: row.spentCents,
+          isIncome: row.isIncome,
+          hidden: row.hidden,
+        })
+      } else {
+        running.spentCents += row.spentCents
+      }
+    }
+  }
+  return Array.from(totals, ([categoryId, entry]) => ({ categoryId, ...entry }))
 }
 
 /**

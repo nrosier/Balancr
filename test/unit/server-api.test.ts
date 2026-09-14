@@ -34,17 +34,13 @@ import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { TREND_MONTHS } from '../../src/server/routes/api/budget.ts'
-import { TRAILING_MONTHS } from '../../src/domain/aggregate/savings.ts'
-import {
-  COVER_WINDOW_MONTHS,
-  emergencyFundCentimonths,
-  FLOW_HISTORY_MONTHS,
-} from '../../src/server/routes/api/overview.ts'
+import { emergencyFundCentimonths } from '../../src/server/routes/api/overview.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { saveHousehold } from '../../src/domain/benchmark/household.ts'
+import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 
@@ -147,6 +143,8 @@ describe('GET /api/overview', () => {
       mortgageBalanceCents: null,
     })
     expect(body.month).toBe(MONTH)
+    // Descending, same as `/api/budget`'s — the period picker's availability set (#345).
+    expect(body.months).toEqual([MONTH, PREVIOUS_MONTH])
     expect(body.totals.incomeCents).toBe(400_000)
     expect(body.totals.spentCents).toBe(352_000)
     expect(body.hygiene.scoreBp).toBe(9_150)
@@ -176,6 +174,33 @@ describe('GET /api/overview', () => {
     })
     // The two arrays are different kinds of thing and neither stands in for the other.
     expect(body.history).not.toEqual(body.flows)
+  })
+
+  it("reaches every stored month, not a twelve-month trailing window, so the period picker's availability set is never a promise flows can't back up (#345)", async () => {
+    persistMonthTotals(
+      ctx.db,
+      [
+        {
+          month: '2020-01',
+          incomeCents: 100_000,
+          spentCents: 80_000,
+          budgetedCents: 85_000,
+          toBudgetCents: 0,
+          fromLastMonthCents: 0,
+          balanceCents: 20_000,
+          savingsRateBp: 2_000,
+          committedCents: 0,
+          committedUnallocatedCents: 0,
+          committedUnallocatedCount: 0,
+          committedApproximate: false,
+        },
+      ],
+      [{ month: '2020-01', txnCount: 0, amountCents: 0 }],
+    )
+
+    const body = (await get('/api/overview')).json()
+    expect(body.months).toContain('2020-01')
+    expect(body.flows.map((entry: { month: string }) => entry.month)).toContain('2020-01')
   })
 })
 
@@ -355,6 +380,30 @@ describe('GET /api/budget', () => {
 
   it('refuses a benchmarkPeriod that is not month or year', async () => {
     const res = await get('/api/budget?benchmarkPeriod=quarter')
+    expect(res.statusCode).toBe(400)
+    expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')
+  })
+
+  it('widens the custody card to a year, independently of the benchmark card (#345)', async () => {
+    ctx.db
+      .update(categoryMeta)
+      .set({ custodyShared: true })
+      .where(sql`category_id = 'cat-groceries'`)
+      .run()
+    saveHousehold(ctx.db, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+
+    // € 600 in July plus € 720 in August, both on file for 2026 — a plain `?month=`
+    // request only ever sees the second.
+    const body = (await get('/api/budget?custodyPeriod=year')).json()
+    expect(body.custody.kind).toBe('ok')
+    expect(body.custody.paidCents).toBe(132_000)
+    expect(body.custody.yoursCents).toBe(66_000)
+    // The benchmark card did not widen along with it.
+    expect(body.benchmark).toEqual({ kind: 'unavailable', reason: 'no_mapping', mappedShareBp: 0 })
+  })
+
+  it('refuses a custodyPeriod that is not month or year', async () => {
+    const res = await get('/api/budget?custodyPeriod=quarter')
     expect(res.statusCode).toBe(400)
     expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')
   })
@@ -1215,14 +1264,5 @@ describe('months of cover', () => {
 
   it('is hundredths of a month, so a fraction never becomes a float', () => {
     expect(emergencyFundCentimonths(333_333, [{ spentCents: 100_000 }])).toBe(333)
-  })
-
-  it('reads its own window length, not the one the savings periods need', () => {
-    // The two constants are both twelve today and agree by coincidence, not by
-    // derivation: one is a statement about seasonality and the other is the longest
-    // window the savings card offers (#296). This asserts the relationship rather than
-    // the number, so raising either does not silently shorten the other's data.
-    expect(FLOW_HISTORY_MONTHS).toBeGreaterThanOrEqual(COVER_WINDOW_MONTHS)
-    expect(FLOW_HISTORY_MONTHS).toBeGreaterThanOrEqual(TRAILING_MONTHS)
   })
 })

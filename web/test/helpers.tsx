@@ -118,6 +118,7 @@ const EMPTY_READS: Record<string, unknown> = {
     history: [],
     flows: [],
     month: null,
+    months: [],
     totals: null,
     emergencyFundCentimonths: null,
     hygiene: null,

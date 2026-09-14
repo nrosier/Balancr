@@ -20,7 +20,7 @@
  * keep ECharts' "Can't get DOM width or height" warning out of output that is about
  * something else.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionExpiryProvider } from '../src/api/resource.tsx'
 import { Overview } from '../src/pages/Overview.tsx'
@@ -61,6 +61,7 @@ const FULL: OverviewPayload = {
     { month: '2026-08', incomeCents: 420_000, spentCents: 310_000, budgetedCents: 350_000, savingsRateBp: 2_619 },
   ],
   month: '2026-08',
+  months: ['2026-08', '2026-07', '2026-06'],
   totals: {
     incomeCents: 420_000,
     spentCents: 310_000,
@@ -78,6 +79,7 @@ const EMPTY: OverviewPayload = {
   history: [],
   flows: [],
   month: null,
+  months: [],
   totals: null,
   emergencyFundCentimonths: null,
   hygiene: null,
@@ -122,6 +124,7 @@ afterAll(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('while the server has not answered', () => {
@@ -204,6 +207,11 @@ describe('when the jobs have never run', () => {
 describe('when the server answers with a month', () => {
   beforeEach(() => {
     serve(json(FULL))
+    // The savings card's pro-ration caveat reads the real clock (#345), so it is pinned
+    // here to the same instant `FRESH.asOf` already names — after August, so July and
+    // August both read as finished months rather than drifting with the day this runs.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
   })
 
   it('prints net worth in Belgian conventions under an English UI', async () => {
@@ -218,14 +226,20 @@ describe('when the server answers with a month', () => {
     expect(screen.getByText('Updated 31/08/2026')).toBeTruthy()
   })
 
-  it('opens the savings card on twelve months, summed, and names the span it covered', async () => {
-    // The point of #296: this used to print `totals.savingsRateBp` — August alone, 26,2% —
-    // while the same card on the Budget page offered four windows. The default is now the
-    // trailing twelve, so € 8.200 came in against € 6.300 out across both months on file.
+  it('opens the savings card on the current year, summed, and names the span it covered', async () => {
+    // The point of #296, carried into #345's rebuild: this used to print
+    // `totals.savingsRateBp` — August alone, 26,2% — while the same card on the Budget
+    // page offered four relative windows. The default is now the current year, so
+    // € 8.200 came in against € 6.300 out across both months on file, and the caveat
+    // names how much of the year that span actually covers.
     renderApp(<Overview />)
 
     expect(await screen.findByText('23,2%')).toBeTruthy()
-    expect(screen.getByText('Over 2 months, July 2026 to August 2026')).toBeTruthy()
+    expect(
+      screen.getByText(
+        'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
+      ),
+    ).toBeTruthy()
     expect(screen.getByText('€ 8.200')).toBeTruthy()
     expect(screen.getByText('€ 6.300')).toBeTruthy()
     // The month's assigned figure is gone with the month: an envelope total has no
@@ -239,10 +253,12 @@ describe('when the server answers with a month', () => {
     await screen.findByText('23,2%')
     const calls = mock.mock.calls.length
 
-    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'this_month' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Aug' }))
 
     // August on its own is the reading the card used to be stuck on, and it is a fair bit
-    // higher than the twelve-month one — which is the whole argument for the chooser.
+    // higher than the year-to-date one — which is the whole argument for the chooser.
     expect(await screen.findByText('26,2%')).toBeTruthy()
     expect(screen.getByText('Over August 2026')).toBeTruthy()
     expect(screen.getByText('€ 4.200')).toBeTruthy()

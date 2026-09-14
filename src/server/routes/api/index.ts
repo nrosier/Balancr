@@ -65,7 +65,9 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/overview', () => buildOverview(db))
 
   app.get('/api/budget', (request: FastifyRequest) => {
-    const query = request.query as { month?: unknown; benchmarkPeriod?: unknown } | undefined
+    const query = request.query as
+      | { month?: unknown; benchmarkPeriod?: unknown; custodyPeriod?: unknown }
+      | undefined
     return buildBudget(
       db,
       query?.month,
@@ -73,27 +75,27 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
       // `PATCH /api/budget/note` gates itself; this is presentation (#158, #270).
       request.user?.role === 'owner',
       query?.benchmarkPeriod,
+      query?.custodyPeriod,
     )
   })
 
-  app.get('/api/portfolio', (request: FastifyRequest) => {
-    const query = request.query as { asOf?: unknown } | undefined
-    return buildPortfolio(db, query?.asOf)
-  })
+  app.get('/api/portfolio', () => buildPortfolio(db))
 
   app.get('/api/forecast', () => buildForecast(db))
 
   app.get('/api/scenario', () => buildScenario(db))
 
-  app.get('/api/insights', (request: FastifyRequest) =>
-    buildInsights(db, {
-      month: (request.query as { month?: unknown } | undefined)?.month,
+  app.get('/api/insights', (request: FastifyRequest) => {
+    const query = request.query as { month?: unknown; runsPeriod?: unknown } | undefined
+    return buildInsights(db, {
+      month: query?.month,
+      runsPeriod: query?.runsPeriod,
       locale: resolveLocale(request),
       // Only so the page knows whether to draw the button that spends money.
       // `POST /api/ai/narrative` gates itself; this is presentation (#158).
       owner: request.user?.role === 'owner',
-    }),
-  )
+    })
+  })
 
   /**
    * One AI run's payload — what was prepared for that call, verbatim.

@@ -15,21 +15,24 @@ import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { loadMonthNote, saveMonthNote, MONTH_NOTE_KEY } from '../../domain/ai/month-note.ts'
+import { isMonth, isYear } from '../../util/month.ts'
 import { requireOwner } from '../auth/guard.ts'
 import { badRequest, invalidBody } from '../errors.ts'
-import { monthKey } from './api/schemas.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 
-const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
-
 function resolveMonth(raw: unknown): string {
-  if (typeof raw !== 'string' || !MONTH_PATTERN.test(raw)) {
-    throw badRequest('month must be YYYY-MM.')
+  if (typeof raw !== 'string' || !(isMonth(raw) || isYear(raw))) {
+    throw badRequest('month must be YYYY-MM or YYYY.')
   }
   return raw
 }
 
-const monthNotePatchRequest = z.strictObject({ month: monthKey(), text: z.string() })
+// Accepts a whole year too (#345) — the stepper's year mode writes one note for the year.
+const notePeriodKey = z
+  .string()
+  .refine((value) => isMonth(value) || isYear(value), { message: 'month must be YYYY-MM or YYYY.' })
+
+const monthNotePatchRequest = z.strictObject({ month: notePeriodKey, text: z.string() })
 
 export function registerMonthNoteRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/budget/note', (request: FastifyRequest) => {

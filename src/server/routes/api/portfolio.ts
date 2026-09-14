@@ -24,6 +24,10 @@
  * Priced as of the request rather than as of `date`: a mortgage amortizes with the
  * calendar, not with whatever night Ghostfolio's snapshot last ran, and a fresh install
  * with no Ghostfolio holdings at all (`date === null`) still has properties to show.
+ *
+ * Always the latest snapshot — no `?asOf=` (#345). A picker over Ghostfolio's own
+ * history duplicated the Benchmark card's month/year control without its pro-ration,
+ * on a page whose whole point is where things stand right now.
  */
 import type { Db } from '../../../db/index.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
@@ -33,7 +37,6 @@ import {
   loadPortfolioMetrics,
   loadPortfolioValueHistory,
   loadSnapshot,
-  resolveSnapshotDate,
 } from '../../../domain/portfolio/store.ts'
 import {
   grossYieldBp,
@@ -43,28 +46,11 @@ import {
   propertyEquityCents,
   totalEquityCents,
 } from '../../../domain/property/properties.ts'
-import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
-const PERIOD_PATTERN = /^\d{4}(-(0[1-9]|1[0-2]))?$/
-
-/**
- * The period to show the portfolio as of, per `?asOf=`. `YYYY` or `YYYY-MM`, the same
- * two shapes the Benchmark card's own picker produces — see `resolveBenchmarkPeriod` in
- * `budget.ts` for why a malformed value is a 400 rather than a silent fallback.
- */
-export function resolveAsOf(raw: unknown): string | null {
-  if (raw === undefined || raw === null || raw === '') return null
-  if (typeof raw !== 'string' || !PERIOD_PATTERN.test(raw)) {
-    throw badRequest('asOf must be YYYY or YYYY-MM.')
-  }
-  return raw
-}
-
-export function buildPortfolio(db: Db, asOfParam: unknown = undefined): Portfolio {
-  const asOf = resolveAsOf(asOfParam)
-  const date = asOf === null ? latestSnapshotDate(db) : resolveSnapshotDate(db, asOf)
+export function buildPortfolio(db: Db): Portfolio {
+  const date = latestSnapshotDate(db)
   const metrics = date === null ? null : loadPortfolioMetrics(db, date)
   const holdings = date === null ? [] : loadSnapshot(db, date)
   const split = knownSplit(metrics)
@@ -104,9 +90,7 @@ export function buildPortfolio(db: Db, asOfParam: unknown = undefined): Portfoli
       }))
       // Largest first: a holdings table is read to see what dominates.
       .sort((a, b) => b.valueCents - a.valueCents),
-    // Unfiltered regardless of `asOf`: the chart's whole point is the trend up to now,
-    // and truncating it at a historical period would make a portfolio that grew since
-    // look like it evaporated.
+    // The whole curve, unconditionally: the chart's whole point is the trend up to now.
     history: loadPortfolioValueHistory(db),
     // Against today's risk profile even when `metrics`/`holdings` are historical — there
     // is no historical profile to compare against, so "what would today's bands have
@@ -118,7 +102,7 @@ export function buildPortfolio(db: Db, asOfParam: unknown = undefined): Portfoli
       label: property.label,
       propertyValueCents: property.propertyValueCents,
       // Priced as of the request (`today`), never as of `date` — see the file doc
-      // comment (#227): a mortgage amortizes with the calendar, not with `asOf`.
+      // comment (#227): a mortgage amortizes with the calendar, not with the snapshot.
       mortgageBalanceCents: outstandingBalanceCents(property.mortgage, today),
       equityCents: propertyEquityCents(property, today),
       rentCents: property.rentCents,

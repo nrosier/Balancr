@@ -52,7 +52,7 @@
  * to mean (#281).
  */
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Trans } from 'react-i18next'
 import { useResource } from '../api/resource.tsx'
 import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts'
@@ -71,14 +71,15 @@ import {
   formatDecimal,
   formatMonth,
   formatMoney,
+  resolveYearAnchor,
   type Budget as BudgetPayload,
   type BenchmarkPeriodKind,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
-import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
+import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -119,21 +120,42 @@ export function Budget(): ReactNode {
   const { t } = useT()
   const { path } = useRouter()
   const section = sectionFor(path)
-  const [month, setMonth] = useState<string | null>(null)
+  const [period, setPeriod] = useState<Period | null>(null)
+  // The last-fetched `months` list, kept alongside `period` rather than read straight off
+  // `resource.data` below: that value does not exist yet at the point `month` has to be
+  // computed for *this* fetch, and the list a year resolves against does not change with
+  // which month is on screen, so last fetch's copy is exactly as good as this one's.
+  const [knownMonths, setKnownMonths] = useState<readonly string[]>([])
   // The benchmark card's own window (#323) — a second page-owned selection, folded
   // into the same query string as `month` rather than a state of its own component,
-  // for the reason `MonthPicker` already is: `useResource` refetches on a path
+  // for the reason the page picker already is: `useResource` refetches on a path
   // change and that is the entire mechanism. `'month'` is left out of the query
   // string entirely, since it is the server's own default and every existing
   // bookmark predates this control.
   const [benchmarkPeriod, setBenchmarkPeriod] = useState<BenchmarkPeriodKind>('month')
-  // No month yet means "whatever the server considers latest", which is what the
-  // endpoint defaults to. Naming a month here would guess at what has been aggregated.
+  // The custody card's own window (#345) — independent of `benchmarkPeriod`, the same
+  // way the server's `?custodyPeriod=` is independent of `?benchmarkPeriod=`: widening
+  // one card's window says nothing about the other's.
+  const [custodyPeriod, setCustodyPeriod] = useState<BenchmarkPeriodKind>('month')
+  // No period yet means "whatever the server considers latest", which is what the
+  // endpoint defaults to. A year resolves to a concrete anchor month client-side (#345)
+  // — the server still only ever sees one resolved `?month=YYYY-MM`.
+  const month =
+    period === null
+      ? null
+      : period.kind === 'month'
+        ? period.value
+        : resolveYearAnchor(knownMonths, period.value)
   const params = new URLSearchParams()
   if (month !== null) params.set('month', month)
   if (benchmarkPeriod !== 'month') params.set('benchmarkPeriod', benchmarkPeriod)
+  if (custodyPeriod !== 'month') params.set('custodyPeriod', custodyPeriod)
   const query = params.toString()
   const resource = useResource<BudgetPayload>(query === '' ? '/api/budget' : `/api/budget?${query}`)
+
+  useEffect(() => {
+    if (resource.data !== null) setKnownMonths(resource.data.months)
+  }, [resource.data])
 
   return (
     <>
@@ -144,9 +166,12 @@ export function Budget(): ReactNode {
             <Figures
               data={data}
               section={section}
-              onSelect={setMonth}
+              period={period}
+              onPeriodSelect={setPeriod}
               benchmarkPeriod={benchmarkPeriod}
               onBenchmarkPeriodSelect={setBenchmarkPeriod}
+              custodyPeriod={custodyPeriod}
+              onCustodyPeriodSelect={setCustodyPeriod}
               onRefreshed={resource.reload}
             />
           )}
@@ -159,18 +184,24 @@ export function Budget(): ReactNode {
 interface FiguresProps {
   data: BudgetPayload
   section: (typeof BUDGET_SECTIONS)[number]['id']
-  onSelect: (month: string) => void
+  period: Period | null
+  onPeriodSelect: (period: Period) => void
   benchmarkPeriod: BenchmarkPeriodKind
   onBenchmarkPeriodSelect: (period: BenchmarkPeriodKind) => void
+  custodyPeriod: BenchmarkPeriodKind
+  onCustodyPeriodSelect: (period: BenchmarkPeriodKind) => void
   onRefreshed: () => void
 }
 
 function Figures({
   data,
   section,
-  onSelect,
+  period,
+  onPeriodSelect,
   benchmarkPeriod,
   onBenchmarkPeriodSelect,
+  custodyPeriod,
+  onCustodyPeriodSelect,
   onRefreshed,
 }: FiguresProps): ReactNode {
   const { t, language } = useT()
@@ -190,6 +221,13 @@ function Figures({
 
   const rendered = useMemo(() => renderSignals(signals, t), [signals, t])
   const spending = useMemo(() => categories.filter((category) => !category.isIncome), [categories])
+
+  // The trigger's own value while nothing has been picked yet, or while the pick was a
+  // month: the server's resolved anchor, the same value `data.month` always was. A year
+  // pick is shown as the reader chose it — this page never resolves a year back to one.
+  const displayPeriod: Period =
+    period !== null && period.kind === 'year' ? period : { kind: 'month', value: month }
+  const availableMonths = useMemo(() => new Set(months), [months])
 
   const bullet = useMemo<BulletCategory[]>(
     () =>
@@ -231,12 +269,18 @@ function Figures({
       */}
       {section !== 'notes' && (
         <div className="toolbar">
-          <MonthPicker
-            month={month}
-            months={months}
-            onSelect={onSelect}
+          <PeriodPicker
+            period={displayPeriod}
+            onSelect={onPeriodSelect}
             id="budget-month"
+            // "Month", not "Period" (#345): Benchmark, Custody and this tab's own
+            // SavingsRate card each already carry a "Period"-labeled picker of their
+            // own on the tab this one shares, and a second control with the same
+            // accessible name on one page is a name two readers — sighted or on a
+            // screen reader — cannot tell apart.
             label={t('budget:picker.month')}
+            kindLabel={(kind) => t(`budget:picker.period.${kind}`)}
+            availableMonths={availableMonths}
           />
         </div>
       )}
@@ -269,7 +313,7 @@ function Figures({
               <p className="notice__hint">{t('budget:empty.monthHint')}</p>
             </div>
           ) : (
-            <Totals totals={totals} history={history} month={month} />
+            <Totals totals={totals} history={history} months={months} month={month} />
           )}
 
           {categories.length === 0 ? null : (
@@ -323,7 +367,14 @@ function Figures({
         would otherwise draw nothing at all. `Custody` answers for itself instead (#280) — the
         server sends `no_month` when there are no rows, and every reason has a box.
       */}
-      {section === 'custody' && <Custody custody={custody} />}
+      {section === 'custody' && (
+        <Custody
+          custody={custody}
+          period={custodyPeriod}
+          onPeriodSelect={onCustodyPeriodSelect}
+          month={month}
+        />
+      )}
 
       {section === 'notes' && <MonthNotePanel initialMonth={month} owner={owner} />}
     </>
@@ -338,12 +389,23 @@ interface TotalsProps {
   totals: NonNullable<BudgetPayload['totals']>
   /** The contiguous run of months ending at `month`, for the savings period (#288). */
   history: BudgetPayload['history']
+  /** Every month with data, newest first — for the savings card's own picker (#345). */
+  months: BudgetPayload['months']
   month: string
 }
 
-function Totals({ totals, history, month }: TotalsProps): ReactNode {
+function Totals({ totals, history, months, month }: TotalsProps): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
+
+  // Independent of the page's own period (#345), same as the Overview page's copy of
+  // this card and the Benchmark/Custody cards on their own tabs: a ratio has no
+  // meaning "following" a page picker that a table of category rows does, so each of
+  // these keeps its own.
+  const [savingsPeriod, setSavingsPeriod] = useState<Period>(() => ({
+    kind: 'year',
+    value: month.slice(0, 4),
+  }))
 
   const spentRows: MetricRow[] = [
     { label: t('budget:metric.assigned'), value: euro(totals.budgetedCents) },
@@ -422,7 +484,13 @@ function Totals({ totals, history, month }: TotalsProps): ReactNode {
         print the month's own pair, and a period's pair repeated here would put four
         figures under two labels.
       */}
-      <SavingsRate history={history} month={month} showFlows={false} />
+      <SavingsRate
+        history={history}
+        months={months}
+        period={savingsPeriod}
+        onPeriodSelect={setSavingsPeriod}
+        showFlows={false}
+      />
     </div>
   )
 }

@@ -14,6 +14,7 @@
     "copy": "Kopiëren",
     "dismiss": "Negeren",
     "edit": "Wijzigen",
+    "moreInfo": "Meer info",
     "refresh": "Vernieuwen",
     "reject": "Afwijzen",
     "retry": "Opnieuw proberen",
@@ -127,6 +128,10 @@
     "settings": {
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
     }
+  },
+  "periodPicker": {
+    "next": "Volgende",
+    "previous": "Vorige"
   },
   "privacy": {
     "toggle": {

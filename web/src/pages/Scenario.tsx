@@ -32,6 +32,7 @@ import {
   type Scenario as ScenarioPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { InfoTip } from '../ui/InfoTip.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
@@ -166,9 +167,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
         <h2 className="card__title">{t('scenario:input.title')}</h2>
         <div className="stack">
           <div className="field">
-            <label className="field__label" htmlFor="scenario-change">
-              {t('scenario:input.change')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-change">{t('scenario:input.change')}</label>
+              <InfoTip id="scenario-change-tip" text={t('scenario:input.tooltip.change')} />
+            </span>
             <input
               id="scenario-change"
               className="field__input num"
@@ -181,9 +183,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
           </div>
 
           <div className="field field--inline">
-            <label className="field__label" htmlFor="scenario-recurring">
-              {t('scenario:input.recurringLabel')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-recurring">{t('scenario:input.recurringLabel')}</label>
+              <InfoTip id="scenario-recurring-tip" text={t('scenario:input.tooltip.recurringLabel')} />
+            </span>
             <select
               id="scenario-recurring"
               className="field__input"
@@ -196,9 +199,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
           </div>
 
           <div className="field">
-            <label className="field__label" htmlFor="scenario-growth">
-              {t('scenario:input.growthRate')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-growth">{t('scenario:input.growthRate')}</label>
+              <InfoTip id="scenario-growth-tip" text={t('scenario:input.tooltip.growthRate')} />
+            </span>
             <input
               id="scenario-growth"
               className="field__input num"
@@ -211,9 +215,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
           </div>
 
           <div className="field">
-            <label className="field__label" htmlFor="scenario-horizon">
-              {t('scenario:input.horizon')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-horizon">{t('scenario:input.horizon')}</label>
+              <InfoTip id="scenario-horizon-tip" text={t('scenario:input.tooltip.horizon')} />
+            </span>
             <input
               id="scenario-horizon"
               className="field__input num"
@@ -226,9 +231,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
           </div>
 
           <div className="field">
-            <label className="field__label" htmlFor="scenario-baseline">
-              {t('scenario:input.baseline')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-baseline">{t('scenario:input.baseline')}</label>
+              <InfoTip id="scenario-baseline-tip" text={t('scenario:input.tooltip.baseline')} />
+            </span>
             <input
               id="scenario-baseline"
               className="field__input num"
@@ -241,9 +247,10 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
           </div>
 
           <div className="field">
-            <label className="field__label" htmlFor="scenario-starting">
-              {t('scenario:input.startingValue')}
-            </label>
+            <span className="field__label">
+              <label htmlFor="scenario-starting">{t('scenario:input.startingValue')}</label>
+              <InfoTip id="scenario-starting-tip" text={t('scenario:input.tooltip.startingValue')} />
+            </span>
             <input
               id="scenario-starting"
               className="field__input num"

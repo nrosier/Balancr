@@ -824,6 +824,19 @@ describe('thresholds', () => {
     expect(screen.getByText(/reads as 20%/)).toBeTruthy()
   })
 
+  it('reveals an explanation next to a field on hover, in more than one group', async () => {
+    await open(READS, 'baseline')
+
+    const baselineLabel = screen.getByText('Months of history in the norm', { selector: 'label' })
+    fireEvent.mouseEnter(within(baselineLabel.closest('.thresholds__field') as HTMLElement).getByRole('button', { name: 'More info' }))
+    expect(screen.getByRole('tooltip').textContent).toMatch(/months of history/i)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Overspending' }))
+    const overspendLabel = await screen.findByText('Ignore amounts under', { selector: 'label', exact: false })
+    fireEvent.mouseEnter(within(overspendLabel.closest('.thresholds__field') as HTMLElement).getByRole('button', { name: 'More info' }))
+    expect(screen.getByRole('tooltip')).toBeTruthy()
+  })
+
   it('puts a rejected field beside itself rather than at the top of the page', async () => {
     await open(
       {
