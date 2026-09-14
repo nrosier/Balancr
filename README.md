@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.1.4-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.1.5-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -992,12 +992,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.1.4` is the current release, a patch on top of `1.1.0`.
+**Where it is now** — `1.1.5` is the current release, a patch on top of `1.1.0`.
 Every feature issue in the list above is still closed; this slice fixes the
-Budget page's savings-rate card, which had kept its own period picker instead
-of following the page's own month/year control.
+Budget page's Spent and Income cards, which kept printing one resolved
+month's figures even once the page's own picker was turned to Year — the
+savings-rate card beside them had already been fixed the same way in 1.1.4.
 
-`docker pull` now resolves `latest` to `1.1.4`; a release candidate is published
+`docker pull` now resolves `latest` to `1.1.5`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
