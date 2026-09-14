@@ -197,7 +197,7 @@ describe('loadOffBudgetAccounts', () => {
     )
 
     expect(loadOffBudgetAccounts(ctx.db)).toEqual([
-      { accountMapId: ids.a2, name: 'Beleggingen', balanceCents: -18_000_000, currency: 'EUR' },
+      { accountMapId: ids.a2, name: 'Beleggingen', balanceCents: -18_000_000, currency: 'EUR', kind: 'other' },
     ])
   })
 

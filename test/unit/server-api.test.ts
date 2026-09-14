@@ -28,7 +28,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
-import { categoryMeta, clarificationQueue, proposals, users } from '../../src/db/schema.ts'
+import { accountMap, categoryMeta, clarificationQueue, proposals, users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -144,7 +144,7 @@ describe('GET /api/overview', () => {
       debtCents: 120_000,
       propertyValueCents: null,
       mortgageBalanceCents: null,
-      offBudgetCents: null,
+      liquidOffBudgetCents: null,
     })
     expect(body.month).toBe(MONTH)
     // Descending, same as `/api/budget`'s — the period picker's availability set (#345).
@@ -622,12 +622,19 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
   /**
    * The fixture's three accounts already have a snapshot row for `SNAPSHOT_DATE`
    * (`api-fixture.ts`), and `persistNetWorth` deletes any row for the date that
-   * isn't in the `contributions` it's given — so adding the mortgage means
-   * re-stating all four, not just the new one, or the existing three vanish.
+   * isn't in the `contributions` it's given — so adding the off-budget pair means
+   * re-stating all five, not just the new two, or the existing three vanish.
+   *
+   * Two off-budget accounts, deliberately of different kinds: the savings pot is
+   * what `liquidOffBudgetCents` is meant to surface, and the mortgage is what it
+   * is meant to leave alone — a mortgage tracked as an Actual account is still
+   * named on `/api/portfolio` and still counted into `debtCents`, just not folded
+   * into the "directly available" split, which only ever means liquid money.
    */
-  function addOffBudgetMortgage(): string {
+  function addOffBudgetAccounts(): { mortgageId: string; savingsId: string } {
     syncAccountMap(ctx.db, [
       { source: 'actual', externalId: 'acct-mortgage', name: 'KBC Hypotheek', offBudget: true },
+      { source: 'actual', externalId: 'acct-savings-offbudget', name: 'Spaarpot', offBudget: true },
     ])
     const byExternalId = new Map(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
     const mapId = (externalId: string): string => {
@@ -635,6 +642,18 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
       if (id === undefined) throw new Error(`the fixture failed to map ${externalId}`)
       return id
     }
+
+    // `syncAccountMap` only guesses `kind` on insert, and an off-budget Actual
+    // account defaults to `other` (its `defaultKind` — the account is as likely
+    // to be a mortgage as a savings pot). Overriding it here is what a real
+    // deployment does through the settings page's kind picker; the split under
+    // test reads `accountMap.kind`, not the transient kind a snapshot was
+    // written with, so the fixture has to make that same decision.
+    ctx.db
+      .update(accountMap)
+      .set({ kind: 'savings' })
+      .where(eq(accountMap.id, mapId('acct-savings-offbudget')))
+      .run()
 
     persistNetWorth(
       ctx.db,
@@ -683,34 +702,51 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
           dedupeGroup: null,
           isSourceOfTruth: true,
         },
+        {
+          accountMapId: mapId('acct-savings-offbudget'),
+          source: 'actual',
+          externalId: 'acct-savings-offbudget',
+          name: 'Spaarpot',
+          kind: 'savings',
+          valueCents: 600_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
       ]),
     )
 
-    return mapId('acct-mortgage')
+    return { mortgageId: mapId('acct-mortgage'), savingsId: mapId('acct-savings-offbudget') }
   }
 
-  it('sums into its own row on GET /api/overview, independent of the debt figure', async () => {
-    addOffBudgetMortgage()
+  it('splits how much of "directly available" is off-budget on GET /api/overview', async () => {
+    addOffBudgetAccounts()
     const body = (await get('/api/overview')).json()
 
-    expect(body.netWorth.offBudgetCents).toBe(-18_000_000)
-    // Deliberately unmoved: `debtCents` only ever reads an account's own sign,
-    // never `offBudget` — the mortgage counts toward both figures on purpose.
+    // The savings pot is liquid and off-budget, so it moves both figures.
+    expect(body.netWorth.liquidCents).toBe(1_240_000 + 600_000)
+    expect(body.netWorth.liquidOffBudgetCents).toBe(600_000)
+    // The mortgage is off-budget too, but not liquid — it stays out of the split
+    // and keeps counting toward debt on its own sign, same as before (#353).
     expect(body.netWorth.debtCents).toBe(120_000 + 18_000_000)
   })
 
-  it('names the account and its balance on GET /api/portfolio', async () => {
-    const mortgageMapId = addOffBudgetMortgage()
+  it('names every off-budget account regardless of kind on GET /api/portfolio', async () => {
+    const { mortgageId, savingsId } = addOffBudgetAccounts()
     const body = (await get('/api/portfolio')).json()
 
-    expect(body.offBudgetAccounts).toEqual([
-      { id: mortgageMapId, name: 'KBC Hypotheek', balanceCents: -18_000_000, currency: 'EUR' },
-    ])
+    expect(body.offBudgetAccounts).toEqual(
+      expect.arrayContaining([
+        { id: mortgageId, name: 'KBC Hypotheek', balanceCents: -18_000_000, currency: 'EUR' },
+        { id: savingsId, name: 'Spaarpot', balanceCents: 600_000, currency: 'EUR' },
+      ]),
+    )
+    expect(body.offBudgetAccounts).toHaveLength(2)
   })
 
-  it('answers an empty list and a null sum when nothing is off-budget', async () => {
+  it('answers an empty list and a null split when nothing is off-budget', async () => {
     const overview = (await get('/api/overview')).json()
-    expect(overview.netWorth.offBudgetCents).toBeNull()
+    expect(overview.netWorth.liquidOffBudgetCents).toBeNull()
 
     const portfolio = (await get('/api/portfolio')).json()
     expect(portfolio.offBudgetAccounts).toEqual([])

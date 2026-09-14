@@ -456,6 +456,12 @@
   text-align: right;
 }
 
+/* What a row is made of, indented beneath it — e.g. on- vs. off-budget. */
+.metric__row--sub {
+  padding-left: var(--space-3);
+  font-size: var(--type-sm);
+}
+
 /* ── Data quality ────────────────────────────────────────────────────────── */
 
 .hygiene__heading {

@@ -111,8 +111,8 @@ export function buildPortfolio(db: Db): Portfolio {
       grossYieldBp: grossYieldBp(property),
     })),
     totalPropertyEquityCents: totalEquityCents(properties, today),
-    // See `netWorth.offBudgetCents` on `overviewSchema` for why this deliberately
-    // overlaps `properties`/debt figures rather than netting against them (#353).
+    // Every off-budget account, any kind — the full list `netWorth.liquidOffBudgetCents`
+    // (on `overviewSchema`) only summarizes the liquid slice of (#353).
     offBudgetAccounts: loadOffBudgetAccounts(db).map((account) => ({
       id: account.accountMapId,
       name: account.name,
