@@ -6,6 +6,20 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.4] — 2026-09-14
+
+Fixes Budget → Overview's savings-rate card, which was still choosable on its
+own instead of following the page's own month/year picker.
+
+### Fixed
+
+- **Savings rate follows the Budget page's picker** ([#351](https://github.com/nrosier/Balancr/issues/351)).
+  #345's placement matrix called for one page-level picker driving every card
+  on Budget's tabs, but the savings-rate card shipped with its own independent
+  period control anyway. It now has no picker of its own there and simply
+  reads whatever month or year the page's own picker is showing; the Overview
+  page's copy, which has no other picker to follow, keeps its own.
+
 ## [1.1.3] — 2026-09-14
 
 Rebuilds the Month/Year period picker and adds hoverable explanations to the
