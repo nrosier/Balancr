@@ -32,6 +32,12 @@ export interface MetricRow {
   /** Already formatted. */
   value: ReactNode
   tone?: Tone
+  /**
+   * What this row is made of, indented directly beneath it — e.g. "directly
+   * available" split into what's on- and off-budget. One level only: a sub-row's
+   * own `rows` would have nowhere left to indent to.
+   */
+  rows?: readonly Omit<MetricRow, 'rows'>[]
 }
 
 export interface MetricProps {
@@ -81,9 +87,19 @@ export function Metric({
       {rows === undefined || rows.length === 0 ? null : (
         <dl className="metric__rows">
           {rows.map((row) => (
-            <div className="metric__row" key={row.label}>
-              <dt>{row.label}</dt>
-              <dd className={`num${toneClass(row.tone)}`}>{row.value}</dd>
+            <div className="metric__row-group" key={row.label}>
+              <div className="metric__row">
+                <dt>{row.label}</dt>
+                <dd className={`num${toneClass(row.tone)}`}>{row.value}</dd>
+              </div>
+              {row.rows === undefined || row.rows.length === 0
+                ? null
+                : row.rows.map((sub) => (
+                    <div className="metric__row metric__row--sub" key={sub.label}>
+                      <dt>{sub.label}</dt>
+                      <dd className={`num${toneClass(sub.tone)}`}>{sub.value}</dd>
+                    </div>
+                  ))}
             </div>
           ))}
         </dl>

@@ -11,7 +11,7 @@
  */
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
-import { accountMap, netWorthSnapshots } from '../../db/schema.ts'
+import { accountMap, netWorthSnapshots, type AccountKind } from '../../db/schema.ts'
 import type { AccountBalance } from './accounts.ts'
 import { config } from '../../config.ts'
 import { LIQUID, resolveInclusion, type NetWorthResult, type NetWorthSummary } from './networth.ts'
@@ -185,6 +185,7 @@ export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
 export interface OffBudgetAccount {
   accountMapId: string
   name: string
+  kind: AccountKind
   balanceCents: number
   currency: string
 }
@@ -211,6 +212,7 @@ export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
     .select({
       accountMapId: accountMap.id,
       name: accountMap.name,
+      kind: accountMap.kind,
       includeInNetWorth: accountMap.includeInNetWorth,
       dedupeGroup: accountMap.dedupeGroup,
       isSourceOfTruth: accountMap.isSourceOfTruth,
@@ -226,7 +228,26 @@ export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
   return included.map((row) => ({
     accountMapId: row.accountMapId,
     name: row.name,
+    kind: row.kind,
     balanceCents: row.valueCents,
     currency: row.currency,
   }))
+}
+
+/**
+ * How much of `liquidCents` (#353) is sitting in an off-budget account — a savings
+ * pot Actual keeps off-budget, say, that still counts toward net worth. `null` when
+ * none of the off-budget money is liquid, the same "nothing to report" convention
+ * every other optional net-worth figure uses, so a page can hide the split entirely
+ * rather than draw a breakdown that sums to the whole of itself.
+ *
+ * Scoped to `LIQUID` kinds on purpose: an off-budget mortgage or brokerage account
+ * already has its own place to be seen (`debtCents`, `investedCents`, and the full
+ * list `loadOffBudgetAccounts` returns) — folding every kind in here would make
+ * "directly available" the wrong figure to split it out of.
+ */
+export function loadOffBudgetLiquidCents(db: Db): number | null {
+  const liquid = loadOffBudgetAccounts(db).filter((account) => LIQUID.has(account.kind))
+  if (liquid.length === 0) return null
+  return liquid.reduce((sum, account) => sum + account.balanceCents, 0)
 }
