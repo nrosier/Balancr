@@ -1176,6 +1176,100 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
   })
 })
 
+describe('Spent and Income sum the page picker’s year, too (#355)', () => {
+  // The pro-ration caveat in the note reads the real clock, same as the savings-rate
+  // describe block above.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
+  })
+
+  const metric = (label: string): Element | null =>
+    screen.getByRole('heading', { name: label, level: 2 }).closest('.metric')
+
+  const value = (label: string): string =>
+    (metric(label)?.querySelector('.metric__value')?.textContent ?? '').replaceAll(' ', ' ')
+
+  const note = (label: string): string =>
+    (metric(label)?.querySelector('.metric__note')?.textContent ?? '').replaceAll(' ', ' ')
+
+  const pickYear = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+  }
+
+  it('keeps showing one month’s own figures until Year is picked', async () => {
+    serve(json(FULL))
+    renderApp(<Budget />)
+
+    expect(await screen.findByText('€ 3.100')).toBeTruthy()
+    expect(value('Spent')).toBe('€ 3.100')
+    expect(value('Income')).toBe('€ 4.200')
+    expect(metric('Spent')?.querySelector('.metric__note')).toBeNull()
+  })
+
+  it('sums both cards over the months the year actually has, not just the anchor month', async () => {
+    // The bug (#355): before this fix, turning the page picker to Year changed which
+    // month `totals` answered for, but Spent and Income kept printing that one
+    // month's figures instead of the year's — unlike the savings-rate card next to
+    // them, which already summed `history` for the same picker.
+    serve({ '/api/budget': json(FULL), '/api/budget?month=2026-08': json(FULL) })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    pickYear()
+
+    // July + August: €4.200 + €4.200 income, €3.000 + €3.100 spent.
+    await waitFor(() => expect(value('Spent')).toBe('€ 6.100'))
+    expect(value('Income')).toBe('€ 8.400')
+    const spanText =
+      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.'
+    expect(note('Spent')).toBe(spanText)
+    expect(note('Income')).toBe(spanText)
+  })
+
+  it('leaves assigned, available and left-to-assign on the one resolved month even for a year', async () => {
+    // Envelope states, not flows — SavingsRate's own header comment is why these never
+    // gain a period, and that stays true now that Spent and Income do.
+    serve({ '/api/budget': json(FULL), '/api/budget?month=2026-08': json(FULL) })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    pickYear()
+
+    await waitFor(() => expect(value('Spent')).toBe('€ 6.100'))
+    const rows = [...document.querySelectorAll('.metric__row')].map((row) =>
+      (row.textContent ?? '').replaceAll(' ', ' '),
+    )
+    expect(rows).toEqual([
+      'Assigned€ 3.500',
+      'Available€ 900',
+      'From last month€ 500',
+      'Unassigned€ 30',
+    ])
+  })
+
+  it('says the window is empty rather than printing a figure for no months', async () => {
+    // FULL's own month is already August, and picking Year while August is the anchor
+    // still resolves to August (#345) — Jan–Aug has to have nothing in `history` at
+    // all for the window to come up empty, not just July.
+    const sparse = { ...FULL, history: [] }
+    serve({ '/api/budget': json(sparse), '/api/budget?month=2026-08': json(sparse) })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    pickYear()
+
+    await waitFor(() => expect(value('Spent')).toBe('Not known yet'))
+    expect(value('Income')).toBe('Not known yet')
+    // Still a year, still 66,7% through — the pro-ration caveat is about the period,
+    // not the (empty) window, so it stays even once there is no figure to caveat.
+    expect(note('Spent')).toBe(
+      'No month with figures in this window This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
+    )
+  })
+})
+
 describe('the section tabs (#230)', () => {
   it('marks the open tab current, and lands on Overview for a path it does not recognise', async () => {
     serve(json(FULL))

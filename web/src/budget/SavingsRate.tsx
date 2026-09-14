@@ -54,8 +54,12 @@ type TFunction = ReturnType<typeof useT>['t']
  * Always printed, because a selectable window makes a bare percentage ambiguous, and a
  * fresh install asked for a year has three months — naming the real span is the same
  * honesty rule `committedApproximate` and the custody `basis` already follow (#288).
+ *
+ * Exported since #355: `Totals` on the Budget page needs the same sentence under its
+ * own Spent/Income cards once a year's worth of flows replaces one month's, and a
+ * second copy would be a second chance for the wording to drift.
  */
-function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): string {
+export function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): string {
   const span =
     savings.from === null || savings.to === null
       ? t('budget:savings.span.none')

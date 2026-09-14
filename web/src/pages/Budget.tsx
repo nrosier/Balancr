@@ -23,13 +23,16 @@
  * series, the projection and how far through the month the server thought it was all
  * arrive as integers, and the page neither projects nor re-derives any of them. Two
  * exceptions, both deliberate: the width of a bar in `PaceBar`, which prints no number,
- * and the savings rate over a chosen period (#288), which sums the flows of a slice of
- * `history` and divides once. The second is arithmetic the server could not do for it —
- * the period is a reading the reader picks after the payload has arrived — so it lives in
- * `domain/aggregate/savings.ts` and is re-exported through `shared.ts`, which is how it
- * stays one implementation with tests rather than a sum written out in JSX. The card
- * itself is `budget/SavingsRate.tsx`, shared with the Overview page since #296 for the
- * same reason one level up: two copies read two ways. The sentences
+ * and summing the flows of a slice of `history` for a chosen period (#288) — the
+ * arithmetic the server could not do for it, since the period is a reading the reader
+ * picks after the payload has arrived. It lives in `domain/aggregate/savings.ts` and is
+ * re-exported through `shared.ts`, which is how it stays one implementation with tests
+ * rather than a sum written out in JSX, and how `Totals`' own Spent and Income cards
+ * come to reuse it for a year (#355) rather than growing a second copy: `totals` still
+ * carries every other figure, a single resolved anchor month, since assigned, available
+ * and left-to-assign are envelope states with no meaning summed over a year. The
+ * savings-rate card itself is `budget/SavingsRate.tsx`, shared with the Overview page
+ * since #296 for the same reason one level up: two copies read two ways. The sentences
  * beside the figures come from `ai/signals.ts`, out of the same catalogue the server's
  * digest uses, so a finding reads the same in an email and on this screen.
  *
@@ -59,7 +62,7 @@ import { renderSignals, signalsFor, type RenderedSignal } from '../ai/signals.ts
 import { Benchmark } from '../budget/Benchmark.tsx'
 import { Custody } from '../budget/Custody.tsx'
 import { MonthNotePanel } from '../budget/MonthNote.tsx'
-import { SavingsRate } from '../budget/SavingsRate.tsx'
+import { SavingsRate, spanNote } from '../budget/SavingsRate.tsx'
 import { BUDGET_SECTIONS, sectionFor } from '../budget/sections.ts'
 import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
@@ -67,10 +70,12 @@ import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import {
+  absolutePeriodSavings,
   formatBp,
   formatDecimal,
   formatMonth,
   formatMoney,
+  formatSettings,
   resolveYearAnchor,
   type Budget as BudgetPayload,
   type BenchmarkPeriodKind,
@@ -386,17 +391,33 @@ const extent = (category: CategoryFact): number =>
 
 interface TotalsProps {
   totals: NonNullable<BudgetPayload['totals']>
-  /** The contiguous run of months ending at the page's period, for the savings rate (#288). */
+  /** The contiguous run of months ending at the page's period, for the flow sums (#288, #355). */
   history: BudgetPayload['history']
-  /** Every month with data, newest first — for the savings rate's year resolution (#345). */
+  /** Every month with data, newest first — for the year resolution the flow sums need (#345). */
   months: BudgetPayload['months']
   /** The page's own month/year picker (#345) — this card follows it rather than choosing. */
   period: Period
 }
 
 function Totals({ totals, history, months, period }: TotalsProps): ReactNode {
-  const { t } = useT()
+  const { t, language } = useT()
   const unknown = t('empty.unknown')
+
+  // Spent and Income are flows, so a year sums them the same way the savings-rate
+  // card already does (#355) instead of showing `totals`' one resolved anchor
+  // month. Assigned, available and left-to-assign stay on `totals` regardless —
+  // per `SavingsRate`'s header comment, those are envelope states with no meaning
+  // summed over a year, so a month pick leaves every figure here exactly as
+  // `totals` already has it.
+  const periodFlows = useMemo(() => {
+    if (period.kind === 'month') return null
+    const anchorMonth = resolveYearAnchor(months, period.value)
+    return absolutePeriodSavings(history, 'year', anchorMonth, new Date(), formatSettings().timeZone)
+  }, [history, months, period])
+  const flowsKnown = periodFlows === null || periodFlows.months > 0
+  const flowNote = periodFlows === null ? undefined : spanNote(periodFlows, t, language)
+  const spentCents = periodFlows === null ? totals.spentCents : periodFlows.spentCents
+  const incomeCents = periodFlows === null ? totals.incomeCents : periodFlows.incomeCents
 
   const spentRows: MetricRow[] = [
     { label: t('budget:metric.assigned'), value: euro(totals.budgetedCents) },
@@ -429,17 +450,19 @@ function Totals({ totals, history, months, period }: TotalsProps): ReactNode {
     <div className="grid-cards">
       <Metric
         label={t('budget:metric.spent')}
-        value={euro(totals.spentCents)}
+        value={flowsKnown ? euro(spentCents) : null}
         unknown={unknown}
         rows={spentRows}
+        {...(flowNote === undefined ? {} : { note: flowNote })}
       />
       <Metric
         label={t('budget:metric.income')}
-        value={euro(totals.incomeCents)}
+        value={flowsKnown ? euro(incomeCents) : null}
         unknown={unknown}
         rows={[
           { label: t('budget:metric.fromLastMonth'), value: euro(totals.fromLastMonthCents) },
         ]}
+        {...(flowNote === undefined ? {} : { note: flowNote })}
       />
       <Metric
         label={t('budget:metric.toBudget')}
@@ -465,18 +488,19 @@ function Totals({ totals, history, months, period }: TotalsProps): ReactNode {
         />
       )}
       {/*
-        The one card on this page that is a ratio of flows rather than a state of the
-        month's envelopes, which is why it is the one that suffers from the calendar
-        boundary and the only one that gets a period (#288). Assigned, available and
-        left-to-assign have no meaning summed over twelve months. Shared with the Overview
-        page since #296, so the same figure cannot read two ways on two pages.
+        A ratio of flows rather than a state of the month's envelopes, which is why it
+        suffers from the calendar boundary the same way Spent and Income now do (#288,
+        #355) — assigned, available and left-to-assign have no meaning summed over
+        twelve months, and stay on `totals`' one resolved month regardless. Shared with
+        the Overview page since #296, so the same figure cannot read two ways on two
+        pages.
 
         No `onPeriodSelect` (#351): this copy follows the page's own month/year picker
         rather than choosing independently — Overview's copy, which has no other picker
         to follow, still passes one.
 
-        `showFlows={false}`: the Spent and Income cards two positions to the left already
-        print the month's own pair, and a period's pair repeated here would put four
+        `showFlows={false}`: the Spent and Income cards two positions to the left
+        already print the period's own pair, and repeating it here would put four
         figures under two labels.
       */}
       <SavingsRate history={history} months={months} period={period} showFlows={false} />
