@@ -23,8 +23,10 @@
  * Presentational since #345: the period is the caller's `useState`, not this
  * component's, because the two callers disagree about what it should follow — the
  * Overview page has no other picker for it to follow, so it owns an independent
- * selection, while the Budget page eventually folds it into the page's own anchor. A
- * component that kept its own state could not be steered either way.
+ * selection and passes `onPeriodSelect`, while the Budget page has one already and
+ * follows it: no `onPeriodSelect` there means no picker of its own, just the figure
+ * for whatever the page's own month/year picker is showing. A component that kept
+ * its own state could not be steered either way.
  */
 import { useId, useMemo, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
@@ -73,9 +75,14 @@ export interface SavingsRateProps {
   history: readonly SavingsMonth[]
   /** Every month with data, newest first, straight off the payload — for the picker's graying and year resolution. */
   months: readonly string[]
-  /** The reader's own selection (#345) — not persisted, the same as the state it replaced. */
+  /** The reader's own selection on Overview, or the page's own period on Budget (#345). */
   period: Period
-  onPeriodSelect: (period: Period) => void
+  /**
+   * Present only when this card owns its own selection (Overview). Absent means the
+   * period is a prop the caller already controls, so the card has nothing to offer a
+   * picker for — the figure just follows whatever the caller is showing (Budget).
+   */
+  onPeriodSelect?: (period: Period) => void
   /**
    * Whether to print the period's summed income and spend beneath the rate.
    *
@@ -140,14 +147,16 @@ export function SavingsRate({
       note={spanNote(savings, t, language)}
       rows={rows}
       control={
-        <PeriodPicker
-          period={period}
-          onSelect={onPeriodSelect}
-          id={periodSelectId}
-          label={t('budget:savings.periodLabel')}
-          kindLabel={(kind) => t(`budget:savings.period.${kind}`)}
-          availableMonths={availableMonths}
-        />
+        onPeriodSelect === undefined ? undefined : (
+          <PeriodPicker
+            period={period}
+            onSelect={onPeriodSelect}
+            id={periodSelectId}
+            label={t('budget:savings.periodLabel')}
+            kindLabel={(kind) => t(`budget:savings.period.${kind}`)}
+            availableMonths={availableMonths}
+          />
+        )
       }
       {...(savings.rateBp === null
         ? {}
