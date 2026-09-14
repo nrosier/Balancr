@@ -165,6 +165,8 @@ export function buildBudget(
       spentCents: entry.spentCents,
       budgetedCents: entry.budgetedCents,
       savingsRateBp: entry.savingsRateBp,
+      committedCents: entry.committedCents,
+      committedApproximate: entry.committedApproximate,
     })),
     trendMonths: trends.months,
     categories: facts.map((fact) => ({

@@ -187,6 +187,9 @@ export const monthFlowsSchema = z.object({
   spentCents: cents(),
   budgetedCents: cents(),
   savingsRateBp: basisPoints().nullable(),
+  /** Still-to-come spend for this month (#159), zero for every month but the open one. */
+  committedCents: cents(),
+  committedApproximate: z.boolean(),
 })
 
 export const overviewSchema = z.object({

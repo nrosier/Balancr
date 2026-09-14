@@ -28,7 +28,8 @@
  * for whatever the page's own month/year picker is showing. A component that kept
  * its own state could not be steered either way.
  */
-import { useId, useMemo, type ReactNode } from 'react'
+import { Fragment, useId, useMemo, type ReactNode } from 'react'
+import { Trans } from 'react-i18next'
 import { useT } from '../i18n.ts'
 import {
   absolutePeriodSavings,
@@ -58,8 +59,16 @@ type TFunction = ReturnType<typeof useT>['t']
  * Exported since #355: `Totals` on the Budget page needs the same sentence under its
  * own Spent/Income cards once a year's worth of flows replaces one month's, and a
  * second copy would be a second chance for the wording to drift.
+ *
+ * A second caveat joins the pro-ration one when `committedCents` is nonzero (#361):
+ * the rate already folded in money a schedule promises but hasn't posted, which
+ * makes it a prediction rather than a result until the open month closes. That
+ * caveat names an amount, so unlike the other two sentences it is a `<Trans>`
+ * wrapping `<Money>` rather than a plain `t()` string — the same reason `Metric`'s
+ * `note` prop takes `ReactNode` — which is why this returns `ReactNode` rather
+ * than `string` even though it usually is one.
  */
-export function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): string {
+export function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): ReactNode {
   const span =
     savings.from === null || savings.to === null
       ? t('budget:savings.span.none')
@@ -70,8 +79,29 @@ export function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language:
             from: formatMonth(savings.from, language),
             to: formatMonth(savings.to, language),
           })
-  if (savings.periodProgressBp >= 10_000) return span
-  return `${span} ${t('budget:savings.period.prorated', { progress: formatBp(savings.periodProgressBp) })}`
+  const parts: ReactNode[] = [span]
+  if (savings.periodProgressBp < 10_000) {
+    parts.push(t('budget:savings.period.prorated', { progress: formatBp(savings.periodProgressBp) }))
+  }
+  if (savings.committedCents > 0) {
+    parts.push(
+      <Trans
+        key="estimate"
+        i18nKey="budget:savings.period.estimate"
+        components={{ money: <Money cents={savings.committedCents} options={{ whole: true }} /> }}
+      />,
+    )
+  }
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 ? ' ' : null}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  )
 }
 
 export interface SavingsRateProps {
