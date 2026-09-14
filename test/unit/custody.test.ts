@@ -27,6 +27,8 @@ import {
   custodyShare,
   custodySignals,
   splitCustody,
+  sumCustodyRows,
+  type CustodySpendRow,
   type CustodySplit,
 } from '../../src/domain/aggregate/custody.ts'
 import { custodyContext, splitMonth } from '../../src/domain/aggregate/custody-context.ts'
@@ -79,7 +81,7 @@ const HALF_TIME = household({ members: [{ birthYear: 2013, custodyBp: 5_000 }] }
 const GROSSED_UP = household({ ...HALF_TIME, sharedCostDirection: 'my_share' })
 
 function split(
-  rows: readonly MonthlyFact[],
+  rows: readonly CustodySpendRow[],
   shared: string[],
   who: Household = HALF_TIME,
 ): CustodySplit {
@@ -279,6 +281,31 @@ describe('splitting a month', () => {
     expect(result.yoursCents).toBe(40_000)
     expect(result.otherCents).toBe(0)
     expect(result.basis).toBe('stated')
+  })
+})
+
+describe('sumCustodyRows: summing a year of months into one split (#345)', () => {
+  it('sums spentCents per category across months, keeping the first month’s name', () => {
+    const july = [fact('school', 40_000), fact('rent', 100_000)]
+    const august = [fact('school', 12_000, { categoryName: 'school (renamed)' }), fact('clothes', 8_000)]
+
+    expect(sumCustodyRows([july, august])).toEqual([
+      { categoryId: 'school', categoryName: 'school', isIncome: false, hidden: false, spentCents: 52_000 },
+      { categoryId: 'rent', categoryName: 'rent', isIncome: false, hidden: false, spentCents: 100_000 },
+      { categoryId: 'clothes', categoryName: 'clothes', isIncome: false, hidden: false, spentCents: 8_000 },
+    ])
+  })
+
+  it('feeds a split the same way a single month’s rows would', () => {
+    const summed = sumCustodyRows([
+      [fact('school', 20_000), fact('rent', 50_000)],
+      [fact('school', 20_000), fact('rent', 50_000)],
+    ])
+    const result = ok(split(summed, ['school']))
+
+    // Two months of the same spend, summed before the split ever sees it.
+    expect(result.paidCents).toBe(40_000)
+    expect(result.yoursCents).toBe(20_000)
   })
 })
 

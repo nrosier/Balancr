@@ -94,11 +94,6 @@
     "holdings": "Holdings",
     "overview": "Overview"
   },
-  "picker": {
-    "period": "Period",
-    "periodMonth": "Month",
-    "periodYear": "Year"
-  },
   "property": {
     "caption_one": "One property.",
     "caption_other": "{{value}} properties.",

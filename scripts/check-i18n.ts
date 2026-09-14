@@ -16,7 +16,6 @@ import {
   FINDING_SPECS,
   PROPOSAL_WHY_SPECS,
 } from '../src/domain/ai/codes.ts'
-import { SAVINGS_PERIODS } from '../src/domain/aggregate/savings.ts'
 import {
   BENCHMARK_BLOCKS,
   BENCHMARK_GROUPS,
@@ -189,9 +188,6 @@ const vocabularies: Array<[string, readonly string[], string]> = [
   // The twelve COICOP divisions plus `00`: every entry the mapping picker offers, and
   // the reason it is this list and not the ten groups is in `mapping.ts`.
   ['settings:benchmark.coicop.', [...COICOP_DIVISIONS, OUTSIDE_CONSUMPTION], 'COICOP division'],
-  // The four windows the savings card can be read over (#288). A period with no name
-  // is an empty option in a select, which is worse than no chooser at all.
-  ['budget:savings.period.', SAVINGS_PERIODS, 'savings period'],
   // Why there is no comparison, and what to do about it — one of each per reason since
   // #300. The guard is here because the failure it catches already happened once: the
   // hint was a single shared string, and it went stale the moment a reason arrived that
@@ -278,6 +274,5 @@ console.log(
     `${Object.keys(FINDING_SPECS).length} finding codes, ` +
     `${Object.keys(CLARIFICATION_SPECS).length} clarification codes, ` +
     `${Object.keys(PROPOSAL_WHY_SPECS).length} proposal reasons, ` +
-    `${SAVINGS_PERIODS.length} savings periods, ` +
     `${bounds.length} length bounds`,
 )

@@ -21,7 +21,15 @@
       "recurring": "Elke maand"
     },
     "startingValue": "Huidige geïnvesteerde waarde",
-    "title": "Pas de aannames aan"
+    "title": "Pas de aannames aan",
+    "tooltip": {
+      "baseline": "Wat er momenteel elke maand belegd wordt, vóór de hypothetische aanpassing hieronder.",
+      "change": "Een hypothetische aanpassing van de maandelijkse inleg, boven op wat er werkelijk belegd wordt. Mag negatief zijn.",
+      "growthRate": "De verwachte groei van de geïnvesteerde waarde per jaar, elke maand toegepast als een twaalfde daarvan.",
+      "horizon": "Hoeveel jaar er geprojecteerd wordt, tot 30.",
+      "recurringLabel": "Of de aanpassing elke maand herhaalt, of eenmalig gebeurt bij de start.",
+      "startingValue": "De geïnvesteerde waarde waarvan de projectie vertrekt."
+    }
   },
   "metric": {
     "asIs": "Geprojecteerde waarde, zoals nu",

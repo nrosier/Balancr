@@ -106,6 +106,13 @@ describe('GET /api/budget/note', () => {
     const res = await get(`/api/budget/note?month=${MONTH}`, viewer)
     expect(res.statusCode).toBe(200)
   })
+
+  it('accepts a whole year, for the stepper\'s year mode (#345)', async () => {
+    await patch('/api/budget/note', { month: '2026', text: 'Renovated the kitchen this year.' })
+    const res = await get('/api/budget/note?month=2026')
+    expect(res.statusCode).toBe(200)
+    expect(res.json<{ text: string }>().text).toBe('Renovated the kitchen this year.')
+  })
 })
 
 describe('PATCH /api/budget/note', () => {
@@ -168,5 +175,13 @@ describe('PATCH /api/budget/note', () => {
   it('refuses a write with no CSRF token', async () => {
     const res = await patch('/api/budget/note', { month: MONTH, text: 'fine' }, { csrf: false })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('keeps a whole-year note independent of a month within that year (#345)', async () => {
+    await patch('/api/budget/note', { month: '2026', text: 'Renovated the kitchen this year.' })
+    await patch('/api/budget/note', { month: MONTH, text: 'Dentist bill in March.' })
+
+    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
   })
 })

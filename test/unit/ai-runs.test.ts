@@ -308,6 +308,28 @@ describe('recentRuns', () => {
     recordRun(db, run({ period: null }))
     expect(recentRuns(db, 50)).toHaveLength(3)
   })
+
+  it('scoped to a year, keeps every month in it and every run about no month at all (#345)', () => {
+    const august2026 = recordRun(db, run({ period: '2026-08' }))
+    const january2026 = recordRun(db, run({ period: '2026-01' }))
+    const august2025 = recordRun(db, run({ period: '2025-08' }))
+    const chat = recordRun(db, run({ period: null }))
+
+    const rows = recentRuns(db, 50, { kind: 'year', value: '2026' }).map((row) => row.id)
+    expect(rows).toContain(august2026)
+    expect(rows).toContain(january2026)
+    expect(rows).toContain(chat)
+    expect(rows).not.toContain(august2025)
+  })
+
+  it('accepts a month via the same {kind, value} shape as a plain string', () => {
+    const august = recordRun(db, run({ period: '2026-08' }))
+    const july = recordRun(db, run({ period: '2026-07' }))
+
+    const rows = recentRuns(db, 50, { kind: 'month', value: '2026-08' }).map((row) => row.id)
+    expect(rows).toContain(august)
+    expect(rows).not.toContain(july)
+  })
 })
 
 describe('ai_spend_monthly', () => {

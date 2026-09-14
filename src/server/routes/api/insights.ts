@@ -64,7 +64,7 @@ import { openQuestions } from '../../../domain/ai/clarify.ts'
 import { loadNarrative, noteChangedSince, renderNarrative } from '../../../domain/ai/narrative.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
-import { resolveMonth } from './budget.ts'
+import { resolveBenchmarkPeriod, resolveMonth } from './budget.ts'
 import {
   aiRunPayloadSchema,
   insightsSchema,
@@ -78,6 +78,8 @@ import { freshness } from './freshness.ts'
 export interface InsightsOptions {
   /** `?month=`, unvalidated. A malformed value is a 400, as on `/api/budget`. */
   month?: unknown
+  /** `?runsPeriod=`, unvalidated — whether the ledger widens to the month's whole year. */
+  runsPeriod?: unknown
   locale?: string
   /**
    * Whether this reader may start a run. Drawn from the session's role by the caller,
@@ -89,6 +91,7 @@ export interface InsightsOptions {
 export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
   const locale = options.locale ?? config.DEFAULT_LOCALE
   const month = resolveMonth(db, options.month)
+  const runsPeriod = resolveBenchmarkPeriod(options.runsPeriod)
   // Per month and per locale, unlike before, when it was the newest narrative in this
   // language whatever month it described. That was a real hazard rather than a
   // simplification: on the 3rd of September the page printed August's review with no
@@ -159,10 +162,17 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
     // read to answer "what happened last night", and the monthly totals that answer
     // "what has this cost" are on the settings screen.
     //
-    // Scoped to the month, plus every run that was about no month at all — a chat turn,
-    // or a call that failed before it knew. See `recentRuns`: those rows belong under
-    // whatever is on screen rather than under nothing.
-    runs: (month === null ? recentRuns(db, 20) : recentRuns(db, 20, month)).map(wireRun),
+    // Scoped to the month (or, in year mode, every month of it), plus every run that was
+    // about no month at all — a chat turn, or a call that failed before it knew. See
+    // `recentRuns`: those rows belong under whatever is on screen rather than under nothing.
+    runs: (month === null
+      ? recentRuns(db, 20)
+      : recentRuns(
+          db,
+          20,
+          runsPeriod === 'year' ? { kind: 'year', value: month.slice(0, 4) } : month,
+        )
+    ).map(wireRun),
   })
 }
 

@@ -20,8 +20,7 @@
 import type { Db } from '../../db/index.ts'
 import { loadHousehold, type Household } from '../benchmark/household.ts'
 import { loadCategoryMeta } from './facts.ts'
-import { splitCustody, type CustodySplit } from './custody.ts'
-import type { MonthlyFact } from './spend.ts'
+import { splitCustody, type CustodySpendRow, type CustodySplit } from './custody.ts'
 
 export interface CustodyContext {
   /** The categories flagged as shared with a co-parent. */
@@ -37,11 +36,12 @@ export function custodyContext(db: Db): CustodyContext {
   return { shared, household: loadHousehold(db) }
 }
 
-/** One month split, given a context that was loaded once. */
+/** One period's split, given a context that was loaded once — one month's rows, or
+ *  several months summed by `sumCustodyRows` (#345). */
 export function splitMonth(
   context: CustodyContext,
   month: string,
-  rows: readonly MonthlyFact[],
+  rows: readonly CustodySpendRow[],
 ): CustodySplit {
   return splitCustody({ month, rows, shared: context.shared, household: context.household })
 }

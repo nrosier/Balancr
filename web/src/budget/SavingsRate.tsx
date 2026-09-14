@@ -1,84 +1,81 @@
 /**
- * The savings-rate card, with the period chooser that gives its figure a meaning.
+ * The savings-rate card, with the period picker that gives its figure a meaning.
  *
  * One component in one file because the alternative is what #296 was filed about: #288
- * gave the Budget page's card four windows and left the Overview page's card on one
- * calendar month, so the same household figure read two different ways on two pages —
+ * gave the Budget page's card four relative windows and left the Overview page's card on
+ * one calendar month, so the same household figure read two different ways on two pages —
  * and the Overview one, being the first card most people see, was the less honest of the
  * two. Two copies of this markup would be two chances for that to happen again.
  *
- * Why this card is the one with a chooser, when none of its neighbours has one: it is a
+ * Why this card is the one with a picker, when none of its neighbours has one: it is a
  * ratio of *flows*, and a calendar month is the window most likely to distort a flow.
  * Rent leaves near the end of the month and the paycheck arrives near the end of the
  * month, so the boundary falls in the middle of the pattern. Assigned, available and
- * left-to-assign are states of a month's envelopes and have no meaning summed over
- * twelve, which is why they stay on their own cards and never gain a period.
+ * left-to-assign are states of a month's envelopes and have no meaning summed over a
+ * year, which is why they stay on their own cards and never gain a period.
  *
- * The arithmetic is not here. `periodSavings` lives in `domain/aggregate/savings.ts`,
- * is pure, and is re-exported through `shared.ts` — the arrangement `custodyShare`
- * already has, and for the same reason: a period rate is `(Σincome − Σspend)/Σincome`
- * and never the mean of the monthly rates, and two copies of that would be two chances
- * to average the percentages in one of them.
+ * The arithmetic is not here. `absolutePeriodSavings` lives in `domain/aggregate/
+ * savings.ts`, is pure, and is re-exported through `shared.ts` — the arrangement
+ * `custodyShare` already has, and for the same reason: a period rate is
+ * `(Σincome − Σspend)/Σincome` and never the mean of the monthly rates, and two copies
+ * of that would be two chances to average the percentages in one of them.
  *
- * Period state is the component's own and is not persisted — a reload returns to twelve
- * months, on both pages independently. That is what #288 shipped, and #296 kept it: a
- * shared selection would need somewhere to live, and two cards on two pages that a
- * reader visits one at a time do not obviously want to move together.
+ * Presentational since #345: the period is the caller's `useState`, not this
+ * component's, because the two callers disagree about what it should follow — the
+ * Overview page has no other picker for it to follow, so it owns an independent
+ * selection, while the Budget page eventually folds it into the page's own anchor. A
+ * component that kept its own state could not be steered either way.
  */
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import {
-  DEFAULT_SAVINGS_PERIOD,
+  absolutePeriodSavings,
   formatBp,
   formatMonth,
-  periodSavings,
-  SAVINGS_PERIODS,
-  type PeriodSavings,
+  formatSettings,
+  resolveYearAnchor,
+  type AbsolutePeriodSavings,
   type SavingsMonth,
-  type SavingsPeriod,
 } from '../shared.ts'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
+import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 
 /** What the span sentence needs from the page's translator. */
 type TFunction = ReturnType<typeof useT>['t']
 
 /**
- * Which of the four windows the select is on, narrowed at the boundary.
- *
- * `event.target.value` is a `string`, and a value matching no period can only mean the
- * option list and this union have drifted apart — which the i18n check would have caught
- * first. Falling back to the default is the reading that still shows a figure.
- */
-export const asPeriod = (value: string): SavingsPeriod =>
-  (SAVINGS_PERIODS as readonly string[]).includes(value)
-    ? (value as SavingsPeriod)
-    : DEFAULT_SAVINGS_PERIOD
-
-/**
- * The span a period actually covered, in words.
+ * The span a period actually covered, in words — plus a pro-ration caveat when the
+ * period ends in a still-open month, the same disclosure `Benchmark.tsx` gives its own
+ * period (#323), generalized here for the first time to a card that never had one.
  *
  * Always printed, because a selectable window makes a bare percentage ambiguous, and a
- * fresh install asked for twelve months has three — naming the real span is the same
+ * fresh install asked for a year has three months — naming the real span is the same
  * honesty rule `committedApproximate` and the custody `basis` already follow (#288).
  */
-function spanNote(savings: PeriodSavings, t: TFunction, language: string): string {
-  if (savings.from === null || savings.to === null) return t('budget:savings.span.none')
-  if (savings.from === savings.to) {
-    return t('budget:savings.span.month', { month: formatMonth(savings.from, language) })
-  }
-  return t('budget:savings.span.range', {
-    months: t('time.monthCount', { count: savings.months }),
-    from: formatMonth(savings.from, language),
-    to: formatMonth(savings.to, language),
-  })
+function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): string {
+  const span =
+    savings.from === null || savings.to === null
+      ? t('budget:savings.span.none')
+      : savings.from === savings.to
+        ? t('budget:savings.span.month', { month: formatMonth(savings.from, language) })
+        : t('budget:savings.span.range', {
+            months: t('time.monthCount', { count: savings.months }),
+            from: formatMonth(savings.from, language),
+            to: formatMonth(savings.to, language),
+          })
+  if (savings.periodProgressBp >= 10_000) return span
+  return `${span} ${t('budget:savings.period.prorated', { progress: formatBp(savings.periodProgressBp) })}`
 }
 
 export interface SavingsRateProps {
-  /** A contiguous run of months, oldest first, ending at or after `month`. */
+  /** Every stored month's flows, oldest first — as much history as the period picker can reach. */
   history: readonly SavingsMonth[]
-  /** The anchor: the month the reader has selected, or the newest one there is. */
-  month: string
+  /** Every month with data, newest first, straight off the payload — for the picker's graying and year resolution. */
+  months: readonly string[]
+  /** The reader's own selection (#345) — not persisted, the same as the state it replaced. */
+  period: Period
+  onPeriodSelect: (period: Period) => void
   /**
    * Whether to print the period's summed income and spend beneath the rate.
    *
@@ -90,24 +87,38 @@ export interface SavingsRateProps {
    * this card would put four figures under two labels and invite the reader to compare
    * numbers that cover different spans.
    *
-   * The rate itself, the chooser and the span sentence are identical either way, which is
+   * The rate itself, the picker and the span sentence are identical either way, which is
    * what #296 was actually about.
    */
   showFlows: boolean
 }
 
-export function SavingsRate({ history, month, showFlows }: SavingsRateProps): ReactNode {
+export function SavingsRate({
+  history,
+  months,
+  period,
+  onPeriodSelect,
+  showFlows,
+}: SavingsRateProps): ReactNode {
   const { t, language } = useT()
   // `useId` rather than a literal, because two of these on one page would otherwise
-  // give the same `htmlFor` to two selects and the label would address the wrong one.
-  const selectId = useId()
+  // give the same `id` to two pickers and the trigger would control the wrong popover.
+  const periodSelectId = useId()
 
-  const [period, setPeriod] = useState<SavingsPeriod>(DEFAULT_SAVINGS_PERIOD)
-  const savings = useMemo(() => periodSavings(history, month, period), [history, month, period])
+  const availableMonths = useMemo(() => new Set(months), [months])
+  // A year selection needs a concrete month to sum from: the latest stored month in
+  // that year, or December when nothing was ever computed for it — the same resolution
+  // the year-aware server routes make (#345).
+  const anchorMonth = period.kind === 'month' ? period.value : resolveYearAnchor(months, period.value)
+  const savings = useMemo(
+    () =>
+      absolutePeriodSavings(history, period.kind, anchorMonth, new Date(), formatSettings().timeZone),
+    [history, period.kind, anchorMonth],
+  )
 
-  // The period's own sums, never the anchor month's. A headline over twelve months above
-  // rows for one of them is the defect the Overview card would have inherited, where these
-  // rows used to come from `totals` and covered a single month (#296).
+  // The period's own sums, never the anchor month's. A headline over a year above rows
+  // for one of its months is the defect the Overview card would have inherited, where
+  // these rows used to come from `totals` and covered a single month (#296).
   const rows: MetricRow[] = !showFlows
     ? []
     : [
@@ -129,23 +140,14 @@ export function SavingsRate({ history, month, showFlows }: SavingsRateProps): Re
       note={spanNote(savings, t, language)}
       rows={rows}
       control={
-        <div className="field field--inline">
-          <label className="field__label" htmlFor={selectId}>
-            {t('budget:savings.periodLabel')}
-          </label>
-          <select
-            id={selectId}
-            className="field__input"
-            value={period}
-            onChange={(event) => setPeriod(asPeriod(event.target.value))}
-          >
-            {SAVINGS_PERIODS.map((option) => (
-              <option key={option} value={option}>
-                {t(`budget:savings.period.${option}`)}
-              </option>
-            ))}
-          </select>
-        </div>
+        <PeriodPicker
+          period={period}
+          onSelect={onPeriodSelect}
+          id={periodSelectId}
+          label={t('budget:savings.periodLabel')}
+          kindLabel={(kind) => t(`budget:savings.period.${kind}`)}
+          availableMonths={availableMonths}
+        />
       }
       {...(savings.rateBp === null
         ? {}

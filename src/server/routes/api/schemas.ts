@@ -177,9 +177,9 @@ export const netWorthPointSchema = z.object({
  *
  * One schema rather than two identical literals, because the savings card is now on both
  * pages and reads the same array shape from either (#296). It is structurally the domain's
- * `SavingsMonth` plus the two fields that card does not use, so `periodSavings` takes it
- * as it arrives with no adapter in between — and a field renamed here fails to compile on
- * both pages at once instead of quietly on one.
+ * `SavingsMonth` plus the two fields that card does not use, so `absolutePeriodSavings`
+ * takes it as it arrives with no adapter in between — and a field renamed here fails to
+ * compile on both pages at once instead of quietly on one.
  */
 export const monthFlowsSchema = z.object({
   month: monthKey(),
@@ -207,14 +207,19 @@ export const overviewSchema = z.object({
     .nullable(),
   history: z.array(netWorthPointSchema),
   /**
-   * The trailing run of monthly flows, oldest first, ending at `month`.
+   * Every stored month's flows, oldest first (#345) — not a trailing window, so the
+   * period picker's availability set (`months`, below) can reach any of them.
    *
    * Separate from `history`, which is net-worth points and carries no flows at all —
    * that absence is why the savings card here was stuck on one calendar month until #296.
-   * Long enough for every window the card offers, which is at most twelve months.
    */
   flows: z.array(monthFlowsSchema),
   month: monthKey().nullable(),
+  /**
+   * Every month with data, for the period picker's availability graying (#345) — the
+   * same field `budgetSchema.months` already carries for the same reason.
+   */
+  months: z.array(monthKey()),
   totals: z
     .object({
       incomeCents: cents(),

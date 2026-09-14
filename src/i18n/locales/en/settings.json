@@ -457,6 +457,43 @@
         "materialityFloorCents": "Ignore amounts under"
       }
     },
+    "fieldHint": {
+      "baseline": {
+        "halfLifeMonths": "How many months before a month's weight in the norm is halved — recent months count more.",
+        "minMonths": "Fewest months of history required before a norm is shown at all.",
+        "windowMonths": "How many months of history feed the norm.",
+        "winsorLowerPct": "Months below this percentile are clamped up before averaging, so one unusually low month doesn't skew the norm.",
+        "winsorUpperPct": "Months above this percentile are clamped down before averaging, so one unusually high month doesn't skew the norm."
+      },
+      "burnRate": {
+        "minMonthProgress": "No pace projection is shown before this share of the month has passed — too early to extrapolate.",
+        "toleranceBp": "How far a projected overrun may exceed the assigned amount before it's flagged."
+      },
+      "dayCurve": {
+        "maxDispersionBp": "How much the sampled day-of-month shares may vary before the shape is no longer considered predictable.",
+        "minMonths": "Fewest months with any spend required before a day-of-month shape is trusted.",
+        "windowMonths": "How many months of history feed the day-of-month spending shape."
+      },
+      "drift": {
+        "persistentMonths": "How many consecutive month-ends a portfolio class must sit outside its target band before it's flagged."
+      },
+      "household": {
+        "emergencyFundTargetMonths": "How many months of spending the emergency fund is aiming to cover.",
+        "savingsRateTargetBp": "The savings rate the household is aiming for."
+      },
+      "hygiene": {
+        "priceStaleDays": "A portfolio price older than this many days is no longer treated as current.",
+        "recomputationToleranceCents": "How far Actual's own total may differ from the recomputed one before it's flagged.",
+        "reconcileStaleDays": "An account not reconciled in this many days has its balance treated as a guess.",
+        "uncategorisedWarnCount": "How many uncategorised transactions are tolerated before it's flagged."
+      },
+      "overspend": {
+        "availableFloorCents": "A category counts as overspent once what's left falls below this.",
+        "baselineAlertBp": "How far above the norm a category has to run before it's flagged as an alert.",
+        "baselineWarnBp": "How far above the norm a category has to run before it's flagged as a warning.",
+        "materialityFloorCents": "Amounts under this are ignored, so a tiny envelope running slightly over isn't flagged."
+      }
+    },
     "group": {
       "baseline": "Your own norm",
       "burnRate": "Pace",

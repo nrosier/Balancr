@@ -132,10 +132,24 @@
       "total": "In totaal"
     },
     "lede": {
-      "my_share": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt — jouw deel van <money2>{{derived}}</money2> in totaal. De andere <money3>{{other}}</money3> werd rechtstreeks door het andere huishouden betaald en kwam nooit op jouw rekening.",
-      "whole_invoice": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{derived}}</money2> daarvan is economisch voor jou; <money3>{{other}}</money3> is het aandeel van het andere huishouden."
+      "my_share": {
+        "month": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt — jouw deel van <money2>{{derived}}</money2> in totaal. De andere <money3>{{other}}</money3> werd rechtstreeks door het andere huishouden betaald en kwam nooit op jouw rekening.",
+        "year": "In {{year}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt — jouw deel van <money2>{{derived}}</money2> in totaal. De andere <money3>{{other}}</money3> werd rechtstreeks door het andere huishouden betaald en kwam nooit op jouw rekening."
+      },
+      "whole_invoice": {
+        "month": "In {{month}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{derived}}</money2> daarvan is economisch voor jou; <money3>{{other}}</money3> is het aandeel van het andere huishouden.",
+        "year": "In {{year}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{derived}}</money2> daarvan is economisch voor jou; <money3>{{other}}</money3> is het aandeel van het andere huishouden."
+      }
     },
-    "share": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
+    "period": {
+      "month": "Maand",
+      "year": "Jaar"
+    },
+    "periodLabel": "Periode",
+    "share": {
+      "month": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
+      "year": "Gedeelde kosten zijn {{share}} van wat je dit jaar uitgaf."
+    },
     "title": "Kosten gedeeld met een co-ouder",
     "total": "Totaal",
     "unavailable": {
@@ -192,10 +206,20 @@
     "count": "{{count}}/{{max}} tekens",
     "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. Twee AI-stappen lezen ze: de budgetbijstelling op de Inzichten-pagina, wanneer die bedragen voor volgende maand voorstelt, en de maand in woorden, zodat die een verschuiving kan toeschrijven aan wat jij vertelde in plaats van het drift te noemen. Ze gaat naar het model zoals je ze schreef, en ze gaat niet naar de bevindingen.",
     "label": "Notitie voor {{month}}",
+    "period": {
+      "month": "Maand",
+      "year": "Jaar"
+    },
     "placeholder": "bv. Wasmachine vervangen deze maand, ongeveer €400. Tandartsafspraak in oktober, ongeveer €150.",
     "stepper": {
-      "next": "Volgende maand",
-      "previous": "Vorige maand"
+      "next": {
+        "month": "Volgende maand",
+        "year": "Volgend jaar"
+      },
+      "previous": {
+        "month": "Vorige maand",
+        "year": "Vorig jaar"
+      }
     },
     "title": "Notities"
   },
@@ -213,14 +237,17 @@
     "summary": "{{category}}: {{spent}} uitgegeven van {{assigned}} toegewezen, met {{progress}} van de maand voorbij."
   },
   "picker": {
-    "month": "Maand"
+    "month": "Maand",
+    "period": {
+      "month": "Maand",
+      "year": "Jaar"
+    }
   },
   "savings": {
     "period": {
-      "previous_month": "Vorige maand",
-      "this_month": "Deze maand",
-      "twelve_months": "12 maanden",
-      "year_to_date": "Sinds januari"
+      "month": "Maand",
+      "prorated": "Deze periode is {{progress}} voorbij — elke afgelopen maand telt volledig, en de lopende maand telt enkel voor haar eigen aandeel.",
+      "year": "Jaar"
     },
     "periodLabel": "Periode",
     "span": {
