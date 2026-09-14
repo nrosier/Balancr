@@ -13,7 +13,10 @@
  *
  * Storage is one row in the generic `settings` key/value table (`household.ts`'s own
  * division), holding a map of month to note text rather than a single string, so
- * each month's context is independent.
+ * each month's context is independent. The map key is a plain string, so a year
+ * note (#345) needs nothing more from storage than a `YYYY` key alongside the
+ * `YYYY-MM` ones — the AI readers above only ever ask for a concrete month, so a
+ * year note stays invisible to them until #345's picker actually lets one be written.
  *
  * Same load/save contract as `household.ts`: reading degrades to "no note" and never
  * throws, writing validates and throws. A note nobody can parse should cost the
@@ -24,7 +27,7 @@ import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
-import { assertMonth } from '../../util/month.ts'
+import { assertMonth, isYear } from '../../util/month.ts'
 
 const log = logger.child({ module: 'ai/month-note' })
 
@@ -66,13 +69,18 @@ function loadAll(db: Db): MonthNotes {
   return parsed.data
 }
 
+/** `month` is `YYYY-MM` or, for a whole-year note (#345), `YYYY`. */
+function assertPeriod(month: string): string {
+  return isYear(month) ? month : assertMonth(month)
+}
+
 export function loadMonthNote(db: Db, month: string): string {
-  assertMonth(month)
+  assertPeriod(month)
   return loadAll(db)[month] ?? ''
 }
 
 export function saveMonthNote(db: Db, month: string, text: string): string {
-  assertMonth(month)
+  assertPeriod(month)
   const trimmed = monthNoteTextSchema.parse(text.trim())
 
   const all = loadAll(db)

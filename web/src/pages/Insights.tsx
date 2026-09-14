@@ -18,9 +18,14 @@
  * the month's cap is reached, every section below may be last week's answer, not the
  * narrative alone, so it is stated once ahead of all of them.
  *
- * **The month is a query parameter, not a route**, exactly as on the budget page and
- * through the same `MonthPicker`: `?month=` on the endpoint and `useState` here, because
- * `useResource` refetches on a path change and that is the whole mechanism (#158).
+ * **The month is a query parameter, not a route**, exactly as on the budget page: `?month=`
+ * on the endpoint and `useState` here, because `useResource` refetches on a path change
+ * and that is the whole mechanism (#158). **A year is a picker mode, not a second shape
+ * (#345)**: a year resolves to a concrete anchor month client-side via `resolveYearAnchor`,
+ * the server only ever sees one `?month=YYYY-MM`, and `?runsPeriod=year` rides alongside it
+ * to widen the ledger tab's own query — see `routes/api/insights.ts`. Findings keeps its
+ * month-only `MonthPicker`, since its month-only shape has not changed; Narrative and
+ * Ledger get the month+year `PeriodPicker`, and Pending gets neither.
  *
  * Three of the sections narrow with the picker and two do not, and the page says which.
  * The findings, the review and the ledger are *about* a month — each is stored under one,
@@ -44,7 +49,7 @@
  * what every section below is showing, not one section's own content — and `useResource`
  * is still called exactly once here regardless of which tab is open.
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { BudgetNudge } from '../insights/BudgetNudge.tsx'
@@ -56,12 +61,14 @@ import { INSIGHTS_SECTIONS, sectionFor } from '../insights/sections.ts'
 import { useRouter } from '../router.tsx'
 import {
   formatMicroEur,
+  resolveYearAnchor,
   type AiAvailabilityWire,
   type Insights as InsightsPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { MonthPicker } from '../ui/MonthPicker.tsx'
 import { Private } from '../ui/Money.tsx'
+import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -106,12 +113,30 @@ export function Insights(): ReactNode {
   const { path } = useRouter()
   const section = sectionFor(path)
   // Null means "whatever the server calls the latest", which is what a first visit wants
-  // and what a reload after writing a review has to keep — pinning the month here on
+  // and what a reload after writing a review has to keep — pinning the period here on
   // mount would freeze the page on a month that had no figures yet.
-  const [month, setMonth] = useState<string | null>(null)
+  const [period, setPeriod] = useState<Period | null>(null)
+  // The last-fetched `months` list, kept alongside `period` for the same reason
+  // `Budget.tsx` keeps its own copy: a year resolves against it before `resource.data`
+  // for *this* fetch exists.
+  const [knownMonths, setKnownMonths] = useState<readonly string[]>([])
+  const month =
+    period === null
+      ? null
+      : period.kind === 'month'
+        ? period.value
+        : resolveYearAnchor(knownMonths, period.value)
+  const params = new URLSearchParams()
+  if (month !== null) params.set('month', month)
+  if (period?.kind === 'year') params.set('runsPeriod', 'year')
+  const query = params.toString()
   const resource = useResource<InsightsPayload>(
-    month === null ? '/api/insights' : `/api/insights?month=${month}`,
+    query === '' ? '/api/insights' : `/api/insights?${query}`,
   )
+
+  useEffect(() => {
+    if (resource.data !== null) setKnownMonths(resource.data.months)
+  }, [resource.data])
 
   return (
     <>
@@ -122,8 +147,9 @@ export function Insights(): ReactNode {
             <Sections
               data={data}
               section={section}
+              period={period}
               onRefreshed={resource.reload}
-              onSelect={setMonth}
+              onSelect={setPeriod}
             />
           )}
         </DataState>
@@ -135,13 +161,15 @@ export function Insights(): ReactNode {
 function Sections({
   data,
   section,
+  period,
   onRefreshed,
   onSelect,
 }: {
   data: InsightsPayload
   section: (typeof INSIGHTS_SECTIONS)[number]['id']
+  period: Period | null
   onRefreshed: () => void
-  onSelect: (month: string) => void
+  onSelect: (period: Period) => void
 }): ReactNode {
   const { t } = useT()
   // The server's own current month, from the spend guard's clock. Comparing against it
@@ -149,6 +177,13 @@ function Sections({
   // a timezone, and the endpoint that writes a review refuses on the server's answer —
   // so a button drawn from the browser's would appear an evening early and 409.
   const ended = data.month !== null && data.month < data.spend.month
+  // The trigger's own value while nothing has been picked yet, or while the pick was a
+  // month: the server's resolved anchor. A year pick is shown as the reader chose it —
+  // this page never resolves a year back to one, same as `Budget.tsx` (#345).
+  const displayPeriod: Period =
+    period !== null && period.kind === 'year' ? period : { kind: 'month', value: data.month ?? '' }
+  const availableMonths = useMemo(() => new Set(data.months), [data.months])
+  const yearMode = period?.kind === 'year'
 
   return (
     <>
@@ -156,13 +191,24 @@ function Sections({
 
       {data.month === null ? null : (
         <div className="toolbar">
-          <MonthPicker
-            month={data.month}
-            months={data.months}
-            onSelect={onSelect}
-            id="insights-month"
-            label={t('budget:picker.month')}
-          />
+          {section === 'findings' ? (
+            <MonthPicker
+              month={data.month}
+              months={data.months}
+              onSelect={(value) => onSelect({ kind: 'month', value })}
+              id="insights-month"
+              label={t('budget:picker.month')}
+            />
+          ) : section === 'narrative' || section === 'ledger' ? (
+            <PeriodPicker
+              period={displayPeriod}
+              onSelect={onSelect}
+              id="insights-period"
+              label={t('budget:picker.month')}
+              kindLabel={(kind) => t(`budget:picker.period.${kind}`)}
+              availableMonths={availableMonths}
+            />
+          ) : null}
         </div>
       )}
 
@@ -198,7 +244,17 @@ function Sections({
       */}
       {section === 'narrative' && (
         <>
-          {data.ai.enabled || data.narrative !== null ? (
+          {/*
+            No server capability exists yet for a year-level narrative (#345) — the cost
+            estimate, the prompt and the review flow are all hard-wired to one calendar
+            month. Year mode gets a plain notice instead of pretending the flow below it
+            applies to the whole year.
+          */}
+          {yearMode ? (
+            <div className="notice notice--info" role="status">
+              <p>{t('ai:narrative.yearUnavailable')}</p>
+            </div>
+          ) : data.ai.enabled || data.narrative !== null ? (
             <Narrative
               narrative={data.narrative}
               month={data.month}
@@ -224,15 +280,10 @@ function Sections({
             />
           ) : null}
           {data.ai.enabled || data.proposals.length > 0 ? (
-            <Proposals
-              proposals={data.proposals}
-              scoped={data.month !== null}
-              owner={data.owner}
-              onDecided={onRefreshed}
-            />
+            <Proposals proposals={data.proposals} owner={data.owner} onDecided={onRefreshed} />
           ) : null}
           {data.ai.enabled || data.questions.length > 0 ? (
-            <Questions questions={data.questions} scoped={data.month !== null} />
+            <Questions questions={data.questions} />
           ) : null}
         </>
       )}

@@ -13,7 +13,9 @@
  * language.
  *
  * `?benchmarkPeriod=month|year` (default `month`) widens the benchmark card alone
- * (#323) — everything else on the page still answers for `month`.
+ * (#323) — everything else on the page still answers for `month`. `?custodyPeriod=`
+ * does the same for the custody card (#345), independently: a reader can widen either
+ * card without widening the other.
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
@@ -27,6 +29,7 @@ import {
 } from '../../../domain/aggregate/month-store.ts'
 import { loadSignals } from '../../../domain/aggregate/signals-store.ts'
 import { custodyContext, splitMonth } from '../../../domain/aggregate/custody-context.ts'
+import { sumCustodyRows } from '../../../domain/aggregate/custody.ts'
 import {
   BENCHMARK_PERIODS,
   benchmarkPeriodWindow,
@@ -91,6 +94,7 @@ export function buildBudget(
   monthParam: unknown,
   owner: boolean,
   benchmarkPeriodParam: unknown = undefined,
+  custodyPeriodParam: unknown = undefined,
 ): Budget {
   const month = resolveMonth(db, monthParam)
   // Nothing computed at all: report the empty state under the current month rather
@@ -119,6 +123,16 @@ export function buildBudget(
     benchmarkMonths.length === 1 && benchmarkMonths[0] === resolved
       ? facts
       : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, m))))
+
+  // Its own independent window: a reader can widen the custody card to a year without
+  // widening the benchmark card, so this is not `benchmarkMonths` under another name
+  // even on a request where both happen to ask for the same kind.
+  const custodyPeriod = resolveBenchmarkPeriod(custodyPeriodParam)
+  const { months: custodyMonths } = benchmarkPeriodWindow(custodyPeriod, resolved, new Date(), config.TZ)
+  const custodyRows =
+    custodyMonths.length === 1 && custodyMonths[0] === resolved
+      ? facts
+      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, m))))
 
   return budgetSchema.parse({
     freshness: freshness(db),
@@ -183,7 +197,7 @@ export function buildBudget(
       benchmarkPeriod,
       periodMonths,
     ),
-    custody: splitMonth(custodyContext(db), resolved, facts),
+    custody: splitMonth(custodyContext(db), resolved, custodyRows),
     uncategorised:
       uncategorised === null
         ? null

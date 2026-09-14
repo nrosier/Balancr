@@ -26,35 +26,15 @@
  *    `household.ts`'s savings-target comparison all consume the monthly figure and keep
  *    consuming it. This is a reading option on one card, not a change to the quantity
  *    the domain stores.
- *  - **It does not know what "now" is.** The window is anchored on the month the reader
- *    has selected, passed in, so switching the month picker moves all four periods
- *    together. A module that read the clock would disagree with the page around it every
- *    time somebody looked at a past month.
+ *  - **It does not know what "now" is** except through the `asOf`/`timeZone` it is
+ *    given, used only to pro-rate a still-open anchor month or year — same reason
+ *    `benchmarkPeriodWindow` takes them rather than reading the clock itself.
  *
  * Pure, and re-exported through `web/src/shared.ts` for the card that reads it — the
  * arrangement `custodyShare` already has, and for the same reason: two copies of this
  * would be two chances to average the percentages in one of them.
  */
-
-/**
- * The four windows, in the order the card offers them.
- *
- * `twelve_months` is the default (see `DEFAULT_SAVINGS_PERIOD`), because the report
- * behind #288 is that the current month is the least useful of the four and twelve is
- * the window the benchmark norms are already taken over.
- */
-export const SAVINGS_PERIODS = [
-  'this_month',
-  'previous_month',
-  'year_to_date',
-  'twelve_months',
-] as const
-export type SavingsPeriod = (typeof SAVINGS_PERIODS)[number]
-
-export const DEFAULT_SAVINGS_PERIOD: SavingsPeriod = 'twelve_months'
-
-/** How many months `twelve_months` asks for. Named, because the label says it too. */
-export const TRAILING_MONTHS = 12
+import { monthProgress, monthRange } from '../../util/month.ts'
 
 /** One month of flows. Structural, so the wire shape from `/api/budget` fits as it is. */
 export interface SavingsMonth {
@@ -63,89 +43,55 @@ export interface SavingsMonth {
   readonly spentCents: number
 }
 
-export interface PeriodSavings {
-  readonly period: SavingsPeriod
-  /**
-   * The rate, or null when the window has no income to divide by.
-   *
-   * Same guard as the monthly figure, and it fires far less often: a month with no
-   * income has no rate and that is the correct answer, but a year with no income
-   * essentially does not happen, so the longer windows are simply better defined.
-   */
+/**
+ * A month, or January through that month for the year it falls in — the same anchor
+ * convention `BenchmarkPeriodKind` uses in `domain/benchmark/compare.ts`, which is what
+ * lets `year` double as "year to date" for a still-open year without a third kind.
+ */
+export type SavingsPeriodKind = 'month' | 'year'
+
+/** A period's nominal length in months, mirroring `PERIOD_DENOMINATOR` in `compare.ts`. */
+const PERIOD_DENOMINATOR: Record<SavingsPeriodKind, number> = { month: 1, year: 12 }
+
+export interface AbsolutePeriodSavings {
+  readonly kind: SavingsPeriodKind
+  /** The anchor month, `YYYY-MM`. */
+  readonly month: string
+  /** How much of the period's nominal length has elapsed, 0..10000. 10000 is a finished period. */
+  readonly periodProgressBp: number
   readonly rateBp: number | null
   readonly incomeCents: number
   readonly spentCents: number
-  /**
-   * How many months the window actually covered — not how many it asked for.
-   *
-   * A fresh install asked for twelve months has three, and a figure whose span is not
-   * on screen cannot be read correctly. The card states this, the same honesty rule
-   * `committedApproximate` and the custody `basis` already follow.
-   */
   readonly months: number
-  /** Oldest and newest month covered. Both null when the window is empty. */
   readonly from: string | null
   readonly to: string | null
 }
 
-/** The calendar month before `month`, as a month key. */
-function previousMonth(month: string): string {
-  const year = Number(month.slice(0, 4))
-  const index = Number(month.slice(5, 7))
-  return index === 1
-    ? `${year - 1}-12`
-    : `${year}-${String(index - 1).padStart(2, '0')}`
-}
-
 /**
- * The months a period covers, out of a contiguous history ending at `month`.
- *
- * Everything after `month` is dropped first. `history` from `/api/budget` already ends
- * there, but the selection must not depend on that — a caller that passed a longer
- * array would otherwise get a "year to date" that ran into next year.
+ * The savings rate over a calendar month or a calendar year, pro-rated exactly the way
+ * `benchmarkPeriodWindow`/`periodProgressBp` pro-rate the Benchmark card — a period that
+ * ends in the still-open current month gets a fractional last month rather than a whole
+ * one, so a partial year does not read as an underperforming full one.
  */
-function windowFor(
+export function absolutePeriodSavings(
   history: readonly SavingsMonth[],
-  month: string,
-  period: SavingsPeriod,
-): readonly SavingsMonth[] {
-  const upTo = history.filter((entry) => entry.month <= month)
-  switch (period) {
-    case 'this_month':
-      return upTo.filter((entry) => entry.month === month)
-    case 'previous_month': {
-      const previous = previousMonth(month)
-      return upTo.filter((entry) => entry.month === previous)
-    }
-    case 'year_to_date':
-      // Not "the last N months": January of the selected month's own year, which is
-      // what "year to date" means on a page where the reader may have selected a month
-      // in a previous year.
-      return upTo.filter((entry) => entry.month >= `${month.slice(0, 4)}-01`)
-    case 'twelve_months':
-      return upTo.slice(-TRAILING_MONTHS)
-  }
-}
+  kind: SavingsPeriodKind,
+  anchorMonth: string,
+  asOf: Date,
+  timeZone: string,
+): AbsolutePeriodSavings {
+  const months = kind === 'month' ? [anchorMonth] : monthRange(`${anchorMonth.slice(0, 4)}-01`, anchorMonth)
+  const periodMonths = months.reduce((sum, month) => sum + monthProgress(month, asOf, timeZone), 0)
 
-/**
- * A period's savings rate, and the span it was taken over.
- *
- * `history` is the contiguous run of months `/api/budget` sends, oldest first; `month`
- * is the one the reader has selected.
- */
-export function periodSavings(
-  history: readonly SavingsMonth[],
-  month: string,
-  period: SavingsPeriod,
-): PeriodSavings {
-  const window = windowFor(history, month, period)
+  const covered = new Set(months)
+  const window = history.filter((entry) => covered.has(entry.month))
   const incomeCents = window.reduce((sum, entry) => sum + entry.incomeCents, 0)
   const spentCents = window.reduce((sum, entry) => sum + entry.spentCents, 0)
 
   return {
-    period,
-    // Summed, then divided once. The whole of #288 is in these two lines being in this
-    // order rather than a mean of `entry.savingsRateBp`.
+    kind,
+    month: anchorMonth,
+    periodProgressBp: Math.round((periodMonths / PERIOD_DENOMINATOR[kind]) * 10_000),
     rateBp:
       incomeCents > 0 ? Math.round(((incomeCents - spentCents) / incomeCents) * 10_000) : null,
     incomeCents,

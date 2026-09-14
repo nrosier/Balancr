@@ -18,16 +18,18 @@
  * below turns those hundredths back into months for printing. The exception is the
  * savings card, which since #296 sums a slice of `flows` and divides once — the same
  * component the Budget page uses, for the same reason the arithmetic is not on the
- * server: the period is a reading the reader picks after the payload has arrived. A
- * figure no job has produced is `null` and prints as "not known yet" — never as zero,
- * which is a number someone would act on.
+ * server: the period is a reading the reader picks after the payload has arrived. This
+ * page has no other picker for that card to follow, so its selection is this page's own
+ * `useState` (#345) — independent of, and not synced with, the Budget page's copy of
+ * the same card. A figure no job has produced is `null` and prints as "not known yet" —
+ * never as zero, which is a number someone would act on.
  *
  * Labels come from three namespaces, addressed as `ns:key`. Net worth and the buffer
  * are portfolio vocabulary; the savings rate and the quality score are budget
  * vocabulary; and #30 and #31 will name the same things the same way because there is
  * one catalogue entry each.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { SavingsRate } from '../budget/SavingsRate.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
@@ -37,6 +39,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
+import type { Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
@@ -88,8 +91,17 @@ function Figures({
   const { t } = useT()
   const unknown = t('empty.unknown')
 
-  const { flows, history, hygiene, month, netWorth } = data
+  const { flows, history, hygiene, month, months, netWorth } = data
   const cover = data.emergencyFundCentimonths
+
+  // Independent of the Budget page's own copy of this card (#345) — this page has no
+  // other picker for it to follow. Defaults to the current year rather than the bare
+  // anchor month, the closer analogue of the twelve-month default the relative picker
+  // this replaced used to open on.
+  const [period, setPeriod] = useState<Period>(() => ({
+    kind: 'year',
+    value: (month ?? String(new Date().getFullYear())).slice(0, 4),
+  }))
 
   const netWorthRows: MetricRow[] =
     netWorth === null
@@ -134,10 +146,10 @@ function Figures({
         />
 
         {/*
-          The same card the Budget page shows, with the same four windows — one component,
-          because #296 was filed about these two drifting apart. It needs a month to anchor
-          on and this page has no picker, so `month` is the newest stored one; with no month
-          at all there are no flows either and nothing to draw.
+          The same card the Budget page shows, with the same period picker — one
+          component, because #296 was filed about these two drifting apart. With no
+          month at all there are no flows either and nothing to draw, so the card
+          disappears entirely rather than showing a picker with nothing behind it.
 
           `showFlows`: yes here, no on the Budget page. Nothing else on this page carries a
           flow figure, so without the summed pair the percentage is unauditable — and these
@@ -147,7 +159,7 @@ function Figures({
         {month === null ? (
           <Metric label={t('budget:metric.savingsRate')} value={null} unknown={unknown} />
         ) : (
-          <SavingsRate history={flows} month={month} showFlows />
+          <SavingsRate history={flows} months={months} period={period} onPeriodSelect={setPeriod} showFlows />
         )}
 
         <Metric

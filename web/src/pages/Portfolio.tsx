@@ -29,7 +29,7 @@
  * applies to every section regardless of which one is open, and `useResource` is still
  * called exactly once here regardless of which tab is open.
  */
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
@@ -44,7 +44,6 @@ import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
-import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -84,33 +83,12 @@ export function Portfolio(): ReactNode {
   const { t } = useT()
   const { path } = useRouter()
   const section = sectionFor(path)
-  // null = "latest", the server's own default — naming a period here would guess at
-  // what has ever been snapshotted, the same reason `Budget.tsx`'s own `month` starts
-  // null.
-  const [period, setPeriod] = useState<Period | null>(null)
-  const params = new URLSearchParams()
-  if (period !== null) params.set('asOf', period.value)
-  const query = params.toString()
-  const resource = useResource<PortfolioPayload>(query === '' ? '/api/portfolio' : `/api/portfolio?${query}`)
+  const resource = useResource<PortfolioPayload>('/api/portfolio')
 
   return (
     <>
       <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
       <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')}>
-        {/*
-          Unconditional on `section`, unlike Benchmark's own picker: `date`/`history`/
-          `holdings`/`advice` all depend on it, so it has to stay visible no matter which
-          of the three tabs is open.
-        */}
-        <div className="toolbar">
-          <PeriodPicker
-            period={period ?? { kind: 'month', value: new Date().toISOString().slice(0, 7) }}
-            onSelect={setPeriod}
-            id="portfolio-period"
-            label={t('portfolio:picker.period')}
-            kindLabel={(kind) => t(`portfolio:picker.period${kind === 'month' ? 'Month' : 'Year'}`)}
-          />
-        </div>
         <DataState resource={resource} isEmpty={isEmpty}>
           {(data) => <Figures data={data} section={section} onRefreshed={resource.reload} />}
         </DataState>

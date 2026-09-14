@@ -70,4 +70,14 @@ describe('the stored month notes', () => {
     expect(() => saveMonthNote(ctx.db, 'not-a-month', 'fine')).toThrow()
     expect(() => loadMonthNote(ctx.db, 'not-a-month')).toThrow()
   })
+
+  it('round-trips a whole-year note, independently of any month in that year (#345)', () => {
+    saveMonthNote(ctx.db, '2026', 'Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+
+    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
+    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
+  })
 })

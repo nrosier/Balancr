@@ -26,7 +26,7 @@
  * that has to ignore a field: `spend` is on every response and reads zero of the
  * configured budget on a fresh install.
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { BudgetNudge } from '../src/insights/BudgetNudge.tsx'
 import { Findings } from '../src/insights/Findings.tsx'
@@ -266,6 +266,10 @@ function serve(replies: Record<string, Response | Error>): ReturnType<typeof vi.
   return mock
 }
 
+/** The paths asked of the server, in order. */
+const paths = (mock: ReturnType<typeof vi.fn>): string[] =>
+  mock.mock.calls.map((call) => String(call[0]))
+
 beforeAll(async () => {
   await i18nReady()
 })
@@ -469,6 +473,105 @@ describe('the page', () => {
     const text = document.body.textContent ?? ''
     expect(text).not.toMatch(/\b(findings|narrative|clarify|proposal|privacy)\.[a-zA-Z]/)
     expect(text).not.toMatch(/\b(page|nav|empty|time|status|severity)\.[a-zA-Z]/)
+  })
+})
+
+/**
+ * The one picker above the tab strip used to be unconditional; now which control shows,
+ * if any, is the tab's own call (#345). Findings keeps its month-only shape because
+ * nothing about what it asks the server for has changed; Narrative and Ledger can also
+ * ask for a year, which is a picker mode rather than a second server-side shape — the
+ * client still asks for one resolved `?month=`, with `?runsPeriod=year` riding alongside
+ * it for the ledger's own widened query (see `routes/api/insights.ts`); and Pending gets
+ * neither, since neither queue is a statement about any one month.
+ */
+describe('the per-tab picker (#345)', () => {
+  it('gives Findings the month-only picker, Narrative and Ledger the month+year one, and Pending neither', async () => {
+    serve({ '/api/insights': json(FULL) })
+
+    const findings = renderApp(<Insights />, { path: '/insights' })
+    await screen.findByText('What stands out')
+    expect(screen.getByRole('combobox', { name: 'Month' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Month' })).toBeNull()
+    findings.unmount()
+
+    const narrative = renderApp(<Insights />, { path: '/insights/narrative' })
+    await screen.findByText('August 2026 in words')
+    expect(screen.getByRole('button', { name: 'Month' })).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Month' })).toBeNull()
+    narrative.unmount()
+
+    const ledger = renderApp(<Insights />, { path: '/insights/ledger' })
+    await screen.findByText('What was sent')
+    expect(screen.getByRole('button', { name: 'Month' })).toBeTruthy()
+    ledger.unmount()
+
+    renderApp(<Insights />, { path: '/insights/pending' })
+    await screen.findByText('Below the confidence bar')
+    expect(screen.queryByRole('combobox', { name: 'Month' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Month' })).toBeNull()
+  })
+
+  it('shows a notice instead of the review once a year is picked on Narrative, without hiding the budget nudge', async () => {
+    const mock = serve({
+      '/api/insights': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year': json(FULL),
+    })
+    renderApp(<Insights />, { path: '/insights/narrative' })
+    await screen.findByText('August 2026 in words')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() =>
+      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year'),
+    )
+    expect(
+      screen.getByText(
+        'A review is written for one month, not a year. Switch to a month above to see or write one.',
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText('August 2026 in words')).toBeNull()
+    // The nudge targets the resolved anchor month regardless of the picker's display
+    // kind, so a year pick does not also hide it.
+    expect(screen.getByText('Budget nudge')).toBeTruthy()
+  })
+
+  it('goes back to the review once the picker is switched back to a month', async () => {
+    serve({
+      '/api/insights': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year': json(FULL),
+    })
+    renderApp(<Insights />, { path: '/insights/narrative' })
+    await screen.findByText('August 2026 in words')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+    await screen.findByText(/A review is written for one month/)
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Month' }))
+
+    await screen.findByText('August 2026 in words')
+    expect(screen.queryByText(/A review is written for one month/)).toBeNull()
+  })
+
+  it('widens the ledger to the whole year once a year is picked, via runsPeriod=year', async () => {
+    const YEAR_RUN: AiRun = { ...RUNS[0]!, id: 'run-january', period: '2026-01' }
+    const mock = serve({
+      '/api/insights': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year': json({ ...FULL, runs: [...RUNS, YEAR_RUN] }),
+    })
+    renderApp(<Insights />, { path: '/insights/ledger' })
+    await screen.findByText('What was sent')
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() =>
+      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year'),
+    )
+    await screen.findByText('The 4 most recent calls to the model, newest first.')
   })
 })
 
@@ -878,7 +981,7 @@ describe('the budget nudge', () => {
 
 describe('the clarification queue', () => {
   it('leads with the guess, so confirming is one decision rather than an interview', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={false} />)
+    renderApp(<Questions questions={FULL.questions} />)
 
     expect(
       screen.getByText('Is Therapy a fixed cost, a variable one, or free spending?'),
@@ -888,47 +991,31 @@ describe('the clarification queue', () => {
   })
 
   it('offers no guess line at all when there is no guess', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={false} />)
+    renderApp(<Questions questions={FULL.questions} />)
 
     expect(screen.getByText('What do you use Hobbies for?')).toBeTruthy()
     expect(screen.getAllByText(/^Best guess:/)).toHaveLength(1)
   })
 
   it('shows the share of the month, which is why the card exists at all', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={false} />)
+    renderApp(<Questions questions={FULL.questions} />)
 
     expect(screen.getByText('4,2% of this month’s spending')).toBeTruthy()
     expect(screen.getByText('1,5% of this month’s spending')).toBeTruthy()
   })
 
   it('says answering comes later rather than leaving a queue with no buttons', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={false} />)
+    renderApp(<Questions questions={FULL.questions} />)
 
     expect(screen.getByText(/Answering these comes with the assistant’s chat/)).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('says nothing needs clarifying when the queue is empty', () => {
-    renderApp(<Questions questions={[]} scoped={false} />)
+    renderApp(<Questions questions={[]} />)
 
     expect(screen.getByText('Nothing needs clarifying.')).toBeTruthy()
     expect(screen.queryByText(/Answering these comes/)).toBeNull()
-  })
-
-  it('warns the queue is not filtered once a month picker is on screen (#158)', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={true} />)
-
-    expect(
-      screen.getByText(
-        'Standing work, not filtered to the month above: a question stays here until it is answered.',
-      ),
-    ).toBeTruthy()
-  })
-
-  it('says nothing about filtering when there is no month picker to be confused by', () => {
-    renderApp(<Questions questions={FULL.questions} scoped={false} />)
-
-    expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
   })
 })
 
@@ -1079,7 +1166,7 @@ const BUDGET_PROPOSAL: InsightsPayload['proposals'][number] = {
 
 describe('the proposal queue', () => {
   it('shows what would change, field by field, before and after', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.getByText('Restaurants')).toBeTruthy()
     expect(screen.getByText('Type of cost')).toBeTruthy()
@@ -1089,7 +1176,7 @@ describe('the proposal queue', () => {
   })
 
   it('warns where applying would send a name to the model', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     expect(
       screen.getByText('Applying this starts sending the category name to the AI.'),
@@ -1097,7 +1184,7 @@ describe('the proposal queue', () => {
   })
 
   it('hides the arrow from a screen reader, which the order already tells', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     const arrows = [...document.querySelectorAll('.change__arrow')]
     expect(arrows).toHaveLength(2)
@@ -1106,7 +1193,7 @@ describe('the proposal queue', () => {
 
   it('says why the proposal proposes that number, under the diff (#273)', () => {
     renderApp(
-      <Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={vi.fn()} />,
+      <Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={vi.fn()} />,
     )
 
     const why = document.querySelector('.queue__why')
@@ -1114,7 +1201,7 @@ describe('the proposal queue', () => {
   })
 
   it('renders nothing extra for a proposal with no reason written for it', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     expect(document.querySelector('.queue__why')).toBeNull()
   })
@@ -1123,7 +1210,7 @@ describe('the proposal queue', () => {
     renderApp(
       <Proposals
         proposals={[{ ...FULL.proposals[0]!, expiresAt: null }]}
-        scoped={false}
+       
         owner={true}
         onDecided={vi.fn()}
       />,
@@ -1134,7 +1221,7 @@ describe('the proposal queue', () => {
   })
 
   it('offers apply and reject for every proposal, with no confirmation step for either', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: 'Apply' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reject' })).toBeTruthy()
@@ -1145,7 +1232,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-restaurants/apply': json({ id: 'p-restaurants', status: 'applied' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
@@ -1161,7 +1248,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-restaurants/reject': json({ id: 'p-restaurants', status: 'rejected' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
 
@@ -1179,7 +1266,7 @@ describe('the proposal queue', () => {
         409,
       ),
     })
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={true} onDecided={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
@@ -1188,7 +1275,7 @@ describe('the proposal queue', () => {
   })
 
   it('disables every control for a viewer, and says why', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={false} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={FULL.proposals} owner={false} onDecided={vi.fn()} />)
 
     expect((screen.getByRole('checkbox', { name: 'Select Restaurants' }) as HTMLInputElement).disabled).toBe(
       true,
@@ -1209,7 +1296,7 @@ describe('the proposal queue', () => {
       }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={TWO_PROPOSALS} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply selected (2)' }))
@@ -1237,7 +1324,7 @@ describe('the proposal queue', () => {
       }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={TWO_PROPOSALS} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply selected (2)' }))
@@ -1260,7 +1347,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-groceries/reject': json({ id: 'p-groceries', status: 'rejected' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={TWO_PROPOSALS} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={TWO_PROPOSALS} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
     fireEvent.click(screen.getByRole('button', { name: 'Reject selected (2)' }))
@@ -1277,30 +1364,14 @@ describe('the proposal queue', () => {
   })
 
   it('says nothing is waiting when the queue is empty', () => {
-    renderApp(<Proposals proposals={[]} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={[]} owner={true} onDecided={vi.fn()} />)
 
     expect(screen.getByText('Nothing is waiting to be applied.')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('warns the queue is not filtered once a month picker is on screen (#158)', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={true} owner={true} onDecided={vi.fn()} />)
-
-    expect(
-      screen.getByText(
-        'Standing work, not filtered to the month above: a proposal stays here until it is reviewed.',
-      ),
-    ).toBeTruthy()
-  })
-
-  it('says nothing about filtering when there is no month picker to be confused by', () => {
-    renderApp(<Proposals proposals={FULL.proposals} scoped={false} owner={true} onDecided={vi.fn()} />)
-
-    expect(screen.queryByText(/Standing work, not filtered/)).toBeNull()
-  })
-
   it('shows an editable amount field, pre-filled with the proposed figure, only on a budget_amount.set card (#220)', () => {
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL, ...FULL.proposals]} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL, ...FULL.proposals]} owner={true} onDecided={vi.fn()} />)
 
     expect((screen.getByLabelText('Budget amount') as HTMLInputElement).value).toBe(formatMoney(15_000))
     // `FULL.proposals[0]` is a `category_meta` card, which has nothing to adjust.
@@ -1308,7 +1379,7 @@ describe('the proposal queue', () => {
   })
 
   it('disables the amount field for a viewer, same as every other control on the card', () => {
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={false} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={false} onDecided={vi.fn()} />)
 
     expect((screen.getByLabelText('Budget amount') as HTMLInputElement).disabled).toBe(true)
   })
@@ -1318,7 +1389,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-budget-food/apply': json({ id: 'p-budget-food', status: 'applied' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={onDecided} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
@@ -1336,7 +1407,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-budget-food-2/apply': json({ id: 'p-budget-food-2', status: 'applied' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={onDecided} />)
 
     fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: '160,00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
@@ -1357,7 +1428,7 @@ describe('the proposal queue', () => {
       '/api/proposals/p-budget-food/adjust': json({ id: 'p-budget-food', status: 'rejected' }),
     })
     const onDecided = vi.fn()
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={onDecided} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={onDecided} />)
 
     fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: '120,00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
@@ -1373,7 +1444,7 @@ describe('the proposal queue', () => {
   it('shows a validation message and calls nothing when the edited amount does not parse', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} scoped={false} owner={true} onDecided={vi.fn()} />)
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText('Budget amount'), { target: { value: 'not a number' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))

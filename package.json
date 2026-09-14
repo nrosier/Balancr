@@ -45,7 +45,6 @@
     "openid-client": "^6.8.8",
     "otpauth": "^9.5.2",
     "pino": "^10.3.1",
-    "react-multi-date-picker": "^4.5.2",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },

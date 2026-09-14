@@ -41,7 +41,6 @@
     "readOnly": "Answering these comes with the assistant’s chat, in a later version. For now this is the queue it has built.",
     "sensitive_unknown": "Should the name {{category}} be kept from the AI?",
     "share": "{{share}} of this month’s spending",
-    "standing": "Standing work, not filtered to the month above: a question stays here until it is answered.",
     "suggestion": "Best guess: {{guess}}",
     "title": "Help the assistant understand"
   },
@@ -118,7 +117,8 @@
     "titleMonth": "{{month}} in words",
     "translate": "Write this in {{language}}",
     "unnamedAccount": "an unnamed account",
-    "unnamedCategory": "an unnamed category"
+    "unnamedCategory": "an unnamed category",
+    "yearUnavailable": "A review is written for one month, not a year. Switch to a month above to see or write one."
   },
   "off": {
     "title": "The assistant is switched off",
@@ -191,7 +191,6 @@
     "rejecting": "Rejecting…",
     "select": "Select {{target}}",
     "selectAll": "Select all",
-    "standing": "Standing work, not filtered to the month above: a proposal stays here until it is reviewed.",
     "title": "Proposed changes",
     "value": {
       "unset": "not set"

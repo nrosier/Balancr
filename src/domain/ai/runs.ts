@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull, like, or, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { aiRuns } from '../../db/schema.ts'
 import { costMicroEur, ZERO_USAGE, type TokenUsage } from '../../adapters/gemini/pricing.ts'
@@ -178,12 +178,13 @@ export function findReusableRun(db: Db, key: ReuseKey): AiRunRow | null {
 /**
  * Recent runs of every kind, newest first — the spend page's table.
  *
- * `period` narrows it to one month **plus every run about no month at all**, which is
- * the insights ledger's query (#158). The `IS NULL` half is not a leak: a chat turn
- * answers a question rather than a month, and so does a run that failed before it knew
- * which month it was for. Dropping those would hide them under every month on the
- * picker, and a ledger row nobody can reach is not an audit. Omit `period` for the
- * spend page, which is about the money and wants every row.
+ * `period` narrows it to one month (or, for the ledger's year mode (#345), every
+ * month in a year via a `LIKE` prefix) **plus every run about no month at all**,
+ * which is the insights ledger's query (#158). The `IS NULL` half is not a leak: a
+ * chat turn answers a question rather than a month, and so does a run that failed
+ * before it knew which month it was for. Dropping those would hide them under every
+ * period on the picker, and a ledger row nobody can reach is not an audit. Omit
+ * `period` for the spend page, which is about the money and wants every row.
  *
  * Ties on `createdAt` break on `rowid` rather than being left to chance: two runs
  * recorded synchronously (as tests, and a fast nightly job, both do) can share the
@@ -191,12 +192,19 @@ export function findReusableRun(db: Db, key: ReuseKey): AiRunRow | null {
  * ordered them differently from the unfiltered scan — same rows, same requested
  * order, different answer depending on which query plan SQLite picked.
  */
-export function recentRuns(db: Db, limit = 50, period?: string): AiRunRow[] {
+export function recentRuns(
+  db: Db,
+  limit = 50,
+  period?: string | { kind: 'month' | 'year'; value: string },
+): AiRunRow[] {
   const query = db.select().from(aiRuns)
-  const scoped =
+  const match =
     period === undefined
-      ? query
-      : query.where(or(eq(aiRuns.period, period), isNull(aiRuns.period)))
+      ? undefined
+      : typeof period === 'string' || period.kind === 'month'
+        ? eq(aiRuns.period, typeof period === 'string' ? period : period.value)
+        : like(aiRuns.period, `${period.value}-%`)
+  const scoped = match === undefined ? query : query.where(or(match, isNull(aiRuns.period)))
   return scoped
     .orderBy(desc(aiRuns.createdAt), desc(sql`rowid`))
     .limit(limit)

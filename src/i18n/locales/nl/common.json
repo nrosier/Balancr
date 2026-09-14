@@ -128,6 +128,10 @@
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
     }
   },
+  "periodPicker": {
+    "next": "Volgende",
+    "previous": "Vorige"
+  },
   "privacy": {
     "toggle": {
       "hint": "Vervaagt het scherm tegen een meekijkende blik — het is geen beveiliging. Wie de developertools van de browser gebruikt, de eigen gegevens van de pagina bekijkt, of een schermlezer gebruikt, leest nog elk cijfer. Snelkoppeling: Shift+Ctrl+E (Shift+Cmd+E op een Mac).",

@@ -132,10 +132,24 @@
       "total": "In total"
     },
     "lede": {
-      "my_share": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent — your part of <money2>{{derived}}</money2> in total. The other <money3>{{other}}</money3> was settled by the other household directly and never reached your account.",
-      "whole_invoice": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{derived}}</money2> of that is economically yours; <money3>{{other}}</money3> is the other household's share."
+      "my_share": {
+        "month": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent — your part of <money2>{{derived}}</money2> in total. The other <money3>{{other}}</money3> was settled by the other household directly and never reached your account.",
+        "year": "In {{year}} you paid <money>{{paid}}</money> on costs shared with a co-parent — your part of <money2>{{derived}}</money2> in total. The other <money3>{{other}}</money3> was settled by the other household directly and never reached your account."
+      },
+      "whole_invoice": {
+        "month": "In {{month}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{derived}}</money2> of that is economically yours; <money3>{{other}}</money3> is the other household's share.",
+        "year": "In {{year}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{derived}}</money2> of that is economically yours; <money3>{{other}}</money3> is the other household's share."
+      }
     },
-    "share": "Shared costs are {{share}} of what you spent this month.",
+    "period": {
+      "month": "Month",
+      "year": "Year"
+    },
+    "periodLabel": "Period",
+    "share": {
+      "month": "Shared costs are {{share}} of what you spent this month.",
+      "year": "Shared costs are {{share}} of what you spent this year."
+    },
     "title": "Costs shared with a co-parent",
     "total": "Total",
     "unavailable": {
@@ -192,10 +206,20 @@
     "count": "{{count}}/{{max}} characters",
     "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. Two AI passes read it: the budget nudge on the Insights page, when it suggests next month's amounts, and the month in words, so it can attribute a movement to what you told it instead of calling it drift. It is sent to the model as you wrote it, and it is not sent to the findings pass.",
     "label": "Note for {{month}}",
+    "period": {
+      "month": "Month",
+      "year": "Year"
+    },
     "placeholder": "e.g. Replaced the dishwasher this month, about €400. Dentist appointment in October, about €150.",
     "stepper": {
-      "next": "Next month",
-      "previous": "Previous month"
+      "next": {
+        "month": "Next month",
+        "year": "Next year"
+      },
+      "previous": {
+        "month": "Previous month",
+        "year": "Previous year"
+      }
     },
     "title": "Notes"
   },
@@ -213,14 +237,17 @@
     "summary": "{{category}}: {{spent}} spent of {{assigned}} assigned, with {{progress}} of the month gone."
   },
   "picker": {
-    "month": "Month"
+    "month": "Month",
+    "period": {
+      "month": "Month",
+      "year": "Year"
+    }
   },
   "savings": {
     "period": {
-      "previous_month": "Previous month",
-      "this_month": "This month",
-      "twelve_months": "12 months",
-      "year_to_date": "Since January"
+      "month": "Month",
+      "prorated": "This period is {{progress}} through — any month already finished counts in full, and the one still open counts only its own share of a month.",
+      "year": "Year"
     },
     "periodLabel": "Period",
     "span": {

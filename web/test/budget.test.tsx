@@ -26,7 +26,7 @@
  * get DOM width or height" warning out of output that is about something else.
  */
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Budget } from '../src/pages/Budget.tsx'
 import type { Budget as BudgetPayload, CustodyWire, Freshness } from '../src/shared.ts'
 import { i18nReady, renderApp, visit } from './helpers.tsx'
@@ -353,6 +353,7 @@ afterAll(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
   // Most tests here never set a path and rely on landing on the Overview tab by
   // default; the tab-navigation tests (#230) would otherwise leak that location into
   // whichever test runs next.
@@ -710,8 +711,8 @@ describe("the benchmark card's period picker", () => {
     renderApp(<Budget />, { path: '/budget/benchmark' })
     await screen.findByText('Compared with Belgian households')
 
-    const group = screen.getByRole('group', { name: 'Period' })
-    fireEvent.click(within(group).getByRole('button', { name: 'Year' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
     await waitFor(() => expect(paths(mock)).toContain('/api/budget?benchmarkPeriod=year'))
   })
@@ -725,8 +726,8 @@ describe("the benchmark card's period picker", () => {
     await screen.findByText('Compared with Belgian households')
 
     const before = paths(mock).length
-    fireEvent.focus(screen.getByRole('textbox'))
-    fireEvent.click(screen.getByLabelText('Select July of 2026'))
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Jul' }))
 
     // Nothing to await for — the assertion is that no refetch was queued at all — so
     // one microtask turn is given to a would-be state update before checking.
@@ -981,7 +982,93 @@ describe('the shared-cost split', () => {
   })
 })
 
-describe('the savings rate over a period (#288)', () => {
+/**
+ * The custody card's own period picker (#345) — `?custodyPeriod=`, independent of
+ * `?benchmarkPeriod=` (its own describe block above): widening one card's window says
+ * nothing about the other's.
+ */
+describe("the custody card's period picker", () => {
+  const SPLIT: CustodyWire = {
+    kind: 'ok',
+    month: '2026-08',
+    basis: 'roster',
+    shareBp: 5_000,
+    direction: 'whole_invoice',
+    members: 1,
+    lines: [
+      {
+        categoryId: 'cat-school',
+        categoryName: 'School',
+        paidCents: 40_000,
+        totalCents: 40_000,
+        yoursCents: 20_000,
+        otherCents: 20_000,
+      },
+    ],
+    paidCents: 40_000,
+    totalCents: 40_000,
+    yoursCents: 20_000,
+    otherCents: 20_000,
+    shareOfSpendBp: 1_677,
+  }
+  const withSplit = (custody: CustodyWire): BudgetPayload => ({ ...FULL, custody })
+
+  it('asks for the full year once the Year toggle is clicked', async () => {
+    const mock = serve({
+      '/api/budget': json(withSplit(SPLIT)),
+      '/api/budget?custodyPeriod=year': json(withSplit(SPLIT)),
+    })
+    renderApp(<Budget />, { path: '/budget/custody' })
+    await screen.findByText('Costs shared with a co-parent')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() => expect(paths(mock)).toContain('/api/budget?custodyPeriod=year'))
+  })
+
+  it('fires no new request when a different calendar cell is picked in the same kind', async () => {
+    const mock = serve(json(withSplit(SPLIT)))
+    renderApp(<Budget />, { path: '/budget/custody' })
+    await screen.findByText('Costs shared with a co-parent')
+
+    const before = paths(mock).length
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Jul' }))
+
+    await Promise.resolve()
+    expect(paths(mock).length).toBe(before)
+  })
+
+  it('switches the lede and the share line to year wording once Year is picked', async () => {
+    // Same anchor month either way — the server resolved the window, this only checks
+    // that the copy follows `period` rather than staying on "this month" (#345).
+    const mock = serve({
+      '/api/budget': json(withSplit(SPLIT)),
+      '/api/budget?custodyPeriod=year': json(withSplit(SPLIT)),
+    })
+    renderApp(<Budget />, { path: '/budget/custody' })
+    await screen.findByText(withMoney(/In August 2026 you paid € 400 on costs shared with a co-parent\./))
+    expect(mock).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+
+    expect(
+      await screen.findByText(withMoney(/In 2026 you paid € 400 on costs shared with a co-parent\./)),
+    ).toBeTruthy()
+    expect(screen.getByText('Shared costs are 16,8% of what you spent this year.')).toBeTruthy()
+  })
+})
+
+describe('the savings rate over a period (#288, rebuilt for #345)', () => {
+  // The card's pro-ration caveat reads the real clock, so it is pinned to an instant
+  // after August — the same reasoning `overview.test.tsx` pins its own copy on.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
+  })
+
   const show = (): void => {
     serve(json(FULL))
     renderApp(<Budget />)
@@ -998,15 +1085,21 @@ describe('the savings rate over a period (#288)', () => {
     return (card?.querySelector('.metric__note')?.textContent ?? '').replaceAll('\u00a0', ' ')
   }
 
-  it('opens on twelve months, and says the span it actually covered', async () => {
+  const pickMonth = (abbrev: string): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: abbrev }))
+  }
+
+  it('opens on the current year, and says the span it actually covered', async () => {
     show()
     await screen.findByText('€ 3.100')
 
-    const select = screen.getByLabelText('Period') as HTMLSelectElement
-    expect(select.value).toBe('twelve_months')
-    // Two months exist, twelve were asked for, and the card says two — the whole reason
-    // the span is printed rather than the period name alone.
-    expect(note()).toBe('Over 2 months, July 2026 to August 2026')
+    // Two months exist, and the card says two — the whole reason the span is printed
+    // rather than the period name alone.
+    expect(note()).toBe(
+      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
+    )
     expect(rate()).toBe('27,4%')
   })
 
@@ -1016,7 +1109,7 @@ describe('the savings rate over a period (#288)', () => {
     await screen.findByText('€ 3.100')
     const before = mock.mock.calls.length
 
-    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'this_month' } })
+    pickMonth('Aug')
 
     // August alone, which is the figure `totals.savingsRateBp` also holds: one code
     // path, and the shortest period agreeing with the stored quantity.
@@ -1030,19 +1123,19 @@ describe('the savings rate over a period (#288)', () => {
     show()
     await screen.findByText('€ 3.100')
 
-    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'previous_month' } })
+    pickMonth('Jul')
     expect(rate()).toBe('28,6%')
     expect(note()).toBe('Over July 2026')
   })
 
   it('says the window is empty rather than printing a figure for no months', async () => {
-    // August alone in the history, so "previous month" has nothing — and a 0% would be
-    // a number somebody would act on.
+    // August alone in the history, so July has nothing — and a 0% would be a number
+    // somebody would act on.
     serve(json({ ...FULL, history: FULL.history.slice(-1) }))
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
-    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'previous_month' } })
+    pickMonth('Jul')
     expect(rate()).toBe('Not known yet')
     expect(note()).toBe('No month with figures in this window')
   })
@@ -1059,14 +1152,14 @@ describe('the savings rate over a period (#288)', () => {
     expect(card?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
   })
 
-  it('offers all four windows, translated', async () => {
+  it('offers month and year modes, translated', async () => {
     show()
     await screen.findByText('€ 3.100')
 
-    const labels = [...screen.getByLabelText('Period').querySelectorAll('option')].map(
-      (option) => option.textContent,
-    )
-    expect(labels).toEqual(['This month', 'Previous month', 'Since January', '12 months'])
+    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Month' })).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Year' })).toBeTruthy()
   })
 
   it('is the only card with a chooser, because it is the only ratio of flows', async () => {
@@ -1076,7 +1169,7 @@ describe('the savings rate over a period (#288)', () => {
     // Assigned, available and left-to-assign are states of one month's envelopes;
     // "available across twelve months" is not a figure.
     expect(document.querySelectorAll('.metric__head').length).toBe(1)
-    expect(document.querySelectorAll('.metric select').length).toBe(1)
+    expect(document.querySelectorAll('.metric .period-picker').length).toBe(1)
   })
 })
 
@@ -1105,30 +1198,38 @@ describe('the section tabs (#230)', () => {
 })
 
 describe('the month picker', () => {
-  it('offers every stored month and re-asks the server for the one chosen', async () => {
+  const openMonthPicker = (): HTMLElement => {
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    return screen.getByRole('dialog')
+  }
+
+  it('greys out every month with no data, and re-asks the server for the one chosen', async () => {
     const mock = serve(json(FULL))
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
-    const picker = screen.getByLabelText('Month')
-    expect([...picker.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
-      'August 2026',
-      'July 2026',
-      'June 2026',
-    ])
+    const dialog = openMonthPicker()
+    const enabled = (name: string): boolean =>
+      !(within(dialog).getByRole('button', { name }) as HTMLButtonElement).disabled
+    expect(enabled('Jun')).toBe(true)
+    expect(enabled('Jul')).toBe(true)
+    expect(enabled('Aug')).toBe(true)
+    expect(enabled('May')).toBe(false)
 
-    fireEvent.change(picker, { target: { value: '2026-07' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Jul' }))
     await waitFor(() => {
       expect(paths(mock)).toEqual(['/api/budget', '/api/budget?month=2026-07'])
     })
   })
 
-  it('is not drawn at all when there is only one month to pick', async () => {
+  it('stays visible with only one month to pick, and greys out the rest', async () => {
     serve(json({ ...FULL, months: ['2026-08'] } satisfies BudgetPayload))
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
-    expect(screen.queryByLabelText('Month')).toBeNull()
+    const dialog = openMonthPicker()
+    expect((within(dialog).getByRole('button', { name: 'Aug' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(dialog).getByRole('button', { name: 'Jul' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('stands aside on the Notes tab, which has a month control of its own (#281)', async () => {
@@ -1139,7 +1240,9 @@ describe('the month picker', () => {
     renderApp(<Budget />, { path: '/budget/notes' })
     await screen.findByLabelText('Note for August 2026')
 
-    expect(screen.queryByLabelText('Month')).toBeNull()
+    // MonthNote's own Month/Year toggle also has a "Month" button, so this checks for
+    // the page-level trigger specifically, by its id.
+    expect(document.getElementById('budget-month')).toBeNull()
     expect(screen.getByLabelText('Previous month')).toBeTruthy()
   })
 
@@ -1155,17 +1258,18 @@ describe('the month picker', () => {
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
-    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '2026-07' } })
-    // The month on screen is the server's answer, not the select's own value, so the
+    const dialog = openMonthPicker()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Jul' }))
+    // The month on screen is the server's answer, not the picker's own value, so the
     // refetch has to land before the tab switch means anything.
     await waitFor(() => {
-      expect((screen.getByLabelText('Month') as HTMLSelectElement).value).toBe('2026-07')
+      expect(screen.getByRole('button', { name: 'Month' }).textContent).toContain('July 2026')
     })
     fireEvent.click(screen.getByRole('link', { name: 'Notes' }))
 
     expect(await screen.findByLabelText('Note for July 2026')).toBeTruthy()
     expect(screen.getByDisplayValue('Two annual bills landed together.')).toBeTruthy()
-    expect(screen.queryByLabelText('Month')).toBeNull()
+    expect(document.getElementById('budget-month')).toBeNull()
   })
 })
 
@@ -1249,11 +1353,13 @@ describe('the month note', () => {
 
     fireEvent.change(noteBox(), { target: { value: 'Replaced the dishwasher this month.' } })
     expect(stepNext().disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Year' }).hasAttribute('disabled')).toBe(true)
 
     fireEvent.click(saveNote())
     await waitFor(() => {
       expect(stepNext().disabled).toBe(false)
     })
+    expect(screen.getByRole('button', { name: 'Year' }).hasAttribute('disabled')).toBe(false)
   })
 })
 
@@ -1265,15 +1371,15 @@ describe('a month nobody computed', () => {
     expect(await screen.findByText('Nothing has been computed for May 2026 yet.')).toBeTruthy()
     expect(screen.getByText('Pick another month, or run a sync to aggregate this one.')).toBeTruthy()
 
-    // Still navigable — the way out of a stale bookmark is the picker, which now also
-    // offers the month on screen so the label above the notice matches it.
-    const picker = screen.getByLabelText('Month')
-    expect([...picker.querySelectorAll('option')].map((o) => o.textContent)).toEqual([
-      'May 2026',
-      'August 2026',
-      'July 2026',
-      'June 2026',
-    ])
+    // Still navigable — the way out of a stale bookmark is the picker, which opens on
+    // the month on screen (greyed out, since it has no data) beside the months that do.
+    expect(screen.getByRole('button', { name: 'Month' }).textContent).toContain('May 2026')
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    const dialog = screen.getByRole('dialog')
+    expect((within(dialog).getByRole('button', { name: 'May' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(dialog).getByRole('button', { name: 'Jun' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(dialog).getByRole('button', { name: 'Jul' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(dialog).getByRole('button', { name: 'Aug' }) as HTMLButtonElement).disabled).toBe(false)
 
     // Not an error, and not four empty charts either.
     expect(screen.queryByRole('alert')).toBeNull()

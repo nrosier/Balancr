@@ -1,117 +1,197 @@
-/*
- * `react-multi-date-picker` ships no stylesheet of its own — only optional skins layered
- * on top of a base it paints with inline styles. Everything here overrides that inline
- * base so the calendar reads as part of this app's own theme, in both light and dark.
- *
- * Every rule that sets `color` also states its own `background`, and every pair reuses a
- * combination `components.css` already uses elsewhere (button/chip, hover, notice) rather
- * than inventing a new one — `npm run contrast:check` has already cleared these pairs in
- * both themes, so restating them here adds no new risk of falling under the floor.
- */
+/* Trigger button + popover for PeriodPicker.tsx (#345). Ported from the approved
+ * mockup onto this app's real tokens — class names and states (`.is-today`,
+ * `.is-selected`, `.is-outside`) are kept as the mockup defined them. */
 
 .period-picker {
   position: relative;
+  display: inline-block;
 }
 
-.period-picker__toggle {
+.period-picker__trigger {
   display: inline-flex;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.period-picker__toggle-btn {
-  min-height: 2.5rem;
-  padding: 0 var(--space-3);
-  border: none;
-  border-right: 1px solid var(--border-strong);
-  background: var(--surface-card);
-  color: var(--text-muted);
-  font-size: var(--type-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
-
-.period-picker__toggle-btn:last-child {
-  border-right: none;
-}
-
-.period-picker__toggle-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.period-picker__toggle-btn[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-text);
-}
-
-.period-picker__input {
-  width: 8rem;
-  cursor: pointer;
-}
-
-/* The popup calendar itself — positioned by the library, painted by these tokens. */
-.period-picker__container .rmdp-wrapper {
+  align-items: center;
+  gap: var(--space-2);
+  height: 2.25rem;
+  padding: 0 var(--space-2) 0 var(--space-3);
   background: var(--surface-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-pop);
-}
-
-.period-picker__container .rmdp-header,
-.period-picker__container .rmdp-day-picker,
-.period-picker__container .rmdp-month-picker,
-.period-picker__container .rmdp-year-picker {
-  background: var(--surface-card);
-}
-
-.period-picker__container .rmdp-header-values {
   color: var(--text);
-  background: var(--surface-card);
+  font: inherit;
   font-weight: var(--weight-medium);
+  font-size: var(--type-sm);
+  cursor: pointer;
+  transition: var(--transition);
 }
-
-.period-picker__container .rmdp-week-day {
-  color: var(--text-muted);
+.period-picker__trigger:hover {
+  background: var(--surface-hover);
 }
-
-.period-picker__container .rmdp-arrow {
+.period-picker__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.period-picker__trigger[aria-expanded='true'] {
   border-color: var(--border-strong);
 }
 
-.period-picker__container .rmdp-arrow-container:hover {
-  background: var(--surface-hover);
-  box-shadow: none;
+.period-picker__icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
 }
 
-.period-picker__container .rmdp-day span,
-.period-picker__container .rmdp-ym span {
-  color: var(--text);
+.period-picker__value {
+  font-variant-numeric: tabular-nums;
 }
 
-.period-picker__container .rmdp-day span:hover,
-.period-picker__container .rmdp-ym span:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+.period-picker__chevron {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  transition: transform 140ms ease;
+}
+.period-picker__trigger[aria-expanded='true'] .period-picker__chevron {
+  transform: rotate(180deg);
 }
 
-.period-picker__container .rmdp-day.rmdp-today span,
-.period-picker__container .rmdp-ym.rmdp-today span {
+.period-picker__popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  width: 15.5rem;
   background: var(--surface-card);
-  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  padding: var(--space-3);
+  z-index: 20;
 }
 
-.period-picker__container .rmdp-day.rmdp-selected span,
-.period-picker__container .rmdp-ym.rmdp-selected span {
+/* Mode switch: labels on both ends, sliding thumb between. */
+.period-picker__mode {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  margin: 0 auto var(--space-3);
+  width: fit-content;
+}
+.period-picker__mode-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: calc(100% - 4px);
+  background: var(--surface-card);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card);
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.period-picker__mode.is-year .period-picker__mode-thumb {
+  transform: translateX(100%);
+}
+.period-picker__mode-btn {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--type-xs);
+  font-weight: var(--weight-semibold);
+  padding: 0.32rem 0.95rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  transition: color 140ms ease;
+}
+.period-picker__mode-btn.active {
+  color: var(--text);
+}
+.period-picker__mode-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.period-picker__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.period-picker__nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--type-md);
+  cursor: pointer;
+}
+.period-picker__nav-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.period-picker__nav-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.period-picker__nav-label {
+  font-size: var(--type-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.period-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.3rem;
+}
+.period-picker__cell {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.2rem;
+  font: inherit;
+  font-size: var(--type-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.period-picker__cell:hover {
+  background: var(--surface-hover);
+}
+.period-picker__cell:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.period-picker__cell.is-today {
+  border-color: var(--border-strong);
+}
+.period-picker__cell.is-selected {
   background: var(--accent);
   color: var(--accent-text);
-  box-shadow: none;
+  border-color: var(--accent);
 }
-
-.period-picker__container .rmdp-day.rmdp-disabled span,
-.period-picker__container .rmdp-day.rmdp-day-hidden span,
-.period-picker__container .rmdp-deactive {
+.period-picker__cell.is-selected:hover {
+  background: var(--accent-hover);
+}
+.period-picker__cell.is-outside {
   color: var(--text-muted);
+}
+.period-picker__cell:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.period-picker__cell:disabled:hover {
+  background: transparent;
 }

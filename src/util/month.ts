@@ -11,6 +11,7 @@
  */
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const YEAR_RE = /^\d{4}$/
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 
 export function isMonth(value: string): boolean {
@@ -20,6 +21,15 @@ export function isMonth(value: string): boolean {
 export function assertMonth(month: string): string {
   if (!isMonth(month)) throw new Error(`invalid month: ${month}`)
   return month
+}
+
+export function isYear(value: string): boolean {
+  return YEAR_RE.test(value)
+}
+
+export function assertYear(year: string): string {
+  if (!isYear(year)) throw new Error(`invalid year: ${year}`)
+  return year
 }
 
 export function isDate(value: string): boolean {

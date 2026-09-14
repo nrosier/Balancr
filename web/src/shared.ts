@@ -140,20 +140,24 @@ export type { TaxEstimateText, TaxLineText } from '../../src/domain/tax/describe
 export { custodyShare } from '../../src/domain/aggregate/custody.ts'
 export type { CustodyBasis } from '../../src/domain/aggregate/custody.ts'
 
-// The savings card reads its own period (#288). Re-exported for the same reason
-// `custodyShare` is: a second copy is a second chance to average the monthly
-// percentages instead of summing the flows first.
-export {
-  DEFAULT_SAVINGS_PERIOD,
-  periodSavings,
-  SAVINGS_PERIODS,
-  TRAILING_MONTHS,
+// The savings card reads its own period (#345, formerly #288). Re-exported for the
+// same reason `custodyShare` is: a second copy is a second chance to average the
+// monthly percentages instead of summing the flows first.
+export { absolutePeriodSavings } from '../../src/domain/aggregate/savings.ts'
+export type {
+  AbsolutePeriodSavings,
+  SavingsMonth,
+  SavingsPeriodKind,
 } from '../../src/domain/aggregate/savings.ts'
-export type { PeriodSavings, SavingsMonth, SavingsPeriod } from '../../src/domain/aggregate/savings.ts'
+
+// Turns a picker's bare-year selection into a concrete anchor month, the same
+// resolution `budget.ts` and the other year-aware routes do server-side (#345) — pure,
+// so the savings card can run it locally rather than round-tripping for an anchor.
+export { resolveYearAnchor } from '../../src/server/routes/api/period.ts'
 
 // The scenario page recomputes on every input change (#51) — the same reason
-// `periodSavings` is re-exported: `projectScenario` is pure, so the page runs it
-// locally instead of round-tripping to the server per keystroke or slider drag. From
+// `absolutePeriodSavings` is re-exported above: `projectScenario` is pure, so the page
+// runs it locally instead of round-tripping to the server per keystroke or slider drag. From
 // `scenario-projection.ts`, not `scenario.ts`: the latter reaches the database (for
 // the real seed values) and that chain must not enter the browser bundle.
 export {
@@ -181,12 +185,10 @@ export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/voc
 
 export {
   BENCHMARK_GROUPS,
-  // The benchmark card's own period chooser (#323), re-exported for the same reason
-  // `SAVINGS_PERIODS` is: the option list and the type it narrows to have to be the
-  // same list the server accepts, or a card and a query string could disagree about
-  // it. From `vocabulary.ts` rather than `compare.ts`, which the comment above the
-  // group list already explains: `compare.ts` imports the file loader and through it
-  // `config`, which a browser bundle cannot carry.
+  // The benchmark card's own period chooser (#323). From `vocabulary.ts` rather than
+  // `compare.ts`, which the comment above the group list already explains:
+  // `compare.ts` imports the file loader and through it `config`, which a browser
+  // bundle cannot carry.
   BENCHMARK_PERIODS,
   COICOP_DIVISIONS,
   divisionOf,

@@ -9,7 +9,6 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
-import { endOfMonth } from '../../util/month.ts'
 import type { ValuePoint } from './history.ts'
 import type { AllocationSlice, PortfolioMetricsResult } from './metrics.ts'
 import type { HoldingSnapshot } from './snapshot.ts'
@@ -209,24 +208,6 @@ export function latestSnapshotDate(db: Db): string | null {
   const row = db
     .select({ date: sql<string | null>`max(${portfolioSnapshots.date})` })
     .from(portfolioSnapshots)
-    .get()
-  return row?.date ?? null
-}
-
-/**
- * The latest snapshot date at or before the end of `period` (`YYYY` or `YYYY-MM`), or
- * null when nothing was ever written that early.
- *
- * Same `max(date)` shape as `latestSnapshotDate`, bounded above rather than unbounded —
- * a period picker asking "as of 2024" wants the last snapshot in or before that year,
- * not the nearest one to it.
- */
-export function resolveSnapshotDate(db: Db, period: string): string | null {
-  const upperBound = period.length === 4 ? `${period}-12-31` : endOfMonth(period)
-  const row = db
-    .select({ date: sql<string | null>`max(${portfolioSnapshots.date})` })
-    .from(portfolioSnapshots)
-    .where(sql`${portfolioSnapshots.date} <= ${upperBound}`)
     .get()
   return row?.date ?? null
 }
