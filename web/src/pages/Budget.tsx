@@ -273,11 +273,10 @@ function Figures({
             period={displayPeriod}
             onSelect={onPeriodSelect}
             id="budget-month"
-            // "Month", not "Period" (#345): Benchmark, Custody and this tab's own
-            // SavingsRate card each already carry a "Period"-labeled picker of their
-            // own on the tab this one shares, and a second control with the same
-            // accessible name on one page is a name two readers — sighted or on a
-            // screen reader — cannot tell apart.
+            // "Month", not "Period" (#345): Benchmark and Custody each already carry a
+            // "Period"-labeled picker of their own on the tab this one shares, and a
+            // second control with the same accessible name on one page is a name two
+            // readers — sighted or on a screen reader — cannot tell apart.
             label={t('budget:picker.month')}
             kindLabel={(kind) => t(`budget:picker.period.${kind}`)}
             availableMonths={availableMonths}
@@ -313,7 +312,7 @@ function Figures({
               <p className="notice__hint">{t('budget:empty.monthHint')}</p>
             </div>
           ) : (
-            <Totals totals={totals} history={history} months={months} month={month} />
+            <Totals totals={totals} history={history} months={months} period={displayPeriod} />
           )}
 
           {categories.length === 0 ? null : (
@@ -387,25 +386,17 @@ const extent = (category: CategoryFact): number =>
 
 interface TotalsProps {
   totals: NonNullable<BudgetPayload['totals']>
-  /** The contiguous run of months ending at `month`, for the savings period (#288). */
+  /** The contiguous run of months ending at the page's period, for the savings rate (#288). */
   history: BudgetPayload['history']
-  /** Every month with data, newest first — for the savings card's own picker (#345). */
+  /** Every month with data, newest first — for the savings rate's year resolution (#345). */
   months: BudgetPayload['months']
-  month: string
+  /** The page's own month/year picker (#345) — this card follows it rather than choosing. */
+  period: Period
 }
 
-function Totals({ totals, history, months, month }: TotalsProps): ReactNode {
+function Totals({ totals, history, months, period }: TotalsProps): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-
-  // Independent of the page's own period (#345), same as the Overview page's copy of
-  // this card and the Benchmark/Custody cards on their own tabs: a ratio has no
-  // meaning "following" a page picker that a table of category rows does, so each of
-  // these keeps its own.
-  const [savingsPeriod, setSavingsPeriod] = useState<Period>(() => ({
-    kind: 'year',
-    value: month.slice(0, 4),
-  }))
 
   const spentRows: MetricRow[] = [
     { label: t('budget:metric.assigned'), value: euro(totals.budgetedCents) },
@@ -480,17 +471,15 @@ function Totals({ totals, history, months, month }: TotalsProps): ReactNode {
         left-to-assign have no meaning summed over twelve months. Shared with the Overview
         page since #296, so the same figure cannot read two ways on two pages.
 
+        No `onPeriodSelect` (#351): this copy follows the page's own month/year picker
+        rather than choosing independently — Overview's copy, which has no other picker
+        to follow, still passes one.
+
         `showFlows={false}`: the Spent and Income cards two positions to the left already
         print the month's own pair, and a period's pair repeated here would put four
         figures under two labels.
       */}
-      <SavingsRate
-        history={history}
-        months={months}
-        period={savingsPeriod}
-        onPeriodSelect={setSavingsPeriod}
-        showFlows={false}
-      />
+      <SavingsRate history={history} months={months} period={period} showFlows={false} />
     </div>
   )
 }

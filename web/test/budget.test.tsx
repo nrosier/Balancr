@@ -400,9 +400,10 @@ describe('a month with figures in it', () => {
 
     expect(await screen.findByText('€ 3.100')).toBeTruthy()
     expect(screen.getByText('€ 4.200')).toBeTruthy()
-    // The savings rate opens on twelve months (#288), which for this fixture is the two
-    // months of history summed — € 8.400 in, € 6.100 out — and not August's own 26,2%.
-    expect(screen.getByText('27,4%')).toBeTruthy()
+    // The savings rate follows the page's own month/year picker on Budget (#351),
+    // which opens on August alone — not the year-summed 27,4% Overview's own copy
+    // of this card would show with nothing else to follow.
+    expect(screen.getByText('26,2%')).toBeTruthy()
     // Over-assigned, which is a state to act on rather than a smaller number.
     expect(screen.getByText('€ -250')).toBeTruthy()
 
@@ -1061,7 +1062,7 @@ describe("the custody card's period picker", () => {
   })
 })
 
-describe('the savings rate over a period (#288, rebuilt for #345)', () => {
+describe('the savings rate follows the page picker (#288, rebuilt for #345 and #351)', () => {
   // The card's pro-ration caveat reads the real clock, so it is pinned to an instant
   // after August — the same reasoning `overview.test.tsx` pins its own copy on.
   beforeEach(() => {
@@ -1074,69 +1075,80 @@ describe('the savings rate over a period (#288, rebuilt for #345)', () => {
     renderApp(<Budget />)
   }
 
-  /** The rate the card is currently showing, off the one card that has a chooser. */
-  const rate = (): string => {
-    const card = document.querySelector('.metric__head')?.closest('.metric')
-    return (card?.querySelector('.metric__value')?.textContent ?? '').replaceAll('\u00a0', ' ')
-  }
+  /** No `.metric__head` to key off since #351 — the card has no control of its own here. */
+  const savingsCard = (): Element | null => screen.getByText('Savings rate').closest('.metric')
 
-  const note = (): string => {
-    const card = document.querySelector('.metric__head')?.closest('.metric')
-    return (card?.querySelector('.metric__note')?.textContent ?? '').replaceAll('\u00a0', ' ')
-  }
+  const rate = (): string =>
+    (savingsCard()?.querySelector('.metric__value')?.textContent ?? '').replaceAll('\u00a0', ' ')
 
+  const note = (): string =>
+    (savingsCard()?.querySelector('.metric__note')?.textContent ?? '').replaceAll('\u00a0', ' ')
+
+  /** Drives the page's own month/year picker (#351) — the card no longer has one. */
   const pickMonth = (abbrev: string): void => {
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Month' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: abbrev }))
   }
 
-  it('opens on the current year, and says the span it actually covered', async () => {
+  const pickYear = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+  }
+
+  it('opens on the page\u2019s own current month, not a year of its own', async () => {
     show()
     await screen.findByText('€ 3.100')
-
-    // Two months exist, and the card says two — the whole reason the span is printed
-    // rather than the period name alone.
-    expect(note()).toBe(
-      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
-    )
-    expect(rate()).toBe('27,4%')
-  })
-
-  it('re-reads the same history for another period without asking the server again', async () => {
-    const mock = serve(json(FULL))
-    renderApp(<Budget />)
-    await screen.findByText('€ 3.100')
-    const before = mock.mock.calls.length
-
-    pickMonth('Aug')
 
     // August alone, which is the figure `totals.savingsRateBp` also holds: one code
     // path, and the shortest period agreeing with the stored quantity.
     expect(rate()).toBe('26,2%')
     expect(note()).toBe('Over August 2026')
-    // The period is a slice of a payload the page already has (#288 — no server work).
-    expect(mock.mock.calls.length).toBe(before)
+  })
+
+  it('sums the year, and says the span it actually covered, once the page picker turns to Year', async () => {
+    // The page's own picker re-asks the server for whatever month a year resolves to,
+    // even when that turns out to be the one already on screen (#345) — unlike the
+    // card's former picker, which never asked at all (#288). Both paths answer alike.
+    serve({ '/api/budget': json(FULL), '/api/budget?month=2026-08': json(FULL) })
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    pickYear()
+
+    // Two months exist, and the card says two — the whole reason the span is printed
+    // rather than the period name alone.
+    await waitFor(() => expect(rate()).toBe('27,4%'))
+    expect(note()).toBe(
+      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
+    )
   })
 
   it('reads the calendar month before the one on screen', async () => {
-    show()
+    serve({
+      '/api/budget': json(FULL),
+      '/api/budget?month=2026-07': json({ ...FULL, month: '2026-07' } satisfies BudgetPayload),
+    })
+    renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
     pickMonth('Jul')
-    expect(rate()).toBe('28,6%')
+    await waitFor(() => expect(rate()).toBe('28,6%'))
     expect(note()).toBe('Over July 2026')
   })
 
   it('says the window is empty rather than printing a figure for no months', async () => {
     // August alone in the history, so July has nothing — and a 0% would be a number
     // somebody would act on.
-    serve(json({ ...FULL, history: FULL.history.slice(-1) }))
+    const sparse = { ...FULL, history: FULL.history.slice(-1) }
+    serve({
+      '/api/budget': json(sparse),
+      '/api/budget?month=2026-07': json({ ...sparse, month: '2026-07' } satisfies BudgetPayload),
+    })
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
     pickMonth('Jul')
-    expect(rate()).toBe('Not known yet')
+    await waitFor(() => expect(rate()).toBe('Not known yet'))
     expect(note()).toBe('No month with figures in this window')
   })
 
@@ -1148,28 +1160,19 @@ describe('the savings rate over a period (#288, rebuilt for #345)', () => {
     show()
     await screen.findByText('€ 3.100')
 
-    const card = document.querySelector('.metric__head')?.closest('.metric')
-    expect(card?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
+    expect(savingsCard()?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
   })
 
-  it('offers month and year modes, translated', async () => {
+  it('has no picker of its own here, only the page-level one it follows (#351)', async () => {
     show()
     await screen.findByText('€ 3.100')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByRole('button', { name: 'Month' })).toBeTruthy()
-    expect(within(dialog).getByRole('button', { name: 'Year' })).toBeTruthy()
-  })
-
-  it('is the only card with a chooser, because it is the only ratio of flows', async () => {
-    show()
-    await screen.findByText('€ 3.100')
-
-    // Assigned, available and left-to-assign are states of one month's envelopes;
-    // "available across twelve months" is not a figure.
-    expect(document.querySelectorAll('.metric__head').length).toBe(1)
-    expect(document.querySelectorAll('.metric .period-picker').length).toBe(1)
+    // A control of its own is what made the figure choosable on Budget in the first
+    // place (#351) — the Overview copy of this same component still carries one,
+    // because there it has no other picker to follow.
+    expect(savingsCard()?.querySelector('.metric__head')).toBeNull()
+    expect(document.querySelectorAll('.metric .period-picker').length).toBe(0)
+    expect(document.querySelectorAll('.period-picker').length).toBe(1)
   })
 })
 
