@@ -21,7 +21,15 @@
       "recurring": "Every month"
     },
     "startingValue": "Current invested value",
-    "title": "Adjust the assumptions"
+    "title": "Adjust the assumptions",
+    "tooltip": {
+      "baseline": "What's currently being invested each month, before the hypothetical change below.",
+      "change": "A hypothetical change to the monthly contribution, on top of what's actually being invested. Can be negative.",
+      "growthRate": "The invested value's expected growth per year, applied a twelfth at a time each month.",
+      "horizon": "How many years to project, up to 30.",
+      "recurringLabel": "Whether the change repeats every month, or happens once at the start.",
+      "startingValue": "The invested value the projection starts from."
+    }
   },
   "metric": {
     "asIs": "Projected value, as-is",

@@ -33,6 +33,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { formatBp, formatDecimal, formatMoney, parseMoneyToCents } from '../shared.ts'
+import { InfoTip } from '../ui/InfoTip.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { useSubsection, type Section } from '../ui/sections.ts'
 import { Issue, Panel } from './Panel.tsx'
@@ -182,9 +183,15 @@ export function ThresholdsPanel({
 
                 return (
                   <div className="field thresholds__field" key={path}>
-                    <label className="field__label" htmlFor={`threshold-${group}-${field}`}>
-                      {t(`settings:thresholds.field.${group}.${field}`)}
-                    </label>
+                    <span className="field__label">
+                      <label htmlFor={`threshold-${group}-${field}`}>
+                        {t(`settings:thresholds.field.${group}.${field}`)}
+                      </label>
+                      <InfoTip
+                        id={`threshold-${group}-${field}-tip`}
+                        text={t(`settings:thresholds.fieldHint.${group}.${field}`)}
+                      />
+                    </span>
                     <input
                       id={`threshold-${group}-${field}`}
                       className="field__input num"

@@ -1,0 +1,53 @@
+/* Trigger + popover for InfoTip.tsx (#346). Sized and coloured from
+ * theme/tokens.css, echoing period-picker.css's nav-button and popover styles. */
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: var(--space-1);
+}
+
+.info-tip__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.info-tip__trigger:hover {
+  color: var(--text);
+}
+.info-tip__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.info-tip__trigger svg {
+  width: 100%;
+  height: 100%;
+}
+
+.info-tip__bubble {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 16rem;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--type-xs);
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+  color: var(--text);
+  z-index: 20;
+}
