@@ -245,6 +245,7 @@
   },
   "savings": {
     "period": {
+      "estimate": "It includes <money>{{amount}}</money> still to come, so it's an estimate until the month closes.",
       "month": "Month",
       "prorated": "This period is {{progress}} through — any month already finished counts in full, and the one still open counts only its own share of a month.",
       "year": "Year"

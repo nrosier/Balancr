@@ -175,6 +175,8 @@ describe('GET /api/overview', () => {
       spentCents: 352_000,
       budgetedCents: body.totals.budgetedCents,
       savingsRateBp: body.totals.savingsRateBp,
+      committedCents: 0,
+      committedApproximate: false,
     })
     // The two arrays are different kinds of thing and neither stands in for the other.
     expect(body.history).not.toEqual(body.flows)

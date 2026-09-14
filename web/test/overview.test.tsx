@@ -58,8 +58,24 @@ const FULL: OverviewPayload = {
   // name. Deliberately fewer than the twelve `twelve_months` asks for: the card has to
   // print the span it actually covered rather than the one it was asked for (#288, #296).
   flows: [
-    { month: '2026-07', incomeCents: 400_000, spentCents: 320_000, budgetedCents: 330_000, savingsRateBp: 2_000 },
-    { month: '2026-08', incomeCents: 420_000, spentCents: 310_000, budgetedCents: 350_000, savingsRateBp: 2_619 },
+    {
+      month: '2026-07',
+      incomeCents: 400_000,
+      spentCents: 320_000,
+      budgetedCents: 330_000,
+      savingsRateBp: 2_000,
+      committedCents: 0,
+      committedApproximate: false,
+    },
+    {
+      month: '2026-08',
+      incomeCents: 420_000,
+      spentCents: 310_000,
+      budgetedCents: 350_000,
+      savingsRateBp: 2_619,
+      committedCents: 0,
+      committedApproximate: false,
+    },
   ],
   month: '2026-08',
   months: ['2026-08', '2026-07', '2026-06'],

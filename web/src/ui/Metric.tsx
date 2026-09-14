@@ -46,8 +46,14 @@ export interface MetricProps {
   value: ReactNode | null
   /** What null prints. Passed in, so the placeholder is translated by the page. */
   unknown: string
-  /** One line under the figure: the month it covers, the date it was taken. */
-  note?: string
+  /**
+   * One line under the figure: the month it covers, the date it was taken.
+   *
+   * `ReactNode`, not `string`, for the same reason `value` above is: a caller that
+   * needs to fold a money figure into the sentence passes a `<Trans>` wrapping
+   * `<Money>` rather than a raw formatted string (#361).
+   */
+  note?: ReactNode
   /** Beside the label: a chooser that changes what the figure means. See above. */
   control?: ReactNode
   tone?: Tone

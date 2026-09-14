@@ -30,6 +30,15 @@
  *    given, used only to pro-rate a still-open anchor month or year — same reason
  *    `benchmarkPeriodWindow` takes them rather than reading the clock itself.
  *
+ * **The rate folds in what's still to come (#361).** `committedCents` — money a
+ * recurring schedule has promised but that hasn't posted yet — is zero for every
+ * month except the one still open (`domain/aggregate/committed.ts`), so summing it
+ * into the window's spend before dividing only ever affects a period that actually
+ * includes that open month, in either `month` or `year` mode, with no special-casing
+ * for which one. `spentCents` on the result stays posted-only throughout — only the
+ * rate itself is adjusted — so the reader sees why via `committedCents`/
+ * `committedApproximate` rather than a Spent figure that quietly changed meaning.
+ *
  * Pure, and re-exported through `web/src/shared.ts` for the card that reads it — the
  * arrangement `custodyShare` already has, and for the same reason: two copies of this
  * would be two chances to average the percentages in one of them.
@@ -41,6 +50,9 @@ export interface SavingsMonth {
   readonly month: string
   readonly incomeCents: number
   readonly spentCents: number
+  /** Still-to-come spend for this month (#159), zero for every month but the open one. */
+  readonly committedCents: number
+  readonly committedApproximate: boolean
 }
 
 /**
@@ -62,6 +74,10 @@ export interface AbsolutePeriodSavings {
   readonly rateBp: number | null
   readonly incomeCents: number
   readonly spentCents: number
+  /** Still-to-come spend folded into `rateBp` but not into `spentCents` above (#361). */
+  readonly committedCents: number
+  /** Whether any of `committedCents` is a schedule counted at its upper bound (#159). */
+  readonly committedApproximate: boolean
   readonly months: number
   readonly from: string | null
   readonly to: string | null
@@ -87,15 +103,24 @@ export function absolutePeriodSavings(
   const window = history.filter((entry) => covered.has(entry.month))
   const incomeCents = window.reduce((sum, entry) => sum + entry.incomeCents, 0)
   const spentCents = window.reduce((sum, entry) => sum + entry.spentCents, 0)
+  const committedCents = window.reduce((sum, entry) => sum + entry.committedCents, 0)
+  const committedApproximate = window.some(
+    (entry) => entry.committedCents > 0 && entry.committedApproximate,
+  )
+  const effectiveSpentCents = spentCents + committedCents
 
   return {
     kind,
     month: anchorMonth,
     periodProgressBp: Math.round((periodMonths / PERIOD_DENOMINATOR[kind]) * 10_000),
     rateBp:
-      incomeCents > 0 ? Math.round(((incomeCents - spentCents) / incomeCents) * 10_000) : null,
+      incomeCents > 0
+        ? Math.round(((incomeCents - effectiveSpentCents) / incomeCents) * 10_000)
+        : null,
     incomeCents,
     spentCents,
+    committedCents,
+    committedApproximate,
     months: window.length,
     from: window[0]?.month ?? null,
     to: window.at(-1)?.month ?? null,

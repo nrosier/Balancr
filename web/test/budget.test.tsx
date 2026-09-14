@@ -116,8 +116,24 @@ const FULL: BudgetPayload = {
     committedApproximate: true,
   },
   history: [
-    { month: '2026-07', incomeCents: 420_000, spentCents: 300_000, budgetedCents: 350_000, savingsRateBp: 2_857 },
-    { month: '2026-08', incomeCents: 420_000, spentCents: 310_000, budgetedCents: 350_000, savingsRateBp: 2_619 },
+    {
+      month: '2026-07',
+      incomeCents: 420_000,
+      spentCents: 300_000,
+      budgetedCents: 350_000,
+      savingsRateBp: 2_857,
+      committedCents: 0,
+      committedApproximate: false,
+    },
+    {
+      month: '2026-08',
+      incomeCents: 420_000,
+      spentCents: 310_000,
+      budgetedCents: 350_000,
+      savingsRateBp: 2_619,
+      committedCents: 0,
+      committedApproximate: false,
+    },
   ],
   trendMonths: TREND_MONTHS,
   categories: [
@@ -1134,6 +1150,23 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
     pickMonth('Jul')
     await waitFor(() => expect(rate()).toBe('28,6%'))
     expect(note()).toBe('Over July 2026')
+  })
+
+  it('adds an estimate caveat once the anchor month has money still to come (#361)', async () => {
+    // August is the still-open month in this fixture; July already has none.
+    const withCommitted = {
+      ...FULL,
+      history: FULL.history.map((entry) =>
+        entry.month === '2026-08' ? { ...entry, committedCents: 40_000 } : entry,
+      ),
+    } satisfies BudgetPayload
+    serve(json(withCommitted))
+    renderApp(<Budget />)
+    await screen.findByText('€ 3.100')
+
+    expect(note()).toBe(
+      "Over August 2026 It includes € 400 still to come, so it's an estimate until the month closes.",
+    )
   })
 
   it('says the window is empty rather than printing a figure for no months', async () => {

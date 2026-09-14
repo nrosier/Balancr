@@ -128,6 +128,8 @@ export function buildOverview(db: Db): Overview {
       spentCents: entry.spentCents,
       budgetedCents: entry.budgetedCents,
       savingsRateBp: entry.savingsRateBp,
+      committedCents: entry.committedCents,
+      committedApproximate: entry.committedApproximate,
     })),
     totals:
       totals === null

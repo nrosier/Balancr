@@ -18,10 +18,17 @@ import { describe, expect, it } from 'vitest'
 import { absolutePeriodSavings, type SavingsMonth } from '../../src/domain/aggregate/savings.ts'
 
 /** A month of flows. Round, invented figures — this file never sees real ones. */
-const month = (key: string, incomeCents: number, spentCents: number): SavingsMonth => ({
+const month = (
+  key: string,
+  incomeCents: number,
+  spentCents: number,
+  committed: { cents: number; approximate?: boolean } = { cents: 0 },
+): SavingsMonth => ({
   month: key,
   incomeCents,
   spentCents,
+  committedCents: committed.cents,
+  committedApproximate: committed.approximate ?? false,
 })
 
 /**
@@ -153,6 +160,61 @@ describe('pro-rating a still-open period, mirroring benchmarkPeriodWindow', () =
     const result = absolutePeriodSavings(YEAR, 'year', '2026-08', ASOF, TZ)
     // 7 finished months (Jan–Jul) plus August's own fraction, out of a nominal 12.
     expect(result.periodProgressBp).toBe(Math.round(((7 + AUGUST_PROGRESS) / 12) * 10_000))
+  })
+})
+
+describe('folding in what is still to come (#361)', () => {
+  it('lowers the rate for the still-open month without changing the reported spend', () => {
+    const posted = absolutePeriodSavings(
+      [month('2026-08', 400_000, 300_000)],
+      'month',
+      '2026-08',
+      ASOF,
+      TZ,
+    )
+    const withCommitted = absolutePeriodSavings(
+      [month('2026-08', 400_000, 300_000, { cents: 40_000 })],
+      'month',
+      '2026-08',
+      ASOF,
+      TZ,
+    )
+    expect(withCommitted.rateBp).toBeLessThan(posted.rateBp as number)
+    // The rate moved; the figure the card labels "Spent" did not.
+    expect(withCommitted.spentCents).toBe(posted.spentCents)
+    expect(withCommitted.committedCents).toBe(40_000)
+    expect(withCommitted.rateBp).toBe(1_500) // (400 000 − 340 000) / 400 000
+  })
+
+  it('folds in whichever month of a year window is still open, with no special-casing', () => {
+    const history = [
+      ...YEAR.slice(0, -1),
+      month('2026-08', 400_000, 360_000, { cents: 50_000 }),
+    ]
+    const result = absolutePeriodSavings(history, 'year', '2026-08', ASOF, TZ)
+    expect(result.committedCents).toBe(50_000)
+    // Only the eight 2026 months the year window actually covers — not the two
+    // 2025 ones `YEAR` also carries either side of the boundary.
+    expect(result.spentCents).toBe(
+      YEAR.filter((m) => m.month >= '2026-01').reduce((sum, m) => sum + m.spentCents, 0),
+    )
+  })
+
+  it('leaves every finished month exactly as it was, since committed is zero there', () => {
+    const result = absolutePeriodSavings(YEAR, 'year', '2026-05', ASOF, TZ)
+    expect(result.committedCents).toBe(0)
+    expect(result.committedApproximate).toBe(false)
+  })
+
+  it('surfaces the approximate flag only when the committed amount it describes is present', () => {
+    const result = absolutePeriodSavings(
+      [month('2026-08', 400_000, 300_000, { cents: 40_000, approximate: true })],
+      'month',
+      '2026-08',
+      ASOF,
+      TZ,
+    )
+    expect(result.committedApproximate).toBe(true)
   })
 })
 
