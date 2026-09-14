@@ -937,6 +937,16 @@ export const insightsSchema = z.object({
   months: z.array(monthKey()),
   signals: z.array(signalSchema),
   /**
+   * Findings for the rest of `month`'s year (#352), one entry per month that has
+   * any stored signals, newest first. Empty unless `?signalsPeriod=year` was asked
+   * for — the common case is a single month and this field costs it nothing.
+   * Deliberately a list of months rather than a re-aggregated total: most signals
+   * (envelope carry-in, an EWMA baseline, "is today's price stale") have no
+   * year-shaped equivalent to compute, so a year widens what Findings shows by
+   * listing each month's own already-judged findings instead of summing anything.
+   */
+  signalsHistory: z.array(z.object({ month: monthKey(), signals: z.array(signalSchema) })),
+  /**
    * This month's below-threshold candidates, scoped the same way `signals`
    * is: sourced per month like `monthlySignals`, unlike the genuinely
    * unscoped `questions`/`proposals` below (#216).

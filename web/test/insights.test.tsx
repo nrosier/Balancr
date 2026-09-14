@@ -29,7 +29,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { BudgetNudge } from '../src/insights/BudgetNudge.tsx'
-import { Findings } from '../src/insights/Findings.tsx'
+import { Findings, type FindingsHistoryEntry } from '../src/insights/Findings.tsx'
 import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
 import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.tsx'
@@ -141,6 +141,7 @@ const FULL: InsightsPayload = {
   factsChangedAt: null,
   months: ['2026-08', '2026-07'],
   signals: SIGNALS,
+  signalsHistory: [],
   narrative: {
     period: '2026-08',
     locale: 'en',
@@ -238,6 +239,7 @@ const EMPTY: InsightsPayload = {
   factsChangedAt: null,
   months: [],
   signals: [],
+  signalsHistory: [],
   narrative: null,
   questions: [],
   proposals: [],
@@ -478,21 +480,20 @@ describe('the page', () => {
 
 /**
  * The one picker above the tab strip used to be unconditional; now which control shows,
- * if any, is the tab's own call (#345). Findings keeps its month-only shape because
- * nothing about what it asks the server for has changed; Narrative and Ledger can also
- * ask for a year, which is a picker mode rather than a second server-side shape — the
- * client still asks for one resolved `?month=`, with `?runsPeriod=year` riding alongside
- * it for the ledger's own widened query (see `routes/api/insights.ts`); and Pending gets
- * neither, since neither queue is a statement about any one month.
+ * if any, is the tab's own call (#345). Findings, Narrative and Ledger all get the
+ * month+year `PeriodPicker` (#352) — the client still asks for one resolved `?month=`,
+ * with `?runsPeriod=year`/`?signalsPeriod=year` riding alongside it for the ledger's and
+ * findings' own widened queries (see `routes/api/insights.ts`); and Pending gets neither,
+ * since neither queue is a statement about any one month.
  */
 describe('the per-tab picker (#345)', () => {
-  it('gives Findings the month-only picker, Narrative and Ledger the month+year one, and Pending neither', async () => {
+  it('gives Findings, Narrative and Ledger the month+year picker, and Pending neither', async () => {
     serve({ '/api/insights': json(FULL) })
 
     const findings = renderApp(<Insights />, { path: '/insights' })
     await screen.findByText('What stands out')
-    expect(screen.getByRole('combobox', { name: 'Month' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Month' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Month' })).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Month' })).toBeNull()
     findings.unmount()
 
     const narrative = renderApp(<Insights />, { path: '/insights/narrative' })
@@ -515,7 +516,7 @@ describe('the per-tab picker (#345)', () => {
   it('shows a notice instead of the review once a year is picked on Narrative, without hiding the budget nudge', async () => {
     const mock = serve({
       '/api/insights': json(FULL),
-      '/api/insights?month=2026-08&runsPeriod=year': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year': json(FULL),
     })
     renderApp(<Insights />, { path: '/insights/narrative' })
     await screen.findByText('August 2026 in words')
@@ -524,7 +525,7 @@ describe('the per-tab picker (#345)', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
     await waitFor(() =>
-      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year'),
+      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year'),
     )
     expect(
       screen.getByText(
@@ -540,7 +541,7 @@ describe('the per-tab picker (#345)', () => {
   it('goes back to the review once the picker is switched back to a month', async () => {
     serve({
       '/api/insights': json(FULL),
-      '/api/insights?month=2026-08&runsPeriod=year': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year': json(FULL),
     })
     renderApp(<Insights />, { path: '/insights/narrative' })
     await screen.findByText('August 2026 in words')
@@ -559,7 +560,7 @@ describe('the per-tab picker (#345)', () => {
     const YEAR_RUN: AiRun = { ...RUNS[0]!, id: 'run-january', period: '2026-01' }
     const mock = serve({
       '/api/insights': json(FULL),
-      '/api/insights?month=2026-08&runsPeriod=year': json({ ...FULL, runs: [...RUNS, YEAR_RUN] }),
+      '/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year': json({ ...FULL, runs: [...RUNS, YEAR_RUN] }),
     })
     renderApp(<Insights />, { path: '/insights/ledger' })
     await screen.findByText('What was sent')
@@ -569,15 +570,44 @@ describe('the per-tab picker (#345)', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
     await waitFor(() =>
-      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year'),
+      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year'),
     )
     await screen.findByText('The 4 most recent calls to the model, newest first.')
+  })
+
+  it('widens Findings to the whole year once a year is picked, via signalsPeriod=year', async () => {
+    const history: InsightsPayload['signalsHistory'] = [
+      { month: '2026-08', signals: SIGNALS },
+      { month: '2026-01', signals: [SIGNALS[2]!] },
+    ]
+    const mock = serve({
+      '/api/insights': json(FULL),
+      '/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year': json({
+        ...FULL,
+        signalsHistory: history,
+      } satisfies InsightsPayload),
+    })
+    renderApp(<Insights />, { path: '/insights' })
+    await screen.findByText('What stands out')
+    expect(screen.getByText('For August 2026')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+
+    await waitFor(() =>
+      expect(paths(mock)).toContain('/api/insights?month=2026-08&runsPeriod=year&signalsPeriod=year'),
+    )
+    // Both months from the widened history render, and the month view's own
+    // subheading is gone — this is a list of months, not last month's card again.
+    expect(await screen.findByText('August 2026')).toBeTruthy()
+    expect(screen.getByText('January 2026')).toBeTruthy()
+    expect(screen.queryByText('For August 2026')).toBeNull()
   })
 })
 
 describe('the findings', () => {
   it('groups by severity, worst first, and says the severity in words', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     // The order is `SEVERITY_RANK`'s, not this file's: a page that sorted its own way
     // could disagree with the ranking that chose which findings to keep.
@@ -589,7 +619,7 @@ describe('the findings', () => {
   })
 
   it('renders each sentence from the catalogue with the server’s numbers', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     expect(screen.getByText('Groceries is € 125,00 over its available balance.')).toBeTruthy()
     expect(
@@ -601,20 +631,20 @@ describe('the findings', () => {
   })
 
   it('drops a code it has no sentence for rather than printing the code', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     expect(screen.queryByText(/gremlins/)).toBeNull()
   })
 
   it('drops a finding missing a number rather than leaving a hole in the sentence', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     expect(screen.queryByText(/Clothing/)).toBeNull()
     expect(document.body.textContent ?? '').not.toContain('{{')
   })
 
   it('styles good news apart from a problem', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     // `below_baseline` is an `info` finding whose whole point is that nothing is
     // wrong, so it must not inherit the stripe of one that needs reading.
@@ -625,7 +655,7 @@ describe('the findings', () => {
   })
 
   it('names the month, because it is not always the current one', () => {
-    renderApp(<Findings signals={SIGNALS} month="2026-08" />)
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     expect(screen.getByText('For August 2026')).toBeTruthy()
   })
@@ -633,11 +663,44 @@ describe('the findings', () => {
   it('says nothing needs attention when the analysis found nothing statable', () => {
     // Only the two unrenderable signals: the server had findings, this bundle has
     // nothing faithful to say about them, and that is the honest sentence.
-    renderApp(<Findings signals={SIGNALS.slice(3)} month={null} />)
+    renderApp(<Findings signals={SIGNALS.slice(3)} history={[]} month={null} period={null} />)
 
     expect(screen.getByText('Nothing needs your attention.')).toBeTruthy()
     expect(screen.queryByRole('heading', { level: 3 })).toBeNull()
     expect(screen.queryByText(/^For /)).toBeNull()
+  })
+
+  it('lists each month of a year, newest first, skipping a month with nothing stored (#352)', () => {
+    const history: FindingsHistoryEntry[] = [
+      { month: '2026-08', signals: SIGNALS },
+      { month: '2026-07', signals: [] },
+      { month: '2026-06', signals: [SIGNALS[2]!] },
+    ]
+    renderApp(
+      <Findings signals={[]} history={history} month="2026-08" period={{ kind: 'year', value: '2026' }} />,
+    )
+
+    // August's own three severities, then June's single info finding — July is
+    // skipped entirely, and neither month is re-aggregated into a single total.
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'August 2026',
+      'Action needed',
+      'Attention',
+      'Info',
+      'June 2026',
+      'Info',
+    ])
+    expect(screen.queryByText('July 2026')).toBeNull()
+    // The month view's own subheading does not appear in year mode.
+    expect(screen.queryByText('For August 2026')).toBeNull()
+  })
+
+  it('says nothing needs attention when no month in the year has anything stored', () => {
+    renderApp(
+      <Findings signals={[]} history={[]} month="2026-08" period={{ kind: 'year', value: '2026' }} />,
+    )
+
+    expect(screen.getByText('Nothing needs your attention.')).toBeTruthy()
   })
 })
 
