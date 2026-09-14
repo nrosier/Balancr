@@ -6,6 +6,32 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.1.3] — 2026-09-14
+
+Rebuilds the Month/Year period picker and adds hoverable explanations to the
+scenario simulator's and Settings → Thresholds' inputs.
+
+### Added
+
+- **Custom Month/Year period picker** ([#345](https://github.com/nrosier/Balancr/issues/345)).
+  Replaces `react-multi-date-picker` with a compact, self-built control — a
+  sliding Month/Year pill toggle opening a popover with prev/next nav and a
+  4×3 grid, styled entirely from `theme/tokens.css` with no calendar library.
+  Months/years with no budget data are greyed out and unselectable; periods
+  with incomplete data (the in-progress month, a year missing some months)
+  stay selectable but their comparison figures — now including `SavingsRate`,
+  not just Benchmark — are pro-rated. Placement is unified: one page-level
+  picker drives all of Budget's tabs (Overview, Benchmark, Custody, Notes),
+  Overview gets its own independent picker, Insights' Narrative/Ledger tabs
+  gain a year alongside the existing month, and Portfolio's `?asOf=`
+  filtering is reverted in favor of always showing the latest snapshot.
+- **Hoverable field explanations** ([#346](https://github.com/nrosier/Balancr/issues/346)).
+  A new `InfoTip` control — the app's first hover/click-reveal tooltip
+  primitive — sits next to each input's label on the scenario simulator and
+  every one of Settings → Thresholds' ~22 tuning parameters, opening on
+  hover, focus or click and dismissing on blur, outside click or Escape.
+  Copy-only: no value, default, or validation behavior changes.
+
 ## [1.1.2] — 2026-09-14
 
 Restyles `SectionNav`'s tab strip ([#349](https://github.com/nrosier/Balancr/issues/349)).
