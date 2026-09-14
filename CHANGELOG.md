@@ -6,6 +6,21 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.2.0] — 2026-09-14
+
+The v1.1 polish batch is closed out, and net worth's Directly available figure
+no longer conflates on-budget and off-budget liquid money.
+
+### Changed
+
+- **Directly available splits into On budget and Off budget** ([#359](https://github.com/nrosier/Balancr/issues/359)).
+  #353 named off-budget accounts and summed them into net worth's total, but
+  Overview's Directly available row still mixed the two together — a reader
+  had no way to tell how much of it sits outside the budget without opening
+  Portfolio's off-budget list and subtracting by hand. The row now always
+  shows both sub-figures when there is anything off-budget and liquid;
+  Invested, Debt, Property value and Mortgage balance are unchanged.
+
 ## [1.1.6] — 2026-09-14
 
 Findings gets the Month/Year period picker the other Insights tabs already had,
