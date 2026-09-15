@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.2.1] — 2026-09-15
+
+The savings-rate card no longer reads better than an in-progress month will once
+it closes.
+
+### Fixed
+
+- **Savings rate folds in this month's committed-but-unspent money** ([#361](https://github.com/nrosier/Balancr/issues/361)).
+  The rate for a still-open month only divided by spend that had already
+  posted, so a schedule waiting to charge — rent, an insurance direct debit —
+  was invisible to it until the money actually left the account. The rate's
+  numerator now includes that committed spend, and the card names the amount
+  with an "estimate" caveat when it applies; the separately-printed Spent
+  figure keeps its existing posted-only meaning, which the Budget page's own
+  Spent card and the digest both still rely on.
+
 ## [1.2.0] — 2026-09-14
 
 The v1.1 polish batch is closed out, and net worth's Directly available figure
