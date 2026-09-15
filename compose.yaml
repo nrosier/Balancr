@@ -5,7 +5,7 @@
 # tunnel and Traefik, behind Authentik.
 services:
   balancr:
-    image: ${BALANCR_IMAGE:-nrosier/balancr:latest}
+    image: ${BALANCR_IMAGE:-niqck/balancr:latest}
     container_name: balancr
     restart: unless-stopped
     # PID 1 in Node does not reap children or forward signals on its own.
