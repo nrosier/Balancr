@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.1-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.2-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -993,14 +993,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.2.1` is the current release, a patch on top of
+**Where it is now** — `1.2.2` is the current release, a patch on top of
 `1.2.0`. Every feature issue in the list above is still closed; this slice
-fixes the savings-rate card, which divided only by spend that had already
-posted for a still-open month — a schedule waiting to charge was invisible to
-it until the money actually left the account. The rate now folds that
-committed spend in and names the amount when it does.
+moves the production image from Alpine to Chainguard's Wolfi-based glibc
+image, and fixes an npm install-script gate that was silently blocking a
+vendored native module's build.
 
-`docker pull` now resolves `latest` to `1.2.1`; a release candidate is published
+`docker pull` now resolves `latest` to `1.2.2`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
