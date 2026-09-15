@@ -59,8 +59,10 @@ function parse(argv) {
 const { root, arch } = parse(process.argv.slice(2))
 
 /**
- * Platform tags this image can execute. Alpine is musl, and `linux-<arch>` stays
- * because `argon2` publishes no musl build and is loaded through the glibc one.
+ * Platform tags this image can execute. Shared by both Dockerfiles (Chainguard's glibc
+ * runtime and Dockerfile.alpine's musl one), so both prebuild variants are kept rather
+ * than picked by libc: `linux-<arch>` stays because `argon2` publishes no musl build
+ * and is loaded through the glibc one even under Alpine.
  */
 const KEEP = new Set([`linux-${arch}`, `linuxmusl-${arch}`])
 

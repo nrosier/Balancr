@@ -873,9 +873,9 @@ garbage, restored, and the description read back.
 
 ## Hardening
 
-The container runs as `node`, on a read-only root filesystem, with every Linux
-capability dropped and `no-new-privileges` set. Everything writable is the one volume —
-SQLite and Actual's sync cache — plus a 64 MB `tmpfs` for `/tmp`.
+The container runs as UID 1000, non-root, on a read-only root filesystem, with every
+Linux capability dropped and `no-new-privileges` set. Everything writable is the one
+volume — SQLite and Actual's sync cache — plus a 64 MB `tmpfs` for `/tmp`.
 
 None of that is taken on trust, because all of it is configuration until something
 checks it. `scripts/verify-image.sh` starts the built image with exactly the flags
