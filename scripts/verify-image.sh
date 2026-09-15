@@ -30,12 +30,13 @@ set -euo pipefail
 
 IMAGE=${1:?usage: verify-image.sh <image>}
 PORT=${PORT:-3999}
-# Both ceilings are calibrated against the amd64 build CI produces — 410 MB and 1s at
-# the time of writing — because that is the artefact people run. A local build on a
-# different daemon reports a different size for the same image (the containerd store
-# reports the compressed size), so a local number under the ceiling proves nothing
-# about CI's, and the ceiling is set with room for both.
-IMAGE_MAX_MB=${IMAGE_MAX_MB:-500}
+# Both ceilings are calibrated against the amd64 build CI produces — 606 MB and 3s at
+# the time of writing (Chainguard's glibc/Wolfi runtime is a larger base than Alpine's
+# musl one was, hence the jump from the Alpine build's 410 MB) — because that is the
+# artefact people run. A local build on a different daemon reports a different size for
+# the same image (the containerd store reports the compressed size), so a local number
+# under the ceiling proves nothing about CI's, and the ceiling is set with room for both.
+IMAGE_MAX_MB=${IMAGE_MAX_MB:-650}
 STARTUP_MAX_S=${STARTUP_MAX_S:-8}
 
 NAME="balancr-verify-$$"
@@ -136,25 +137,25 @@ startup_s=$((ready - started))
 pass "answered /healthz in ${startup_s}s"
 
 # --- the posture --------------------------------------------------------------
-uid=$(docker exec "$NAME" id -u)
-if [ "$uid" = "0" ]; then
-  fail 'running as root'
-else
-  pass "running as uid $uid"
-fi
+#
+# No shell in the runtime image (Chainguard's non-dev tag ships no /bin/sh) and no
+# /etc/passwd entry for a bare numeric USER, so every probe below runs through
+# `node -e` instead of `sh -c` — the one thing every one of these images can run.
+uid=$(docker exec "$NAME" node -e 'process.stdout.write(String(process.getuid()))')
+# 1000, not 0 and not the base image's own nonroot default (65532): the Dockerfile
+# picks 1000 deliberately, to keep existing /data volumes writable, so this checks
+# that specific value rather than merely "not root". They can disagree — an
+# entrypoint that switches user, or a base image that renumbers its default — and
+# the whole point of a runtime check is to not take the Dockerfile's word for it.
+check 'running as uid 1000' '1000' "$uid"
 
-# `USER node` is the declaration; this is the observation. They can disagree — an
-# entrypoint that switches user, or a base image that renumbers node — and the whole
-# point of a runtime check is to not take the Dockerfile's word for it.
-check 'the user is node' 'node' "$(docker exec "$NAME" id -un)"
-
-if docker exec "$NAME" sh -c 'echo x > /app/probe' 2>/dev/null; then
+if docker exec "$NAME" node -e "require('fs').writeFileSync('/app/probe', 'x')" 2>/dev/null; then
   fail '/app is writable — the root filesystem is not read-only'
 else
   pass '/app is not writable'
 fi
 
-if docker exec "$NAME" sh -c 'echo x > /data/probe && rm /data/probe' 2>/dev/null; then
+if docker exec "$NAME" node -e "const fs=require('fs'); fs.writeFileSync('/data/probe', 'x'); fs.unlinkSync('/data/probe')" 2>/dev/null; then
   pass '/data is writable'
 else
   fail '/data is not writable — the volume is unusable'
@@ -162,7 +163,7 @@ fi
 
 # /tmp is the one exception compose grants, and something has to want it: Node writes
 # there for diagnostics and better-sqlite3 for temp stores under memory pressure.
-if docker exec "$NAME" sh -c 'echo x > /tmp/probe && rm /tmp/probe' 2>/dev/null; then
+if docker exec "$NAME" node -e "const fs=require('fs'); fs.writeFileSync('/tmp/probe', 'x'); fs.unlinkSync('/tmp/probe')" 2>/dev/null; then
   pass '/tmp is writable (tmpfs)'
 else
   fail '/tmp is not writable — a read-only rootfs needs it'
@@ -170,10 +171,10 @@ fi
 
 # All zeroes. Printed as the kernel prints it, because a partial drop is the
 # interesting failure and "some capabilities" is not a useful thing to report.
-caps=$(docker exec "$NAME" sh -c "grep '^CapEff' /proc/self/status | awk '{print \$2}'")
+caps=$(docker exec "$NAME" node -e "console.log(/^CapEff:\s*(\S+)/m.exec(require('fs').readFileSync('/proc/self/status', 'utf8'))[1])")
 check 'effective capabilities are empty' '0000000000000000' "$caps"
 
-nnp=$(docker exec "$NAME" sh -c "grep '^NoNewPrivs' /proc/self/status | awk '{print \$2}'")
+nnp=$(docker exec "$NAME" node -e "console.log(/^NoNewPrivs:\s*(\S+)/m.exec(require('fs').readFileSync('/proc/self/status', 'utf8'))[1])")
 check 'no-new-privileges is set' '1' "$nnp"
 
 # --- the native modules, all of them ------------------------------------------
@@ -256,7 +257,7 @@ summary=$(
 |---|---|
 | Size | ${size_mb} MB as the daemon reports it (tripwire ${IMAGE_MAX_MB} MB) |
 | Time to first \`/healthz\` | ${startup_s}s (tripwire ${STARTUP_MAX_S}s) |
-| User | ${uid} \`node\`, non-root |
+| User | ${uid}, non-root |
 | Root filesystem | read-only, \`/data\` and \`/tmp\` writable |
 | Capabilities | \`CapEff=${caps}\`, \`NoNewPrivs=${nnp}\` |
 | Health | ${health} |
