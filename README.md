@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -993,13 +993,14 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.2.0` is the current release. Every feature issue in
-the list above is still closed; this one claims the minor because the v1.1
-polish batch's last issue is closed, and Overview's Directly available figure
-no longer mixes on-budget and off-budget liquid money into one number —
-it now always splits into both when there is anything off-budget to show.
+**Where it is now** — `1.2.1` is the current release, a patch on top of
+`1.2.0`. Every feature issue in the list above is still closed; this slice
+fixes the savings-rate card, which divided only by spend that had already
+posted for a still-open month — a schedule waiting to charge was invisible to
+it until the money actually left the account. The rate now folds that
+committed spend in and names the amount when it does.
 
-`docker pull` now resolves `latest` to `1.2.0`; a release candidate is published
+`docker pull` now resolves `latest` to `1.2.1`; a release candidate is published
 under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
