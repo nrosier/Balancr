@@ -6,6 +6,25 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.2.2] — 2026-09-15
+
+The production image moves from Alpine to Chainguard's Wolfi-based glibc image.
+
+### Changed
+
+- **Production Docker image is now Chainguard/Wolfi-based (glibc), not Alpine (musl)** ([#363](https://github.com/nrosier/Balancr/issues/363)).
+  Native modules (`better-sqlite3`, `argon2`) are built end to end on a glibc
+  base, avoiding a musl/glibc mismatch. The container still runs as UID 1000
+  rather than the base image's own nonroot default, so every existing
+  self-hosted `/data` volume stays writable. The Alpine build is kept as
+  `Dockerfile.alpine`, a reference/fallback no longer built by CI.
+
+### Fixed
+
+- **npm's `allowScripts` gate was silently blocking a nested `better-sqlite3` install script** vendored inside `@actual-app/api`/`@actual-app/core`, which ships no prebuilt binary and needs it to compile from source ([#363](https://github.com/nrosier/Balancr/issues/363)).
+  A sync job would fail with "Could not locate the bindings file" rather than
+  loading the module. This affected the Alpine image too, not just Chainguard.
+
 ## [1.2.1] — 2026-09-15
 
 The savings-rate card no longer reads better than an in-progress month will once
