@@ -29,6 +29,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, monthlyTotals, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { AI_OFF_REASONS } from '../../src/domain/ai/availability.ts'
 import { auditValues, loadAuditTrail, type AuditRow } from '../../src/domain/audit.ts'
 import { initI18n } from '../../src/i18n/index.ts'
@@ -54,6 +55,7 @@ function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,

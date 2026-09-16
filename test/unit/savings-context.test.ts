@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { savingsContext, splitSavingsMonth } from '../../src/domain/aggregate/savings-context.ts'
 import type { BaselineResult } from '../../src/domain/aggregate/baseline.ts'
 import type { MonthlyFact } from '../../src/domain/aggregate/spend.ts'
@@ -52,16 +53,18 @@ function fact(id: string, spentCents: number, overrides: Partial<MonthlyFact> = 
 
 describe('the context, read off the database', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const meta = (id: string, nature: 'savings' | 'investments' | null): void => {
     ctx.db
       .insert(categoryMeta)
-      .values({ categoryId: id, nameSnapshot: id, nature })
+      .values({ tenantId: TENANT_ID, categoryId: id, nameSnapshot: id, nature })
       .run()
   }
 

@@ -1,0 +1,547 @@
+/**
+ * The Actual/Ghostfolio/Gemini connection screen (#369) — the one settings page whose
+ * fields are secrets.
+ *
+ * Three claims matter here, none of which is "the form saves":
+ *
+ *  - **A secret is never on the wire.** Not in `GET /api/settings`, not in a PATCH
+ *    response, not in the audit trail a PATCH writes. `*Configured` booleans stand in
+ *    for the value everywhere a value would otherwise be echoed back.
+ *  - **Omitting a secret key leaves the stored ciphertext untouched; sending `''` is
+ *    refused, never treated as "clear it."** The only way a stored secret changes is
+ *    a request that actually types a new one.
+ *  - **A test-connection call never saves anything and never throws for a bad
+ *    credential.** A wrong password is the expected outcome of a test, not a server
+ *    error — and it is refused outright while a job is in flight, because Actual's
+ *    client is a process-wide singleton a live sync must not share.
+ *
+ * Ghostfolio's test route makes a real `fetch`; Gemini's builds a real `GoogleGenAI`.
+ * Both are mocked here the same way `ghostfolio-adapter.test.ts` mocks the network:
+ * `vi.stubGlobal('fetch', ...)` for Ghostfolio, `vi.mock('@google/genai', ...)` for
+ * Gemini. Actual's test route forks a real child process (`test-connection.ts`), which
+ * a same-process mock cannot reach — so that module is mocked at its import boundary
+ * instead, the same way any other adapter call a route makes is mocked when testing
+ * the route rather than the adapter.
+ */
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
+import type { Db } from '../../src/db/index.ts'
+import { decryptField } from '../../src/db/field-crypto.ts'
+import { auditLog, tenantIntegrations, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { initI18n } from '../../src/i18n/index.ts'
+import { runJob, type Job } from '../../src/jobs/index.ts'
+import { buildApp } from '../../src/server/app.ts'
+import { createSession } from '../../src/server/auth/sessions.ts'
+import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
+import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
+import type { ErrorBody } from '../../src/server/errors.ts'
+import type { IntegrationTest, IntegrationsSetting, Settings } from '../../src/server/routes/api/schemas.ts'
+import { apiFixture } from '../helpers/api-fixture.ts'
+
+const genai = vi.hoisted(() => ({
+  calls: [] as unknown[],
+  behavior: 'ok' as 'ok' | 'fail',
+  failMessage: 'The API key is not valid.',
+}))
+
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn().mockImplementation(function (this: unknown, options: unknown) {
+    genai.calls.push(options)
+    return {
+      models: {
+        list: async () => {
+          if (genai.behavior === 'fail') throw new Error(genai.failMessage)
+          return { pageSize: 1 }
+        },
+      },
+    }
+  }),
+}))
+
+vi.mock('../../src/adapters/actual/test-connection.ts', () => ({
+  testActualConnection: vi.fn(),
+}))
+
+import { testActualConnection } from '../../src/adapters/actual/test-connection.ts'
+
+let ctx: ReturnType<typeof apiFixture>
+let app: FastifyInstance
+let owner: string
+let viewer: string
+
+function signIn(db: Db, role: 'owner' | 'viewer'): string {
+  const row = db
+    .insert(users)
+    .values({
+      tenantId: getSoleTenantId(db),
+      oidcSub: `sub-${crypto.randomUUID()}`,
+      email: `${role}@example.test`,
+      displayName: role,
+      locale: 'en',
+      role,
+    })
+    .returning()
+    .all()[0]
+  if (row === undefined) throw new Error('inserting the user returned no row')
+  return createSession(db, { userId: row.id, method: 'oidc', ip: undefined, userAgent: undefined }).token
+}
+
+const get = (url: string, token = owner) =>
+  app.inject({ method: 'GET', url, cookies: { [SESSION_COOKIE]: token } })
+
+function send(
+  method: 'PATCH' | 'POST',
+  url: string,
+  body: object = {},
+  options: { token?: string; csrf?: boolean } = {},
+) {
+  const csrf = newCsrfToken()
+  return app.inject({
+    method,
+    url,
+    payload: body,
+    cookies: {
+      [SESSION_COOKIE]: options.token ?? owner,
+      ...(options.csrf === false ? {} : { [CSRF_COOKIE]: csrf }),
+    },
+    headers: options.csrf === false ? {} : { [CSRF_HEADER]: csrf },
+  })
+}
+
+const patch = (url: string, body: object, options?: { token?: string; csrf?: boolean }) =>
+  send('PATCH', url, body, options)
+const post = (url: string, body: object = {}, options?: { token?: string; csrf?: boolean }) =>
+  send('POST', url, body, options)
+
+/** The one `tenant_integrations` row, read fresh — never trusted from before a write. */
+function row(db: Db) {
+  const tenantId = getSoleTenantId(db)
+  const found = db.select().from(tenantIntegrations).where(eq(tenantIntegrations.tenantId, tenantId)).all()[0]
+  if (found === undefined) throw new Error('no tenantIntegrations row')
+  return found
+}
+
+const lastAudit = (db: Db) => db.select().from(auditLog).all().at(-1)
+
+beforeAll(async () => {
+  await initI18n()
+})
+
+beforeEach(async () => {
+  ctx = apiFixture()
+  app = await buildApp({ db: ctx.db, web: null })
+  owner = signIn(ctx.db, 'owner')
+  viewer = signIn(ctx.db, 'viewer')
+  genai.calls = []
+  genai.behavior = 'ok'
+  vi.mocked(testActualConnection).mockReset()
+})
+
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  await app.close()
+  ctx.sqlite.close()
+})
+
+describe('GET /api/settings', () => {
+  it('describes what is stored and which secrets are set, never a secret itself', async () => {
+    const settings = (await get('/api/settings')).json<Settings>()
+
+    expect(settings.integrations).toEqual({
+      actual: {
+        serverUrl: 'http://actual.test:5006',
+        syncId: 'test-sync-id',
+        passwordConfigured: true,
+        e2ePasswordConfigured: false,
+      },
+      ghostfolio: { url: 'http://ghostfolio.test:3333', tokenConfigured: true },
+      gemini: { provider: 'aistudio', apiKeyConfigured: true, googleCloudProject: null },
+    } satisfies IntegrationsSetting)
+  })
+
+  it('never puts a raw secret anywhere in the response body', async () => {
+    const body = (await get('/api/settings')).body
+    expect(body).not.toContain('test-password')
+    expect(body).not.toContain('test-token')
+    expect(body).not.toContain('test-key')
+  })
+})
+
+describe('PATCH /api/settings/integrations/actual', () => {
+  it('updates the plain fields and answers with the whole settings payload', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'sync-id-2',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.actual.serverUrl).toBe('http://actual2.test:5006')
+    expect(row(ctx.db).actualSyncId).toBe('sync-id-2')
+  })
+
+  it('leaves the stored password untouched when the key is omitted', async () => {
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'test-sync-id',
+    })
+
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
+  })
+
+  it('replaces the stored password only when one is typed', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      password: 'new-password',
+    })
+
+    expect(res.json<Settings>().integrations.actual.passwordConfigured).toBe(true)
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('new-password')
+  })
+
+  it('sets, then clears back to unconfigured is not possible — an e2e password can only be replaced', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      e2ePassword: 'e2e-secret',
+    })
+
+    expect(res.json<Settings>().integrations.actual.e2ePasswordConfigured).toBe(true)
+    expect(decryptField(row(ctx.db).actualE2ePasswordEnc as string)).toBe('e2e-secret')
+  })
+
+  it('refuses an empty server URL rather than storing a blank one', async () => {
+    const res = await patch('/api/settings/integrations/actual', { serverUrl: '', syncId: 'test-sync-id' })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['serverUrl'])
+    expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
+  })
+
+  it('refuses an empty password rather than treating it as "clear it"', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      password: '',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
+  })
+
+  it('records before/after as the configured-shape, never a secret', async () => {
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'test-sync-id',
+      password: 'new-password',
+    })
+
+    const entry = lastAudit(ctx.db)
+    expect(entry?.action).toBe('settings.integrations')
+    const afterJson = entry?.afterJson ?? '{}'
+    expect(afterJson).not.toContain('new-password')
+    expect(JSON.parse(afterJson)).toEqual({
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'test-sync-id',
+      passwordConfigured: true,
+      e2ePasswordConfigured: false,
+    })
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await patch(
+      '/api/settings/integrations/actual',
+      { serverUrl: 'http://actual2.test:5006', syncId: 'test-sync-id' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
+  })
+})
+
+describe('PATCH /api/settings/integrations/ghostfolio', () => {
+  it('updates the URL and leaves the token untouched when omitted', async () => {
+    const res = await patch('/api/settings/integrations/ghostfolio', { url: 'http://ghostfolio2.test:3333' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.ghostfolio.url).toBe('http://ghostfolio2.test:3333')
+    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
+  })
+
+  it('replaces the stored token only when one is typed', async () => {
+    await patch('/api/settings/integrations/ghostfolio', {
+      url: 'http://ghostfolio.test:3333',
+      securityToken: 'new-token',
+    })
+
+    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('new-token')
+  })
+
+  it('refuses an empty URL', async () => {
+    const res = await patch('/api/settings/integrations/ghostfolio', { url: '' })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['url'])
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await patch(
+      '/api/settings/integrations/ghostfolio',
+      { url: 'http://ghostfolio2.test:3333' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(row(ctx.db).ghostfolioUrl).toBe('http://ghostfolio.test:3333')
+  })
+})
+
+describe('PATCH /api/settings/integrations/gemini', () => {
+  it('replaces the stored API key only when one is typed', async () => {
+    const res = await patch('/api/settings/integrations/gemini', {
+      provider: 'aistudio',
+      googleCloudProject: null,
+      apiKey: 'new-key',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(decryptField(row(ctx.db).geminiApiKeyEnc as string)).toBe('new-key')
+  })
+
+  it('leaves the stored API key untouched when omitted', async () => {
+    await patch('/api/settings/integrations/gemini', { provider: 'aistudio', googleCloudProject: null })
+    expect(decryptField(row(ctx.db).geminiApiKeyEnc as string)).toBe('test-key')
+  })
+
+  it('sends null, not an empty string, to clear the Google Cloud project', async () => {
+    await patch('/api/settings/integrations/gemini', {
+      provider: 'vertex',
+      googleCloudProject: 'my-project',
+    })
+    expect(row(ctx.db).googleCloudProject).toBe('my-project')
+
+    await patch('/api/settings/integrations/gemini', { provider: 'aistudio', googleCloudProject: null })
+    expect(row(ctx.db).googleCloudProject).toBeNull()
+  })
+
+  it('refuses an empty-string Google Cloud project rather than storing a blank one', async () => {
+    const res = await patch('/api/settings/integrations/gemini', {
+      provider: 'vertex',
+      googleCloudProject: '',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['googleCloudProject'])
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await patch(
+      '/api/settings/integrations/gemini',
+      { provider: 'vertex', googleCloudProject: 'my-project' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(row(ctx.db).geminiProvider).toBe('aistudio')
+  })
+})
+
+describe('POST /api/settings/integrations/actual/test', () => {
+  it('reports success without writing anything to the stored row', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'other-sync',
+      password: 'candidate-password',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+    expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
+    expect(vi.mocked(testActualConnection)).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: 'http://actual2.test:5006', password: 'candidate-password' }),
+    )
+  })
+
+  it('reports the failure message rather than throwing', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: false, message: 'Wrong password.' })
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      password: 'wrong',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: false, message: 'Wrong password.' })
+  })
+
+  it('refuses with 409 while a job is in flight, naming what is busy', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fakeJob: Job = {
+      name: 'sync',
+      schedule: { kind: 'interval', minutes: 60 },
+      run: async () => {
+        await gate
+      },
+    }
+    const running = runJob(ctx.db, fakeJob)
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      password: 'candidate',
+    })
+
+    expect(res.statusCode).toBe(409)
+    expect(res.json<ErrorBody>().error.code).toBe('conflict')
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+
+    release()
+    await running
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await post(
+      '/api/settings/integrations/actual/test',
+      { serverUrl: 'http://actual.test:5006', syncId: 'test-sync-id', password: 'candidate' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/settings/integrations/ghostfolio/test', () => {
+  function stubFetch(behavior: 'ok' | 'health-down' | 'auth-down'): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(String(input))
+        if (url.pathname === '/api/v1/health') {
+          return new Response(JSON.stringify({ status: 'OK' }), {
+            status: behavior === 'health-down' ? 503 : 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        if (url.pathname === '/api/v1/auth/anonymous') {
+          return new Response(JSON.stringify({ authToken: 'jwt-1' }), {
+            status: behavior === 'auth-down' ? 401 : 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        return new Response(null, { status: 404 })
+      }),
+    )
+  }
+
+  it('reports success for a reachable, authenticating server', async () => {
+    stubFetch('ok')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio2.test:3333',
+      securityToken: 'candidate-token',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+    expect(row(ctx.db).ghostfolioUrl).toBe('http://ghostfolio.test:3333')
+  })
+
+  it('reports why the health check failed rather than throwing', async () => {
+    stubFetch('health-down')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio2.test:3333',
+      securityToken: 'candidate-token',
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json<IntegrationTest>()
+    expect(body.ok).toBe(false)
+    expect(body.message).toContain('503')
+  })
+
+  it('reports an authentication failure', async () => {
+    stubFetch('auth-down')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio2.test:3333',
+      securityToken: 'wrong-token',
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json<IntegrationTest>()
+    expect(body.ok).toBe(false)
+    expect(body.message).toContain('Authentication failed')
+  })
+
+  it('is refused for a viewer', async () => {
+    stubFetch('ok')
+    const res = await post(
+      '/api/settings/integrations/ghostfolio/test',
+      { url: 'http://ghostfolio2.test:3333', securityToken: 'candidate-token' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+  })
+})
+
+describe('POST /api/settings/integrations/gemini/test', () => {
+  it('reports success for a working AI Studio key', async () => {
+    genai.behavior = 'ok'
+
+    const res = await post('/api/settings/integrations/gemini/test', {
+      provider: 'aistudio',
+      apiKey: 'candidate-key',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+    expect(genai.calls).toContainEqual({ apiKey: 'candidate-key' })
+  })
+
+  it('reports the SDK failure message rather than throwing', async () => {
+    genai.behavior = 'fail'
+    genai.failMessage = 'The API key is not valid.'
+
+    const res = await post('/api/settings/integrations/gemini/test', {
+      provider: 'aistudio',
+      apiKey: 'bad-key',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: false, message: 'The API key is not valid.' })
+  })
+
+  it('requires a project to test a Vertex connection', async () => {
+    const res = await post('/api/settings/integrations/gemini/test', { provider: 'vertex' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('requires an API key to test an AI Studio connection', async () => {
+    const res = await post('/api/settings/integrations/gemini/test', { provider: 'aistudio' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('builds a Vertex client from the candidate project, not the stored one', async () => {
+    genai.behavior = 'ok'
+    await post('/api/settings/integrations/gemini/test', {
+      provider: 'vertex',
+      googleCloudProject: 'candidate-project',
+    })
+    expect(genai.calls).toContainEqual(
+      expect.objectContaining({ vertexai: true, project: 'candidate-project' }),
+    )
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await post(
+      '/api/settings/integrations/gemini/test',
+      { provider: 'aistudio', apiKey: 'candidate-key' },
+      { token: viewer },
+    )
+    expect(res.statusCode).toBe(403)
+    expect(genai.calls).toHaveLength(0)
+  })
+})

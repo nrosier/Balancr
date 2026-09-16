@@ -131,6 +131,7 @@ const fact = (overrides: Partial<MonthlyFact> = {}): MonthlyFact => ({
 })
 
 const meta = (overrides: Partial<CategoryMetaRow> = {}): CategoryMetaRow => ({
+  tenantId: 'tenant-fixture',
   categoryId: 'cat-groceries',
   nameSnapshot: 'Groceries',
   isIncome: false,
@@ -148,6 +149,7 @@ const meta = (overrides: Partial<CategoryMetaRow> = {}): CategoryMetaRow => ({
 })
 
 const account = (overrides: Partial<AccountMapRow> = {}): AccountMapRow => ({
+  tenantId: 'tenant-fixture',
   id: 'a1b2c3d4-0000-4000-8000-000000000001',
   source: 'actual',
   externalId: 'acct-current',

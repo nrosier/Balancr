@@ -26,6 +26,7 @@ import { Secret, TOTP } from 'otpauth'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { localCredentials, sessions, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { ARGON2_OPTIONS, TOTP_PERIOD_SECONDS } from '../../src/server/auth/local.ts'
 import { CSRF_COOKIE, LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
@@ -55,7 +56,7 @@ beforeEach(async () => {
 
   const row = ctx.db
     .insert(users)
-    .values({ email: EMAIL, displayName: 'Nick', role: 'owner' })
+    .values({ tenantId: getSoleTenantId(ctx.db), email: EMAIL, displayName: 'Nick', role: 'owner' })
     .returning()
     .all()[0]
   if (row === undefined) throw new Error('fixture user was not created')

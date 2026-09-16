@@ -213,6 +213,40 @@
     "noneYet": "Nothing aggregated yet",
     "title": "Data window"
   },
+  "integrations": {
+    "actual": {
+      "e2ePassword": "End-to-end encryption password",
+      "hint": "The Actual Budget instance Balancr syncs transactions and balances from.",
+      "password": "Password",
+      "serverUrl": "Server URL",
+      "syncId": "Sync ID",
+      "title": "Actual"
+    },
+    "configured": "Configured",
+    "gemini": {
+      "apiKey": "API key",
+      "googleCloudProject": "Google Cloud project",
+      "hint": "The Gemini account the AI assistant runs on.",
+      "provider": {
+        "aistudio": "Google AI Studio",
+        "vertex": "Vertex AI"
+      },
+      "providerLabel": "Provider",
+      "title": "Gemini"
+    },
+    "ghostfolio": {
+      "hint": "The Ghostfolio instance Balancr reads portfolio holdings from.",
+      "securityToken": "Security token",
+      "title": "Ghostfolio",
+      "url": "URL"
+    },
+    "notConfigured": "Not configured",
+    "secretUnchanged": "Leave blank to keep the stored value.",
+    "test": "Test connection",
+    "testOk": "Connected successfully.",
+    "testing": "Testing…",
+    "title": "Integrations"
+  },
   "language": {
     "en": "English",
     "hint": "Amounts and dates stay in Belgian format in every language.",
@@ -223,6 +257,7 @@
     "accounts": "Accounts",
     "benchmark": "Benchmark",
     "general": "General",
+    "integrations": "Integrations",
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",

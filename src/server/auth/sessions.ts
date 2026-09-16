@@ -52,6 +52,7 @@ export const hashSessionToken = (token: string): string =>
 
 export interface SessionUser {
   id: string
+  tenantId: string
   email: string | null
   displayName: string | null
   locale: string
@@ -131,6 +132,7 @@ export function readSession(db: Db, token: string): ResolvedSession | null {
       userId: sessions.userId,
       method: sessions.method,
       expiresAt: sessions.expiresAt,
+      userTenantId: users.tenantId,
       userEmail: users.email,
       userDisplayName: users.displayName,
       userLocale: users.locale,
@@ -164,6 +166,7 @@ export function readSession(db: Db, token: string): ResolvedSession | null {
     session: { id: row.id, userId: row.userId, method: row.method, expiresAt },
     user: {
       id: row.userId,
+      tenantId: row.userTenantId,
       email: row.userEmail,
       displayName: row.userDisplayName,
       locale: row.userLocale,

@@ -37,8 +37,10 @@ import {
   users,
 } from '../../src/db/schema.ts'
 import { resetComputedData } from '../../src/domain/aggregate/reset.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 const COMPUTED_TABLES = [
   { name: 'monthly_category_facts', table: monthlyCategoryFacts },
@@ -55,6 +57,7 @@ const COMPUTED_TABLES = [
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 /** One row in every table Balancr has, computed and durable alike. */
@@ -63,7 +66,7 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
 
   const [user] = db
     .insert(users)
-    .values({ id: 'user-1', email: 'owner@example.com', role: 'owner' })
+    .values({ id: 'user-1', tenantId: TENANT_ID, email: 'owner@example.com', role: 'owner' })
     .returning({ id: users.id })
     .all()
   const userId = user!.id
@@ -79,20 +82,26 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
 
   const [account] = db
     .insert(accountMap)
-    .values({ id: 'account-1', source: 'actual', externalId: 'ext-1', name: 'Checking' })
+    .values({
+      id: 'account-1',
+      tenantId: TENANT_ID,
+      source: 'actual',
+      externalId: 'ext-1',
+      name: 'Checking',
+    })
     .returning({ id: accountMap.id })
     .all()
   const accountMapId = account!.id
 
   db.insert(categoryMeta)
-    .values({ categoryId: 'cat-1', nameSnapshot: 'Nutsvoorzieningen' })
+    .values({ tenantId: TENANT_ID, categoryId: 'cat-1', nameSnapshot: 'Nutsvoorzieningen' })
     .run()
 
   db.insert(clarificationQueue)
-    .values({ id: 'clar-1', categoryId: 'cat-1', questionCode: 'frequency' })
+    .values({ id: 'clar-1', tenantId: TENANT_ID, categoryId: 'cat-1', questionCode: 'frequency' })
     .run()
 
-  db.insert(settings).values({ key: 'locale', valueJson: '"nl"' }).run()
+  db.insert(settings).values({ tenantId: TENANT_ID, key: 'locale', valueJson: '"nl"' }).run()
 
   db.insert(prompts)
     .values({ id: 'prompt-1', key: 'analysis.system', locale: 'nl', version: 1, body: 'x' })
@@ -102,6 +111,7 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     .insert(aiRuns)
     .values({
       id: 'run-1',
+      tenantId: TENANT_ID,
       kind: 'findings',
       model: 'gemini-x',
       locale: 'nl',
@@ -112,25 +122,43 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     .all()
   const runId = run!.id
 
-  db.insert(aiFindings).values({ id: 'finding-1', runId, code: 'above_baseline' }).run()
+  db.insert(aiFindings)
+    .values({ id: 'finding-1', tenantId: TENANT_ID, runId, code: 'above_baseline' })
+    .run()
   db.insert(aiNarratives)
-    .values({ id: 'narrative-1', runId, period: '2026-08', locale: 'nl', bodyMd: 'x' })
+    .values({
+      id: 'narrative-1',
+      tenantId: TENANT_ID,
+      runId,
+      period: '2026-08',
+      locale: 'nl',
+      bodyMd: 'x',
+    })
     .run()
 
   db.insert(proposals)
-    .values({ id: 'proposal-1', type: 'category_meta.set', targetRef: 'cat-1', payloadJson: '{}' })
+    .values({
+      id: 'proposal-1',
+      tenantId: TENANT_ID,
+      type: 'category_meta.set',
+      targetRef: 'cat-1',
+      payloadJson: '{}',
+    })
     .run()
 
   db.insert(auditLog)
     .values({ id: 'audit-1', action: 'jobs.refresh', entity: 'jobs', entityRef: 'refresh' })
     .run()
 
-  db.insert(jobs).values({ name: 'sync' }).run()
+  db.insert(jobs).values({ name: 'sync', tenantId: TENANT_ID }).run()
 
-  db.insert(monthlyCategoryFacts).values({ month: '2026-08', categoryId: 'cat-1' }).run()
-  db.insert(monthlyTotals).values({ month: '2026-08' }).run()
+  db.insert(monthlyCategoryFacts)
+    .values({ tenantId: TENANT_ID, month: '2026-08', categoryId: 'cat-1' })
+    .run()
+  db.insert(monthlyTotals).values({ tenantId: TENANT_ID, month: '2026-08' }).run()
   db.insert(recomputeMismatches)
     .values({
+      tenantId: TENANT_ID,
       month: '2026-08',
       categoryId: 'cat-1',
       categoryName: 'Nutsvoorzieningen',
@@ -140,10 +168,11 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     })
     .run()
   db.insert(monthlyHygiene)
-    .values({ month: '2026-08', scoreBp: 10_000, deductionsJson: '[]' })
+    .values({ tenantId: TENANT_ID, month: '2026-08', scoreBp: 10_000, deductionsJson: '[]' })
     .run()
   db.insert(monthlySignals)
     .values({
+      tenantId: TENANT_ID,
       month: '2026-08',
       code: 'above_baseline',
       subjectKey: 'cat-1',
@@ -153,6 +182,7 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     .run()
   db.insert(categoryGuessCandidates)
     .values({
+      tenantId: TENANT_ID,
       month: '2026-08',
       transactionId: 'txn-1',
       payeeId: 'payee-1',
@@ -162,10 +192,11 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     })
     .run()
   db.insert(netWorthSnapshots)
-    .values({ date: '2026-08-15', accountMapId, valueCents: 100_000 })
+    .values({ tenantId: TENANT_ID, date: '2026-08-15', accountMapId, valueCents: 100_000 })
     .run()
   db.insert(portfolioSnapshots)
     .values({
+      tenantId: TENANT_ID,
       date: '2026-08-15',
       instrument: 'IE00B4L5Y983',
       quantity: '1.5',
@@ -173,7 +204,7 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
       valueCents: 12_000,
     })
     .run()
-  db.insert(portfolioMetrics).values({ date: '2026-08-15' }).run()
+  db.insert(portfolioMetrics).values({ tenantId: TENANT_ID, date: '2026-08-15' }).run()
 
   return { userId, accountMapId, runId }
 }

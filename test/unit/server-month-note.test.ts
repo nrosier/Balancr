@@ -8,6 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadMonthNote, MONTH_NOTE_MAX_CHARS } from '../../src/domain/ai/month-note.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
@@ -25,6 +26,7 @@ function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,

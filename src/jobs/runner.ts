@@ -18,6 +18,7 @@
 import { and, desc, eq, notInArray } from 'drizzle-orm'
 import type { Db } from '../db/index.ts'
 import { jobRuns as jobRunsTable, jobs as jobsTable } from '../db/schema.ts'
+import { getSoleTenantId } from '../db/tenant.ts'
 import { config } from '../config.ts'
 import { logger } from '../logger.ts'
 import type { Logger } from '../logger.ts'
@@ -115,9 +116,10 @@ export type JobRow = typeof jobsTable.$inferSelect
 export type JobRunRow = typeof jobRunsTable.$inferSelect
 
 function upsert(db: Db, name: string, set: Partial<JobRow>): void {
+  const tenantId = getSoleTenantId(db)
   db.insert(jobsTable)
-    .values({ name, ...set })
-    .onConflictDoUpdate({ target: jobsTable.name, set })
+    .values({ tenantId, name, ...set })
+    .onConflictDoUpdate({ target: [jobsTable.tenantId, jobsTable.name], set })
     .run()
 }
 
@@ -206,7 +208,13 @@ export function runJob(
 
     upsert(db, job.name, { status: 'running', lastRunAt: now, error: null })
     db.insert(jobRunsTable)
-      .values({ id: runId, jobName: job.name, status: 'running', startedAt: now })
+      .values({
+        id: runId,
+        tenantId: getSoleTenantId(db),
+        jobName: job.name,
+        status: 'running',
+        startedAt: now,
+      })
       .run()
     jobLog.debug({ schedule: describeSchedule(job.schedule) }, 'job started')
 

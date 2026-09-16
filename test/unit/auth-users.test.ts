@@ -18,6 +18,7 @@ import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { OidcIdentity } from '../../src/server/auth/oidc.ts'
 import { upsertOidcUser } from '../../src/server/auth/users.ts'
 import { HttpError } from '../../src/server/errors.ts'
@@ -39,7 +40,7 @@ const identity = (over: Partial<OidcIdentity> = {}): OidcIdentity => ({
 function localAccount(db: Db): string {
   const row = db
     .insert(users)
-    .values({ oidcSub: null, email: 'break@glass.test', role: 'owner' })
+    .values({ tenantId: getSoleTenantId(db), oidcSub: null, email: 'break@glass.test', role: 'owner' })
     .returning()
     .all()[0]
   if (row === undefined) throw new Error('no user')

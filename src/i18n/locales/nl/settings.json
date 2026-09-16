@@ -213,6 +213,40 @@
     "noneYet": "Nog niets geaggregeerd",
     "title": "Gegevensvenster"
   },
+  "integrations": {
+    "actual": {
+      "e2ePassword": "Wachtwoord voor eind-tot-eindversleuteling",
+      "hint": "De Actual Budget-instantie waarvan Balancr verrichtingen en saldi synchroniseert.",
+      "password": "Wachtwoord",
+      "serverUrl": "Server-URL",
+      "syncId": "Sync-ID",
+      "title": "Actual"
+    },
+    "configured": "Ingesteld",
+    "gemini": {
+      "apiKey": "API-sleutel",
+      "googleCloudProject": "Google Cloud-project",
+      "hint": "Het Gemini-account waarop de AI-assistent draait.",
+      "provider": {
+        "aistudio": "Google AI Studio",
+        "vertex": "Vertex AI"
+      },
+      "providerLabel": "Leverancier",
+      "title": "Gemini"
+    },
+    "ghostfolio": {
+      "hint": "De Ghostfolio-instantie waarvan Balancr portefeuilleposities leest.",
+      "securityToken": "Beveiligingstoken",
+      "title": "Ghostfolio",
+      "url": "URL"
+    },
+    "notConfigured": "Niet ingesteld",
+    "secretUnchanged": "Laat leeg om de opgeslagen waarde te behouden.",
+    "test": "Verbinding testen",
+    "testOk": "Verbinding gelukt.",
+    "testing": "Aan het testen…",
+    "title": "Integraties"
+  },
   "language": {
     "en": "Engels",
     "hint": "Bedragen en datums blijven in elke taal in Belgisch formaat.",
@@ -223,6 +257,7 @@
     "accounts": "Rekeningen",
     "benchmark": "Vergelijking",
     "general": "Algemeen",
+    "integrations": "Integraties",
     "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",
