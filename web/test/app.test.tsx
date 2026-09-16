@@ -43,20 +43,20 @@ const ANONYMOUS: SessionResponse = {
 
 const SIGNED_IN: SessionResponse = {
   authenticated: true,
-  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
+  user: { tenantId: 'tenant-1', email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
   methods: { oidc: true, local: false },
 }
 
 /** The same account, with a language `/bootstrap` could not have known about. */
 const DUTCH_ACCOUNT: SessionResponse = {
   ...SIGNED_IN,
-  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'nl', role: 'owner' },
+  user: { tenantId: 'tenant-1', email: 'nick@example.com', displayName: 'Nick', locale: 'nl', role: 'owner' },
 }
 
 /** A locale the deployment does not serve — `SUPPORTED_LOCALES` is `en,nl`. */
 const FRENCH_ACCOUNT: SessionResponse = {
   ...SIGNED_IN,
-  user: { email: 'nick@example.com', displayName: 'Nick', locale: 'fr', role: 'owner' },
+  user: { tenantId: 'tenant-1', email: 'nick@example.com', displayName: 'Nick', locale: 'fr', role: 'owner' },
 }
 
 const json = (body: unknown, status = 200): Response =>
