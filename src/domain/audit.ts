@@ -124,6 +124,15 @@ export const AUDIT_ACTIONS = [
    */
   'settings.property',
   /**
+   * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
+   *
+   * `before`/`after` never carry a secret — only the same `*Configured` shape the
+   * settings screen itself sees — so this trail can answer "who pointed this
+   * instance at a different Actual server, and when" without becoming a second
+   * place a password could leak from.
+   */
+  'settings.integrations',
+  /**
    * A job someone started by hand.
    *
    * The odd one out, and worth saying why it belongs. Nothing a refresh writes is

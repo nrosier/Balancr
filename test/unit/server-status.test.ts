@@ -30,6 +30,7 @@ import { ghostfolioCheck, jobsCheck } from '../../src/server/routes/api/status.t
 import type { Status } from '../../src/server/routes/api/schemas.ts'
 import type { JobRow } from '../../src/jobs/index.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -39,6 +40,7 @@ function signIn(db: Db): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: 'nick@example.test',
       displayName: 'Nick',
@@ -279,6 +281,7 @@ describe('/api/status', () => {
 
 describe('the two verdicts that depend on more than a row', () => {
   const row = (over: Partial<JobRow> = {}): JobRow => ({
+    tenantId: 'tenant-fixture',
     name: 'sync',
     status: 'ok',
     lastRunAt: new Date(),

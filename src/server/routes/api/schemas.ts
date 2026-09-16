@@ -1508,6 +1508,45 @@ export const propertiesSettingSchema = z.object({
   properties: z.array(propertySchema),
 })
 
+/**
+ * The Actual/Ghostfolio/Gemini connection this tenant uses (#369).
+ *
+ * A secret is never on this wire, in either direction: `passwordConfigured` and
+ * its siblings are booleans, not the value they describe, for the same reason a
+ * TOTP secret is never re-readable once set. The plain fields (`serverUrl`,
+ * `syncId`, `url`, `provider`, `googleCloudProject`) are not secrets — they say
+ * *which* account this is, not how to get into it — so they round-trip as-is and
+ * the settings form can show them without a "configured" dance.
+ */
+export const integrationsSettingSchema = z.object({
+  actual: z.object({
+    serverUrl: z.string(),
+    syncId: z.string(),
+    passwordConfigured: z.boolean(),
+    e2ePasswordConfigured: z.boolean(),
+  }),
+  ghostfolio: z.object({
+    url: z.string(),
+    tokenConfigured: z.boolean(),
+  }),
+  gemini: z.object({
+    provider: z.enum(['aistudio', 'vertex']),
+    apiKeyConfigured: z.boolean(),
+    googleCloudProject: z.string().nullable(),
+  }),
+})
+
+/**
+ * `POST /api/settings/integrations/{actual,ghostfolio,gemini}/test` — thin like
+ * `aiDryRunSchema`'s siblings, and for the same reason: nothing is persisted by a
+ * test, so there is no settings payload to return, only whether the candidate
+ * credential worked and, when it did not, a sentence a person can act on.
+ */
+export const integrationTestSchema = z.object({
+  ok: z.boolean(),
+  message: z.string().nullable(),
+})
+
 export const settingsSchema = z.object({
   /**
    * Which build is answering.
@@ -1548,6 +1587,8 @@ export const settingsSchema = z.object({
   benchmark: benchmarkSettingSchema,
   /** The owned properties and their mortgages, tracked by Balancr rather than Ghostfolio (#227). */
   property: propertiesSettingSchema,
+  /** The Actual/Ghostfolio/Gemini connection this tenant uses (#369). */
+  integrations: integrationsSettingSchema,
   prompts: z.array(promptSchema),
   accounts: z.array(accountSettingSchema),
   /**
@@ -1963,6 +2004,8 @@ export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
+export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
+export type IntegrationTest = z.infer<typeof integrationTestSchema>
 export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>
 export type BenchmarkGroupLine = z.infer<typeof benchmarkGroupSchema>
 export type CustodyWire = z.infer<typeof custodySplitSchema>

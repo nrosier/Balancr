@@ -14,6 +14,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryGuessCandidates, monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import type { CategoryHistorySample } from './proposal-rules.ts'
 import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
@@ -48,8 +49,10 @@ export function persistSignals(
   hygiene: HygieneScore,
   factsHash: string | null = null,
 ): SignalPersistResult {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = signals.map((signal) => ({
+    tenantId,
     month,
     code: signal.code,
     subjectKey: subjectKey(signal),
@@ -68,6 +71,7 @@ export function persistSignals(
 
     tx.insert(monthlyHygiene)
       .values({
+        tenantId,
         month,
         scoreBp: hygiene.scoreBp,
         deductionsJson,
@@ -75,7 +79,7 @@ export function persistSignals(
         computedAt,
       })
       .onConflictDoUpdate({
-        target: monthlyHygiene.month,
+        target: [monthlyHygiene.tenantId, monthlyHygiene.month],
         set: { scoreBp: hygiene.scoreBp, deductionsJson, judgedFactsHash: factsHash, computedAt },
       })
       .run()
@@ -104,8 +108,10 @@ export function persistCategoryGuessCandidates(
   month: string,
   candidates: readonly CategoryGuessCandidate[],
 ): void {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = candidates.map((candidate) => ({
+    tenantId,
     month,
     transactionId: candidate.transactionId,
     payeeId: candidate.payeeId,

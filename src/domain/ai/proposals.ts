@@ -42,6 +42,7 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, proposals } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { formatMoney, formatMonth } from '../../i18n/format.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
@@ -460,6 +461,7 @@ export interface CreateProposalOptions {
  * user approved changed.
  */
 export async function createProposal(db: Db, options: CreateProposalOptions): Promise<ProposalRow> {
+  const tenantId = getSoleTenantId(db)
   const handler = handlerFor(options.type)
   const now = options.now ?? new Date()
   const payload = handler.parse(options.payload)
@@ -499,6 +501,7 @@ export async function createProposal(db: Db, options: CreateProposalOptions): Pr
     const rows = tx
       .insert(proposals)
       .values({
+        tenantId,
         type: options.type,
         targetRef: options.targetRef,
         payloadJson: JSON.stringify(payload),

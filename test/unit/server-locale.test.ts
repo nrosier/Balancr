@@ -24,6 +24,7 @@ import { users } from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
@@ -106,6 +107,7 @@ function signIn(db: Db, locale: string): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: 'nick@example.test',
       displayName: 'Nick',

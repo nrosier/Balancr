@@ -30,12 +30,15 @@ import {
   type Bands,
 } from '../../src/domain/advice/profile.ts'
 import { settings } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 /** A set of bands that satisfies every rule, as a base for breaking one at a time. */
@@ -187,7 +190,7 @@ describe('loadProfile', () => {
   })
 
   it('degrades to the default rather than throwing on a row that is not JSON', () => {
-    ctx.db.insert(settings).values({ key: PROFILE_KEY, valueJson: 'balanced' }).run()
+    ctx.db.insert(settings).values({ tenantId: TENANT_ID, key: PROFILE_KEY, valueJson: 'balanced' }).run()
     expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
   })
 
@@ -196,7 +199,7 @@ describe('loadProfile', () => {
     // job has to keep running against `balanced` rather than go dark.
     ctx.db
       .insert(settings)
-      .values({ key: PROFILE_KEY, valueJson: JSON.stringify({ profile: 'custom' }) })
+      .values({ tenantId: TENANT_ID, key: PROFILE_KEY, valueJson: JSON.stringify({ profile: 'custom' }) })
       .run()
     expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
   })

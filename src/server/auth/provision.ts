@@ -16,6 +16,7 @@ import { count, eq } from 'drizzle-orm'
 import { Secret, TOTP } from 'otpauth'
 import type { Db } from '../../db/index.ts'
 import { localCredentials, users } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { ARGON2_OPTIONS, TOTP_PERIOD_SECONDS } from './local.ts'
 
 /**
@@ -54,9 +55,12 @@ export interface ProvisionResult {
 function createUser(db: Db, input: ProvisionInput): string {
   const empty = (db.select({ n: count() }).from(users).all()[0]?.n ?? 0) === 0
 
+  // Real tenant membership is #373's job; every account created today belongs
+  // to the sole tenant.
   const created = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       email: input.email,
       displayName: input.displayName ?? null,
       role: empty ? 'owner' : 'viewer',

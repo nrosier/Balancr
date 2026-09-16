@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { isSnapshot, snapshotName } from '../../src/backup/snapshot.ts'
 import { verifyBackup } from '../../src/backup/verify.ts'
 import { config } from '../../src/config.ts'
@@ -36,12 +37,14 @@ const PASS = 'a-passphrase-of-sixteen-plus'
 
 let db: ReturnType<typeof createTestDb>['db']
 let dir: string
+let TENANT_ID: string
 
 beforeEach(() => {
   const test = createTestDb()
   db = test.db
   applyMigrations(db as never)
-  db.insert(categoryMeta).values({ categoryId: 'c1', nameSnapshot: 'Groceries' }).run()
+  TENANT_ID = getSoleTenantId(db)
+  db.insert(categoryMeta).values({ tenantId: TENANT_ID, categoryId: 'c1', nameSnapshot: 'Groceries' }).run()
 
   dir = mkdtempSync(join(tmpdir(), 'balancr-job-backup-'))
 })

@@ -35,6 +35,7 @@ import { registry } from '../../src/jobs/index.ts'
 import { runJob, type JobDetail } from '../../src/jobs/runner.ts'
 import { noopStep } from '../fixtures/job-context.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 const LAST = '2026-02'
 const MONTH = '2026-03'
@@ -43,6 +44,7 @@ const NIGHT = new Date('2026-03-12T02:00:00Z')
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let TENANT_ID: string
 
 beforeAll(async () => {
   await initI18n()
@@ -52,6 +54,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
 })
 
 afterEach(() => {
@@ -269,6 +272,7 @@ describe('the nightly pass', () => {
     fakeGemini(response())
     db.insert(proposals)
       .values({
+        tenantId: TENANT_ID,
         id: 'prop-1',
         type: 'category_meta.set',
         targetRef: 'food',
@@ -303,6 +307,7 @@ describe('the nightly pass', () => {
     // month it is running in, not of the month the machine happens to be in.
     db.insert(aiRuns)
       .values({
+        tenantId: TENANT_ID,
         kind: 'findings',
         model: 'gemini-3.7-flash',
         locale: 'en',
@@ -408,6 +413,7 @@ describe('with the model unavailable', () => {
     seedTwoMonths()
     db.insert(proposals)
       .values({
+        tenantId: TENANT_ID,
         id: 'prop-1',
         type: 'category_meta.set',
         targetRef: 'food',

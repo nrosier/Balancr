@@ -98,6 +98,8 @@ export type {
   Freshness,
   Hygiene,
   Insights,
+  IntegrationsSetting,
+  IntegrationTest,
   JobHistory,
   JobRun,
   JobStatus,

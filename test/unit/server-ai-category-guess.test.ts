@@ -15,6 +15,7 @@ import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiRuns, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { persistCategoryGuessCandidates } from '../../src/domain/aggregate/signals-store.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { config } from '../../src/config.ts'
@@ -51,6 +52,7 @@ function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,

@@ -12,6 +12,10 @@
  * uses for the AI switch.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { createTestDb, type Db } from '../../src/db/index.ts'
+import { tenantIntegrations } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 type Egress = typeof import('../../src/egress.ts')
 
@@ -21,6 +25,27 @@ async function freshEgress(env: Record<string, string | undefined> = {}): Promis
   vi.resetModules()
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value)
   return await import('../../src/egress.ts')
+}
+
+/** A migrated in-memory database with a tenant, for the dynamic-allowlist tests. */
+function freshDb(): Db {
+  const { db } = createTestDb()
+  applyMigrations(db as never)
+  return db
+}
+
+function insertIntegrations(db: Db, urls: { actualServerUrl: string; ghostfolioUrl: string }): void {
+  db.insert(tenantIntegrations)
+    .values({
+      tenantId: getSoleTenantId(db),
+      actualServerUrl: urls.actualServerUrl,
+      actualPasswordEnc: 'unused-in-this-test',
+      actualSyncId: 'sync-id',
+      ghostfolioUrl: urls.ghostfolioUrl,
+      ghostfolioSecurityTokenEnc: 'unused-in-this-test',
+      geminiProvider: 'aistudio',
+    })
+    .run()
 }
 
 afterEach(() => {
@@ -77,6 +102,46 @@ describe('the allowlist', () => {
     const hosts = allowedHosts()
     expect(hosts.has('proxy.internal')).toBe(true)
     expect(hosts.has('other.test')).toBe(true)
+  })
+
+  it('with no db argument, ignores anything a tenant has configured', async () => {
+    const { allowedHosts } = await freshEgress()
+    const hosts = allowedHosts()
+    expect(hosts.has('actual.test')).toBe(true)
+    expect(hosts.has('tenant-actual.example')).toBe(false)
+  })
+
+  it('unions in a tenant-configured host that differs from .env (#369)', async () => {
+    const { allowedHosts } = await freshEgress()
+    const db = freshDb()
+    insertIntegrations(db, {
+      actualServerUrl: 'https://tenant-actual.example',
+      ghostfolioUrl: 'https://tenant-ghostfolio.example',
+    })
+
+    const hosts = allowedHosts(db)
+    expect(hosts.has('tenant-actual.example')).toBe(true)
+    expect(hosts.has('tenant-ghostfolio.example')).toBe(true)
+    // The static, `.env`-derived hosts are still there too.
+    expect(hosts.has('actual.test')).toBe(true)
+  })
+
+  it('reflects a row inserted after the guard was installed, with no restart', async () => {
+    const inner = vi.fn(async () => new Response('ok'))
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, EgressDeniedError } = await freshEgress()
+    const db = freshDb()
+    installEgressGuard('enforce', db)
+
+    await expect(fetch('https://tenant-actual.example/health')).rejects.toThrow(EgressDeniedError)
+
+    insertIntegrations(db, {
+      actualServerUrl: 'https://tenant-actual.example',
+      ghostfolioUrl: 'https://tenant-ghostfolio.example',
+    })
+
+    const res = await fetch('https://tenant-actual.example/health')
+    expect(await res.text()).toBe('ok')
   })
 })
 

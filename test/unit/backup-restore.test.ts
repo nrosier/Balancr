@@ -25,6 +25,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { writeSnapshot } from '../../src/backup/snapshot.ts'
 import { restoreBackup, stampOf, UnusableBackupError } from '../../src/backup/restore.ts'
 
@@ -40,7 +41,12 @@ beforeEach(async () => {
   applyMigrations(db as never)
   // One row of the kind that a resync cannot bring back: a description someone typed.
   db.insert(categoryMeta)
-    .values({ categoryId: 'c1', nameSnapshot: 'Groceries', userDescription: 'weekly shop' })
+    .values({
+      tenantId: getSoleTenantId(db),
+      categoryId: 'c1',
+      nameSnapshot: 'Groceries',
+      userDescription: 'weekly shop',
+    })
     .run()
 
   dir = mkdtempSync(join(tmpdir(), 'balancr-restore-'))

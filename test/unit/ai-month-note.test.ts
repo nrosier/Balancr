@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { settings } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadMonthNote, MONTH_NOTE_KEY, MONTH_NOTE_MAX_CHARS, saveMonthNote } from '../../src/domain/ai/month-note.ts'
 
 const MONTH = '2026-03'
@@ -14,14 +15,16 @@ const OTHER_MONTH = '2026-04'
 
 describe('the stored month notes', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const write = (valueJson: string): void => {
-    ctx.db.insert(settings).values({ key: MONTH_NOTE_KEY, valueJson }).run()
+    ctx.db.insert(settings).values({ tenantId: TENANT_ID, key: MONTH_NOTE_KEY, valueJson }).run()
   }
 
   it('is empty until somebody writes one', () => {

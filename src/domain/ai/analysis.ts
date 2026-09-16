@@ -37,6 +37,7 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiFindings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import type { Signal } from '../aggregate/overspend.ts'
 import { checkBudget } from './budget.ts'
@@ -732,11 +733,13 @@ export function persistFindings(
   findings: readonly GroundedFinding[],
   sources: ReadonlyMap<string, Signal>,
 ): number {
+  const tenantId = getSoleTenantId(db)
   const rows = []
   for (const finding of findings) {
     const source = sources.get(signalKey(finding.code, finding.label))
     if (source === undefined) continue
     rows.push({
+      tenantId,
       runId,
       code: finding.code,
       categoryId: source.categoryId,

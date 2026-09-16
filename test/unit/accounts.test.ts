@@ -12,6 +12,7 @@ import { eq, sql } from 'drizzle-orm'
 import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { accountMap } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   accountMapBySource,
   applyDerivedFields,
@@ -36,10 +37,12 @@ import {
 } from '../../src/domain/aggregate/accounts.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 const actual = (id: string, name: string, offBudget = false): AccountSighting => ({
@@ -768,6 +771,7 @@ describe('the 0008 backfill', () => {
     ctx.db
       .insert(accountMap)
       .values({
+        tenantId: TENANT_ID,
         source: row.source,
         externalId: row.externalId,
         name: row.externalId,

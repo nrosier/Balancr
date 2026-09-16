@@ -14,6 +14,8 @@ import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { accountMap, jobs, type AccountKind } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
@@ -84,6 +86,12 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
   const ctx = createTestDb()
   applyMigrations(ctx.db as never)
   const db = ctx.db
+
+  // Mirrors the one call `main.ts` makes at boot: every settings read goes through
+  // `buildSettings`, which now expects the sole tenant's `tenantIntegrations` row to
+  // already exist by the time a request can arrive, exactly as it would in a real
+  // deployment.
+  importEnvIntegrationsOnce(db)
 
   if (options.empty === true) return { db, sqlite: ctx.sqlite }
 
@@ -252,11 +260,13 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     terAnnualCents: null,
   })
 
+  const tenantId = getSoleTenantId(db)
   const now = new Date()
   for (const name of ['sync', 'portfolio', 'networth', 'signals'] as const) {
     const failed = options.jobsFailed === true && name === 'sync'
     db.insert(jobs)
       .values({
+        tenantId,
         name,
         status: failed ? 'error' : 'ok',
         lastRunAt: now,

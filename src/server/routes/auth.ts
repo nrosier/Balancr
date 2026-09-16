@@ -110,6 +110,7 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
             displayName: request.user.displayName,
             locale: request.user.locale,
             role: request.user.role,
+            tenantId: request.user.tenantId,
           },
     // `local` answers "would a password work from where you are", not "is the
     // feature switched on" — the login screen uses this to decide whether to draw
@@ -196,6 +197,7 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
             displayName: user.displayName,
             locale: user.locale,
             role: user.role,
+            tenantId: user.tenantId,
           },
         }
         return reply.status(200).send(response)

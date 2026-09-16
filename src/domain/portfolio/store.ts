@@ -9,6 +9,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import type { ValuePoint } from './history.ts'
 import type { AllocationSlice, PortfolioMetricsResult } from './metrics.ts'
 import type { HoldingSnapshot } from './snapshot.ts'
@@ -23,6 +24,7 @@ export function persistPortfolioSnapshots(
   date: string,
   holdings: readonly HoldingSnapshot[],
 ): SnapshotPersistResult {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: SnapshotPersistResult = { written: 0, removed: 0 }
 
@@ -30,6 +32,7 @@ export function persistPortfolioSnapshots(
     for (const holding of holdings) {
       tx.insert(portfolioSnapshots)
         .values({
+          tenantId,
           date,
           instrument: holding.instrument,
           symbol: holding.symbol,
@@ -45,7 +48,7 @@ export function persistPortfolioSnapshots(
           computedAt,
         })
         .onConflictDoUpdate({
-          target: [portfolioSnapshots.date, portfolioSnapshots.instrument],
+          target: [portfolioSnapshots.tenantId, portfolioSnapshots.date, portfolioSnapshots.instrument],
           set: {
             symbol: sql`excluded.symbol`,
             isin: sql`excluded.isin`,
@@ -85,9 +88,11 @@ export function persistPortfolioSnapshots(
  * the schema — a new slice field must not be a migration.
  */
 export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult): void {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   db.insert(portfolioMetrics)
     .values({
+      tenantId,
       date: result.date,
       twrBp: result.twrBp,
       mwrBp: result.mwrBp,
@@ -100,7 +105,7 @@ export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult):
       computedAt,
     })
     .onConflictDoUpdate({
-      target: portfolioMetrics.date,
+      target: [portfolioMetrics.tenantId, portfolioMetrics.date],
       set: {
         twrBp: sql`excluded.twr_bp`,
         mwrBp: sql`excluded.mwr_bp`,
@@ -164,6 +169,7 @@ export function backfillPortfolioValues(
   db: Db,
   points: readonly ValuePoint[],
 ): BackfillResult {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: BackfillResult = { written: 0, kept: 0 }
 
@@ -172,6 +178,7 @@ export function backfillPortfolioValues(
       const changes = tx
         .insert(portfolioMetrics)
         .values({
+          tenantId,
           date: point.date,
           twrBp: null,
           mwrBp: null,
@@ -186,7 +193,7 @@ export function backfillPortfolioValues(
           terAnnualCents: null,
           computedAt,
         })
-        .onConflictDoNothing({ target: portfolioMetrics.date })
+        .onConflictDoNothing({ target: [portfolioMetrics.tenantId, portfolioMetrics.date] })
         .run().changes
       if (changes > 0) out.written += 1
       else out.kept += 1

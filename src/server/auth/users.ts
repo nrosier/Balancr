@@ -18,6 +18,7 @@ import { count, eq } from 'drizzle-orm'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { badRequest, forbidden } from '../errors.ts'
 import type { OidcIdentity } from './oidc.ts'
@@ -27,12 +28,14 @@ const log = logger.child({ module: 'server.auth.users' })
 
 const toSessionUser = (row: {
   id: string
+  tenantId: string
   email: string | null
   displayName: string | null
   locale: string
   role: 'owner' | 'viewer'
 }): SessionUser => ({
   id: row.id,
+  tenantId: row.tenantId,
   email: row.email,
   displayName: row.displayName,
   locale: row.locale,
@@ -77,9 +80,12 @@ export function upsertOidcUser(db: Db, identity: OidcIdentity): SessionUser {
   const [existingCount] = db.select({ value: count() }).from(users).all()
   const isFirstUser = (existingCount?.value ?? 0) === 0
 
+  // Real tenant membership is #373's job; every account created today belongs
+  // to the sole tenant.
   const created = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: identity.sub,
       email: identity.email ?? null,
       displayName: identity.name ?? null,

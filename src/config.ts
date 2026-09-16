@@ -55,6 +55,31 @@ const optionalText = () => z.preprocess(blankToUndefined, z.string().min(1).opti
 /** As `optionalText`, for a variable that must parse as a URL when it is set. */
 const optionalUrl = () => z.preprocess(blankToUndefined, z.url().optional())
 
+const CONFIG_ENCRYPTION_KEY_BYTES = 32
+
+/**
+ * 32 raw bytes, base64-encoded — `src/db/field-crypto.ts`'s AES-256-GCM key.
+ * Decoded here rather than in that module, so a malformed key is a startup
+ * error instead of the first failed encrypt.
+ */
+const configEncryptionKey = () =>
+  z
+    .string()
+    .min(1)
+    .transform((value, ctx) => {
+      const key = Buffer.from(value, 'base64')
+      if (key.length !== CONFIG_ENCRYPTION_KEY_BYTES) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            `must decode to ${CONFIG_ENCRYPTION_KEY_BYTES} bytes base64-encoded ` +
+            `(got ${key.length}) — generate one with: openssl rand -base64 32`,
+        })
+        return z.NEVER
+      }
+      return key
+    })
+
 const EnvSchema = z.object({
   // App
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -124,6 +149,21 @@ const EnvSchema = z.object({
    * stops working on its own.
    */
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(8760).default(168),
+
+  // Credential encryption
+  /**
+   * The key `src/db/field-crypto.ts` uses to encrypt Actual/Ghostfolio/Gemini
+   * credentials once they move out of `.env` into per-tenant rows (#369/#371).
+   * AES-256-GCM with the key used directly — raw key material, not a
+   * passphrase, so there is no per-write key-derivation cost. That matters
+   * because this runs on every settings-form save, unlike `BACKUP_PASSPHRASE`
+   * below, which is derived once per night.
+   *
+   * Required now, even though nothing writes an encrypted field until #369
+   * lands: the alternative is finding out the key is missing or the wrong
+   * size at the first settings save, behind a request, with someone waiting.
+   */
+  CONFIG_ENCRYPTION_KEY: configEncryptionKey(),
 
   // Rate limiting
   /**
@@ -501,6 +541,7 @@ export function configSummary(): Record<string, unknown> {
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
     SESSION_TTL_HOURS: config.SESSION_TTL_HOURS,
+    CONFIG_ENCRYPTION_KEY: `set (${config.CONFIG_ENCRYPTION_KEY.length} bytes)`,
     RATE_LIMIT_API_PER_MINUTE: config.RATE_LIMIT_API_PER_MINUTE,
     RATE_LIMIT_AI_PER_HOUR: config.RATE_LIMIT_AI_PER_HOUR,
     JOBS_ENABLED: config.JOBS_ENABLED,

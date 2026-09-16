@@ -25,9 +25,17 @@
  * dedupe warning. One shape back, replace the state, no reconciliation.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { testActualConnection } from '../../adapters/actual/test-connection.ts'
+import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { encryptField } from '../../db/field-crypto.ts'
+import { tenantIntegrations } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
+import { withTestHost } from '../../egress.ts'
 import {
   BAND_CLASSES,
   bandsOf,
@@ -101,25 +109,32 @@ import {
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { recordAudit } from '../../domain/audit.ts'
+import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
 import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
+import { integrationsTestRateLimit } from '../rate-limit.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 import { APP_REVISION, APP_VERSION } from '../version.ts'
 import {
   accountSettingSchema,
+  integrationsSettingSchema,
+  integrationTestSchema,
   promptBodySchema,
   promptDiffSchema,
   promptSchema,
   settingsSchema,
   type AccountSetting,
+  type IntegrationsSetting,
+  type IntegrationTest,
   type PromptBody,
   type PromptDiff,
   type PromptSetting,
   type Settings,
 } from './api/schemas.ts'
+import { busyError } from './refresh.ts'
 
 // ---------------------------------------------------------------------------
 //  What the requests may say
@@ -399,6 +414,62 @@ const promptDiffRequest = z.strictObject({
   body: promptBodyRequest,
 })
 
+/**
+ * The Actual connection (#369). `password`/`e2ePassword` are secrets and never sent
+ * back to the client, so omitting either key means "leave the stored value
+ * unchanged" — there is nothing on the wire for a save that only touched `serverUrl`
+ * to echo back. An empty string is never valid: a blank password is not a state this
+ * form can express, the same rule a required `.env` var follows.
+ */
+const actualIntegrationPatchRequest = z.strictObject({
+  serverUrl: z.string().min(1),
+  syncId: z.string().min(1),
+  password: z.string().min(1).optional(),
+  e2ePassword: z.string().min(1).optional(),
+})
+
+/** The Ghostfolio connection (#369). See `actualIntegrationPatchRequest` for why `securityToken` is optional. */
+const ghostfolioIntegrationPatchRequest = z.strictObject({
+  url: z.string().min(1),
+  securityToken: z.string().min(1).optional(),
+})
+
+/**
+ * The Gemini connection (#369). `googleCloudProject` is not a secret, so unlike
+ * `apiKey` it is not optional — it is replaced wholesale like every other plain field
+ * on this page, and `null` is how a switch to `aistudio` clears it.
+ */
+const geminiIntegrationPatchRequest = z.strictObject({
+  provider: z.enum(['aistudio', 'vertex']),
+  apiKey: z.string().min(1).optional(),
+  googleCloudProject: z.string().min(1).nullable(),
+})
+
+/**
+ * A "test connection" body carries the *full* candidate credential, never a partial
+ * patch — nothing is saved by a test, so there is no stored value to merge against.
+ */
+const actualIntegrationTestRequest = z.strictObject({
+  serverUrl: z.string().min(1),
+  syncId: z.string().min(1),
+  password: z.string().min(1),
+  e2ePassword: z.string().min(1).optional(),
+})
+
+/** See `actualIntegrationTestRequest`. */
+const ghostfolioIntegrationTestRequest = z.strictObject({
+  url: z.string().min(1),
+  securityToken: z.string().min(1),
+})
+
+/** See `actualIntegrationTestRequest`. `googleCloudLocation` defaults to the deployment's own when omitted. */
+const geminiIntegrationTestRequest = z.strictObject({
+  provider: z.enum(['aistudio', 'vertex']),
+  apiKey: z.string().min(1).optional(),
+  googleCloudProject: z.string().min(1).optional(),
+  googleCloudLocation: z.string().min(1).optional(),
+})
+
 // ---------------------------------------------------------------------------
 //  Reading
 // ---------------------------------------------------------------------------
@@ -566,6 +637,54 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
   }
 }
 
+/**
+ * The sole tenant's stored Actual/Ghostfolio/Gemini connection (#369).
+ *
+ * `importEnvIntegrationsOnce` runs at boot, before any request can reach this route,
+ * so a missing row means the process never finished starting up rather than a state
+ * this handler should recover from.
+ */
+function integrationsRow(db: Db): typeof tenantIntegrations.$inferSelect {
+  const tenantId = getSoleTenantId(db)
+  const row = db
+    .select()
+    .from(tenantIntegrations)
+    .where(eq(tenantIntegrations.tenantId, tenantId))
+    .all()[0]
+  if (row === undefined) {
+    throw new Error('tenantIntegrations has no row for the sole tenant — did startup import run?')
+  }
+  return row
+}
+
+/**
+ * The connection, with every secret replaced by whether it is set (#369).
+ *
+ * Never the ciphertext and never the plaintext: a secret that round-tripped through
+ * this screen even once would make the settings response the second place it could
+ * leak from, on top of the database column.
+ */
+function loadIntegrations(db: Db): IntegrationsSetting {
+  const row = integrationsRow(db)
+  return integrationsSettingSchema.parse({
+    actual: {
+      serverUrl: row.actualServerUrl,
+      syncId: row.actualSyncId,
+      passwordConfigured: row.actualPasswordEnc.length > 0,
+      e2ePasswordConfigured: row.actualE2ePasswordEnc !== null,
+    },
+    ghostfolio: {
+      url: row.ghostfolioUrl,
+      tokenConfigured: row.ghostfolioSecurityTokenEnc.length > 0,
+    },
+    gemini: {
+      provider: row.geminiProvider,
+      apiKeyConfigured: row.geminiApiKeyEnc !== null,
+      googleCloudProject: row.googleCloudProject,
+    },
+  })
+}
+
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
@@ -592,6 +711,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     advice: riskProfileSetting(db),
     benchmark: benchmarkSetting(db),
     property: loadProperties(db),
+    integrations: loadIntegrations(db),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -886,6 +1006,235 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     return buildSettings(db, request)
   })
+
+  /**
+   * The Actual connection this tenant syncs from (#369).
+   *
+   * `password`/`e2ePassword` are the "omit means unchanged" case — see
+   * `actualIntegrationPatchRequest`. `updatedAt` is set explicitly because the
+   * column's default only fires on insert, never on update.
+   */
+  app.patch('/api/settings/integrations/actual', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(actualIntegrationPatchRequest, request.body)
+    const tenantId = getSoleTenantId(db)
+    const before = loadIntegrations(db)
+
+    db.update(tenantIntegrations)
+      .set({
+        actualServerUrl: patch.serverUrl,
+        actualSyncId: patch.syncId,
+        ...(patch.password === undefined ? {} : { actualPasswordEnc: encryptField(patch.password) }),
+        ...(patch.e2ePassword === undefined
+          ? {}
+          : { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+
+    const after = loadIntegrations(db)
+    recordAudit(db, {
+      action: 'settings.integrations',
+      entity: 'tenant_integrations',
+      entityRef: tenantId,
+      actorId: user.id,
+      before: before.actual,
+      after: after.actual,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /** The Ghostfolio connection this tenant reads from (#369). See the Actual route above. */
+  app.patch('/api/settings/integrations/ghostfolio', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
+    const tenantId = getSoleTenantId(db)
+    const before = loadIntegrations(db)
+
+    db.update(tenantIntegrations)
+      .set({
+        ghostfolioUrl: patch.url,
+        ...(patch.securityToken === undefined
+          ? {}
+          : { ghostfolioSecurityTokenEnc: encryptField(patch.securityToken) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+
+    const after = loadIntegrations(db)
+    recordAudit(db, {
+      action: 'settings.integrations',
+      entity: 'tenant_integrations',
+      entityRef: tenantId,
+      actorId: user.id,
+      before: before.ghostfolio,
+      after: after.ghostfolio,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /** The Gemini connection this tenant's AI pass uses (#369). See the Actual route above. */
+  app.patch('/api/settings/integrations/gemini', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(geminiIntegrationPatchRequest, request.body)
+    const tenantId = getSoleTenantId(db)
+    const before = loadIntegrations(db)
+
+    db.update(tenantIntegrations)
+      .set({
+        geminiProvider: patch.provider,
+        googleCloudProject: patch.googleCloudProject,
+        ...(patch.apiKey === undefined ? {} : { geminiApiKeyEnc: encryptField(patch.apiKey) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+
+    const after = loadIntegrations(db)
+    recordAudit(db, {
+      action: 'settings.integrations',
+      entity: 'tenant_integrations',
+      entityRef: tenantId,
+      actorId: user.id,
+      before: before.gemini,
+      after: after.gemini,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Whether a candidate Ghostfolio URL/token actually work (#369).
+   *
+   * Nothing is persisted here, so there is no `before`/`after` to audit and no
+   * partial-update merge to do — the body is the full candidate. Ghostfolio's client
+   * module keeps its own cached token, but that state belongs to the *saved*
+   * connection; this call never touches it, which is what makes a standalone fetch
+   * here safe to run alongside a real request in flight.
+   */
+  app.post(
+    '/api/settings/integrations/ghostfolio/test',
+    { ...integrationsTestRateLimit() },
+    async (request: FastifyRequest): Promise<IntegrationTest> => {
+      requireOwner(request)
+      const candidate = parseBody(ghostfolioIntegrationTestRequest, request.body)
+      const base = candidate.url.replace(/\/+$/, '')
+
+      const result = await withTestHost(candidate.url, async (): Promise<IntegrationTest> => {
+        try {
+          const health = await fetch(`${base}/api/v1/health`, {
+            headers: { accept: 'application/json' },
+            signal: AbortSignal.timeout(20_000),
+          })
+          if (!health.ok) {
+            return { ok: false, message: `${base} returned HTTP ${health.status} for /api/v1/health.` }
+          }
+
+          const auth = await fetch(`${base}/api/v1/auth/anonymous`, {
+            method: 'POST',
+            headers: { accept: 'application/json', 'content-type': 'application/json' },
+            body: JSON.stringify({ accessToken: candidate.securityToken }),
+            signal: AbortSignal.timeout(20_000),
+          })
+          if (!auth.ok) {
+            return { ok: false, message: `Authentication failed: HTTP ${auth.status}.` }
+          }
+
+          const parsed = authSchema.safeParse(await auth.json())
+          if (!parsed.success) {
+            return { ok: false, message: 'Ghostfolio did not return an auth token.' }
+          }
+          return { ok: true, message: null }
+        } catch (error) {
+          return { ok: false, message: error instanceof Error ? error.message : String(error) }
+        }
+      })
+
+      return integrationTestSchema.parse(result)
+    },
+  )
+
+  /**
+   * Whether a candidate Gemini key/project actually work (#369).
+   *
+   * `models.list()` is the cheapest call that proves the credential is live —
+   * never `generateContent`, so testing a key spends no part of the tenant's own
+   * budget. The client built here is a throwaway instance, never
+   * `setGeminiClient`'s shared one, so a test in flight cannot affect a real call
+   * running at the same time.
+   */
+  app.post(
+    '/api/settings/integrations/gemini/test',
+    { ...integrationsTestRateLimit() },
+    async (request: FastifyRequest): Promise<IntegrationTest> => {
+      requireOwner(request)
+      const candidate = parseBody(geminiIntegrationTestRequest, request.body)
+      const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
+
+      let options: GoogleGenAIOptions
+      let testUrl: string
+      if (candidate.provider === 'vertex') {
+        const project = candidate.googleCloudProject
+        if (project === undefined) {
+          throw badRequest('A Google Cloud project is required to test a Vertex connection.')
+        }
+        options = { vertexai: true, project, location }
+        testUrl = `https://${location}-aiplatform.googleapis.com`
+      } else {
+        const apiKey = candidate.apiKey
+        if (apiKey === undefined) {
+          throw badRequest('An API key is required to test an AI Studio connection.')
+        }
+        options = { apiKey }
+        testUrl = ''
+      }
+
+      const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+        try {
+          const client = new GoogleGenAI(options)
+          await client.models.list({ config: { pageSize: 1 } })
+          return { ok: true, message: null }
+        } catch (error) {
+          return { ok: false, message: error instanceof Error ? error.message : String(error) }
+        }
+      })
+
+      return integrationTestSchema.parse(result)
+    },
+  )
+
+  /**
+   * Whether a candidate Actual server/budget/password actually work (#369).
+   *
+   * `@actual-app/api` is a process-wide singleton (see `client.ts`'s header), so
+   * this cannot call `api.init`/`api.downloadBudget` in this process without risking
+   * the real, already-open client — `testActualConnection` runs the attempt in a
+   * forked child process instead, which gets its own copy of that module and so can
+   * never collide with it. `jobsInFlight` is still checked here, but as a courtesy
+   * rather than a safety property: the fork already makes this test safe to run
+   * during a live sync, but starting one anyway would open a second connection to
+   * someone else's Actual server while the real one is mid-sync, which is worth
+   * refusing even though nothing would actually break.
+   */
+  app.post(
+    '/api/settings/integrations/actual/test',
+    { ...integrationsTestRateLimit() },
+    async (request: FastifyRequest): Promise<IntegrationTest> => {
+      requireOwner(request)
+      const candidate = parseBody(actualIntegrationTestRequest, request.body)
+
+      const busy = jobsInFlight()
+      if (busy.length > 0) throw busyError(busy)
+
+      const result = await withTestHost(candidate.serverUrl, () => testActualConnection(candidate))
+
+      return integrationTestSchema.parse(result)
+    },
+  )
 
   /**
    * Which reference line a category feeds (#43).
