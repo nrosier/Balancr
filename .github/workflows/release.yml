@@ -58,3 +58,69 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+
+  harbor-scan:
+    name: Trigger Harbor replication + scan
+    needs: image
+    # The homelab's replication policy only pulls `latest` (confirmed by hand
+    # against the Harbor API: the other tags this workflow pushes 404 there),
+    # so this only needs to run when the push actually moved `latest` — the
+    # same condition metadata-action's `enable=` above uses to decide whether
+    # to push it at all. `vars.HARBOR_URL` stays empty until Harbor is wired
+    # up, so this is a clean no-op until then rather than a red check.
+    if: vars.HARBOR_URL != '' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Harbor replication
+        id: replicate
+        env:
+          HARBOR_URL: ${{ vars.HARBOR_URL }}
+          HARBOR_REPLICATION_POLICY_ID: ${{ vars.HARBOR_REPLICATION_POLICY_ID }}
+          HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
+          HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
+        run: |
+          id="$(curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+            -X POST "$HARBOR_URL/api/v2.0/replication/executions" \
+            -H 'Content-Type: application/json' \
+            -d "{\"policy_id\": $HARBOR_REPLICATION_POLICY_ID}" \
+            -D - -o /dev/null | grep -i '^Location:' | grep -o '[0-9]*$' | tr -d '\r')"
+          if [[ -z "$id" ]]; then
+            echo 'Harbor did not return a replication execution id.' >&2
+            exit 1
+          fi
+          echo "execution_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the replication to finish
+        env:
+          HARBOR_URL: ${{ vars.HARBOR_URL }}
+          HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
+          HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
+          EXECUTION_ID: ${{ steps.replicate.outputs.execution_id }}
+        run: |
+          for _ in $(seq 1 60); do
+            status="$(curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+              "$HARBOR_URL/api/v2.0/replication/executions/$EXECUTION_ID" | jq -r '.status')"
+            case "$status" in
+              Succeed) echo "Replication execution $EXECUTION_ID succeeded."; exit 0 ;;
+              Failed | Stopped) echo "Replication execution $EXECUTION_ID ended as $status." >&2; exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo "Replication execution $EXECUTION_ID never finished within 5 minutes." >&2
+          exit 1
+
+      - name: Trigger a vulnerability scan
+        env:
+          HARBOR_URL: ${{ vars.HARBOR_URL }}
+          HARBOR_PROJECT: ${{ vars.HARBOR_PROJECT }}
+          HARBOR_REPOSITORY: ${{ vars.HARBOR_REPOSITORY }}
+          HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
+          HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
+          # Confirmed by hand: this is the only tag the replication policy
+          # actually pulls, even though Docker Hub also has 1.x/edge/sha-*.
+          TAG: latest
+        run: |
+          curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+            -X POST "$HARBOR_URL/api/v2.0/projects/$HARBOR_PROJECT/repositories/$HARBOR_REPOSITORY/artifacts/$TAG/scan" \
+            -H 'Content-Type: application/json'
+          echo "Scan triggered for $HARBOR_PROJECT/$HARBOR_REPOSITORY:$TAG"
