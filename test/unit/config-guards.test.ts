@@ -13,6 +13,7 @@
  * different environment. That is the same approach `gemini-client.test.ts` takes
  * for the provider switch.
  */
+import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +27,7 @@ const productionEnv: Record<string, string> = {
   TRUSTED_PROXY_CIDRS: '172.16.0.0/12',
 }
 
-async function loadWith(overrides: Record<string, string>): Promise<Error | null> {
+async function loadWith(overrides: Record<string, string | undefined>): Promise<Error | null> {
   vi.resetModules()
   for (const [key, value] of Object.entries({ ...productionEnv, ...overrides })) {
     vi.stubEnv(key, value)
@@ -321,6 +322,29 @@ describe('the backup settings (#38)', () => {
   })
 })
 
+describe('the credential-encryption key (#368)', () => {
+  it('refuses a missing key', async () => {
+    const error = await loadWith({ CONFIG_ENCRYPTION_KEY: undefined })
+    expect(error?.message).toContain('CONFIG_ENCRYPTION_KEY')
+  })
+
+  it('refuses a blank key', async () => {
+    const error = await loadWith({ CONFIG_ENCRYPTION_KEY: '' })
+    expect(error?.message).toContain('CONFIG_ENCRYPTION_KEY')
+  })
+
+  it('refuses a key that does not decode to 32 bytes', async () => {
+    const error = await loadWith({ CONFIG_ENCRYPTION_KEY: Buffer.from('too-short').toString('base64') })
+    expect(error?.message).toContain('CONFIG_ENCRYPTION_KEY')
+    expect(error?.message).toContain('32 bytes')
+  })
+
+  it('accepts exactly 32 bytes, base64-encoded', async () => {
+    const key = randomBytes(32).toString('base64')
+    expect(await loadWith({ CONFIG_ENCRYPTION_KEY: key })).toBeNull()
+  })
+})
+
 describe('the egress settings (#39)', () => {
   it('defaults to enforcing, because the allowlist comes from the same .env', async () => {
     // A correct configuration already allows everything a correct install needs, so
@@ -430,6 +454,7 @@ describe('.env.example as shipped (#118)', () => {
     ACTUAL_SYNC_ID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     GHOSTFOLIO_SECURITY_TOKEN: 'ghostfolio-token',
     SESSION_SECRET: 'x'.repeat(48),
+    CONFIG_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     GOOGLE_CLOUD_PROJECT: 'balancr-prod',
     AUTH_OIDC_CLIENT_ID: 'balancr',
     AUTH_OIDC_CLIENT_SECRET: 'oidc-secret',
