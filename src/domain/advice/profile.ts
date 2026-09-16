@@ -30,10 +30,11 @@
  * produces suggestions that contradict each other, and a suggestion that cannot be
  * satisfied is worse than no advice.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import {
   BAND_CLASSES,
@@ -227,10 +228,11 @@ export function isPreset(profile: RiskProfile): boolean {
  * can parse should not take the portfolio page down, and the log names the key.
  */
 export function loadProfile(db: Db): RiskProfile {
+  const tenantId = getSoleTenantId(db)
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, PROFILE_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PROFILE_KEY)))
     .get()
 
   if (!row) return DEFAULT_PROFILE
@@ -267,6 +269,7 @@ export function loadProfile(db: Db): RiskProfile {
  * numbers are the profile and a preset's name on somebody else's numbers is a lie.
  */
 export function saveProfile(db: Db, patch: RiskProfilePatch): RiskProfile {
+  const tenantId = getSoleTenantId(db)
   const current = loadProfile(db)
   const incoming = patch ?? {}
 
@@ -286,8 +289,11 @@ export function saveProfile(db: Db, patch: RiskProfilePatch): RiskProfile {
 
   const valueJson = JSON.stringify(next)
   db.insert(settings)
-    .values({ key: PROFILE_KEY, valueJson })
-    .onConflictDoUpdate({ target: settings.key, set: { valueJson, updatedAt: new Date() } })
+    .values({ tenantId, key: PROFILE_KEY, valueJson })
+    .onConflictDoUpdate({
+      target: [settings.tenantId, settings.key],
+      set: { valueJson, updatedAt: new Date() },
+    })
     .run()
 
   return next

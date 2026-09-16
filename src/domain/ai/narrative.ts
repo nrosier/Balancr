@@ -36,6 +36,7 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiNarratives } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
@@ -244,16 +245,18 @@ export function storeNarrative(
   db: Db,
   input: { runId: string; period: string; locale: string; bodyMd: string },
 ): NarrativeRow {
+  const tenantId = getSoleTenantId(db)
   const rows = db
     .insert(aiNarratives)
     .values({
+      tenantId,
       runId: input.runId,
       period: input.period,
       locale: input.locale,
       bodyMd: input.bodyMd,
     })
     .onConflictDoUpdate({
-      target: [aiNarratives.period, aiNarratives.locale],
+      target: [aiNarratives.tenantId, aiNarratives.period, aiNarratives.locale],
       set: { runId: input.runId, bodyMd: input.bodyMd, createdAt: new Date() },
     })
     .returning()

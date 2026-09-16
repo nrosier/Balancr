@@ -68,6 +68,7 @@ import {
 } from '../../src/domain/benchmark/reference.ts'
 import type { Equivalence } from '../../src/domain/benchmark/schema.ts'
 import { MAX_HOUSEHOLD_MEMBERS } from '../../src/domain/benchmark/vocabulary.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 /** The file Balancr ships, read from disk. Every realistic case below compares to this. */
 const SHIPPED = loadBenchmark('config/statbel-benchmark.yaml')
@@ -764,14 +765,16 @@ describe('householdSchema', () => {
 
 describe('the stored household', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const write = (valueJson: string): void => {
-    ctx.db.insert(settings).values({ key: HOUSEHOLD_KEY, valueJson }).run()
+    ctx.db.insert(settings).values({ tenantId: TENANT_ID, key: HOUSEHOLD_KEY, valueJson }).run()
   }
 
   it('is one person until somebody says otherwise', () => {
@@ -837,10 +840,12 @@ describe('the stored household', () => {
 
 describe('the stored correction to the average household (#290)', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const patch = {
@@ -880,13 +885,17 @@ describe('the stored correction to the average household (#290)', () => {
   it('degrades to the file rather than throwing, for either kind of damage', () => {
     // Same contract as the roster: reading degrades, writing throws. A correction nobody
     // can parse should cost the correction, not the budget page.
-    ctx.db.insert(settings).values({ key: REFERENCE_OVERRIDE_KEY, valueJson: '{ not json' }).run()
+    ctx.db
+      .insert(settings)
+      .values({ tenantId: TENANT_ID, key: REFERENCE_OVERRIDE_KEY, valueJson: '{ not json' })
+      .run()
     expect(loadReferenceOverride(ctx.db)).toBeNull()
 
     ctx.db.delete(settings).run()
     ctx.db
       .insert(settings)
       .values({
+        tenantId: TENANT_ID,
         key: REFERENCE_OVERRIDE_KEY,
         valueJson: JSON.stringify({ ...patch }),
       })
@@ -952,10 +961,12 @@ describe('applyReferenceOverride', () => {
 
 describe('the COICOP mapping', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   interface Row {
@@ -972,6 +983,7 @@ describe('the COICOP mapping', () => {
       ctx.db
         .insert(categoryMeta)
         .values({
+          tenantId: TENANT_ID,
           categoryId: entry.id,
           nameSnapshot: entry.name,
           isIncome: entry.isIncome ?? false,
@@ -982,7 +994,13 @@ describe('the COICOP mapping', () => {
       if (entry.spentCents === undefined) continue
       ctx.db
         .insert(monthlyCategoryFacts)
-        .values({ month, categoryId: entry.id, spentCents: entry.spentCents, txnCount: 1 })
+        .values({
+          tenantId: TENANT_ID,
+          month,
+          categoryId: entry.id,
+          spentCents: entry.spentCents,
+          txnCount: 1,
+        })
         .run()
     }
   }

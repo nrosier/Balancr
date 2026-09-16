@@ -16,6 +16,7 @@ import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import { config } from '../../src/config.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiRuns, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { createProposal, encodeBudgetTarget, pendingBudgetProposals } from '../../src/domain/ai/proposals.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
@@ -43,6 +44,7 @@ function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,

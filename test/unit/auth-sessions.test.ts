@@ -20,6 +20,7 @@ import { config } from '../../src/config.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { sessions, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   createSession,
   destroySession,
@@ -41,6 +42,7 @@ function makeUser(db: Db, overrides: { disabled?: boolean; sub?: string } = {}):
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: overrides.sub ?? `sub-${crypto.randomUUID()}`,
       email: 'nick@example.test',
       displayName: 'Nick',

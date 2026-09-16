@@ -27,6 +27,7 @@ export interface SessionUserResponse {
   displayName: string | null
   locale: string
   role: 'owner' | 'viewer'
+  tenantId: string
 }
 
 /** `GET /auth/session`. */

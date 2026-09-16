@@ -18,6 +18,7 @@ import { SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { MAX_HISTORY_LIMIT } from '../../src/server/routes/api/status-history.ts'
 import type { JobHistory } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -27,6 +28,7 @@ function signIn(db: Db): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: 'nick@example.test',
       displayName: 'Nick',
@@ -69,6 +71,7 @@ function insertRun(
 ): void {
   db.insert(jobRunsTable)
     .values({
+      tenantId: getSoleTenantId(db),
       id: crypto.randomUUID(),
       jobName: over.jobName ?? 'sync',
       status: over.status ?? 'ok',

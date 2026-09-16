@@ -35,10 +35,11 @@
  * how the *file's* figure was derived, and pointing them at a number somebody has since
  * replaced would make the wrong claim more convincingly than saying nothing.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/index.ts";
 import { settings } from "../../db/schema.ts";
+import { getSoleTenantId } from "../../db/tenant.ts";
 import { logger } from "../../logger.ts";
 import { verifiedDateSchema } from "../verified-date.ts";
 import type { Benchmark } from "./model.ts";
@@ -78,10 +79,11 @@ export type ReferenceOverridePatch = Omit<ReferenceOverride, "savedOn">;
  * figure standing, not take down the page that would let somebody fix it.
  */
 export function loadReferenceOverride(db: Db): ReferenceOverride | null {
+  const tenantId = getSoleTenantId(db);
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, REFERENCE_OVERRIDE_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, REFERENCE_OVERRIDE_KEY)))
     .get();
 
   if (!row) return null;
@@ -114,6 +116,7 @@ export function saveReferenceOverride(
   patch: ReferenceOverridePatch,
   today: Date = new Date(),
 ): ReferenceOverride {
+  const tenantId = getSoleTenantId(db);
   const next = referenceOverrideSchema.parse({
     ...patch,
     savedOn: today.toISOString().slice(0, 10),
@@ -121,9 +124,9 @@ export function saveReferenceOverride(
   const valueJson = JSON.stringify(next);
 
   db.insert(settings)
-    .values({ key: REFERENCE_OVERRIDE_KEY, valueJson })
+    .values({ tenantId, key: REFERENCE_OVERRIDE_KEY, valueJson })
     .onConflictDoUpdate({
-      target: settings.key,
+      target: [settings.tenantId, settings.key],
       set: { valueJson, updatedAt: new Date() },
     })
     .run();
@@ -133,7 +136,10 @@ export function saveReferenceOverride(
 
 /** Removes the override, so the file's figure applies again. */
 export function clearReferenceOverride(db: Db): void {
-  db.delete(settings).where(eq(settings.key, REFERENCE_OVERRIDE_KEY)).run();
+  const tenantId = getSoleTenantId(db);
+  db.delete(settings)
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, REFERENCE_OVERRIDE_KEY)))
+    .run();
 }
 
 /**

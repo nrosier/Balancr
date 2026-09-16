@@ -34,10 +34,11 @@
  * assumption to disclose. That is the only default that cannot be wrong about somebody's
  * family, and it is why the level comparison is worth switching on rather than assumed.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import type { Equivalence } from './schema.ts'
 import { MAX_HOUSEHOLD_MEMBERS, SHARED_COST_DIRECTIONS } from './vocabulary.ts'
@@ -190,10 +191,11 @@ export function equivalentAdults(
  * roster nobody can parse should cost the level comparison, not the budget page.
  */
 export function loadHousehold(db: Db): Household {
+  const tenantId = getSoleTenantId(db)
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, HOUSEHOLD_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, HOUSEHOLD_KEY)))
     .get()
 
   if (!row) return DEFAULT_HOUSEHOLD
@@ -228,12 +230,16 @@ export function loadHousehold(db: Db): Household {
  * row". A merge would make the second impossible to express.
  */
 export function saveHousehold(db: Db, patch: HouseholdPatch): Household {
+  const tenantId = getSoleTenantId(db)
   const next = householdSchema.parse(patch ?? {})
   const valueJson = JSON.stringify(next)
 
   db.insert(settings)
-    .values({ key: HOUSEHOLD_KEY, valueJson })
-    .onConflictDoUpdate({ target: settings.key, set: { valueJson, updatedAt: new Date() } })
+    .values({ tenantId, key: HOUSEHOLD_KEY, valueJson })
+    .onConflictDoUpdate({
+      target: [settings.tenantId, settings.key],
+      set: { valueJson, updatedAt: new Date() },
+    })
     .run()
 
   return next

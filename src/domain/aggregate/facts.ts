@@ -18,6 +18,7 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { monthsBefore } from '../../util/month.ts'
 import type { ExpectedFrequency } from './baseline.ts'
 import type { MonthlyFact } from './spend.ts'
@@ -50,6 +51,7 @@ export function persistFacts(
 ): PersistResult {
   const computedAt = new Date()
   const result: PersistResult = { written: 0, removed: 0 }
+  const tenantId = getSoleTenantId(db)
 
   db.transaction((tx) => {
     for (let start = 0; start < facts.length; start += CHUNK) {
@@ -57,6 +59,7 @@ export function persistFacts(
       tx.insert(monthlyCategoryFacts)
         .values(
           chunk.map((fact) => ({
+            tenantId,
             month: fact.month,
             categoryId: fact.categoryId,
             spentCents: fact.spentCents,
@@ -82,7 +85,11 @@ export function persistFacts(
           })),
         )
         .onConflictDoUpdate({
-          target: [monthlyCategoryFacts.month, monthlyCategoryFacts.categoryId],
+          target: [
+            monthlyCategoryFacts.tenantId,
+            monthlyCategoryFacts.month,
+            monthlyCategoryFacts.categoryId,
+          ],
           set: {
             spentCents: sql`excluded.spent_cents`,
             budgetedCents: sql`excluded.budgeted_cents`,
@@ -147,7 +154,9 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
   }
   if (latest.size === 0) return 0
 
+  const tenantId = getSoleTenantId(db)
   const rows = [...latest.values()].map((fact) => ({
+    tenantId,
     categoryId: fact.categoryId,
     nameSnapshot: fact.categoryName,
     isIncome: fact.isIncome,
@@ -160,7 +169,7 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
       tx.insert(categoryMeta)
         .values(rows.slice(start, start + CHUNK))
         .onConflictDoUpdate({
-          target: categoryMeta.categoryId,
+          target: [categoryMeta.tenantId, categoryMeta.categoryId],
           set: {
             nameSnapshot: sql`excluded.name_snapshot`,
             // Actual owns these two, so they are refreshed rather than preserved.

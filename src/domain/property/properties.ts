@@ -24,10 +24,11 @@
  * and a mortgage doesn't need to be the exception to answer "what if the rate changes":
  * it just needs updating when it does.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
 
@@ -88,10 +89,11 @@ export type Properties = z.infer<typeof propertiesSchema>
 export const DEFAULT_PROPERTIES: Properties = propertiesSchema.parse({})
 
 export function loadProperties(db: Db): Properties {
+  const tenantId = getSoleTenantId(db)
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, PROPERTY_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PROPERTY_KEY)))
     .get()
 
   if (!row) return DEFAULT_PROPERTIES
@@ -116,12 +118,16 @@ export function loadProperties(db: Db): Properties {
 }
 
 export function saveProperties(db: Db, patch: { properties: PropertyPatch[] }): Properties {
+  const tenantId = getSoleTenantId(db)
   const next = propertiesSchema.parse(patch ?? {})
   const valueJson = JSON.stringify(next)
 
   db.insert(settings)
-    .values({ key: PROPERTY_KEY, valueJson })
-    .onConflictDoUpdate({ target: settings.key, set: { valueJson, updatedAt: new Date() } })
+    .values({ tenantId, key: PROPERTY_KEY, valueJson })
+    .onConflictDoUpdate({
+      target: [settings.tenantId, settings.key],
+      set: { valueJson, updatedAt: new Date() },
+    })
     .run()
 
   return next

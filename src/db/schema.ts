@@ -33,10 +33,27 @@ const createdAt = () =>
 //  Identity & auth
 // ============================================================================
 
+/**
+ * A tenant: the boundary every user, config value and computed fact lives inside.
+ *
+ * Exactly one row exists until #373 builds real provisioning — see
+ * `getSoleTenantId` in `db/tenant.ts`. The default-tenant migration
+ * (`0024_seed_default_tenant.sql`) creates the one row every pre-existing
+ * deployment's data is backfilled onto.
+ */
+export const tenants = sqliteTable('tenants', {
+  id: uuid().primaryKey(),
+  label: text().notNull(),
+  createdAt: createdAt(),
+})
+
 export const users = sqliteTable(
   'users',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     /** Authentik subject claim. Null for a local-only account. */
     oidcSub: text('oidc_sub'),
     email: text(),
@@ -166,6 +183,9 @@ export const accountMap = sqliteTable(
   'account_map',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     source: text({ enum: ['actual', 'ghostfolio'] }).notNull(),
     /** Account id as the source system knows it. */
     externalId: text('external_id').notNull(),
@@ -214,7 +234,7 @@ export const accountMap = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [
-    uniqueIndex('account_map_source_external_uq').on(t.source, t.externalId),
+    uniqueIndex('account_map_source_external_uq').on(t.tenantId, t.source, t.externalId),
     index('account_map_dedupe_idx').on(t.dedupeGroup),
   ],
 )
@@ -232,7 +252,10 @@ export const categoryMeta = sqliteTable(
   'category_meta',
   {
     /** Actual's category id. */
-    categoryId: text('category_id').primaryKey(),
+    categoryId: text('category_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     /** Name as last seen in Actual, so renames are detectable. */
     nameSnapshot: text('name_snapshot').notNull(),
     /**
@@ -298,7 +321,10 @@ export const categoryMeta = sqliteTable(
     confidence: integer().notNull().default(0),
     updatedAt: createdAt(),
   },
-  (t) => [index('category_meta_sensitive_idx').on(t.sensitive)],
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.categoryId] }),
+    index('category_meta_sensitive_idx').on(t.sensitive),
+  ],
 )
 
 /**
@@ -310,6 +336,9 @@ export const clarificationQueue = sqliteTable(
   'clarification_queue',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     categoryId: text('category_id').notNull(),
     /** i18n key for the question, so it renders in the user's language. */
     questionCode: text('question_code').notNull(),
@@ -340,7 +369,7 @@ export const clarificationQueue = sqliteTable(
   },
   (t) => [
     uniqueIndex('clarification_open_uq')
-      .on(t.categoryId, t.questionCode)
+      .on(t.tenantId, t.categoryId, t.questionCode)
       .where(sql`status = 'open'`),
     index('clarification_status_idx').on(t.status, t.materialityBp),
   ],
@@ -354,6 +383,9 @@ export const monthlyCategoryFacts = sqliteTable(
   'monthly_category_facts',
   {
     month: text().notNull(), // YYYY-MM
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     categoryId: text('category_id').notNull(),
     /**
      * Actual's own figure for the month, sign-normalised so spend is positive.
@@ -438,7 +470,7 @@ export const monthlyCategoryFacts = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.month, t.categoryId] }),
+    primaryKey({ columns: [t.tenantId, t.month, t.categoryId] }),
     index('facts_month_idx').on(t.month),
     index('facts_category_idx').on(t.categoryId),
   ],
@@ -460,7 +492,10 @@ export const monthlyCategoryFacts = sqliteTable(
 export const monthlyTotals = sqliteTable(
   'monthly_totals',
   {
-    month: text().primaryKey(), // YYYY-MM
+    month: text().notNull(), // YYYY-MM
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     incomeCents: integer('income_cents').notNull().default(0),
     spentCents: integer('spent_cents').notNull().default(0),
     budgetedCents: integer('budgeted_cents').notNull().default(0),
@@ -505,6 +540,7 @@ export const monthlyTotals = sqliteTable(
     factsChangedAt: integer('facts_changed_at', { mode: 'timestamp_ms' }),
     computedAt: createdAt(),
   },
+  (t) => [primaryKey({ columns: [t.tenantId, t.month] })],
 )
 
 /**
@@ -521,6 +557,9 @@ export const recomputeMismatches = sqliteTable(
   'recompute_mismatches',
   {
     month: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     categoryId: text('category_id').notNull(),
     categoryName: text('category_name').notNull(),
     /** Actual's figure. */
@@ -532,7 +571,7 @@ export const recomputeMismatches = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.month, t.categoryId] }),
+    primaryKey({ columns: [t.tenantId, t.month, t.categoryId] }),
     index('mismatch_month_idx').on(t.month),
   ],
 )
@@ -549,21 +588,28 @@ export const recomputeMismatches = sqliteTable(
  * pass later than the totals are, and a second writer to that row would have the
  * sync pass wipe the score every time it ran.
  */
-export const monthlyHygiene = sqliteTable('monthly_hygiene', {
-  month: text().primaryKey(),
-  /** 0..10000. 10 000 means nothing was deducted. */
-  scoreBp: integer('score_bp').notNull(),
-  /** `[{reason, bp}]` — what was taken off and why. */
-  deductionsJson: text('deductions_json').notNull(),
-  /**
-   * `monthly_totals.facts_hash` as it was the last time this month was judged
-   * (#162). Compared against the current hash to decide whether a month
-   * outside the two-month floor needs rejudging; null before this column
-   * existed or before the month was ever judged.
-   */
-  judgedFactsHash: text('judged_facts_hash'),
-  computedAt: createdAt(),
-})
+export const monthlyHygiene = sqliteTable(
+  'monthly_hygiene',
+  {
+    month: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** 0..10000. 10 000 means nothing was deducted. */
+    scoreBp: integer('score_bp').notNull(),
+    /** `[{reason, bp}]` — what was taken off and why. */
+    deductionsJson: text('deductions_json').notNull(),
+    /**
+     * `monthly_totals.facts_hash` as it was the last time this month was judged
+     * (#162). Compared against the current hash to decide whether a month
+     * outside the two-month floor needs rejudging; null before this column
+     * existed or before the month was ever judged.
+     */
+    judgedFactsHash: text('judged_facts_hash'),
+    computedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.month] })],
+)
 
 /**
  * The deterministic findings for a month, as computed — not as ranked.
@@ -581,6 +627,9 @@ export const monthlySignals = sqliteTable(
   'monthly_signals',
   {
     month: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     /** A `FindingCode`. Text, not an enum: the vocabulary lives in domain/ai. */
     code: text().notNull(),
     /** Category id, account id, or `''` for a household-level signal. */
@@ -594,7 +643,7 @@ export const monthlySignals = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.month, t.code, t.subjectKey] }),
+    primaryKey({ columns: [t.tenantId, t.month, t.code, t.subjectKey] }),
     index('signals_month_idx').on(t.month, t.severity),
   ],
 )
@@ -615,6 +664,9 @@ export const categoryGuessCandidates = sqliteTable(
   'category_guess_candidates',
   {
     month: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     transactionId: text('transaction_id').notNull(),
     payeeId: text('payee_id').notNull(),
     /** Display only — never sent to Gemini. */
@@ -626,7 +678,7 @@ export const categoryGuessCandidates = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.month, t.transactionId] }),
+    primaryKey({ columns: [t.tenantId, t.month, t.transactionId] }),
     index('category_guess_candidates_month_idx').on(t.month),
   ],
 )
@@ -635,6 +687,9 @@ export const netWorthSnapshots = sqliteTable(
   'net_worth_snapshots',
   {
     date: text().notNull(), // YYYY-MM-DD
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     accountMapId: text('account_map_id')
       .notNull()
       .references(() => accountMap.id, { onDelete: 'cascade' }),
@@ -643,7 +698,7 @@ export const netWorthSnapshots = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.date, t.accountMapId] }),
+    primaryKey({ columns: [t.tenantId, t.date, t.accountMapId] }),
     index('networth_date_idx').on(t.date),
   ],
 )
@@ -652,6 +707,9 @@ export const portfolioSnapshots = sqliteTable(
   'portfolio_snapshots',
   {
     date: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     /** ISIN when known, otherwise the provider symbol. */
     instrument: text().notNull(),
     symbol: text(),
@@ -698,38 +756,45 @@ export const portfolioSnapshots = sqliteTable(
     computedAt: createdAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.date, t.instrument] }),
+    primaryKey({ columns: [t.tenantId, t.date, t.instrument] }),
     index('portfolio_date_idx').on(t.date),
   ],
 )
 
-export const portfolioMetrics = sqliteTable('portfolio_metrics', {
-  date: text().primaryKey(),
-  /** Time- and money-weighted return, basis points. */
-  twrBp: integer('twr_bp'),
-  mwrBp: integer('mwr_bp'),
-  totalValueCents: integer('total_value_cents').notNull().default(0),
-  /**
-   * The two halves of `total_value_cents`, split by whether the holding can move.
-   *
-   * A tool that syncs bank accounts into Ghostfolio leaves a `LIQUIDITY` holding
-   * there, and on the reporting instance it was about half the portfolio: it drew
-   * a current-account balance as an asset class in the treemap, and "market value"
-   * was not a market value. Kept as stored columns rather than re-derived from
-   * `allocation_json`, because allocation is now over the invested half only and a
-   * reader asking "how much is at the broker in cash" would otherwise have nothing
-   * to read. Nullable, and null means "written before the split existed" — where
-   * `total_value_cents` is still the only figure there is.
-   */
-  investedValueCents: integer('invested_value_cents'),
-  cashValueCents: integer('cash_value_cents'),
-  /** Allocation and drift as JSON — shape belongs to domain/portfolio. */
-  allocationJson: text('allocation_json'),
-  driftJson: text('drift_json'),
-  /** What the fund fees actually cost per year, in euros, not percent. */
-  terAnnualCents: integer('ter_annual_cents'),
-  computedAt: createdAt(),
-})
+export const portfolioMetrics = sqliteTable(
+  'portfolio_metrics',
+  {
+    date: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** Time- and money-weighted return, basis points. */
+    twrBp: integer('twr_bp'),
+    mwrBp: integer('mwr_bp'),
+    totalValueCents: integer('total_value_cents').notNull().default(0),
+    /**
+     * The two halves of `total_value_cents`, split by whether the holding can move.
+     *
+     * A tool that syncs bank accounts into Ghostfolio leaves a `LIQUIDITY` holding
+     * there, and on the reporting instance it was about half the portfolio: it drew
+     * a current-account balance as an asset class in the treemap, and "market value"
+     * was not a market value. Kept as stored columns rather than re-derived from
+     * `allocation_json`, because allocation is now over the invested half only and a
+     * reader asking "how much is at the broker in cash" would otherwise have nothing
+     * to read. Nullable, and null means "written before the split existed" — where
+     * `total_value_cents` is still the only figure there is.
+     */
+    investedValueCents: integer('invested_value_cents'),
+    cashValueCents: integer('cash_value_cents'),
+    /** Allocation and drift as JSON — shape belongs to domain/portfolio. */
+    allocationJson: text('allocation_json'),
+    driftJson: text('drift_json'),
+    /** What the fund fees actually cost per year, in euros, not percent. */
+    terAnnualCents: integer('ter_annual_cents'),
+    computedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.date] })],
+)
 
 // ============================================================================
 //  AI
@@ -775,6 +840,9 @@ export const aiRuns = sqliteTable(
   'ai_runs',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     kind: text({
       enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
     }).notNull(),
@@ -839,9 +907,10 @@ export const aiRuns = sqliteTable(
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
     // The insights ledger's own query: one month, newest first.
     index('ai_runs_period_idx').on(t.period, t.createdAt),
-    // `findReusableRun`'s own lookup: the two most selective columns, narrowed
+    // `findReusableRun`'s own lookup: tenant first, since a cached answer must
+    // never cross tenants, then the two most selective columns, narrowed
     // further from there by the equality checks on kind/locale/promptId/model.
-    index('ai_runs_reuse_idx').on(t.period, t.payloadHash),
+    index('ai_runs_reuse_idx').on(t.tenantId, t.period, t.payloadHash),
   ],
 )
 
@@ -864,6 +933,7 @@ export const aiRuns = sqliteTable(
  * `domain/ai/budget.ts` computes its month key the same way, from the same rule.
  */
 export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
+  tenantId: text('tenant_id'),
   month: text().notNull(),
   runCount: integer('run_count').notNull(),
   inputTokens: integer('input_tokens').notNull(),
@@ -876,7 +946,12 @@ export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
   // `where` and `orderBy` accept, and the emitted DDL is exactly this text —
   // drizzle-kit renders a column reference inside an aliased `sql` fragment
   // without the snake_case rule, which produced `"createdAt"` in the view body.
+  //
+  // Grouped by tenant as well as month: the AI cost guard sums one tenant's
+  // spend, and a shared total across tenants would let one tenant's usage
+  // throttle another's budget.
   sql`select
+    ai_runs.tenant_id as tenant_id,
     strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch') as month,
     count(*) as run_count,
     coalesce(sum(ai_runs.input_tokens), 0) as input_tokens,
@@ -884,7 +959,7 @@ export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
     coalesce(sum(ai_runs.cached_tokens), 0) as cached_tokens,
     coalesce(sum(ai_runs.cost_micro_eur), 0) as cost_micro_eur
   from ai_runs
-  group by strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch')`,
+  group by ai_runs.tenant_id, strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch')`,
 )
 
 /**
@@ -896,6 +971,9 @@ export const aiFindings = sqliteTable(
   'ai_findings',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     runId: text('run_id')
       .notNull()
       .references(() => aiRuns.id, { onDelete: 'cascade' }),
@@ -924,6 +1002,9 @@ export const aiNarratives = sqliteTable(
   'ai_narratives',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     runId: text('run_id')
       .notNull()
       .references(() => aiRuns.id, { onDelete: 'cascade' }),
@@ -933,7 +1014,7 @@ export const aiNarratives = sqliteTable(
     bodyMd: text('body_md').notNull(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('ai_narratives_period_locale_uq').on(t.period, t.locale)],
+  (t) => [uniqueIndex('ai_narratives_period_locale_uq').on(t.tenantId, t.period, t.locale)],
 )
 
 /**
@@ -947,6 +1028,9 @@ export const proposals = sqliteTable(
   'proposals',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     runId: text('run_id').references(() => aiRuns.id, { onDelete: 'set null' }),
     /** Selects the apply handler, e.g. `category_meta.set`. */
     type: text().notNull(),
@@ -975,7 +1059,7 @@ export const proposals = sqliteTable(
   (t) => [
     index('proposals_status_idx').on(t.status, t.createdAt),
     uniqueIndex('proposals_pending_uq')
-      .on(t.type, t.targetRef)
+      .on(t.tenantId, t.type, t.targetRef)
       .where(sql`status = 'pending'`),
   ],
 )
@@ -1007,6 +1091,12 @@ export const auditLog = sqliteTable(
     action: text().notNull(),
     /** Who approved it. Null for a change the system made on its own. */
     actorId: text('actor_id'),
+    /**
+     * Which tenant this change belongs to. Plain text, no FK — same reason
+     * `actorId` has none: an audit row must survive whatever it points at
+     * being pruned or deleted.
+     */
+    tenantId: text('tenant_id'),
     /** The table the change landed in, e.g. `category_meta`. */
     entity: text().notNull(),
     /** Which row: a category id, an account id, a proposal id. */
@@ -1023,17 +1113,24 @@ export const auditLog = sqliteTable(
   ],
 )
 
-export const jobs = sqliteTable('jobs', {
-  name: text().primaryKey(),
-  lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
-  lastSuccessAt: integer('last_success_at', { mode: 'timestamp_ms' }),
-  nextRunAt: integer('next_run_at', { mode: 'timestamp_ms' }),
-  status: text({ enum: ['idle', 'running', 'ok', 'error'] })
-    .notNull()
-    .default('idle'),
-  lastDurationMs: integer('last_duration_ms'),
-  error: text(),
-})
+export const jobs = sqliteTable(
+  'jobs',
+  {
+    name: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    lastRunAt: integer('last_run_at', { mode: 'timestamp_ms' }),
+    lastSuccessAt: integer('last_success_at', { mode: 'timestamp_ms' }),
+    nextRunAt: integer('next_run_at', { mode: 'timestamp_ms' }),
+    status: text({ enum: ['idle', 'running', 'ok', 'error'] })
+      .notNull()
+      .default('idle'),
+    lastDurationMs: integer('last_duration_ms'),
+    error: text(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
+)
 
 /**
  * The last capability probe per upstream, so readiness can answer without calling out.
@@ -1058,15 +1155,22 @@ export const jobs = sqliteTable('jobs', {
  * takes — a probe that expensive is the sync job, so Actual's reachability is reported
  * from that job's own row instead.
  */
-export const upstreamProbes = sqliteTable('upstream_probes', {
-  /** `ghostfolio`. Text rather than an enum: a probe for a source this build does
-   *  not know about is a row to ignore, not a row that fails to parse. */
-  source: text().primaryKey(),
-  status: text({ enum: ['ok', 'unreachable', 'shape-mismatch'] }).notNull(),
-  checkedAt: integer('checked_at', { mode: 'timestamp_ms' }).notNull(),
-  /** The per-path checks and warnings. Shape facts only — never an amount. */
-  reportJson: text('report_json').notNull(),
-})
+export const upstreamProbes = sqliteTable(
+  'upstream_probes',
+  {
+    /** `ghostfolio`. Text rather than an enum: a probe for a source this build does
+     *  not know about is a row to ignore, not a row that fails to parse. */
+    source: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    status: text({ enum: ['ok', 'unreachable', 'shape-mismatch'] }).notNull(),
+    checkedAt: integer('checked_at', { mode: 'timestamp_ms' }).notNull(),
+    /** The per-path checks and warnings. Shape facts only — never an amount. */
+    reportJson: text('report_json').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.source] })],
+)
 
 /**
  * One row per job attempt, unlike `jobs` above. Asked for directly: "show the job
@@ -1085,6 +1189,9 @@ export const jobRuns = sqliteTable(
   'job_runs',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     jobName: text('job_name').notNull(),
     status: text({ enum: ['running', 'ok', 'error', 'partial'] })
       .notNull()
@@ -1097,7 +1204,7 @@ export const jobRuns = sqliteTable(
     /** `JobStep[]` — see `jobs/runner.ts`. `'[]'` for a job that reports no steps. */
     stepsJson: text('steps_json').notNull().default('[]'),
   },
-  (t) => [index('job_runs_job_name_started_at_idx').on(t.jobName, t.startedAt)],
+  (t) => [index('job_runs_job_name_started_at_idx').on(t.tenantId, t.jobName, t.startedAt)],
 )
 
 /**
@@ -1119,6 +1226,7 @@ export const rateLimits = sqliteTable(
   {
     /** `<bucket>:<client key>` — the bucket keeps the AI window separate. */
     key: text().primaryKey(),
+    tenantId: text('tenant_id').references(() => tenants.id),
     count: integer().notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -1126,11 +1234,18 @@ export const rateLimits = sqliteTable(
 )
 
 /** Tunable thresholds, active prompt pointers, benchmark assumptions. */
-export const settings = sqliteTable('settings', {
-  key: text().primaryKey(),
-  valueJson: text('value_json').notNull(),
-  updatedAt: createdAt(),
-})
+export const settings = sqliteTable(
+  'settings',
+  {
+    key: text().notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    valueJson: text('value_json').notNull(),
+    updatedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.key] })],
+)
 
 /**
  * The account kinds `account_map.kind` may hold, as a type.
@@ -1142,6 +1257,7 @@ export const settings = sqliteTable('settings', {
 export type AccountKind = (typeof accountMap.$inferSelect)['kind']
 
 export const schema = {
+  tenants,
   users,
   localCredentials,
   sessions,
@@ -1166,6 +1282,7 @@ export const schema = {
   proposals,
   auditLog,
   jobs,
+  jobRuns,
   rateLimits,
   settings,
   upstreamProbes,

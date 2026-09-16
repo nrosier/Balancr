@@ -12,6 +12,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots, type AccountKind } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import type { AccountBalance } from './accounts.ts'
 import { config } from '../../config.ts'
 import { LIQUID, resolveInclusion, type NetWorthResult, type NetWorthSummary } from './networth.ts'
@@ -33,6 +34,7 @@ export function persistNetWorth(
   db: Db,
   result: NetWorthResult,
 ): NetWorthPersistResult {
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: NetWorthPersistResult = { written: 0, removed: 0 }
 
@@ -40,6 +42,7 @@ export function persistNetWorth(
     for (const account of result.contributions) {
       tx.insert(netWorthSnapshots)
         .values({
+          tenantId,
           date: result.date,
           accountMapId: account.accountMapId,
           valueCents: account.valueCents,
@@ -47,7 +50,11 @@ export function persistNetWorth(
           computedAt,
         })
         .onConflictDoUpdate({
-          target: [netWorthSnapshots.date, netWorthSnapshots.accountMapId],
+          target: [
+            netWorthSnapshots.tenantId,
+            netWorthSnapshots.date,
+            netWorthSnapshots.accountMapId,
+          ],
           set: {
             valueCents: sql`excluded.value_cents`,
             currency: sql`excluded.currency`,

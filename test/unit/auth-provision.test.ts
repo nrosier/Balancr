@@ -24,6 +24,7 @@ import { Secret, TOTP } from 'otpauth'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { localCredentials, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { TOTP_PERIOD_SECONDS, verifyLocalLogin } from '../../src/server/auth/local.ts'
 import { provisionLocalCredential } from '../../src/server/auth/provision.ts'
 
@@ -151,7 +152,7 @@ describe('provisioning a local credential', () => {
   it('keeps the role an existing account already had', async () => {
     const { db, sqlite } = freshDb()
     try {
-      db.insert(users).values({ email: EMAIL, role: 'viewer' }).run()
+      db.insert(users).values({ tenantId: getSoleTenantId(db), email: EMAIL, role: 'viewer' }).run()
       const result = await provisionLocalCredential(db, { email: EMAIL, password: PASSWORD })
       // Setting a password is not a promotion.
       expect(result.role).toBe('viewer')
@@ -163,8 +164,9 @@ describe('provisioning a local credential', () => {
   it('refuses an address that matches more than one account', async () => {
     const { db, sqlite } = freshDb()
     try {
-      db.insert(users).values({ email: EMAIL, oidcSub: 'sub-a' }).run()
-      db.insert(users).values({ email: EMAIL, oidcSub: 'sub-b' }).run()
+      const tenantId = getSoleTenantId(db)
+      db.insert(users).values({ tenantId, email: EMAIL, oidcSub: 'sub-a' }).run()
+      db.insert(users).values({ tenantId, email: EMAIL, oidcSub: 'sub-b' }).run()
 
       await expect(
         provisionLocalCredential(db, { email: EMAIL, password: PASSWORD }),

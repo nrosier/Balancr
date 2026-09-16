@@ -27,6 +27,7 @@ import { Secret, TOTP } from 'otpauth'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { localCredentials, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { HttpError } from '../../src/server/errors.ts'
 import {
   ARGON2_OPTIONS,
@@ -66,6 +67,7 @@ function fixture(overrides: { disabled?: boolean; email?: string } = {}): Fixtur
   const row = ctx.db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(ctx.db),
       email: overrides.email ?? EMAIL,
       displayName: 'Nick',
       role: 'owner',

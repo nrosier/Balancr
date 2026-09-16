@@ -24,6 +24,7 @@ import { eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap } from '../../db/schema.ts'
 import type { AccountKind } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import type { Transaction } from '../audit.ts'
 
 export type AccountSource = 'actual' | 'ghostfolio'
@@ -83,6 +84,7 @@ export function syncAccountMap(
   sightings: readonly AccountSighting[],
 ): AccountSyncResult {
   const result: AccountSyncResult = { created: 0, renamed: 0, missing: [] }
+  const tenantId = getSoleTenantId(db)
 
   db.transaction((tx) => {
     const existing = tx.select().from(accountMap).all()
@@ -99,6 +101,7 @@ export function syncAccountMap(
       if (!row) {
         tx.insert(accountMap)
           .values({
+            tenantId,
             source: sighting.source,
             externalId: sighting.externalId,
             name: sighting.name,
