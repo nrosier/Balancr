@@ -6,6 +6,21 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [1.2.3] — 2026-09-16
+
+Dependency, lockfile, and base-image maintenance — no user-facing behavior change.
+
+### Fixed
+
+- **Default `compose.yaml` image referenced the wrong Docker Hub namespace**, pointing at `nrosier/balancr` instead of the actual `niqck/balancr` published by CI.
+- **Fastify updated to `^5.12.5`** (from `5.12.4`).
+
+### Changed
+
+- Dev dependencies and the npm lockfile refreshed to their current resolvable versions.
+- Harbor replication and a vulnerability scan now trigger automatically after a release image is published.
+- Production image rebuilt against the current `cgr.dev/chainguard/node` base, picking up upstream security patches published since 1.2.2.
+
 ## [1.2.2] — 2026-09-15
 
 The production image moves from Alpine to Chainguard's Wolfi-based glibc image.
