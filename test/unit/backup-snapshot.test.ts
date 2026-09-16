@@ -23,6 +23,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   isSnapshot,
   prune,
@@ -84,7 +85,9 @@ describe('snapshotName / snapshotTime', () => {
 
 describe('writeSnapshot', () => {
   it('writes a snapshot that verifies', async () => {
-    db.insert(categoryMeta).values({ categoryId: 'c1', nameSnapshot: 'Groceries' }).run()
+    db.insert(categoryMeta)
+      .values({ tenantId: getSoleTenantId(db), categoryId: 'c1', nameSnapshot: 'Groceries' })
+      .run()
 
     const at = new Date('2026-09-03T03:00:12Z')
     const snapshot = await writeSnapshot(db, dir, PASS, at)

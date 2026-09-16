@@ -39,6 +39,7 @@ import {
   HOUSEHOLD_KEY,
   type Household,
 } from '../../src/domain/benchmark/household.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 const MONTH = '2026-08'
 
@@ -418,16 +419,18 @@ describe('the finding', () => {
 
 describe('the context, read off the database', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const meta = (id: string, custodyShared: boolean): void => {
     ctx.db
       .insert(categoryMeta)
-      .values({ categoryId: id, nameSnapshot: id, custodyShared })
+      .values({ tenantId: TENANT_ID, categoryId: id, nameSnapshot: id, custodyShared })
       .run()
   }
 
@@ -437,6 +440,7 @@ describe('the context, read off the database', () => {
     ctx.db
       .insert(settings)
       .values({
+        tenantId: TENANT_ID,
         key: HOUSEHOLD_KEY,
         valueJson: JSON.stringify({ members: [{ birthYear: 2013, custodyBp: 4_000 }] }),
       })

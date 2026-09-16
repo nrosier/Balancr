@@ -31,6 +31,7 @@ import { CLARIFICATION_GUESS_VALUES } from '../../adapters/gemini/schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, clarificationQueue } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { recordAudit } from '../audit.ts'
@@ -184,6 +185,7 @@ export function enqueueClarifications(db: Db, options: EnqueueOptions): EnqueueR
   const result: EnqueueResult = { enqueued: [], skipped: [] }
   if (options.candidates.length === 0) return result
 
+  const tenantId = getSoleTenantId(db)
   const monthSpentCents = loadMonthTotals(db, [options.month])[0]?.spentCents ?? 0
   const spentFor = new Map(
     loadFacts(db, options.month).map((fact) => [fact.categoryId, fact.spentCents]),
@@ -262,6 +264,7 @@ export function enqueueClarifications(db: Db, options: EnqueueOptions): EnqueueR
 
     room -= 1
     rows.push({
+      tenantId,
       categoryId: candidate.categoryId,
       questionCode: candidate.code,
       runId: options.runId ?? null,

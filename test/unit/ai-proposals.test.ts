@@ -22,6 +22,7 @@ import { and, eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, proposals, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { PROPOSAL_WHY_CODES } from '../../src/domain/ai/codes.ts'
 import { loadAuditTrail } from '../../src/domain/audit.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
@@ -68,6 +69,8 @@ let ctx: ReturnType<typeof createTestDb>
 let db: Db
 /** A real run row: `proposals.run_id` is a foreign key. */
 let runId: string
+/** The tenant the backfill migration seeds — every fixture row hangs off it. */
+let TENANT_ID: string
 
 beforeAll(async () => {
   await initI18n()
@@ -81,8 +84,9 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
   // `proposals.applied_by` is a foreign key; the audit trail's actor is not.
-  db.insert(users).values({ id: 'u1', locale: 'en' }).run()
+  db.insert(users).values({ id: 'u1', tenantId: TENANT_ID, locale: 'en' }).run()
   runId = recordRun(db, {
     kind: 'findings',
     model: 'gemini-3.7-flash',

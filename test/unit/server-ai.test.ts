@@ -28,6 +28,7 @@ import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import { createPromptVersion } from '../../src/domain/ai/prompts.ts'
 import { initI18n } from '../../src/i18n/index.ts'
@@ -47,6 +48,7 @@ function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,

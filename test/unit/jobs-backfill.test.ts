@@ -33,6 +33,7 @@ import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { portfolioMetrics } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { loadNetWorthHistory } from '../../src/domain/aggregate/networth-store.ts'
 import { loadPortfolioValueHistory } from '../../src/domain/portfolio/store.ts'
@@ -483,6 +484,7 @@ describe('an existing metrics row', () => {
     // succeeded, which is the failure nobody goes looking for.
     db.insert(portfolioMetrics)
       .values({
+        tenantId: getSoleTenantId(db),
         date: '2026-01-31',
         twrBp: 420,
         mwrBp: 410,

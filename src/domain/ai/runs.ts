@@ -20,6 +20,7 @@
 import { and, desc, eq, isNull, like, or, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { aiRuns } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { costMicroEur, ZERO_USAGE, type TokenUsage } from '../../adapters/gemini/pricing.ts'
 
 export type AiRunRow = typeof aiRuns.$inferSelect
@@ -72,6 +73,7 @@ export interface RecordRun {
  * priced differently from another.
  */
 export function recordRun(db: Db, run: RecordRun): string {
+  const tenantId = getSoleTenantId(db)
   const usage = run.usage ?? ZERO_USAGE
   // A call that never went out has no tokens, so this is zero for `capped` and
   // `blocked` without a status check.
@@ -80,6 +82,7 @@ export function recordRun(db: Db, run: RecordRun): string {
   const rows = db
     .insert(aiRuns)
     .values({
+      tenantId,
       kind: run.kind,
       model: run.model,
       promptId: run.promptId ?? null,
@@ -156,11 +159,13 @@ export interface ReuseKey {
  * already treats the two as the same model for billing.
  */
 export function findReusableRun(db: Db, key: ReuseKey): AiRunRow | null {
+  const tenantId = getSoleTenantId(db)
   const candidates = db
     .select()
     .from(aiRuns)
     .where(
       and(
+        eq(aiRuns.tenantId, tenantId),
         eq(aiRuns.kind, key.kind),
         eq(aiRuns.period, key.period),
         eq(aiRuns.locale, key.locale),

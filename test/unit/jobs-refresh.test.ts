@@ -24,16 +24,19 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { jobs as jobsTable } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { registry } from '../../src/jobs/index.ts'
 import { DATA_JOBS } from '../../src/server/routes/api/freshness.ts'
 import { DEFAULT_REFRESH, expand, REFRESHABLE, startRefresh } from '../../src/jobs/refresh.ts'
 import { jobsInFlight, loadJobRows, type Job } from '../../src/jobs/runner.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 /**
@@ -169,7 +172,7 @@ describe('startRefresh', () => {
     // refused for ever — on exactly the instance whose figures are now stalest.
     ctx.db
       .insert(jobsTable)
-      .values({ name: 'sync', status: 'running', lastRunAt: new Date() })
+      .values({ tenantId: TENANT_ID, name: 'sync', status: 'running', lastRunAt: new Date() })
       .run()
 
     const ran: string[] = []

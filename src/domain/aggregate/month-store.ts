@@ -16,6 +16,7 @@
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { monthlyTotals, recomputeMismatches } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { addMonths, monthsBefore } from '../../util/month.ts'
 import type { MonthTotals, RecomputeMismatch, UncategorisedBucket } from './spend.ts'
 
@@ -54,6 +55,7 @@ export function persistMonthTotals(
 ): number {
   if (totals.length === 0) return 0
 
+  const tenantId = getSoleTenantId(db)
   const buckets = new Map(uncategorised.map((bucket) => [bucket.month, bucket]))
   const computedAt = new Date()
   const months = totals.map((month) => month.month)
@@ -79,6 +81,7 @@ export function persistMonthTotals(
       factsHash !== null && priorRow !== undefined && priorRow.factsHash === factsHash
     const factsChangedAt = unchanged ? priorRow.factsChangedAt ?? computedAt : computedAt
     return {
+      tenantId,
       month: month.month,
       incomeCents: month.incomeCents,
       spentCents: month.spentCents,
@@ -214,10 +217,12 @@ export function persistMismatches(
 ): MonthPersistResult {
   if (months.length === 0) return { months: 0, mismatches: 0 }
 
+  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = mismatches
     .filter((mismatch) => months.includes(mismatch.month))
     .map((mismatch) => ({
+      tenantId,
       month: mismatch.month,
       categoryId: mismatch.categoryId,
       categoryName: mismatch.categoryName,

@@ -27,6 +27,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadHousehold } from '../../src/domain/benchmark/household.ts'
 import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
@@ -52,6 +53,7 @@ function signIn(db: Db, role: 'owner' | 'viewer', locale = 'en'): string {
   const row = db
     .insert(users)
     .values({
+      tenantId: getSoleTenantId(db),
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role === 'owner' ? 'Nick' : 'Guest',

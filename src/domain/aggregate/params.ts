@@ -9,10 +9,11 @@
  * Defaults are the schema's, so a fresh install works before anything is stored
  * and an unrecognised key in a stored row is ignored rather than fatal.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 
 const log = logger.child({ module: 'aggregate/params' })
@@ -173,10 +174,11 @@ export const DEFAULT_PARAMS: AggregateParams = aggregateParamsSchema.parse({})
  * failure than analysing with the default one, and the log says which key broke.
  */
 export function loadParams(db: Db): AggregateParams {
+  const tenantId = getSoleTenantId(db)
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, PARAMS_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PARAMS_KEY)))
     .get()
 
   if (!row) return DEFAULT_PARAMS
@@ -209,6 +211,7 @@ export function loadParams(db: Db): AggregateParams {
  * be reported to whoever is trying to save it.
  */
 export function saveParams(db: Db, patch: AggregateParamsPatch): AggregateParams {
+  const tenantId = getSoleTenantId(db)
   const current = loadParams(db) as Record<string, Record<string, unknown>>
   const incoming = (patch ?? {}) as Record<string, Record<string, unknown>>
 
@@ -221,9 +224,9 @@ export function saveParams(db: Db, patch: AggregateParamsPatch): AggregateParams
   const valueJson = JSON.stringify(next)
 
   db.insert(settings)
-    .values({ key: PARAMS_KEY, valueJson })
+    .values({ tenantId, key: PARAMS_KEY, valueJson })
     .onConflictDoUpdate({
-      target: settings.key,
+      target: [settings.tenantId, settings.key],
       set: { valueJson, updatedAt: new Date() },
     })
     .run()

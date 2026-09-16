@@ -46,6 +46,7 @@ import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 const ENDPOINTS = [
   '/api/overview',
@@ -59,6 +60,8 @@ const ENDPOINTS = [
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let session: string
+/** The tenant the backfill migration seeds — every fixture row hangs off it. */
+let TENANT_ID: string
 
 /** A signed-in owner, without walking the OIDC flow to get one. */
 function signIn(db: Db, locale = 'en'): string {
@@ -66,6 +69,7 @@ function signIn(db: Db, locale = 'en'): string {
     .insert(users)
     .values({
       oidcSub: `sub-${crypto.randomUUID()}`,
+      tenantId: getSoleTenantId(db),
       email: 'nick@example.test',
       displayName: 'Nick',
       locale,
@@ -84,6 +88,7 @@ const get = (url: string, token = session) =>
 
 async function open(options: Parameters<typeof apiFixture>[0] = {}): Promise<void> {
   ctx = apiFixture(options)
+  TENANT_ID = getSoleTenantId(ctx.db)
   app = await buildApp({ db: ctx.db, web: null })
   session = signIn(ctx.db)
 }
@@ -907,7 +912,12 @@ describe('GET /api/insights', () => {
   it('says no when the viewer is not the owner', async () => {
     const viewer = ctx.db
       .insert(users)
-      .values({ oidcSub: `sub-${crypto.randomUUID()}`, locale: 'en', role: 'viewer' })
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
       .returning()
       .all()[0]
     if (viewer === undefined) throw new Error('inserting the viewer returned no row')
@@ -978,11 +988,21 @@ describe('GET /api/insights', () => {
     // not a month, so switching the month picker must not make either vanish.
     ctx.db
       .insert(clarificationQueue)
-      .values({ categoryId: 'cat-groceries', questionCode: 'purpose_unknown', status: 'open' })
+      .values({
+        tenantId: TENANT_ID,
+        categoryId: 'cat-groceries',
+        questionCode: 'purpose_unknown',
+        status: 'open',
+      })
       .run()
     ctx.db
       .insert(proposals)
-      .values({ type: 'category_meta.set', targetRef: 'cat-groceries', payloadJson: '{}' })
+      .values({
+        tenantId: TENANT_ID,
+        type: 'category_meta.set',
+        targetRef: 'cat-groceries',
+        payloadJson: '{}',
+      })
       .run()
 
     const august = (await get(`/api/insights?month=${MONTH}`)).json()
@@ -998,6 +1018,7 @@ describe('GET /api/insights', () => {
     ctx.db
       .insert(proposals)
       .values({
+        tenantId: TENANT_ID,
         type: 'budget_amount.set',
         targetRef: 'cat-groceries:2026-08',
         payloadJson: '{"amountCents":15000}',
@@ -1008,7 +1029,7 @@ describe('GET /api/insights', () => {
     // than absent — the client contract has it as `string | null`.
     ctx.db
       .insert(proposals)
-      .values({ type: 'category_meta.set', targetRef: 'cat-rent', payloadJson: '{}' })
+      .values({ tenantId: TENANT_ID, type: 'category_meta.set', targetRef: 'cat-rent', payloadJson: '{}' })
       .run()
 
     const body = (await get(`/api/insights?month=${MONTH}`)).json()
@@ -1202,7 +1223,12 @@ describe('the AI ledger', () => {
     const { ok } = ledger()
     const viewer = ctx.db
       .insert(users)
-      .values({ oidcSub: `sub-${crypto.randomUUID()}`, locale: 'en', role: 'viewer' })
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
       .returning()
       .all()[0]
     if (viewer === undefined) throw new Error('inserting the viewer returned no row')

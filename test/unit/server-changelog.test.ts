@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { SESSION_COOKIE } from '../../src/server/cookies.ts'
@@ -93,6 +94,7 @@ describe('GET /api/changelog', () => {
     const row = ctx.db
       .insert(users)
       .values({
+        tenantId: getSoleTenantId(ctx.db),
         oidcSub: `sub-${crypto.randomUUID()}`,
         email: 'nick@example.test',
         displayName: 'Nick',

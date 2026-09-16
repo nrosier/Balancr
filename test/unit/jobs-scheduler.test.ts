@@ -9,16 +9,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { jobs as jobsTable } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadJobRows, type Job } from '../../src/jobs/runner.ts'
 import { createScheduler } from '../../src/jobs/scheduler.ts'
 
 const TICK_MS = 60_000
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
   vi.useFakeTimers()
 })
 
@@ -133,7 +136,7 @@ describe('createScheduler', () => {
   it('clears rows left running by a restart', async () => {
     // A killed container leaves `status = running` behind for ever, which makes
     // the one field an operator actually reads the one nobody believes.
-    ctx.db.insert(jobsTable).values({ name: 'sync', status: 'running' }).run()
+    ctx.db.insert(jobsTable).values({ tenantId: TENANT_ID, name: 'sync', status: 'running' }).run()
 
     createScheduler(ctx.db, []).start()
     await settle()

@@ -16,12 +16,16 @@ import {
   sessions,
   users,
 } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+/** The tenant the backfill migration seeds — every fixture row hangs off it. */
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 describe('foreign keys', () => {
@@ -40,7 +44,7 @@ describe('foreign keys', () => {
   })
 
   it('cascade a user delete to their sessions', () => {
-    ctx.db.insert(users).values({ id: 'u1', locale: 'en' }).run()
+    ctx.db.insert(users).values({ id: 'u1', tenantId: TENANT_ID, locale: 'en' }).run()
     ctx.db
       .insert(sessions)
       .values({
@@ -84,30 +88,36 @@ describe('prompts: at most one active version per (key, locale)', () => {
 })
 
 describe('proposals: no duplicate pending proposal for the same target', () => {
-  const base = {
+  const base = () => ({
+    tenantId: TENANT_ID,
     type: 'category_meta.set',
     targetRef: 'cat-42',
     payloadJson: '{}',
-  }
+  })
 
   it('rejects a second pending proposal', () => {
-    ctx.db.insert(proposals).values({ ...base, status: 'pending' }).run()
+    ctx.db.insert(proposals).values({ ...base(), status: 'pending' }).run()
     expect(() =>
-      ctx.db.insert(proposals).values({ ...base, status: 'pending' }).run(),
+      ctx.db.insert(proposals).values({ ...base(), status: 'pending' }).run(),
     ).toThrow(/UNIQUE/i)
   })
 
   it('permits a new pending proposal once the previous one is resolved', () => {
-    ctx.db.insert(proposals).values({ ...base, status: 'applied' }).run()
-    ctx.db.insert(proposals).values({ ...base, status: 'rejected' }).run()
-    ctx.db.insert(proposals).values({ ...base, status: 'pending' }).run()
+    ctx.db.insert(proposals).values({ ...base(), status: 'applied' }).run()
+    ctx.db.insert(proposals).values({ ...base(), status: 'rejected' }).run()
+    ctx.db.insert(proposals).values({ ...base(), status: 'pending' }).run()
     expect(ctx.db.select().from(proposals).all()).toHaveLength(3)
   })
 })
 
 describe('clarification queue: one open question per (category, question)', () => {
   it('does not re-ask a question that is already open', () => {
-    const q = { categoryId: 'cat-1', questionCode: 'purpose', status: 'open' as const }
+    const q = {
+      tenantId: TENANT_ID,
+      categoryId: 'cat-1',
+      questionCode: 'purpose',
+      status: 'open' as const,
+    }
     ctx.db.insert(clarificationQueue).values(q).run()
     expect(() => ctx.db.insert(clarificationQueue).values(q).run()).toThrow(/UNIQUE/i)
   })
@@ -115,11 +125,11 @@ describe('clarification queue: one open question per (category, question)', () =
   it('allows re-asking after the earlier one was answered', () => {
     ctx.db
       .insert(clarificationQueue)
-      .values({ categoryId: 'cat-1', questionCode: 'purpose', status: 'answered' })
+      .values({ tenantId: TENANT_ID, categoryId: 'cat-1', questionCode: 'purpose', status: 'answered' })
       .run()
     ctx.db
       .insert(clarificationQueue)
-      .values({ categoryId: 'cat-1', questionCode: 'purpose', status: 'open' })
+      .values({ tenantId: TENANT_ID, categoryId: 'cat-1', questionCode: 'purpose', status: 'open' })
       .run()
     expect(ctx.db.select().from(clarificationQueue).all()).toHaveLength(2)
   })
@@ -127,7 +137,12 @@ describe('clarification queue: one open question per (category, question)', () =
 
 describe('account map', () => {
   it('rejects the same external account twice per source', () => {
-    const row = { source: 'actual' as const, externalId: 'acc-1', name: 'Checking' }
+    const row = {
+      tenantId: TENANT_ID,
+      source: 'actual' as const,
+      externalId: 'acc-1',
+      name: 'Checking',
+    }
     ctx.db.insert(accountMap).values(row).run()
     expect(() => ctx.db.insert(accountMap).values(row).run()).toThrow(/UNIQUE/i)
   })
@@ -136,6 +151,7 @@ describe('account map', () => {
     ctx.db
       .insert(accountMap)
       .values({
+        tenantId: TENANT_ID,
         source: 'actual',
         externalId: 'acc-1',
         name: 'Investments',
@@ -147,6 +163,7 @@ describe('account map', () => {
     ctx.db
       .insert(accountMap)
       .values({
+        tenantId: TENANT_ID,
         source: 'ghostfolio',
         externalId: 'gf-1',
         name: 'Investments',
@@ -168,6 +185,7 @@ describe('ai_runs', () => {
     ctx.db
       .insert(aiRuns)
       .values({
+        tenantId: TENANT_ID,
         kind: 'findings',
         model: 'gemini-3.7-flash',
         locale: 'en',
@@ -184,11 +202,12 @@ describe('ai_runs', () => {
 describe('audit_log survives everything it refers to', () => {
   /** One entry with every reference populated, plus the rows it points at. */
   function seedApprovedChange(): void {
-    ctx.db.insert(users).values({ id: 'u1', locale: 'en' }).run()
+    ctx.db.insert(users).values({ id: 'u1', tenantId: TENANT_ID, locale: 'en' }).run()
     ctx.db
       .insert(aiRuns)
       .values({
         id: 'run-1',
+        tenantId: TENANT_ID,
         kind: 'findings',
         model: 'gemini-3.7-flash',
         locale: 'en',
@@ -200,6 +219,7 @@ describe('audit_log survives everything it refers to', () => {
       .insert(proposals)
       .values({
         id: 'prop-1',
+        tenantId: TENANT_ID,
         runId: 'run-1',
         type: 'category_meta.set',
         targetRef: 'cat-1',
@@ -212,6 +232,7 @@ describe('audit_log survives everything it refers to', () => {
       .values({
         action: 'proposal.apply',
         actorId: 'u1',
+        tenantId: TENANT_ID,
         entity: 'category_meta',
         entityRef: 'cat-1',
         runId: 'run-1',
@@ -275,6 +296,7 @@ describe('clarification_queue.run_id', () => {
       .insert(aiRuns)
       .values({
         id: 'run-1',
+        tenantId: TENANT_ID,
         kind: 'findings',
         model: 'gemini-3.7-flash',
         locale: 'en',
@@ -284,7 +306,12 @@ describe('clarification_queue.run_id', () => {
       .run()
     ctx.db
       .insert(clarificationQueue)
-      .values({ categoryId: 'cat-1', questionCode: 'purpose_unknown', runId: 'run-1' })
+      .values({
+        tenantId: TENANT_ID,
+        categoryId: 'cat-1',
+        questionCode: 'purpose_unknown',
+        runId: 'run-1',
+      })
       .run()
 
     ctx.sqlite.prepare('delete from ai_runs where id = ?').run('run-1')

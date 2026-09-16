@@ -21,12 +21,15 @@ import {
   type JobStep,
 } from '../../src/jobs/runner.ts'
 import type { Schedule } from '../../src/jobs/schedule.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 const hourly: Schedule = { kind: 'interval', minutes: 60 }
@@ -263,7 +266,7 @@ describe('clearStaleRunning', () => {
   it('turns a row left running by a crash into an error', async () => {
     // Without this the status panel's most useful field is the one nobody
     // believes: a killed container leaves `running` behind for ever.
-    ctx.db.insert(jobsTable).values({ name: 'sync', status: 'running' }).run()
+    ctx.db.insert(jobsTable).values({ tenantId: TENANT_ID, name: 'sync', status: 'running' }).run()
 
     expect(clearStaleRunning(ctx.db)).toBe(1)
     expect(row('sync')).toMatchObject({ status: 'error' })
@@ -279,7 +282,13 @@ describe('clearStaleRunning', () => {
   it('also closes out a job_runs row left running by a crash', () => {
     ctx.db
       .insert(jobRunsTable)
-      .values({ id: 'stuck', jobName: 'sync', status: 'running', startedAt: new Date() })
+      .values({
+        tenantId: TENANT_ID,
+        id: 'stuck',
+        jobName: 'sync',
+        status: 'running',
+        startedAt: new Date(),
+      })
       .run()
 
     clearStaleRunning(ctx.db)
@@ -393,7 +402,13 @@ describe('pruneJobRuns', () => {
     for (let i = 0; i < 3; i++) {
       ctx.db
         .insert(jobRunsTable)
-        .values({ id: `r${i}`, jobName: 'sync', status: 'ok', startedAt: new Date(2026, 0, i + 1) })
+        .values({
+          tenantId: TENANT_ID,
+          id: `r${i}`,
+          jobName: 'sync',
+          status: 'ok',
+          startedAt: new Date(2026, 0, i + 1),
+        })
         .run()
     }
     pruneJobRuns(ctx.db, 'sync', 5)
@@ -404,12 +419,24 @@ describe('pruneJobRuns', () => {
     for (let i = 0; i < 5; i++) {
       ctx.db
         .insert(jobRunsTable)
-        .values({ id: `r${i}`, jobName: 'sync', status: 'ok', startedAt: new Date(2026, 0, i + 1) })
+        .values({
+          tenantId: TENANT_ID,
+          id: `r${i}`,
+          jobName: 'sync',
+          status: 'ok',
+          startedAt: new Date(2026, 0, i + 1),
+        })
         .run()
     }
     ctx.db
       .insert(jobRunsTable)
-      .values({ id: 'other', jobName: 'probe', status: 'ok', startedAt: new Date(2026, 0, 1) })
+      .values({
+        tenantId: TENANT_ID,
+        id: 'other',
+        jobName: 'probe',
+        status: 'ok',
+        startedAt: new Date(2026, 0, 1),
+      })
       .run()
 
     pruneJobRuns(ctx.db, 'sync', 2)

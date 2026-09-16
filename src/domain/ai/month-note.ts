@@ -22,10 +22,11 @@
  * throws, writing validates and throws. A note nobody can parse should cost the
  * nudge, not the budget page.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { assertMonth, isYear } from '../../util/month.ts'
 
@@ -42,10 +43,11 @@ const monthNotesSchema = z.record(z.string(), monthNoteTextSchema).prefault({})
 type MonthNotes = z.infer<typeof monthNotesSchema>
 
 function loadAll(db: Db): MonthNotes {
+  const tenantId = getSoleTenantId(db)
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
-    .where(eq(settings.key, MONTH_NOTE_KEY))
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, MONTH_NOTE_KEY)))
     .get()
 
   if (!row) return {}
@@ -81,6 +83,7 @@ export function loadMonthNote(db: Db, month: string): string {
 
 export function saveMonthNote(db: Db, month: string, text: string): string {
   assertPeriod(month)
+  const tenantId = getSoleTenantId(db)
   const trimmed = monthNoteTextSchema.parse(text.trim())
 
   const all = loadAll(db)
@@ -89,8 +92,11 @@ export function saveMonthNote(db: Db, month: string, text: string): string {
 
   const valueJson = JSON.stringify(all)
   db.insert(settings)
-    .values({ key: MONTH_NOTE_KEY, valueJson })
-    .onConflictDoUpdate({ target: settings.key, set: { valueJson, updatedAt: new Date() } })
+    .values({ tenantId, key: MONTH_NOTE_KEY, valueJson })
+    .onConflictDoUpdate({
+      target: [settings.tenantId, settings.key],
+      set: { valueJson, updatedAt: new Date() },
+    })
     .run()
 
   return trimmed

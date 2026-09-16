@@ -160,6 +160,7 @@ export async function verifyLocalLogin(
       failedAttempts: localCredentials.failedAttempts,
       lockedUntil: localCredentials.lockedUntil,
       lastTotpStep: localCredentials.lastTotpStep,
+      tenantId: users.tenantId,
       email: users.email,
       displayName: users.displayName,
       locale: users.locale,
@@ -243,6 +244,7 @@ export async function verifyLocalLogin(
   log.info({ userId: row.userId, role: row.role }, 'signed in locally')
   return {
     id: row.userId,
+    tenantId: row.tenantId,
     email: row.email,
     displayName: row.displayName,
     locale: row.locale,
