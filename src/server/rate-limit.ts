@@ -101,6 +101,28 @@ export const loginRateLimit = (): { config: { rateLimit: typeof LOGIN_RATE_LIMIT
   config: { rateLimit: LOGIN_RATE_LIMIT },
 })
 
+/**
+ * The bucket in front of "test connection" on the integrations settings panel (#369).
+ *
+ * Fixed rather than configurable, for the same reason `LOGIN_RATE_LIMIT` and
+ * `REFRESH_RATE_LIMIT` are: no deployment wants this looser, and a knob would only
+ * ever be turned the wrong way. One bucket for all three integrations rather than
+ * one each — Actual's is the expensive test (a full `api.init`/`downloadBudget`
+ * against someone else's server), so the shared cap is sized for that one and the
+ * cheaper Ghostfolio/Gemini tests just never come close to it.
+ */
+export const INTEGRATIONS_TEST_RATE_LIMIT = {
+  max: 20,
+  timeWindow: '1 hour',
+} as const
+
+/** Spreadable route options for the integration test routes. See `INTEGRATIONS_TEST_RATE_LIMIT`. */
+export const integrationsTestRateLimit = (): {
+  config: { rateLimit: typeof INTEGRATIONS_TEST_RATE_LIMIT }
+} => ({
+  config: { rateLimit: INTEGRATIONS_TEST_RATE_LIMIT },
+})
+
 /** What the plugin hands the store's constructor and `child`. */
 interface StoreParams {
   timeWindow?: number

@@ -319,6 +319,16 @@ const PAYLOAD: Payload = {
   ],
   benchmark: BENCHMARK,
   property: { properties: [] },
+  integrations: {
+    actual: {
+      serverUrl: 'https://actual.example.com',
+      syncId: 'sync-id',
+      passwordConfigured: true,
+      e2ePasswordConfigured: false,
+    },
+    ghostfolio: { url: 'https://ghostfolio.example.com', tokenConfigured: true },
+    gemini: { provider: 'aistudio', apiKeyConfigured: true, googleCloudProject: null },
+  },
   ai: {
     availability: { enabled: true, reason: null },
     models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
@@ -2076,6 +2086,161 @@ describe('property', () => {
     expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(true)
     expect(saveProperty().disabled).toBe(true)
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Home')
+  })
+})
+
+describe('integrations', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/integrations', 'Actual')
+
+  /**
+   * All three sub-forms share one class (`integrations-form`), unlike every other
+   * panel's unique form name — they are three of the same shape, not three different
+   * things — so a query has to reach a form through its own heading rather than
+   * through `form()`'s class lookup, which would only ever find the first one.
+   */
+  const panel = (title: string): HTMLElement => {
+    const found = screen.getByRole('heading', { level: 2, name: title }).closest('section')
+    if (found === null) throw new Error(`no ${title} panel on the page`)
+    return found as HTMLElement
+  }
+
+  const saveButton = (title: string): HTMLButtonElement =>
+    within(panel(title)).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  const testButton = (title: string): HTMLButtonElement =>
+    within(panel(title)).getByRole('button', { name: 'Test connection' }) as HTMLButtonElement
+
+  it('shows what is stored, and which secrets are set without ever showing one', async () => {
+    await open(READS)
+
+    expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe('https://actual.example.com')
+    expect((screen.getByLabelText('Sync ID') as HTMLInputElement).value).toBe('sync-id')
+    expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe('')
+    expect(within(panel('Actual')).getByText('Configured')).toBeTruthy()
+    expect(within(panel('Actual')).getByText('Not configured')).toBeTruthy()
+  })
+
+  it('has nothing to save until a field is touched', async () => {
+    await open(READS)
+
+    expect(saveButton('Actual').disabled).toBe(true)
+    expect(saveButton('Ghostfolio').disabled).toBe(true)
+    expect(saveButton('Gemini').disabled).toBe(true)
+  })
+
+  it('saves only what changed, and sends no password at all rather than a blank one', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/actual': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://actual2.example.com' } })
+    fireEvent.click(saveButton('Actual'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/integrations/actual',
+          method: 'PATCH',
+          body: { serverUrl: 'https://actual2.example.com', syncId: 'sync-id' },
+        },
+      ])
+    })
+  })
+
+  it('sends a typed password, since typing it is the one thing that means "replace"', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/actual': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'new-pw' } })
+    fireEvent.click(saveButton('Actual'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/integrations/actual',
+          method: 'PATCH',
+          body: { serverUrl: 'https://actual.example.com', syncId: 'sync-id', password: 'new-pw' },
+        },
+      ])
+    })
+  })
+
+  it('will not test a connection until the password to test is actually filled in', async () => {
+    await open(READS)
+
+    expect(testButton('Actual').disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } })
+    expect(testButton('Actual').disabled).toBe(false)
+  })
+
+  it('tests the candidate on screen, not the stored value, and reports the result inline', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/integrations/actual/test': json({ ok: true, message: null }),
+    })
+
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } })
+    fireEvent.click(testButton('Actual'))
+
+    await screen.findByText('Connected successfully.')
+    expect(writes(calls)).toEqual([
+      {
+        path: '/api/settings/integrations/actual/test',
+        method: 'POST',
+        body: { serverUrl: 'https://actual.example.com', syncId: 'sync-id', password: 'secret' },
+      },
+    ])
+  })
+
+  it('reports why a test failed rather than throwing the message away', async () => {
+    await open({
+      ...READS,
+      '/api/settings/integrations/actual/test': json({ ok: false, message: 'Wrong password.' }),
+    })
+
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'wrong' } })
+    fireEvent.click(testButton('Actual'))
+
+    await screen.findByText('Wrong password.')
+  })
+
+  it('saves Ghostfolio independently of Actual', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/ghostfolio': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://gf2.example.com' } })
+    fireEvent.click(saveButton('Ghostfolio'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/integrations/ghostfolio', method: 'PATCH', body: { url: 'https://gf2.example.com' } },
+      ])
+    })
+  })
+
+  it('sends null rather than an empty string once the Google Cloud project is cleared', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/gemini': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'vertex' } })
+    fireEvent.click(saveButton('Gemini'))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/integrations/gemini',
+          method: 'PATCH',
+          body: { provider: 'vertex', googleCloudProject: null },
+        },
+      ])
+    })
+  })
+
+  it('leaves every field read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
+    expect((screen.getByLabelText('Server URL') as HTMLInputElement).disabled).toBe(true)
+    expect(saveButton('Actual').disabled).toBe(true)
+    expect(testButton('Actual').disabled).toBe(true)
   })
 })
 

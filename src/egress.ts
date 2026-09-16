@@ -32,6 +32,8 @@
  * network-level restriction is what stops that one, which is why both exist.
  */
 import { config } from './config.ts'
+import type { Db } from './db/index.ts'
+import { tenantIntegrations } from './db/schema.ts'
 import { logger } from './logger.ts'
 
 const log = logger.child({ module: 'egress' })
@@ -89,8 +91,14 @@ function hostOf(value: string | undefined): string[] {
  * from the configuration — moving Ghostfolio to a new hostname needs no second edit,
  * which is the property that keeps a list like this from being switched off in
  * frustration a year from now.
+ *
+ * `db`, when given, also unions in every tenant's stored Actual/Ghostfolio URL
+ * (#369) — a tenant's own credentials are exactly as configured as `.env`'s
+ * ones, they just live in a different place now. Optional so the many call
+ * sites that only ever check the static, `.env`-derived list (tests, mostly)
+ * do not need a database to hand.
  */
-export function allowedHosts(): ReadonlySet<string> {
+export function allowedHosts(db?: Db): ReadonlySet<string> {
   const hosts = [
     ...hostOf(config.ACTUAL_SERVER_URL),
     ...hostOf(config.GHOSTFOLIO_URL),
@@ -98,6 +106,14 @@ export function allowedHosts(): ReadonlySet<string> {
     ...geminiHosts(),
     ...config.EGRESS_EXTRA_HOSTS.map((host) => host.toLowerCase()),
   ]
+  if (db !== undefined) {
+    for (const row of db
+      .select({ actualServerUrl: tenantIntegrations.actualServerUrl, ghostfolioUrl: tenantIntegrations.ghostfolioUrl })
+      .from(tenantIntegrations)
+      .all()) {
+      hosts.push(...hostOf(row.actualServerUrl), ...hostOf(row.ghostfolioUrl))
+    }
+  }
   return new Set(hosts)
 }
 
@@ -109,6 +125,50 @@ export function allowedHosts(): ReadonlySet<string> {
  * the only three spellings Node produces here.
  */
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost', '[::1]'])
+
+/**
+ * Hosts allowed only for the lifetime of one "test connection" call (#369).
+ *
+ * A candidate credential someone is testing is, by construction, not yet in
+ * `tenantIntegrations` — that is the entire point of testing before saving — so
+ * `allowedHosts` cannot know about it. This is the narrow exception: a host the
+ * signed-in owner just typed into the settings page, permitted for exactly the
+ * duration of the one test call it was typed in for, and revoked afterwards whether
+ * the call succeeded or not. A count rather than a boolean, in case two test calls to
+ * the same host ever overlap — the second must not revoke the first's permission
+ * when it finishes.
+ *
+ * Process-wide rather than threaded through `fetch`'s arguments, because `fetch`
+ * itself carries no request context to thread it through — the same reason
+ * `installed` below is a module-level flag rather than a parameter.
+ */
+const testAllowance = new Map<string, number>()
+
+/** Permits every host in `url` for the duration of `fn`, then revokes it. */
+export async function withTestHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
+  const hosts = hostOf(url)
+  for (const host of hosts) testAllowance.set(host, (testAllowance.get(host) ?? 0) + 1)
+  try {
+    return await fn()
+  } finally {
+    for (const host of hosts) {
+      const count = (testAllowance.get(host) ?? 1) - 1
+      if (count <= 0) testAllowance.delete(host)
+      else testAllowance.set(host, count)
+    }
+  }
+}
+
+/** Whether `target` was explicitly permitted by an in-flight `withTestHost`. */
+function isTestAllowed(target: string): boolean {
+  let host: string
+  try {
+    host = new URL(target).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return testAllowance.has(host)
+}
 
 /**
  * The decision, separated from the wrapping so a test can ask the question directly.
@@ -148,20 +208,25 @@ export type EgressMode = 'enforce' | 'warn' | 'off'
  *
  * Idempotent: calling it twice would otherwise nest the wrappers, and the second
  * process-wide patch of a global is never the one that was intended.
+ *
+ * `db`, when given, is re-queried on every fetch rather than captured once here
+ * (#369): a tenant saving a new Actual/Ghostfolio URL through the settings page
+ * must be able to reach it on the very next request, with no restart. The extra
+ * read is one row from a single-digit-row table, which is nothing next to the
+ * network call it is guarding.
  */
 let installed = false
 
-export function installEgressGuard(mode: EgressMode = config.EGRESS_MODE): void {
+export function installEgressGuard(mode: EgressMode = config.EGRESS_MODE, db?: Db): void {
   if (mode === 'off' || installed) return
   installed = true
 
-  const allowed = allowedHosts()
   const original = globalThis.fetch.bind(globalThis)
-  log.info({ hosts: [...allowed].sort(), mode }, 'egress allowlist installed')
+  log.info({ hosts: [...allowedHosts(db)].sort(), mode }, 'egress allowlist installed')
 
   globalThis.fetch = async (input, init) => {
     const target = targetOf(input)
-    if (isAllowed(target, allowed)) return original(input, init)
+    if (isAllowed(target, allowedHosts(db)) || isTestAllowed(target)) return original(input, init)
 
     // The host, never the path: a denied URL can carry a query string, and a query
     // string on an exfiltration attempt is the data being exfiltrated. Logging it

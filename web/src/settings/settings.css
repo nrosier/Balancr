@@ -1022,3 +1022,24 @@
 .mapping__shared {
   text-align: center;
 }
+
+/* ---------------------------------------------------------------------------
+   Integrations (#369)
+
+   Three independent forms, one per `<Panel>`, each the same shape as
+   `.property-form` above: a column of `.field`s with its own gap, since a `<form>`
+   sits between them and `.panel`, so `.panel`'s own flex gap never reaches a field.
+   --------------------------------------------------------------------------- */
+
+.integrations-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.integrations__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
