@@ -9,15 +9,22 @@
  * Startup order is deliberate and each step is a hard failure:
  *  1. `config` validates the environment at import time — a half-configured
  *     advisor that silently skips auth is worse than one that refuses to boot.
- *  2. the egress allowlist is installed before anything can open a socket, since
+ *  2. migrations run before anything serves, so traffic never meets an old schema.
+ *  3. `.env`'s Actual/Ghostfolio/Gemini credentials are imported into tenant 1's
+ *     row, once, if they are not there already (#369) — the last moment `.env`
+ *     is ever read for these values.
+ *  4. the egress allowlist is installed before anything can open a socket, since
  *     it replaces a global and a reference taken before it lands is unguarded.
- *  3. migrations run before anything serves, so traffic never meets an old schema.
- *  4. the built-in prompts are seeded, so a fresh database has an active,
+ *     It comes after step 3, not before: the allowlist now also reads
+ *     tenant-configured hosts from the database, which does not exist until the
+ *     migrations in step 2 have run. Nothing before this point ever calls
+ *     `fetch`, so nothing is unguarded in between.
+ *  5. the built-in prompts are seeded, so a fresh database has an active,
  *     inspectable prompt rather than a hidden constant. Idempotent, and it never
  *     touches a prompt someone has edited.
- *  5. i18n initialises before the first render or cron digest, which have no
+ *  6. i18n initialises before the first render or cron digest, which have no
  *     request context to fall back on.
- *  6. the scheduler starts last, once everything it needs is up. It ticks
+ *  7. the scheduler starts last, once everything it needs is up. It ticks
  *     immediately, so starting it before the migrations ran would mean a job
  *     writing to a schema that does not exist yet.
  *
@@ -29,6 +36,7 @@ import { closeActual } from './adapters/actual/client.ts'
 import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
+import { importEnvIntegrationsOnce } from './db/tenant-integrations.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
 import {
   oldestVerification,
@@ -64,12 +72,6 @@ async function main(): Promise<void> {
   // too many for the question "is PUBLIC_BASE_URL what I think it is", which is
   // the question behind a rejected OIDC redirect URI (#110).
   log.info(configSummary(), 'configuration')
-
-  // Installed before anything can open a socket. It replaces `globalThis.fetch`
-  // process-wide, and a dependency that captured a reference to the original at
-  // import time would keep using it — so the only safe moment is one where nothing
-  // has fetched yet. `egress.ts` states plainly what this does and does not cover.
-  installEgressGuard()
 
   // The mode of `.env`, said once per start rather than trusted to stay right. Every
   // secret this process holds is in that file in plain text, and a `0644` copy of it
@@ -128,6 +130,18 @@ async function main(): Promise<void> {
 
   applyMigrations(db as never)
   log.info({ database: config.DATABASE_PATH }, 'migrations applied')
+
+  // The one and only import of `.env`'s Actual/Ghostfolio/Gemini credentials into
+  // the database. A no-op once tenant 1 has a row — nothing after this point may
+  // fall back to `config.ACTUAL_*`/`GHOSTFOLIO_*`/`GEMINI_*` again (#369).
+  if (importEnvIntegrationsOnce(db)) log.info('imported .env integration config into tenant 1')
+
+  // Installed once the database can answer "what hosts is a tenant configured for",
+  // and before anything can open a socket. It replaces `globalThis.fetch`
+  // process-wide, and a dependency that captured a reference to the original at
+  // import time would keep using it — so the only safe moment is one where nothing
+  // has fetched yet. `egress.ts` states plainly what this does and does not cover.
+  installEgressGuard(config.EGRESS_MODE, db)
 
   const seeded = seedPrompts(db)
   if (seeded > 0) log.info({ prompts: seeded }, 'seeded built-in prompts')

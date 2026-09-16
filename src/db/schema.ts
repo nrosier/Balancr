@@ -1248,6 +1248,33 @@ export const settings = sqliteTable(
 )
 
 /**
+ * One row per tenant: the Actual/Ghostfolio/Gemini credentials that used to
+ * live only in `.env` (#369). `*Enc` columns are AES-256-GCM via
+ * `db/field-crypto.ts`; everything else here is the non-secret half of the
+ * same credential (a URL, a sync id, a provider name) — see that module and
+ * `db/tenant-integrations.ts` for the encrypt/decrypt and first-boot-import
+ * call sites. Deliberately does NOT include `GEMINI_MODEL_*`,
+ * `GEMINI_MONTHLY_BUDGET_EUR`, `GOOGLE_CLOUD_LOCATION` or `ACTUAL_DATA_DIR` —
+ * those stay deployment-wide in `config.ts` until #371/#372 decide how a
+ * per-tenant equivalent should actually work.
+ */
+export const tenantIntegrations = sqliteTable('tenant_integrations', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id),
+  actualServerUrl: text('actual_server_url').notNull(),
+  actualPasswordEnc: text('actual_password_enc').notNull(),
+  actualSyncId: text('actual_sync_id').notNull(),
+  actualE2ePasswordEnc: text('actual_e2e_password_enc'),
+  ghostfolioUrl: text('ghostfolio_url').notNull(),
+  ghostfolioSecurityTokenEnc: text('ghostfolio_security_token_enc').notNull(),
+  geminiProvider: text('gemini_provider', { enum: ['aistudio', 'vertex'] }).notNull(),
+  geminiApiKeyEnc: text('gemini_api_key_enc'),
+  googleCloudProject: text('google_cloud_project'),
+  updatedAt: createdAt(),
+})
+
+/**
  * The account kinds `account_map.kind` may hold, as a type.
  *
  * Derived from the column rather than declared beside it: a kind added to the
@@ -1285,5 +1312,6 @@ export const schema = {
   jobRuns,
   rateLimits,
   settings,
+  tenantIntegrations,
   upstreamProbes,
 }

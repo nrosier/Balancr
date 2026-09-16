@@ -183,6 +183,13 @@
       "when": 1789566875365,
       "tag": "0025_unknown_brother_voodoo",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1789584502061,
+      "tag": "0026_careful_gamora",
+      "breakpoints": true
     }
   ]
 }
