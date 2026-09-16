@@ -35,6 +35,7 @@ import { clickLink, i18nReady, renderApp, resetTheme } from './helpers.tsx'
 const CSRF: CsrfConfig = { cookie: 'balancr_csrf', header: 'x-csrf-token' }
 
 const OWNER: SessionUserResponse = {
+  tenantId: 'tenant-1',
   email: 'nick@example.com',
   displayName: 'Nick',
   locale: 'en',
@@ -278,7 +279,7 @@ describe('Account', () => {
   it('prints nothing rather than a placeholder when the provider released neither', () => {
     render(
       <Account
-        user={{ email: null, displayName: null, locale: 'en', role: 'owner' }}
+        user={{ tenantId: 'tenant-1', email: null, displayName: null, locale: 'en', role: 'owner' }}
         csrf={CSRF}
         onSignedOut={() => undefined}
       />,
