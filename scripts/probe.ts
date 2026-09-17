@@ -39,6 +39,7 @@ import {
 import { probeGhostfolio } from '../src/adapters/ghostfolio/probe.ts'
 import { toCents } from '../src/adapters/ghostfolio/types.ts'
 import { config } from '../src/config.ts'
+import { db } from '../src/db/index.ts'
 import { computePortfolioMetrics } from '../src/domain/portfolio/metrics.ts'
 import {
   toAccountValues,
@@ -305,7 +306,7 @@ async function reconcileNetWorth(): Promise<void> {
   heading('Reconciliation — net worth')
 
   const date = todayIn(config.TZ)
-  const details = await fetchPortfolioDetails()
+  const details = await fetchPortfolioDetails(db)
   const holdings = toHoldingSnapshots(date, details, config.BASE_CURRENCY)
   // No performance: `twrBp` is not part of any total, and fetching it would make a
   // reconciliation depend on the one endpoint the nightly job already tolerates
@@ -325,7 +326,7 @@ async function reconcileNetWorth(): Promise<void> {
   reconcileFigure('invested', metrics.investedValueCents, summary?.currentValueInBaseCurrency, holdings.length)
   reconcileFigure('broker cash', metrics.cashValueCents, summary?.totalCashInBaseCurrency, holdings.length)
 
-  const accounts = toAccountValues(await fetchGhostfolioAccounts())
+  const accounts = toAccountValues(await fetchGhostfolioAccounts(db))
   const counted = accounts.filter((account) => !account.excluded)
   const countedCents = counted.reduce((sum, account) => sum + account.valueCents, 0)
   const excluded = accounts.filter((account) => account.excluded)
@@ -352,7 +353,7 @@ async function reconcileNetWorth(): Promise<void> {
 
 async function probeGhostfolioSide(): Promise<void> {
   heading('Ghostfolio')
-  const report = await probeGhostfolio()
+  const report = await probeGhostfolio(db)
 
   for (const check of report.checks) {
     if (check.status === 'ok') ok(`${check.path} — ${check.detail}`)

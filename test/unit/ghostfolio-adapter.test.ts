@@ -7,6 +7,7 @@
  * changes a response. Those three must be told apart, because "retry later" and
  * "stop writing snapshots, the contract changed" are opposite reactions.
  */
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   GhostfolioError,
@@ -16,6 +17,11 @@ import {
   resetGhostfolioToken,
 } from '../../src/adapters/ghostfolio/client.ts'
 import { probeGhostfolio } from '../../src/adapters/ghostfolio/probe.ts'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { createTestDb, type Db } from '../../src/db/index.ts'
+import { tenants } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 
 const AUTH = '/api/v1/auth/anonymous'
 
@@ -28,6 +34,7 @@ interface Route {
 
 let routes: Record<string, Route | Route[]>
 let calls: { path: string; authorization: string | null; body: string | null }[]
+let db: Db
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -98,6 +105,11 @@ function healthyRoutes(): Record<string, Route | Route[]> {
 }
 
 beforeEach(() => {
+  const fresh = createTestDb().db
+  applyMigrations(fresh as never)
+  importEnvIntegrationsOnce(fresh)
+  db = fresh
+
   routes = healthyRoutes()
   calls = []
   resetGhostfolioToken()
@@ -108,10 +120,83 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/**
+ * A single-tenant db whose tenant carries `tenantId` instead of the literal
+ * id every fresh migration seeds — every `createTestDb()` otherwise produces
+ * the *same* tenant id (baked into `0024_seed_default_tenant.sql`), which
+ * would collide in the client's tenant-keyed token cache and make two
+ * "different" tenants share one entry.
+ */
+function makeTenantDb(tenantId: string): Db {
+  const fresh = createTestDb().db
+  applyMigrations(fresh as never)
+  const defaultId = getSoleTenantId(fresh)
+  fresh.update(tenants).set({ id: tenantId }).where(eq(tenants.id, defaultId)).run()
+  importEnvIntegrationsOnce(fresh)
+  return fresh
+}
+
+describe('per-tenant token isolation (#371)', () => {
+  it("caches tokens per tenant, so one tenant's fetch never authenticates as another", async () => {
+    const dbA = makeTenantDb('tenant-a')
+    const dbB = makeTenantDb('tenant-b')
+    routes[AUTH] = [{ body: { authToken: 'jwt-a' } }, { body: { authToken: 'jwt-b' } }]
+
+    await fetchPortfolioDetails(dbA)
+    await fetchPortfolioDetails(dbB)
+    await fetchPortfolioDetails(dbA) // cached under tenant-a's own entry, not tenant-b's
+
+    expect(calls.filter((c) => c.path === AUTH)).toHaveLength(2)
+    expect(
+      calls.filter((c) => c.path === '/api/v1/portfolio/details').map((c) => c.authorization),
+    ).toEqual(['Bearer jwt-a', 'Bearer jwt-b', 'Bearer jwt-a'])
+  })
+
+  it('resets only the named tenant, leaving the other tenant cached', async () => {
+    const dbA = makeTenantDb('tenant-a2')
+    const dbB = makeTenantDb('tenant-b2')
+    routes[AUTH] = [
+      { body: { authToken: 'jwt-a' } },
+      { body: { authToken: 'jwt-b' } },
+      { body: { authToken: 'jwt-a-2' } },
+    ]
+
+    await fetchPortfolioDetails(dbA)
+    await fetchPortfolioDetails(dbB)
+    resetGhostfolioToken('tenant-a2')
+    await fetchPortfolioDetails(dbA) // re-authenticates
+    await fetchPortfolioDetails(dbB) // still cached — untouched by tenant-a2's reset
+
+    expect(calls.filter((c) => c.path === AUTH)).toHaveLength(3)
+    expect(
+      calls.filter((c) => c.path === '/api/v1/portfolio/details').map((c) => c.authorization),
+    ).toEqual(['Bearer jwt-a', 'Bearer jwt-b', 'Bearer jwt-a-2', 'Bearer jwt-b'])
+  })
+
+  it('a bare call still clears every tenant, matching every pre-#371 call site', async () => {
+    const dbA = makeTenantDb('tenant-a3')
+    const dbB = makeTenantDb('tenant-b3')
+    routes[AUTH] = [
+      { body: { authToken: 'jwt-a' } },
+      { body: { authToken: 'jwt-b' } },
+      { body: { authToken: 'jwt-a-2' } },
+      { body: { authToken: 'jwt-b-2' } },
+    ]
+
+    await fetchPortfolioDetails(dbA)
+    await fetchPortfolioDetails(dbB)
+    resetGhostfolioToken()
+    await fetchPortfolioDetails(dbA)
+    await fetchPortfolioDetails(dbB)
+
+    expect(calls.filter((c) => c.path === AUTH)).toHaveLength(4)
+  })
+})
+
 describe('authentication', () => {
   it('authenticates once and reuses the JWT', async () => {
-    await fetchPortfolioDetails()
-    await fetchPortfolioDetails()
+    await fetchPortfolioDetails(db)
+    await fetchPortfolioDetails(db)
 
     expect(calls.filter((c) => c.path === AUTH)).toHaveLength(1)
     const reads = calls.filter((c) => c.path === '/api/v1/portfolio/details')
@@ -120,7 +205,7 @@ describe('authentication', () => {
   })
 
   it('sends the security token only in the auth body, never onward', async () => {
-    await fetchPortfolioDetails()
+    await fetchPortfolioDetails(db)
 
     const auth = calls.find((c) => c.path === AUTH)
     expect(auth?.body).toContain('test-token')
@@ -139,7 +224,7 @@ describe('authentication', () => {
       { body: { holdings: {} } },
     ]
 
-    const details = await fetchPortfolioDetails()
+    const details = await fetchPortfolioDetails(db)
 
     expect(details.holdings).toEqual([])
     expect(calls.filter((c) => c.path === AUTH)).toHaveLength(2)
@@ -151,7 +236,7 @@ describe('authentication', () => {
   it('gives up after a second 401 instead of looping', async () => {
     routes['/api/v1/portfolio/details'] = { status: 401, body: { message: 'nope' } }
 
-    await expect(fetchPortfolioDetails()).rejects.toThrow(GhostfolioError)
+    await expect(fetchPortfolioDetails(db)).rejects.toThrow(GhostfolioError)
     expect(calls.filter((c) => c.path === '/api/v1/portfolio/details')).toHaveLength(2)
   })
 })
@@ -160,7 +245,7 @@ describe('errors carry the offending path', () => {
   it('reports an HTTP failure with its status', async () => {
     routes['/api/v1/portfolio/details'] = { status: 502, body: {} }
 
-    const error = await fetchPortfolioDetails().catch((e: unknown) => e)
+    const error = await fetchPortfolioDetails(db).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(GhostfolioError)
     expect((error as GhostfolioError).path).toBe('/api/v1/portfolio/details')
     expect((error as GhostfolioError).status).toBe(502)
@@ -173,7 +258,7 @@ describe('errors carry the offending path', () => {
     const { quantity: _dropped, ...noQuantity } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: [noQuantity] } }
 
-    const error = (await fetchPortfolioDetails().catch((e: unknown) => e)) as GhostfolioError
+    const error = (await fetchPortfolioDetails(db).catch((e: unknown) => e)) as GhostfolioError
     expect(error.status).toBeUndefined()
     expect(error.message).toContain('/api/v1/portfolio/details')
     expect(error.message).toContain('unexpected shape')
@@ -185,7 +270,7 @@ describe('errors carry the offending path', () => {
   it('treats a non-JSON body as a failure of that path', async () => {
     routes['/api/v1/portfolio/details'] = { text: '<html>login</html>' }
 
-    await expect(fetchPortfolioDetails()).rejects.toThrow(/did not return JSON/)
+    await expect(fetchPortfolioDetails(db)).rejects.toThrow(/did not return JSON/)
   })
 })
 
@@ -196,7 +281,7 @@ describe('the twice-versioned performance endpoint (#115)', () => {
   it('reads v2 and never asks v1, on a server that has both', async () => {
     routes['/api/v1/portfolio/performance'] = { body: { chart: [{ date: '1970-01-01' }] } }
 
-    const performance = await fetchPortfolioPerformance()
+    const performance = await fetchPortfolioPerformance(db)
 
     expect(performance.chart[0]?.date).toBe('2026-08-01')
     expect(performancePaths()).toEqual(['/api/v2/portfolio/performance'])
@@ -210,7 +295,7 @@ describe('the twice-versioned performance endpoint (#115)', () => {
       body: { chart: [{ date: '2024-01-31', value: 100 }] },
     }
 
-    const performance = await fetchPortfolioPerformance()
+    const performance = await fetchPortfolioPerformance(db)
 
     expect(performance.chart[0]?.date).toBe('2024-01-31')
     expect(performancePaths()).toEqual([
@@ -226,14 +311,14 @@ describe('the twice-versioned performance endpoint (#115)', () => {
     routes['/api/v2/portfolio/performance'] = { status: 500 }
     routes['/api/v1/portfolio/performance'] = { body: { chart: [] } }
 
-    await expect(fetchPortfolioPerformance()).rejects.toThrow(GhostfolioError)
+    await expect(fetchPortfolioPerformance(db)).rejects.toThrow(GhostfolioError)
     expect(performancePaths()).toEqual(['/api/v2/portfolio/performance'])
   })
 
   it('reports the older path when neither version answers', async () => {
     delete routes['/api/v2/portfolio/performance']
 
-    const error = await fetchPortfolioPerformance().catch((e: unknown) => e)
+    const error = await fetchPortfolioPerformance(db).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(GhostfolioError)
     // v1, because that was the last one tried: the message has to name the request
@@ -245,7 +330,7 @@ describe('the twice-versioned performance endpoint (#115)', () => {
 
 describe('probe', () => {
   it('passes against a healthy server and reports shapes, not amounts', async () => {
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     expect(report.status).toBe('ok')
     expect(report.warnings).toEqual([])
@@ -265,7 +350,7 @@ describe('probe', () => {
   it('classifies an outage as unreachable, so jobs retry', async () => {
     routes['/api/v1/health'] = { status: 503, body: {} }
 
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     expect(report.status).toBe('unreachable')
     // Nothing past health is probed: everything after it needs the JWT and would
@@ -276,7 +361,7 @@ describe('probe', () => {
   it('classifies a changed contract as shape-mismatch, so jobs stop writing', async () => {
     routes['/api/v1/account'] = { body: { accounts: [{ id: 'acc1', name: 'Bolero' }] } }
 
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     expect(report.status).toBe('shape-mismatch')
     const failing = report.checks.find((c) => c.status !== 'ok')
@@ -290,7 +375,7 @@ describe('probe', () => {
 
     // An outage clears itself; a changed contract needs a code change, so it is
     // the one that must be reported.
-    expect((await probeGhostfolio()).status).toBe('shape-mismatch')
+    expect((await probeGhostfolio(db)).status).toBe('shape-mismatch')
   })
 
   it('probes a list of holdings as readily as a record of them (#95)', async () => {
@@ -301,7 +386,7 @@ describe('probe', () => {
       body: { holdings: [HOLDING], summary: { currentValueInBaseCurrency: 1264.8 } },
     }
 
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     expect(report.status).toBe('ok')
     expect(report.warnings).toEqual([])
@@ -312,7 +397,7 @@ describe('probe', () => {
     const { valueInBaseCurrency: _dropped, ...unvalued } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: { 'IWDA.AS': unvalued } } }
 
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     // Parses fine, yet net worth would silently be missing the portfolio.
     expect(report.status).toBe('ok')
@@ -323,7 +408,7 @@ describe('probe', () => {
     routes['/api/v2/portfolio/performance'] = { body: { chart: [] } }
     routes['/api/v1/account'] = { body: { accounts: [] } }
 
-    const report = await probeGhostfolio()
+    const report = await probeGhostfolio(db)
 
     expect(report.status).toBe('ok')
     expect(report.warnings.some((w) => w.includes('empty chart'))).toBe(true)
@@ -331,10 +416,10 @@ describe('probe', () => {
   })
 
   it('starts from a fresh token so a stale JWT is diagnosed here', async () => {
-    await fetchPortfolioDetails()
+    await fetchPortfolioDetails(db)
     calls = []
 
-    await probeGhostfolio()
+    await probeGhostfolio(db)
 
     expect(calls.filter((c) => c.path === AUTH)).toHaveLength(1)
   })
@@ -347,7 +432,7 @@ describe('holdings that do not name themselves (#107)', () => {
     const { symbol: _symbol, currency: _currency, ...anonymous } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: { 'IWDA.AS': anonymous } } }
 
-    const details = await fetchPortfolioDetails()
+    const details = await fetchPortfolioDetails(db)
 
     expect(details.holdings).toHaveLength(1)
     expect(details.holdings[0]?.symbol).toBe('IWDA.AS')
@@ -358,7 +443,7 @@ describe('holdings that do not name themselves (#107)', () => {
     // it is the symbol — must not rename the positions inside it.
     routes['/api/v1/portfolio/details'] = { body: { holdings: { 'some-uuid': HOLDING } } }
 
-    const details = await fetchPortfolioDetails()
+    const details = await fetchPortfolioDetails(db)
 
     expect(details.holdings[0]?.symbol).toBe('IWDA.AS')
   })
@@ -368,7 +453,7 @@ describe('holdings that do not name themselves (#107)', () => {
     const { currency: _currency, ...noCurrency } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: [noCurrency] } }
 
-    const details = await fetchPortfolioDetails()
+    const details = await fetchPortfolioDetails(db)
 
     expect(details.holdings).toHaveLength(1)
     expect(details.holdings[0]?.currency).toBeUndefined()
@@ -381,14 +466,14 @@ describe('holdings that do not name themselves (#107)', () => {
     const { symbol: _symbol, isin: _isin, ...anonymous } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: [anonymous] } }
 
-    await expect(fetchPortfolioDetails()).rejects.toThrow(GhostfolioError)
+    await expect(fetchPortfolioDetails(db)).rejects.toThrow(GhostfolioError)
   })
 
   it('names the path and the keys it did have, so the next change diagnoses itself', async () => {
     const { symbol: _symbol, isin: _isin, ...anonymous } = HOLDING
     routes['/api/v1/portfolio/details'] = { body: { holdings: [anonymous] } }
 
-    const error = await fetchPortfolioDetails().catch((e: unknown) => e)
+    const error = await fetchPortfolioDetails(db).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(GhostfolioError)
     const message = (error as GhostfolioError).message
@@ -426,14 +511,14 @@ describe('the evidence a Ghostfolio account carries about itself', () => {
       },
     }
 
-    const [account] = (await fetchAccounts()).accounts
+    const [account] = (await fetchAccounts(db)).accounts
     expect(account?.activitiesCount).toBe(143)
     expect(account?.balanceInBaseCurrency).toBe(210)
   })
 
   it('accepts an instance that reports neither, without inventing a zero', async () => {
     // The stubbed happy path is exactly this shape: id, name, currency, balance.
-    const [account] = (await fetchAccounts()).accounts
+    const [account] = (await fetchAccounts(db)).accounts
     expect(account?.activitiesCount ?? null).toBeNull()
     expect(account?.balanceInBaseCurrency ?? null).toBeNull()
   })
@@ -449,14 +534,14 @@ describe('the evidence a Ghostfolio account carries about itself', () => {
       },
     }
 
-    const [account] = (await fetchAccounts()).accounts
+    const [account] = (await fetchAccounts(db)).accounts
     expect(account?.balanceInBaseCurrency).toBe(0)
   })
 })
 
 describe('every request is time-bounded', () => {
   it('passes an abort signal, so a hung upstream cannot hang the nightly job', async () => {
-    await fetchPortfolioDetails()
+    await fetchPortfolioDetails(db)
 
     const mock = fetch as unknown as { mock: { calls: [string, RequestInit][] } }
     for (const [, init] of mock.mock.calls) {

@@ -123,7 +123,7 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
 vi.mock('../../src/adapters/ghostfolio/client.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/ghostfolio/client.ts')>()),
   fetchAccounts: () => Promise.resolve({ accounts: gave.gfAccounts }),
-  fetchPortfolioPerformance: (_range?: string, accountId?: string) => {
+  fetchPortfolioPerformance: (_db?: unknown, _range?: string, accountId?: string) => {
     gave.performanceCalls.push(accountId ?? null)
     if (gave.chartError !== null) return Promise.reject(gave.chartError)
     if (accountId !== undefined && gave.seriesErrors.includes(accountId)) {

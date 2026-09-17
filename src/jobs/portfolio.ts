@@ -27,12 +27,12 @@ import type { Job, JobContext, JobDetail } from './runner.ts'
 async function run({ db, now, log }: JobContext): Promise<JobDetail> {
   const date = dateIn(now, config.TZ)
 
-  const details = await fetchPortfolioDetails()
+  const details = await fetchPortfolioDetails(db)
   const holdings = toHoldingSnapshots(date, details, config.BASE_CURRENCY)
 
   let performance: PortfolioPerformance | null = null
   try {
-    performance = await fetchPortfolioPerformance()
+    performance = await fetchPortfolioPerformance(db)
   } catch (error) {
     log.warn({ err: error }, 'Ghostfolio performance unavailable; twr will be null')
   }
