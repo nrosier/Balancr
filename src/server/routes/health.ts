@@ -35,8 +35,7 @@
  */
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { Db } from '../../db/index.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
-import { buildStatus, databaseReadable, terse } from './api/status.ts'
+import { buildReadiness } from './api/status.ts'
 import { APP_VERSION } from '../version.ts'
 
 export function registerHealthRoutes(app: FastifyInstance, db: Db): void {
@@ -49,14 +48,10 @@ export function registerHealthRoutes(app: FastifyInstance, db: Db): void {
     '/readyz',
     { config: { rateLimit: false, csrf: false, auth: false } },
     (_request, reply: FastifyReply) => {
-      // No session here by design (see the header), so there is no tenant to ask for —
-      // `getSoleTenantId` stays a deliberate exception until #378 decides how this
-      // endpoint should scope across tenants. Guarded by `databaseReadable` first: an
-      // unreadable database means `getSoleTenantId`'s own query would throw before
-      // `buildStatus` gets the chance to report that unreadability as a 503 rather than
-      // an unhandled 500.
-      const tenantId = databaseReadable(db) ? getSoleTenantId(db) : ''
-      const status = terse(buildStatus(db, tenantId))
+      // No session here by design (see the header), so there is no tenant to ask for.
+      // `buildReadiness` (#378) answers across every tenant instead: worst-of on the
+      // four per-check verdicts, so a second tenant's outage cannot go unreported here.
+      const status = buildReadiness(db)
       // 503 only when this instance cannot serve. `degraded` is a 200: the orchestrator
       // is being told about an upstream, not asked to take the container away.
       return reply.code(status.ready ? 200 : 503).send(status)
