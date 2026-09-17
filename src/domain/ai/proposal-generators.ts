@@ -9,6 +9,7 @@
  */
 import { fetchPayeeCategoryHistory, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { addMonths, endOfMonth, startOfMonth } from '../../util/month.ts'
 import { loadCategoryTrends } from '../aggregate/facts.ts'
 import type { CategoryGuessCandidate } from '../aggregate/signals-store.ts'
@@ -35,13 +36,19 @@ import { createProposal, encodeBudgetTarget, ProposalError } from './proposals.t
  * `persistSignals`.
  */
 export async function generateCategoryProposals(db: Db, month: string): Promise<number> {
-  const transactions = await fetchUncategorisedTransactions(startOfMonth(month), endOfMonth(month))
+  const tenantId = getSoleTenantId(db)
+  const transactions = await fetchUncategorisedTransactions(
+    db,
+    tenantId,
+    startOfMonth(month),
+    endOfMonth(month),
+  )
   let created = 0
   const candidates: CategoryGuessCandidate[] = []
 
   for (const txn of transactions) {
     if (txn.payeeId === null) continue
-    const history = await fetchPayeeCategoryHistory(txn.payeeId)
+    const history = await fetchPayeeCategoryHistory(db, tenantId, txn.payeeId)
     const suggestion = suggestCategoryForPayee(history)
     if (suggestion === null) {
       const distribution = summariseCategoryHistory(history)

@@ -9,31 +9,28 @@
  * hold one (#159). That is a property worth a test that fails loudly, because the
  * alternative way to find out is reading `ai_runs.payload_json` after the fact.
  *
- * `@actual-app/api` is mocked, like in `actual-open.test.ts` and for the same reason:
- * `actual-adapter.test.ts` asserts the *real* package still exposes `getSchedules` and
- * `getRules`, and those two intentions cannot share a file because `vi.mock` applies to
- * all of it. So one file says the methods exist and this one says what we do with them.
+ * `client.ts`'s `withActualBatch` is mocked rather than `@actual-app/api` directly:
+ * `fetchSchedules` no longer calls the package in this process at all — it goes
+ * through a per-tenant worker child process (see `client.ts`'s own header comment),
+ * so mocking the package here would intercept nothing. `withActualBatch` is the
+ * boundary this function actually calls, and it is the right one to fake for a test
+ * about parsing, not IPC.
  */
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ActualSchedule } from '../../src/adapters/actual/queries.ts'
+import type { Db } from '../../src/db/index.ts'
 
-const getSchedules = vi.fn<() => Promise<unknown[]>>()
-const getRules = vi.fn<() => Promise<unknown[]>>()
-const init = vi.fn<(config: Record<string, unknown>) => Promise<void>>()
+const withActualBatchMock = vi.fn<(...args: unknown[]) => Promise<unknown[]>>()
 
-vi.mock('@actual-app/api', () => ({
-  init: (config: Record<string, unknown>) => init(config),
-  downloadBudget: vi.fn(async () => undefined),
-  sync: vi.fn(async () => undefined),
-  shutdown: vi.fn(async () => undefined),
-  getServerVersion: vi.fn(async () => ({ version: '26.9.0' })),
-  getPreferences: vi.fn(async () => ({ budgetType: 'envelope', defaultCurrencyCode: 'EUR' })),
-  getSchedules: () => getSchedules(),
-  getRules: () => getRules(),
+vi.mock('../../src/adapters/actual/client.ts', () => ({
+  withActual: vi.fn(),
+  withActualBatch: (...args: unknown[]) => withActualBatchMock(...args),
 }))
+
+const { fetchSchedules } = await import('../../src/adapters/actual/queries.ts')
+
+const DB_STUB = {} as Db
+const TENANT_ID = 'tenant-schedules'
 
 /**
  * Everything a real row carries, including the three fields that must not survive.
@@ -66,20 +63,10 @@ const NEVER_RETURNED = [
   'Immo Van Damme',
 ]
 
-/**
- * Reads schedules with a fresh module graph.
- *
- * The reset matters twice over: `client.ts` caches `opened`, so a second call in one
- * module instance would skip the download, and `config.ts` validates at import, so the
- * temporary data directory has to be in place before either loads.
- */
+/** Stubs the batch call and reads schedules through the real `fetchSchedules`. */
 async function load(schedules: unknown[], rules: unknown[] = []): Promise<ActualSchedule[]> {
-  vi.resetModules()
-  vi.stubEnv('ACTUAL_DATA_DIR', await mkdtemp(join(tmpdir(), 'balancr-schedules-')))
-  getSchedules.mockResolvedValue(schedules)
-  getRules.mockResolvedValue(rules)
-  const { fetchSchedules } = await import('../../src/adapters/actual/queries.ts')
-  return await fetchSchedules()
+  withActualBatchMock.mockResolvedValue([schedules, rules])
+  return await fetchSchedules(DB_STUB, TENANT_ID)
 }
 
 /** A rule that files a schedule under a category, as Actual stores the link. */
@@ -91,15 +78,7 @@ const categoryRule = (id: string, categoryId: string, extra: Record<string, unkn
 })
 
 beforeEach(() => {
-  init.mockReset()
-  init.mockResolvedValue(undefined)
-  getSchedules.mockReset()
-  getRules.mockReset()
-})
-
-afterEach(() => {
-  vi.unstubAllEnvs()
-  vi.resetModules()
+  withActualBatchMock.mockReset()
 })
 
 describe('the parse is the privacy boundary (#159)', () => {
@@ -317,13 +296,16 @@ describe('which schedules come back at all', () => {
     expect(schedule.postsTransaction).toBe(false)
   })
 
-  it('reads both lists inside one open, so the two agree', async () => {
+  it('reads both lists inside one batch, so the two agree', async () => {
     // A rule list fetched after a sync that changed a schedule's category would
-    // attribute this month's bill to last month's envelope.
+    // attribute this month's bill to last month's envelope — which is exactly what a
+    // second, separately-serialised `withActual` call could let happen.
     await load([NETFLIX], [categoryRule('rule-netflix', 'cat-subs')])
-    expect(init).toHaveBeenCalledTimes(1)
-    expect(getSchedules).toHaveBeenCalledTimes(1)
-    expect(getRules).toHaveBeenCalledTimes(1)
+    expect(withActualBatchMock).toHaveBeenCalledTimes(1)
+    expect(withActualBatchMock).toHaveBeenCalledWith(DB_STUB, TENANT_ID, [
+      { method: 'getSchedules', args: [] },
+      { method: 'getRules', args: [] },
+    ])
   })
 })
 

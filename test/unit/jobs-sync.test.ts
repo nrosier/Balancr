@@ -42,7 +42,7 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
   fetchAccounts: () => Promise.resolve([]),
   fetchBudgetMonths: () => Promise.resolve(gave.months),
-  fetchBudgetMonth: (month: string): Promise<BudgetMonth> => {
+  fetchBudgetMonth: (_db: Db, _tenantId: string, month: string): Promise<BudgetMonth> => {
     const found = gave.byMonth.get(month)
     if (found === undefined) throw new Error(`no fixture for ${month}`)
     return Promise.resolve(found)

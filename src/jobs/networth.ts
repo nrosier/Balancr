@@ -16,6 +16,7 @@ import { fetchAccountBalances, fetchAccounts as fetchActualAccounts } from '../a
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { getSoleTenantId } from '../db/tenant.ts'
 import {
   accountMapBySource,
   loadAccountMap,
@@ -44,7 +45,11 @@ export interface ActualScope {
   ids: string[]
 }
 
-export async function actualScope(rows: readonly AccountMapRow[]): Promise<ActualScope> {
+export async function actualScope(
+  db: Db,
+  tenantId: string,
+  rows: readonly AccountMapRow[],
+): Promise<ActualScope> {
   const mapped = accountMapBySource(rows, 'actual')
   if (mapped.size === 0) return { rows: mapped, ids: [] }
 
@@ -58,7 +63,9 @@ export async function actualScope(rows: readonly AccountMapRow[]): Promise<Actua
   // series disagree with the nightly figure at the exact point they meet. A shorter
   // truth beats a longer one with a step in it.
   const open = new Set(
-    (await fetchActualAccounts()).filter((account) => !account.closed).map((account) => account.id),
+    (await fetchActualAccounts(db, tenantId))
+      .filter((account) => !account.closed)
+      .map((account) => account.id),
   )
   return { rows: mapped, ids: [...mapped.keys()].filter((id) => open.has(id)) }
 }
@@ -72,12 +79,14 @@ export async function actualScope(rows: readonly AccountMapRow[]): Promise<Actua
  * rather than assembling its own.
  */
 export async function actualValuesAt(
+  db: Db,
+  tenantId: string,
   scope: ActualScope,
   asOf: Date,
 ): Promise<AccountValue[]> {
   if (scope.ids.length === 0) return []
   const values: AccountValue[] = []
-  for (const balance of await fetchAccountBalances(scope.ids, asOf)) {
+  for (const balance of await fetchAccountBalances(db, tenantId, scope.ids, asOf)) {
     const row = scope.rows.get(balance.accountId)
     if (!row) continue
     values.push({
@@ -103,13 +112,14 @@ export async function actualValuesAt(
  */
 export async function collectAccountValues(
   db: Db,
+  tenantId: string,
   asOf: Date,
   log: Logger,
 ): Promise<AccountValue[]> {
   const rows = loadAccountMap(db)
   const values: AccountValue[] = []
 
-  values.push(...(await actualValuesAt(await actualScope(rows), asOf)))
+  values.push(...(await actualValuesAt(db, tenantId, await actualScope(db, tenantId, rows), asOf)))
 
   const ghostfolioRows = accountMapBySource(rows, 'ghostfolio')
   if (ghostfolioRows.size > 0) {
@@ -144,8 +154,9 @@ export async function collectAccountValues(
 }
 
 async function run({ db, now, log }: JobContext): Promise<JobDetail> {
+  const tenantId = getSoleTenantId(db)
   const date = dateIn(now, config.TZ)
-  const values = await collectAccountValues(db, now, log)
+  const values = await collectAccountValues(db, tenantId, now, log)
   const result = computeNetWorth(date, values)
   const stored = persistNetWorth(db, result)
 

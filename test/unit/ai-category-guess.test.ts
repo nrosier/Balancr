@@ -266,7 +266,7 @@ describe('runCategoryGuess', () => {
     // txn-1 is already categorised as `food`, so its diff is empty and
     // `createProposal` refuses it as a no-op — the other candidate must still
     // go through.
-    vi.mocked(fetchTransaction).mockImplementation(async (id: string) =>
+    vi.mocked(fetchTransaction).mockImplementation(async (_db, _tenantId, id) =>
       id === 'txn-1'
         ? { id: 'txn-1', categoryId: 'food', payeeId: 'payee-1' }
         : { id: 'txn-2', categoryId: null, payeeId: 'payee-2' },

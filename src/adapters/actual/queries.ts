@@ -22,10 +22,19 @@
  * (`src/domain/ai/proposals.ts`) — never from generation, never from a route
  * directly. Every other write `@actual-app/api` offers stays named in
  * `test/unit/actual-adapter.test.ts`'s denylist.
+ *
+ * Every exported function here takes `db`/`tenantId` and forwards them to
+ * `withActual`/`withActualBatch`, which route the call to that tenant's own
+ * worker process (`client.ts`). A query itself — `q(table)...` — is pure,
+ * synchronous, and side-effect-free, so it is still built right here in the
+ * main process; only `.serialize()`'s plain `QueryState` output crosses IPC,
+ * inside `runAql`.
  */
 import { z } from 'zod'
+import { q } from '@actual-app/api'
 import type { Query } from '@actual-app/core/shared/query'
-import { withActual } from './client.ts'
+import type { Db } from '../../db/index.ts'
+import { withActual, withActualBatch } from './client.ts'
 
 // ---------------------------------------------------------------------------
 //  Plumbing
@@ -37,11 +46,19 @@ function aqlResult<T extends z.ZodTypeAny>(row: T) {
 }
 
 async function runAql<T>(
+  db: Db,
+  tenantId: string,
   label: string,
-  build: (q: (table: string) => Query) => Query,
+  build: () => Query,
   row: z.ZodType<T>,
 ): Promise<T[]> {
-  const raw = await withActual((actual) => actual.aqlQuery(build(actual.q)))
+  // Building and serializing the query happens locally; only the resulting
+  // plain `QueryState` object crosses IPC. `aqlQuery` itself accepts either a
+  // live `Query` or its serialized state — the worker gets the latter.
+  const state = build().serialize()
+  const raw = await withActual(db, tenantId, (actual) =>
+    actual.aqlQuery(state as unknown as Query),
+  )
   const parsed = aqlResult(row).safeParse(raw)
   if (!parsed.success) {
     throw new Error(
@@ -76,11 +93,12 @@ const accountRow = z.object({
 })
 export type ActualAccount = z.infer<typeof accountRow>
 
-export function fetchAccounts(): Promise<ActualAccount[]> {
+export function fetchAccounts(db: Db, tenantId: string): Promise<ActualAccount[]> {
   return runAql(
+    db,
+    tenantId,
     'accounts',
-    (q) =>
-      q('accounts').select(['id', 'name', 'offbudget', 'closed', 'last_reconciled']),
+    () => q('accounts').select(['id', 'name', 'offbudget', 'closed', 'last_reconciled']),
     accountRow,
   )
 }
@@ -95,10 +113,12 @@ const categoryRow = z.object({
 export type ActualCategory = z.infer<typeof categoryRow>
 
 /** Includes hidden categories: they still hold history worth analysing. */
-export function fetchCategories(): Promise<ActualCategory[]> {
+export function fetchCategories(db: Db, tenantId: string): Promise<ActualCategory[]> {
   return runAql(
+    db,
+    tenantId,
     'categories',
-    (q) => q('categories').select(['id', 'name', 'is_income', 'hidden', 'group']),
+    () => q('categories').select(['id', 'name', 'is_income', 'hidden', 'group']),
     categoryRow,
   )
 }
@@ -111,10 +131,12 @@ const categoryGroupRow = z.object({
 })
 export type ActualCategoryGroup = z.infer<typeof categoryGroupRow>
 
-export function fetchCategoryGroups(): Promise<ActualCategoryGroup[]> {
+export function fetchCategoryGroups(db: Db, tenantId: string): Promise<ActualCategoryGroup[]> {
   return runAql(
+    db,
+    tenantId,
     'category_groups',
-    (q) => q('category_groups').select(['id', 'name', 'is_income', 'hidden']),
+    () => q('category_groups').select(['id', 'name', 'is_income', 'hidden']),
     categoryGroupRow,
   )
 }
@@ -186,8 +208,8 @@ export interface BudgetMonth {
   categories: CategoryMonth[]
 }
 
-export async function fetchBudgetMonth(month: string): Promise<BudgetMonth> {
-  const raw = await withActual((actual) => actual.getBudgetMonth(month))
+export async function fetchBudgetMonth(db: Db, tenantId: string, month: string): Promise<BudgetMonth> {
+  const raw = await withActual(db, tenantId, (actual) => actual.getBudgetMonth(month))
   const parsed = budgetMonthShape.safeParse(raw)
   if (!parsed.success) {
     throw new Error(
@@ -232,8 +254,8 @@ export async function fetchBudgetMonth(month: string): Promise<BudgetMonth> {
 }
 
 /** Months Actual holds a budget for, ascending. Bounds every backfill. */
-export function fetchBudgetMonths(): Promise<string[]> {
-  return withActual((actual) => actual.getBudgetMonths())
+export function fetchBudgetMonths(db: Db, tenantId: string): Promise<string[]> {
+  return withActual(db, tenantId, (actual) => actual.getBudgetMonths())
 }
 
 // ---------------------------------------------------------------------------
@@ -295,10 +317,17 @@ export function offBudgetTransferLegIds(
  * (`transfer_id.account.offbudget`) does not compile — the counterpart's
  * account has to be looked up by id instead.
  */
-async function fetchOffBudgetTransferLegIds(from: string, to: string): Promise<string[]> {
+async function fetchOffBudgetTransferLegIds(
+  db: Db,
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<string[]> {
   const legRows = await runAql(
+    db,
+    tenantId,
     'on-budget-transfer-legs',
-    (q) =>
+    () =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
@@ -315,8 +344,10 @@ async function fetchOffBudgetTransferLegIds(from: string, to: string): Promise<s
     ...new Set(legRows.map((row) => row.transfer_id).filter((id): id is string => id !== null)),
   ]
   const counterparts = await runAql(
+    db,
+    tenantId,
     'transfer-counterpart-accounts',
-    (q) =>
+    () =>
       q('transactions')
         .filter({ id: { $oneof: counterpartIds } })
         .select(['id', { offbudget: 'account.offbudget' }]),
@@ -358,13 +389,17 @@ export function transferFilter(keepLegIds: readonly string[]): Record<string, un
  *  - refunds need no clause either: summing signed amounts nets them off.
  */
 export async function fetchRecomputedSpend(
+  db: Db,
+  tenantId: string,
   from: string,
   to: string,
 ): Promise<RecomputedSpend[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
+    db,
+    tenantId,
     'recomputed-spend',
-    (q) =>
+    () =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
@@ -412,13 +447,17 @@ export interface RecomputedSpendDaily {
  * same level `txnCount` already is elsewhere in this file.
  */
 export async function fetchRecomputedSpendDaily(
+  db: Db,
+  tenantId: string,
   from: string,
   to: string,
 ): Promise<RecomputedSpendDaily[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
+    db,
+    tenantId,
     'recomputed-spend-daily',
-    (q) =>
+    () =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
@@ -456,10 +495,12 @@ export interface AccountBalance {
  * and starting balances belong in a balance and must not be excluded.
  */
 export function fetchAccountBalances(
+  db: Db,
+  tenantId: string,
   accountIds: string[],
   asOf: Date,
 ): Promise<AccountBalance[]> {
-  return withActual(async (actual) => {
+  return withActual(db, tenantId, async (actual) => {
     const out: AccountBalance[] = []
     for (const accountId of accountIds) {
       out.push({
@@ -478,14 +519,19 @@ export function fetchAccountBalances(
 const coverageRow = z.object({ date: z.string() })
 
 /** Earliest and latest on-budget transaction, or null on an empty budget. */
-export async function fetchTransactionDateRange(): Promise<{
+export async function fetchTransactionDateRange(
+  db: Db,
+  tenantId: string,
+): Promise<{
   first: string | null
   last: string | null
 }> {
   const edge = async (order: 'asc' | 'desc'): Promise<string | null> => {
     const rows = await runAql(
+      db,
+      tenantId,
       `transaction-range-${order}`,
-      (q) =>
+      () =>
         q('transactions')
           .filter({ starting_balance_flag: false })
           .orderBy({ date: order })
@@ -516,10 +562,16 @@ export interface ActualTransaction {
 }
 
 /** One transaction's current category and payee, for a `transaction_category.set` proposal's diff. */
-export async function fetchTransaction(id: string): Promise<ActualTransaction | null> {
+export async function fetchTransaction(
+  db: Db,
+  tenantId: string,
+  id: string,
+): Promise<ActualTransaction | null> {
   const rows = await runAql(
+    db,
+    tenantId,
     'transaction',
-    (q) => q('transactions').filter({ id }).select(['id', 'category', 'payee']).limit(1),
+    () => q('transactions').filter({ id }).select(['id', 'category', 'payee']).limit(1),
     transactionRow,
   )
   const row = rows[0]
@@ -537,12 +589,16 @@ const payeeCategoryRow = z.object({ category: z.string().nullable() })
  * instead, where it is easy to verify.
  */
 export function fetchPayeeCategoryHistory(
+  db: Db,
+  tenantId: string,
   payeeId: string,
   limit = 20,
 ): Promise<{ categoryId: string | null }[]> {
   return runAql(
+    db,
+    tenantId,
     'payee-category-history',
-    (q) =>
+    () =>
       q('transactions')
         .filter({ payee: payeeId, transfer_id: null, starting_balance_flag: false })
         .orderBy({ date: 'desc' })
@@ -579,13 +635,17 @@ export interface UncategorisedTransaction {
  * second query per row.
  */
 export async function fetchUncategorisedTransactions(
+  db: Db,
+  tenantId: string,
   from: string,
   to: string,
 ): Promise<UncategorisedTransaction[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(from, to)
+  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
+    db,
+    tenantId,
     'uncategorised-transactions',
-    (q) =>
+    () =>
       q('transactions')
         .filter({
           date: { $gte: from, $lte: to },
@@ -614,8 +674,13 @@ export async function fetchUncategorisedTransactions(
  * crash after this call but before the local commit is safe to recover from
  * by re-applying.
  */
-export function updateTransactionCategory(id: string, categoryId: string): Promise<void> {
-  return withActual(async (actual) => {
+export function updateTransactionCategory(
+  db: Db,
+  tenantId: string,
+  id: string,
+  categoryId: string,
+): Promise<void> {
+  return withActual(db, tenantId, async (actual) => {
     await actual.updateTransaction(id, { category: categoryId })
   })
 }
@@ -625,11 +690,13 @@ export function updateTransactionCategory(id: string, categoryId: string): Promi
  * note as `updateTransactionCategory` above.
  */
 export function setCategoryBudgetAmount(
+  db: Db,
+  tenantId: string,
   month: string,
   categoryId: string,
   amountCents: number,
 ): Promise<void> {
-  return withActual((actual) => actual.setBudgetAmount(month, categoryId, amountCents))
+  return withActual(db, tenantId, (actual) => actual.setBudgetAmount(month, categoryId, amountCents))
 }
 
 // ---------------------------------------------------------------------------
@@ -818,23 +885,26 @@ function toRecurrence(config: z.infer<typeof recurConfigShape>): ScheduleRecurre
 /**
  * Every live schedule, with its category resolved and its identity left behind.
  *
- * One `withActual` call for both reads, because the two have to agree: a rule list
- * fetched after a sync that changed a schedule's category would attribute this month's
- * bill to last month's envelope.
+ * One `withActualBatch` call for both reads, because the two have to agree: a
+ * rule list fetched after a sync that changed a schedule's category would
+ * attribute this month's bill to last month's envelope. `withActual`'s own
+ * per-tenant serialisation only keeps *other callers* from interleaving; it
+ * says nothing about two calls made by this function itself, which is exactly
+ * the gap a batch closes.
  */
-export async function fetchSchedules(): Promise<ActualSchedule[]> {
-  const raw = await withActual(async (actual) => ({
-    schedules: await actual.getSchedules(),
-    rules: await actual.getRules(),
-  }))
+export async function fetchSchedules(db: Db, tenantId: string): Promise<ActualSchedule[]> {
+  const [rawSchedules, rawRules] = await withActualBatch(db, tenantId, [
+    { method: 'getSchedules', args: [] },
+    { method: 'getRules', args: [] },
+  ])
 
-  const schedules = z.array(scheduleShape).safeParse(raw.schedules)
+  const schedules = z.array(scheduleShape).safeParse(rawSchedules)
   if (!schedules.success) {
     throw new Error(
       `Actual "getSchedules" returned an unexpected shape: ${z.prettifyError(schedules.error)}`,
     )
   }
-  const rules = z.array(ruleShape).safeParse(raw.rules)
+  const rules = z.array(ruleShape).safeParse(rawRules)
   if (!rules.success) {
     throw new Error(
       `Actual "getRules" returned an unexpected shape: ${z.prettifyError(rules.error)}`,
@@ -879,12 +949,16 @@ const scheduleLinkRow = z.object({ schedule: z.string() })
  * paid occurrence stayed in `committedForMonth`'s `remaining` and got charged twice.
  */
 export function fetchSchedulesPaidThisMonth(
+  db: Db,
+  tenantId: string,
   first: string,
   last: string,
 ): Promise<ReadonlyMap<string, number>> {
   return runAql(
+    db,
+    tenantId,
     'schedules-paid-this-month',
-    (q) =>
+    () =>
       q('transactions')
         .filter({ date: { $gte: first, $lte: last }, schedule: { $ne: null } })
         .select(['schedule']),
