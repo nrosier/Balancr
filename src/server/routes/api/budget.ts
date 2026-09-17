@@ -92,6 +92,7 @@ export function resolveBenchmarkPeriod(raw: unknown): BenchmarkPeriodKind {
 
 export function buildBudget(
   db: Db,
+  tenantId: string,
   monthParam: unknown,
   owner: boolean,
   benchmarkPeriodParam: unknown = undefined,
@@ -205,6 +206,6 @@ export function buildBudget(
       uncategorised === null
         ? null
         : { txnCount: uncategorised.txnCount, amountCents: uncategorised.amountCents },
-    actualConfigured: integrationAvailability(db).actual,
+    actualConfigured: integrationAvailability(db, tenantId).actual,
   })
 }

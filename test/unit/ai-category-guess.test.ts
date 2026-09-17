@@ -24,6 +24,7 @@ import {
   type CategoryGuessCandidate,
 } from '../../src/domain/aggregate/signals-store.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
@@ -42,6 +43,7 @@ const MONTH = '2026-03'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let tenantId: string
 
 beforeEach(() => {
   vi.mocked(fetchCategories).mockReset()
@@ -56,6 +58,7 @@ beforeEach(() => {
   applyMigrations(ctx.db as never)
   db = ctx.db
   importEnvIntegrationsOnce(db)
+  tenantId = getSoleTenantId(db)
 })
 
 interface Recorded {
@@ -107,7 +110,7 @@ function seedCandidate(overrides: Partial<CategoryGuessCandidate> = {}): void {
 
 describe('estimateCategoryGuess', () => {
   it('is free and refused when none of the ids has a cached candidate', async () => {
-    const outcome = await estimateCategoryGuess(db, { ids: ['txn-9'] })
+    const outcome = await estimateCategoryGuess(db, tenantId, { ids: ['txn-9'] })
 
     expect(outcome.allowed).toBe(false)
     expect(outcome.reason).toBe('no_candidates')
@@ -118,7 +121,7 @@ describe('estimateCategoryGuess', () => {
   it('prices a real batch and allows it under budget', async () => {
     seedCandidate()
 
-    const outcome = await estimateCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await estimateCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.allowed).toBe(true)
     expect(outcome.reason).toBeNull()
@@ -138,7 +141,7 @@ describe('estimateCategoryGuess', () => {
       costMicroEurOverride: eurToMicroEur(500),
     })
 
-    const outcome = await estimateCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await estimateCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.allowed).toBe(false)
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -149,7 +152,7 @@ describe('runCategoryGuess', () => {
   it('skips with one no_candidate result per id when nothing is cached', async () => {
     const recorded = fakeGemini('never called')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-9', 'txn-8'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-9', 'txn-8'] })
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_candidates')
@@ -175,7 +178,7 @@ describe('runCategoryGuess', () => {
     })
     const recorded = fakeGemini('never called')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1', 'txn-9'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1', 'txn-9'] })
 
     expect(outcome.status).toBe('capped')
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -194,7 +197,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     fakeGemini(new Error('socket hang up'))
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
@@ -207,7 +210,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     fakeGemini('not json at all')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('bad_response')
@@ -219,7 +222,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     fakeGemini('{"guesses":[{"clientId":"t1","categoryLabel":"c1"}]}')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.degraded).toBe(false)
@@ -243,7 +246,7 @@ describe('runCategoryGuess', () => {
     // `c9` is not one of this batch's real labels — a hallucinated or borrowed one.
     fakeGemini('{"guesses":[{"clientId":"t1","categoryLabel":"c9"}]}')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.dropped).toEqual([{ clientId: 't1', categoryLabel: 'c9', reason: 'not_offered' }])
@@ -255,7 +258,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     fakeGemini('{"guesses":[]}')
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.results).toEqual([{ id: 'txn-1', ok: false, reason: 'not_confident' }])
@@ -275,7 +278,7 @@ describe('runCategoryGuess', () => {
       '{"guesses":[{"clientId":"t1","categoryLabel":"c1"},{"clientId":"t2","categoryLabel":"c1"}]}',
     )
 
-    const outcome = await runCategoryGuess(db, { ids: ['txn-1', 'txn-2'] })
+    const outcome = await runCategoryGuess(db, tenantId, { ids: ['txn-1', 'txn-2'] })
 
     expect(outcome.status).toBe('ok')
     const byId = new Map(outcome.results.map((result) => [result.id, result]))
@@ -290,7 +293,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     const recorded = fakeGemini('{"guesses":[]}')
 
-    await runCategoryGuess(db, { ids: ['txn-1'] })
+    await runCategoryGuess(db, tenantId, { ids: ['txn-1'] })
 
     const sent = recorded.prompts[0] ?? ''
     expect(sent).not.toContain('Colruyt')

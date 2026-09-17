@@ -16,21 +16,20 @@ import { getSoleTenantId } from './tenant.ts'
 import { tenantIntegrations } from './schema.ts'
 
 /**
- * The sole tenant's stored Actual/Ghostfolio/Gemini connection (#369).
+ * A tenant's stored Actual/Ghostfolio/Gemini connection (#369, #376).
  *
  * `importEnvIntegrationsOnce` runs at boot, before any request can reach a
  * caller of this function, so a missing row means the process never
  * finished starting up rather than a state a caller should recover from.
  */
-export function integrationsRow(db: Db): typeof tenantIntegrations.$inferSelect {
-  const tenantId = getSoleTenantId(db)
+export function integrationsRow(db: Db, tenantId: string): typeof tenantIntegrations.$inferSelect {
   const row = db
     .select()
     .from(tenantIntegrations)
     .where(eq(tenantIntegrations.tenantId, tenantId))
     .all()[0]
   if (row === undefined) {
-    throw new Error('tenantIntegrations has no row for the sole tenant — did startup import run?')
+    throw new Error('tenantIntegrations has no row for this tenant — did startup import run?')
   }
   return row
 }
@@ -54,8 +53,8 @@ export interface IntegrationAvailability {
   readonly ai: boolean
 }
 
-export function integrationAvailability(db: Db): IntegrationAvailability {
-  const row = integrationsRow(db)
+export function integrationAvailability(db: Db, tenantId: string): IntegrationAvailability {
+  const row = integrationsRow(db, tenantId)
   return {
     actual: row.actualServerUrl !== '' && row.actualSyncId !== '' && row.actualPasswordEnc.length > 0,
     ghostfolio: row.ghostfolioUrl !== '' && row.ghostfolioSecurityTokenEnc.length > 0,
@@ -98,8 +97,8 @@ export interface ResolvedIntegrations {
   }
 }
 
-export function resolvedIntegrations(db: Db): ResolvedIntegrations {
-  const row = integrationsRow(db)
+export function resolvedIntegrations(db: Db, tenantId: string): ResolvedIntegrations {
+  const row = integrationsRow(db, tenantId)
   return {
     actual: {
       serverUrl: row.actualServerUrl,
@@ -122,7 +121,14 @@ export function resolvedIntegrations(db: Db): ResolvedIntegrations {
   }
 }
 
-/** Returns true if it imported a row, false if tenant 1 already had one. */
+/**
+ * Returns true if it imported a row, false if tenant 1 already had one.
+ *
+ * Still uses `getSoleTenantId` rather than taking a `tenantId` parameter
+ * (#376): it runs once at boot, before a second tenant can exist by
+ * construction, and it's the only legitimate way to learn tenant 1's id
+ * this early — there is no request or job context to thread one from.
+ */
 export function importEnvIntegrationsOnce(db: Db): boolean {
   const tenantId = getSoleTenantId(db)
   const existing = db

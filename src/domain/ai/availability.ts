@@ -79,11 +79,12 @@ export function aiAvailability(cfg: AiConfig = config): AiAvailability {
  */
 export function tenantAiAvailability(
   db: Db,
+  tenantId: string,
   cfg: Omit<AiConfig, 'aiCredentialed' | 'GEMINI_MONTHLY_BUDGET_EUR'> = config,
 ): AiAvailability {
   return aiAvailability({
     ...cfg,
-    aiCredentialed: integrationAvailability(db).ai,
-    GEMINI_MONTHLY_BUDGET_EUR: microEurToEur(resolvedIntegrations(db).gemini.budgetEurMicro),
+    aiCredentialed: integrationAvailability(db, tenantId).ai,
+    GEMINI_MONTHLY_BUDGET_EUR: microEurToEur(resolvedIntegrations(db, tenantId).gemini.budgetEurMicro),
   })
 }

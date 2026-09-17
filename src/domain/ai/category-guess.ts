@@ -30,7 +30,6 @@ import {
 import { fetchCategories } from '../../adapters/actual/queries.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { loadCategoryMeta } from '../aggregate/facts.ts'
@@ -162,6 +161,7 @@ interface PreparedGuessBatch {
  */
 async function prepareGuessBatch(
   db: Db,
+  tenantId: string,
   ids: readonly string[],
   locale: string,
 ): Promise<PreparedGuessBatch | null> {
@@ -169,7 +169,7 @@ async function prepareGuessBatch(
   if (candidates.length === 0) return null
 
   const categoryMetaById = loadCategoryMeta(db)
-  const categories = await fetchCategories(db, getSoleTenantId(db))
+  const categories = await fetchCategories(db, tenantId)
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
 
   const inputs: GuessCandidateInput[] = candidates.map((candidate) => ({
@@ -196,11 +196,12 @@ async function prepareGuessBatch(
  */
 export async function estimateCategoryGuess(
   db: Db,
+  tenantId: string,
   options: { ids: readonly string[]; locale?: string; model?: string; now?: Date },
 ): Promise<CategoryGuessEstimate> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
-  const prepared = await prepareGuessBatch(db, options.ids, locale)
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const prepared = await prepareGuessBatch(db, tenantId, options.ids, locale)
 
   if (prepared === null) {
     return {
@@ -215,7 +216,7 @@ export async function estimateCategoryGuess(
 
   const payloadChars = JSON.stringify(prepared.redaction.payload).length
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimateMicroEur, options.now ?? new Date())
+  const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
     ids: options.ids,
@@ -240,13 +241,14 @@ export async function estimateCategoryGuess(
  */
 export async function runCategoryGuess(
   db: Db,
+  tenantId: string,
   options: CategoryGuessOptions,
 ): Promise<CategoryGuessOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const now = options.now ?? new Date()
 
-  const prepared = await prepareGuessBatch(db, options.ids, locale)
+  const prepared = await prepareGuessBatch(db, tenantId, options.ids, locale)
   if (prepared === null) {
     log.info({ ids: options.ids }, 'none of the selected ids has a cached category-guess candidate')
     return {
@@ -274,7 +276,7 @@ export async function runCategoryGuess(
     options.ids.map((id) => ({ id, ok: false, reason: candidateIdSet.has(id) ? reason : 'no_candidate' }))
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimate, now)
+  const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, {
       kind: 'category_guess',
@@ -301,7 +303,7 @@ export async function runCategoryGuess(
 
   let result
   try {
-    result = await callGemini(db, {
+    result = await callGemini(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(CATEGORY_GUESS_SYSTEM, locale),
       instruction: categoryGuessInstruction(payload),

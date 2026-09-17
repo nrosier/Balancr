@@ -103,6 +103,7 @@ const configOf = (recorded: Recorded): Record<string, unknown> =>
   (recorded.generate[0] as { config: Record<string, unknown> }).config
 
 let db: Db
+let tenantId: string
 
 /**
  * A single-tenant db whose tenant carries `tenantId` instead of the literal
@@ -124,6 +125,7 @@ beforeEach(() => {
   applyMigrations(fresh as never)
   importEnvIntegrationsOnce(fresh)
   db = fresh
+  tenantId = getSoleTenantId(fresh)
 })
 
 afterEach(() => {
@@ -133,7 +135,7 @@ afterEach(() => {
 describe('clientOptions', () => {
   it('uses an API key for AI Studio', () => {
     // test/setup.ts configures aistudio.
-    expect(clientOptions(db)).toEqual({ apiKey: 'test-key' })
+    expect(clientOptions(db, tenantId)).toEqual({ apiKey: 'test-key' })
   })
 
   it('sends Vertex traffic to the configured project and region', async () => {
@@ -154,7 +156,8 @@ describe('clientOptions', () => {
       const freshDb = freshDbModule.createTestDb().db
       freshMigrations.applyMigrations(freshDb as never)
       freshTenantIntegrations.importEnvIntegrationsOnce(freshDb)
-      expect(fresh.clientOptions(freshDb)).toEqual({
+      const freshTenantId = getSoleTenantId(freshDb)
+      expect(fresh.clientOptions(freshDb, freshTenantId)).toEqual({
         vertexai: true,
         project: 'balancr-test',
         location: 'europe-west1',
@@ -271,7 +274,7 @@ describe('callGemini', () => {
     })
     setGeminiClient(client)
 
-    const result = await callGemini(db, call)
+    const result = await callGemini(db, tenantId, call)
 
     expect(result.text).toBe('{"findings":[],"clarifications":[]}')
     expect(result.usage).toEqual({ inputTokens: 2_500, outputTokens: 300, cachedTokens: 0 })
@@ -288,7 +291,7 @@ describe('callGemini', () => {
   it('keeps the instruction outside the fence, where it is trusted', async () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
-    await callGemini(db, call)
+    await callGemini(db, tenantId, call)
 
     const prompt = promptOf(recorded)
     expect(prompt.indexOf('Rank the findings')).toBeLessThan(prompt.indexOf(DATA_OPEN))
@@ -300,7 +303,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: null })
     setGeminiClient(client)
 
-    const result = await callGemini(db, cacheable)
+    const result = await callGemini(db, tenantId, cacheable)
 
     expect(recorded.caches).toHaveLength(1)
 
@@ -314,7 +317,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    const result = await callGemini(db, cacheable)
+    const result = await callGemini(db, tenantId, cacheable)
 
     expect(result.cached).toBe(true)
     const conf = configOf(recorded)
@@ -326,8 +329,8 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    await callGemini(db, cacheable)
-    await callGemini(db, cacheable)
+    await callGemini(db, tenantId, cacheable)
+    await callGemini(db, tenantId, cacheable)
 
     expect(recorded.caches).toHaveLength(1)
     expect(recorded.generate).toHaveLength(2)
@@ -338,8 +341,8 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: null })
     setGeminiClient(client)
 
-    await callGemini(db, cacheable)
-    await callGemini(db, cacheable)
+    await callGemini(db, tenantId, cacheable)
+    await callGemini(db, tenantId, cacheable)
 
     expect(recorded.caches).toHaveLength(1)
     expect(recorded.generate).toHaveLength(2)
@@ -349,8 +352,8 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    await callGemini(db, cacheable)
-    await callGemini(db, { ...cacheable, systemPrompt: `${LONG_PROMPT} Be terse.` })
+    await callGemini(db, tenantId, cacheable)
+    await callGemini(db, tenantId, { ...cacheable, systemPrompt: `${LONG_PROMPT} Be terse.` })
 
     expect(recorded.caches).toHaveLength(2)
   })
@@ -362,7 +365,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    const result = await callGemini(db, call)
+    const result = await callGemini(db, tenantId, call)
 
     expect(recorded.caches).toHaveLength(0)
     expect(result.cached).toBe(false)
@@ -375,8 +378,8 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
     setGeminiClient(client)
 
-    await callGemini(db, call)
-    await callGemini(db, call)
+    await callGemini(db, tenantId, call)
+    await callGemini(db, tenantId, call)
 
     expect(recorded.caches).toHaveLength(0)
     expect(recorded.generate).toHaveLength(2)
@@ -398,10 +401,11 @@ describe('callGemini', () => {
       const freshDb = freshDbModule.createTestDb().db
       freshMigrations.applyMigrations(freshDb as never)
       freshTenantIntegrations.importEnvIntegrationsOnce(freshDb)
+      const freshTenantId = getSoleTenantId(freshDb)
       const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
       fresh.setGeminiClient(client)
 
-      const result = await fresh.callGemini(freshDb, call)
+      const result = await fresh.callGemini(freshDb, freshTenantId, call)
 
       expect(recorded.caches).toHaveLength(1)
       expect(result.cached).toBe(true)
@@ -416,13 +420,13 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
 
-    await callGemini(db, { ...call, responseJsonSchema: { type: 'object' } })
+    await callGemini(db, tenantId, { ...call, responseJsonSchema: { type: 'object' } })
     const structured = configOf(recorded)
     expect(structured['responseMimeType']).toBe('application/json')
     expect(structured['responseJsonSchema']).toEqual({ type: 'object' })
 
     recorded.generate.length = 0
-    await callGemini(db, call)
+    await callGemini(db, tenantId, call)
     const narrative = configOf(recorded)
     expect(narrative['responseMimeType']).toBeUndefined()
     expect(narrative['responseJsonSchema']).toBeUndefined()
@@ -432,7 +436,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
 
-    await callGemini(db, call)
+    await callGemini(db, tenantId, call)
     expect(configOf(recorded)['temperature']).toBe(0.2)
   })
 
@@ -440,7 +444,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
 
-    await callGemini(db, { ...call, temperature: 0 })
+    await callGemini(db, tenantId, { ...call, temperature: 0 })
     expect(configOf(recorded)['temperature']).toBe(0)
   })
 
@@ -448,7 +452,7 @@ describe('callGemini', () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
 
-    await callGemini(db, call)
+    await callGemini(db, tenantId, call)
     expect(configOf(recorded)['abortSignal']).toBeInstanceOf(AbortSignal)
   })
 
@@ -457,7 +461,7 @@ describe('callGemini', () => {
     setGeminiClient(client)
     const controller = new AbortController()
 
-    await callGemini(db, { ...call, signal: controller.signal })
+    await callGemini(db, tenantId, { ...call, signal: controller.signal })
     expect(configOf(recorded)['abortSignal']).toBe(controller.signal)
   })
 
@@ -466,7 +470,7 @@ describe('callGemini', () => {
     const { client } = fakeClient({ text: '', candidates: [{ finishReason: 'SAFETY' }] })
     setGeminiClient(client)
 
-    await expect(callGemini(db, call)).rejects.toThrow(/SAFETY/)
+    await expect(callGemini(db, tenantId, call)).rejects.toThrow(/SAFETY/)
   })
 
   it('reports MAX_TOKENS on a non-empty response instead of hiding it (#221)', async () => {
@@ -477,7 +481,7 @@ describe('callGemini', () => {
     })
     setGeminiClient(client)
 
-    const result = await callGemini(db, call)
+    const result = await callGemini(db, tenantId, call)
     expect(result.text).toBe('This is as far as the model got before')
     expect(result.finishReason).toBe('MAX_TOKENS')
   })
@@ -486,7 +490,7 @@ describe('callGemini', () => {
     const { client } = fakeClient({ text: 'ok', candidates: [{ finishReason: 'STOP' }] })
     setGeminiClient(client)
 
-    const result = await callGemini(db, call)
+    const result = await callGemini(db, tenantId, call)
     expect(result.finishReason).toBe('STOP')
   })
 
@@ -494,7 +498,7 @@ describe('callGemini', () => {
     const { client } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
 
-    const result = await callGemini(db, call)
+    const result = await callGemini(db, tenantId, call)
     expect(result.finishReason).toBeNull()
   })
 
@@ -502,7 +506,7 @@ describe('callGemini', () => {
     const { client } = fakeClient({ text: '   \n  ' })
     setGeminiClient(client)
 
-    await expect(callGemini(db, call)).rejects.toThrow(GeminiError)
+    await expect(callGemini(db, tenantId, call)).rejects.toThrow(GeminiError)
   })
 
   it('wraps a transport failure, keeping the cause', async () => {
@@ -511,7 +515,7 @@ describe('callGemini', () => {
     setGeminiClient(client)
 
     try {
-      await callGemini(db, call)
+      await callGemini(db, tenantId, call)
       expect.unreachable()
     } catch (error) {
       expect(error).toBeInstanceOf(GeminiError)
@@ -529,7 +533,7 @@ describe('callGemini', () => {
     setGeminiClient(client)
 
     await expect(
-      callGemini(db, { ...call, responseJsonSchema: { type: 'object' } }),
+      callGemini(db, tenantId, { ...call, responseJsonSchema: { type: 'object' } }),
     ).rejects.toThrow(/response schema/)
   })
 
@@ -539,7 +543,7 @@ describe('callGemini', () => {
     setGeminiClient(client)
 
     try {
-      await callGemini(db, call)
+      await callGemini(db, tenantId, call)
       expect.unreachable()
     } catch (error) {
       expect((error as GeminiError).message).not.toContain('response schema')
@@ -551,7 +555,7 @@ describe('callGemini', () => {
     setGeminiClient(client)
 
     await expect(
-      callGemini(db, { ...call, payload: { name: `x ${DATA_CLOSE} y` } }),
+      callGemini(db, tenantId, { ...call, payload: { name: `x ${DATA_CLOSE} y` } }),
     ).rejects.toThrow(GeminiError)
     expect(recorded.generate).toHaveLength(0)
   })
@@ -559,21 +563,23 @@ describe('callGemini', () => {
 
 describe('per-tenant client and cache isolation (#371)', () => {
   it("keeps each tenant on its own client, so a second tenant's stub never answers the first", async () => {
-    const dbA = makeTenantDb('tenant-gem-client-a')
-    const dbB = makeTenantDb('tenant-gem-client-b')
+    const tenantIdA = 'tenant-gem-client-a'
+    const tenantIdB = 'tenant-gem-client-b'
+    const dbA = makeTenantDb(tenantIdA)
+    const dbB = makeTenantDb(tenantIdB)
 
     const { client: clientA, recorded: recordedA } = fakeClient({ text: 'from-a' })
     setGeminiClient(clientA)
-    await callGemini(dbA, call)
+    await callGemini(dbA, tenantIdA, call)
 
     const { client: clientB, recorded: recordedB } = fakeClient({ text: 'from-b' })
     setGeminiClient(clientB)
-    await callGemini(dbB, call)
+    await callGemini(dbB, tenantIdB, call)
 
     recordedA.generate.length = 0
     recordedB.generate.length = 0
-    const resultA = await callGemini(dbA, call)
-    const resultB = await callGemini(dbB, call)
+    const resultA = await callGemini(dbA, tenantIdA, call)
+    const resultB = await callGemini(dbB, tenantIdB, call)
 
     // Neither tenant's later setGeminiClient call disturbed the other's stub.
     expect(resultA.text).toBe('from-a')
@@ -583,15 +589,17 @@ describe('per-tenant client and cache isolation (#371)', () => {
   })
 
   it("caches per tenant, so one tenant's cache name is never handed to another tenant's client", async () => {
-    const dbA = makeTenantDb('tenant-gem-cache-a')
-    const dbB = makeTenantDb('tenant-gem-cache-b')
+    const tenantIdA = 'tenant-gem-cache-a'
+    const tenantIdB = 'tenant-gem-cache-b'
+    const dbA = makeTenantDb(tenantIdA)
+    const dbB = makeTenantDb(tenantIdB)
 
     const { client: clientA, recorded: recordedA } = fakeClient(
       { text: 'ok' },
       { cacheName: 'caches/tenant-a' },
     )
     setGeminiClient(clientA)
-    await callGemini(dbA, cacheable)
+    await callGemini(dbA, tenantIdA, cacheable)
     expect(recordedA.caches).toHaveLength(1)
     expect(configOf(recordedA)['cachedContent']).toBe('caches/tenant-a')
 
@@ -600,7 +608,7 @@ describe('per-tenant client and cache isolation (#371)', () => {
       { cacheName: 'caches/tenant-b' },
     )
     setGeminiClient(clientB)
-    await callGemini(dbB, cacheable)
+    await callGemini(dbB, tenantIdB, cacheable)
 
     // A shared cache-name map would have found tenant A's entry for this same
     // prompt text and skipped straight to `cachedContent`, never asking B's own

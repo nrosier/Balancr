@@ -26,7 +26,6 @@ import { createHash } from 'node:crypto'
 import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { ZERO_USAGE, type TokenUsage } from './pricing.ts'
@@ -115,8 +114,8 @@ export class GeminiError extends Error {
  * promise that. Worth being able to assert in a test rather than trusting a
  * constructor call nobody reads.
  */
-export function clientOptions(db: Db): GoogleGenAIOptions {
-  const gemini = resolvedIntegrations(db).gemini
+export function clientOptions(db: Db, tenantId: string): GoogleGenAIOptions {
+  const gemini = resolvedIntegrations(db, tenantId).gemini
   if (gemini.provider === 'vertex') {
     return {
       vertexai: true,
@@ -145,8 +144,7 @@ const tenants = new Map<string, TenantGeminiState>()
  */
 let pendingClientOverride: GoogleGenAI | undefined
 
-function tenantState(db: Db): TenantGeminiState {
-  const tenantId = getSoleTenantId(db)
+function tenantState(db: Db, tenantId: string): TenantGeminiState {
   if (pendingClientOverride !== undefined) {
     const state: TenantGeminiState = { client: pendingClientOverride, cacheNames: new Map() }
     tenants.set(tenantId, state)
@@ -155,14 +153,14 @@ function tenantState(db: Db): TenantGeminiState {
   }
   let state = tenants.get(tenantId)
   if (state === undefined) {
-    state = { client: new GoogleGenAI(clientOptions(db)), cacheNames: new Map() }
+    state = { client: new GoogleGenAI(clientOptions(db, tenantId)), cacheNames: new Map() }
     tenants.set(tenantId, state)
   }
   return state
 }
 
-function genai(db: Db): GoogleGenAI {
-  return tenantState(db).client
+function genai(db: Db, tenantId: string): GoogleGenAI {
+  return tenantState(db, tenantId).client
 }
 
 /** Test seam: swap the SDK client, or drop every tenant's so config changes take effect. */
@@ -279,8 +277,13 @@ const cacheKey = (model: string, instruction: string): string =>
  * the reason caching was built, and it is what will push the system prompt past
  * the floor — at which point this check stops firing and nothing else changes.
  */
-async function cacheFor(db: Db, model: string, instruction: string): Promise<string | null> {
-  const state = tenantState(db)
+async function cacheFor(
+  db: Db,
+  tenantId: string,
+  model: string,
+  instruction: string,
+): Promise<string | null> {
+  const state = tenantState(db, tenantId)
   const key = cacheKey(model, instruction)
   const held = state.cacheNames.get(key)
   if (held !== undefined) return held === '' ? null : held
@@ -332,14 +335,14 @@ async function cacheFor(db: Db, model: string, instruction: string): Promise<str
  * attempt and `domain/ai/budget.ts` decides whether it may happen — an adapter
  * that wrote its own ledger row would be a second place where cost is counted.
  */
-export async function callGemini(db: Db, call: GeminiCall): Promise<GeminiResult> {
+export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Promise<GeminiResult> {
   const instruction = systemInstruction(call.systemPrompt)
   const prompt = `${call.instruction.trim()}\n\n${fenceData(call.payload)}`
-  const cache = await cacheFor(db, call.model, instruction)
+  const cache = await cacheFor(db, tenantId, call.model, instruction)
 
   const started = Date.now()
   try {
-    const response = await genai(db).models.generateContent({
+    const response = await genai(db, tenantId).models.generateContent({
       model: call.model,
       contents: prompt,
       config: {

@@ -439,10 +439,11 @@ export function monthHasEnded(period: string, now = new Date()): boolean {
  */
 export function estimateNarrative(
   db: Db,
+  tenantId: string,
   options: { period: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelDeep
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelDeep
   const now = options.now ?? new Date()
   const refused = (reason: string): AnalysisEstimate => ({
     month: options.period,
@@ -461,7 +462,7 @@ export function estimateNarrative(
 
   const payloadChars = JSON.stringify(prepared.narrativePayload).length
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimateMicroEur, now)
+  const decision = checkBudget(db, tenantId, estimateMicroEur, now)
 
   return {
     month: options.period,
@@ -487,14 +488,15 @@ interface NarrativeCall {
  */
 async function callNarrativeModel(
   db: Db,
+  tenantId: string,
   call: Omit<GeminiCall, 'maxOutputTokens'>,
 ): Promise<NarrativeCall> {
-  const first = await callGemini(db, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
+  const first = await callGemini(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
   if (first.finishReason !== 'MAX_TOKENS') {
     return { result: first, usage: first.usage, truncated: false }
   }
   log.warn({ model: call.model }, 'narrative call hit MAX_TOKENS; retrying once at a higher ceiling')
-  const retry = await callGemini(db, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
+  const retry = await callGemini(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
   return {
     result: retry,
     usage: addUsage(first.usage, retry.usage),
@@ -512,9 +514,13 @@ async function callNarrativeModel(
  * Never throws for a Gemini failure, for the same reason as `runAnalysis`: the
  * nightly job's only trace of having tried is the run row.
  */
-export async function runNarrative(db: Db, options: NarrativeOptions): Promise<NarrativeOutcome> {
+export async function runNarrative(
+  db: Db,
+  tenantId: string,
+  options: NarrativeOptions,
+): Promise<NarrativeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelDeep
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelDeep
   const now = options.now ?? new Date()
   const period = options.period
 
@@ -533,7 +539,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
   const payloadHash = hashPayload(payload)
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimate, now)
+  const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, {
       kind: 'narrative',
@@ -554,7 +560,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
 
   let call: NarrativeCall
   try {
-    call = await callNarrativeModel(db, {
+    call = await callNarrativeModel(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: narrativeInstruction(payload),
@@ -681,10 +687,11 @@ export interface TranslateOptions {
  */
 export async function translateNarrative(
   db: Db,
+  tenantId: string,
   options: TranslateOptions,
 ): Promise<NarrativeOutcome> {
   const { period, from, to } = options
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const now = options.now ?? new Date()
 
   if (from === to) return failed(period, to, 'skipped', 'same_locale')
@@ -703,7 +710,7 @@ export async function translateNarrative(
   const payload = { period, from, to, bodyMd: source.bodyMd }
   const payloadHash = hashPayload(payload)
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimate, now)
+  const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, {
       kind: 'narrative',
@@ -722,7 +729,7 @@ export async function translateNarrative(
 
   let call: NarrativeCall
   try {
-    call = await callNarrativeModel(db, {
+    call = await callNarrativeModel(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(TRANSLATION_SYSTEM, to),
       instruction: translationInstruction(from, to),

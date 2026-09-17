@@ -19,6 +19,7 @@ import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { config } from '../../src/config.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
@@ -45,6 +46,7 @@ const MONTH = '2026-03'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let tenantId: string
 
 beforeAll(async () => {
   await initI18n()
@@ -54,6 +56,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  tenantId = getSoleTenantId(db)
   importEnvIntegrationsOnce(db)
 })
 
@@ -254,7 +257,7 @@ describe("the month's note reaches this pass and no other (#298)", () => {
     saveMonthNote(db, MONTH, NOTE)
     const recorded = fakeGemini('A month with an explanation.')
 
-    await runNarrative(db, { period: MONTH, locale: 'en' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
 
     // The prompt is where it has to be, not merely the bundle: #298 was reported because
     // the note was collected, stored, read by the nudge, and never put in front of this
@@ -269,7 +272,7 @@ describe("the month's note reaches this pass and no other (#298)", () => {
     saveMonthNote(db, MONTH, NOTE)
     fakeGemini('A month with an explanation.')
 
-    return runNarrative(db, { period: MONTH, locale: 'en' }).then(() => {
+    return runNarrative(db, tenantId, { period: MONTH, locale: 'en' }).then(() => {
       const run = recentRuns(db, 10).find((r) => r.kind === 'narrative')
       expect(run).toBeDefined()
       expect(JSON.stringify(loadRunPayload(db, run!.id))).toContain(NOTE)
@@ -283,7 +286,7 @@ describe('noteChangedSince (#298)', () => {
   /** Writes a review for the month, which is what the comparison is against. */
   async function review(): Promise<void> {
     fakeGemini('A quiet month.')
-    await runNarrative(db, { period: MONTH, locale: 'en' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
   }
 
   it('is false when the note has not moved since the review was written', async () => {
@@ -310,7 +313,7 @@ describe('noteChangedSince (#298)', () => {
     expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
 
     fakeGemini('A month with two appliances in it.')
-    await runNarrative(db, { period: MONTH, locale: 'en', force: true })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en', force: true })
     expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(false)
   })
 
@@ -355,7 +358,7 @@ describe('runNarrative', () => {
     const label = labelOf('Groceries')
     fakeGemini(`## March\n\nSpending in ${label} ran over its balance.`)
 
-    const outcome = await runNarrative(db, { period: MONTH, locale: 'en' })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.degraded).toBe(false)
@@ -372,7 +375,7 @@ describe('runNarrative', () => {
     seedTypicalMonth()
     const recorded = fakeGemini('A quiet month.')
 
-    await runNarrative(db, { period: MONTH })
+    await runNarrative(db, tenantId, { period: MONTH })
 
     expect(recorded.models[0]).toBe(config.GEMINI_MODEL_DEEP)
     expect(recorded.configs[0]?.['responseJsonSchema']).toBeUndefined()
@@ -383,8 +386,8 @@ describe('runNarrative', () => {
     seedTypicalMonth()
     const recorded = fakeGemini('A quiet month.')
 
-    await runNarrative(db, { period: MONTH, locale: 'en' })
-    const second = await runNarrative(db, { period: MONTH, locale: 'en' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
+    const second = await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
 
     expect(recorded.prompts).toHaveLength(1)
     expect(second.status).toBe('cached')
@@ -396,10 +399,10 @@ describe('runNarrative', () => {
   it('rewrites the month when asked explicitly', async () => {
     seedTypicalMonth()
     fakeGemini('First take.')
-    await runNarrative(db, { period: MONTH, locale: 'en' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
 
     const recorded = fakeGemini('Second take.')
-    const forced = await runNarrative(db, { period: MONTH, locale: 'en', force: true })
+    const forced = await runNarrative(db, tenantId, { period: MONTH, locale: 'en', force: true })
 
     expect(recorded.prompts).toHaveLength(1)
     expect(forced.status).toBe('ok')
@@ -411,15 +414,15 @@ describe('runNarrative', () => {
   it('asks separately for each language, and keeps both', async () => {
     seedTypicalMonth()
     fakeGemini('An English month.')
-    await runNarrative(db, { period: MONTH, locale: 'en' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
     fakeGemini('Een Nederlandse maand.')
-    await runNarrative(db, { period: MONTH, locale: 'nl' })
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'nl' })
 
     expect(narrativeLocales(db, MONTH)).toEqual(['en', 'nl'])
   })
 
   it('records nothing for a month with no facts', async () => {
-    const outcome = await runNarrative(db, { period: '2026-01' })
+    const outcome = await runNarrative(db, tenantId, { period: '2026-01' })
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_facts')
@@ -442,7 +445,7 @@ describe('runNarrative', () => {
     })
     const recorded = fakeGemini('Never sent.')
 
-    const outcome = await runNarrative(db, { period: MONTH, locale: 'en' })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
 
     expect(outcome.status).toBe('capped')
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -456,7 +459,7 @@ describe('runNarrative', () => {
     seedTypicalMonth()
     fakeGemini(new Error('socket hang up'))
 
-    const outcome = await runNarrative(db, { period: MONTH })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
@@ -469,7 +472,7 @@ describe('runNarrative', () => {
     seedTypicalMonth()
     fakeGemini('>')
 
-    const outcome = await runNarrative(db, { period: MONTH })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH })
 
     expect(outcome.reason).toBe('empty_response')
     expect(loadNarrative(db, MONTH, config.DEFAULT_LOCALE)).toBeNull()
@@ -487,7 +490,7 @@ describe('runNarrative', () => {
       { text: 'Spending ran high this month, but stayed under budget.', finishReason: 'STOP' },
     ])
 
-    const outcome = await runNarrative(db, { period: MONTH })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH })
 
     expect(recorded.prompts).toHaveLength(2)
     // The retry asked for more room than the first attempt.
@@ -511,7 +514,7 @@ describe('runNarrative', () => {
       { text: 'Spending ran high this month, but still', finishReason: 'MAX_TOKENS' },
     ])
 
-    const outcome = await runNarrative(db, { period: MONTH })
+    const outcome = await runNarrative(db, tenantId, { period: MONTH })
 
     expect(recorded.prompts).toHaveLength(2)
     expect(outcome.status).toBe('error')
@@ -536,7 +539,7 @@ describe('translateNarrative', () => {
     })
     const recorded = fakeGemini('Uitgaven in c1 liepen over.')
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.locale).toBe('nl')
@@ -556,13 +559,13 @@ describe('translateNarrative', () => {
     storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: `In ${label}.` })
     fakeGemini(`In ${label}.`)
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
     expect(outcome.html).toContain('Groceries')
   })
 
   it('does nothing when there is nothing to translate', async () => {
     const recorded = fakeGemini('never called')
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_source')
@@ -574,7 +577,7 @@ describe('translateNarrative', () => {
     storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'text' })
     const recorded = fakeGemini('never called')
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'en' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'en' })
 
     expect(outcome.reason).toBe('same_locale')
     expect(recorded.prompts).toHaveLength(0)
@@ -586,7 +589,7 @@ describe('translateNarrative', () => {
     storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'nl', bodyMd: 'nederlands' })
     const recorded = fakeGemini('never called')
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(outcome.status).toBe('cached')
     expect(outcome.bodyMd).toBe('nederlands')
@@ -606,7 +609,7 @@ describe('translateNarrative', () => {
     })
     const recorded = fakeGemini('never called')
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(outcome.status).toBe('capped')
     expect(recorded.prompts).toHaveLength(0)
@@ -625,7 +628,7 @@ describe('translateNarrative', () => {
       { text: 'De uitgaven waren hoog deze maand, maar bleven binnen budget.', finishReason: 'STOP' },
     ])
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(recorded.prompts).toHaveLength(2)
     expect(outcome.status).toBe('ok')
@@ -646,7 +649,7 @@ describe('translateNarrative', () => {
       { text: 'De uitgaven waren hoog deze maand, maar nog steeds', finishReason: 'MAX_TOKENS' },
     ])
 
-    const outcome = await translateNarrative(db, { period: MONTH, from: 'en', to: 'nl' })
+    const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
 
     expect(recorded.prompts).toHaveLength(2)
     expect(outcome.status).toBe('error')

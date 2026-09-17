@@ -76,7 +76,7 @@ export function emergencyFundCentimonths(
 /** How many months of spend the cover figure averages over. A year, seasonality and all. */
 export const COVER_WINDOW_MONTHS = 12
 
-export function buildOverview(db: Db): Overview {
+export function buildOverview(db: Db, tenantId: string): Overview {
   const month = latestStoredMonth(db)
   const totals = month === null ? null : (loadMonthTotals(db, [month])[0] ?? null)
   const hygiene = month === null ? null : loadHygiene(db, month)
@@ -93,7 +93,7 @@ export function buildOverview(db: Db): Overview {
   const properties = loadProperties(db).properties
   const propertyEquity = totalEquityCents(properties, today)
   const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db)
-  const integrations = integrationAvailability(db)
+  const integrations = integrationAvailability(db, tenantId)
 
   return overviewSchema.parse({
     freshness: freshness(db),
