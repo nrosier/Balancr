@@ -19,7 +19,6 @@
 import { fetchAccounts } from '../adapters/actual/queries.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
 import { loadFacts } from '../domain/aggregate/facts.ts'
 import type { AccountReconciliation } from '../domain/aggregate/hygiene.ts'
 import {
@@ -197,7 +196,7 @@ export async function judgeMonth(
   return { signals: stored.signals, scoreBp: result.hygiene.scoreBp }
 }
 
-async function run({ db, now, log }: JobContext): Promise<JobDetail> {
+async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   const latest = latestStoredMonth(db)
   if (latest === null) {
     // Before the first sync there is nothing to judge, which is a state to report
@@ -206,7 +205,6 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     return { months: 0, signals: 0 }
   }
 
-  const tenantId = getSoleTenantId(db)
   const params = loadParams(db)
   const latestSnapshot = latestSnapshotDate(db)
   const shared: Shared = {

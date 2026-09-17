@@ -45,14 +45,14 @@ const storedCheck = (check: ProbeCheck): StoredReport['checks'][number] => ({
   ...(check.error === undefined ? {} : { error: check.error }),
 })
 
-async function run({ db, log }: JobContext): Promise<JobDetail> {
+async function run({ db, tenantId, log }: JobContext): Promise<JobDetail> {
   const report = await probeGhostfolio(db)
 
   const stored: StoredReport = {
     checks: report.checks.map(storedCheck),
     warnings: [...report.warnings],
   }
-  saveProbe(db, 'ghostfolio', report.status, stored, report.at)
+  saveProbe(db, tenantId, 'ghostfolio', report.status, stored, report.at)
 
   const failure = describeProbeFailure(report)
   if (failure !== null) throw new Error(failure)
