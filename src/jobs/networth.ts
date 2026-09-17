@@ -115,7 +115,7 @@ export async function collectAccountValues(
   asOf: Date,
   log: Logger,
 ): Promise<AccountValue[]> {
-  const rows = loadAccountMap(db)
+  const rows = loadAccountMap(db, tenantId)
   const values: AccountValue[] = []
 
   values.push(...(await actualValuesAt(db, tenantId, await actualScope(db, tenantId, rows), asOf)))
@@ -156,7 +156,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   const date = dateIn(now, config.TZ)
   const values = await collectAccountValues(db, tenantId, now, log)
   const result = computeNetWorth(date, values)
-  const stored = persistNetWorth(db, result)
+  const stored = persistNetWorth(db, tenantId, result)
 
   if (result.unresolvedGroups.length > 0) {
     // Logged at warn because the figure is an understatement and nothing on the

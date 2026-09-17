@@ -20,11 +20,10 @@
  *    mortgage as a broker, and `other` counts toward the total without pretending
  *    to be an emergency fund.
  */
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap } from '../../db/schema.ts'
 import type { AccountKind } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import type { Transaction } from '../audit.ts'
 
 export type AccountSource = 'actual' | 'ghostfolio'
@@ -81,13 +80,13 @@ export function defaultKind(sighting: AccountSighting): AccountKind {
  */
 export function syncAccountMap(
   db: Db,
+  tenantId: string,
   sightings: readonly AccountSighting[],
 ): AccountSyncResult {
   const result: AccountSyncResult = { created: 0, renamed: 0, missing: [] }
-  const tenantId = getSoleTenantId(db)
 
   db.transaction((tx) => {
-    const existing = tx.select().from(accountMap).all()
+    const existing = tx.select().from(accountMap).where(eq(accountMap.tenantId, tenantId)).all()
     const bySource = new Map(existing.map((row) => [`${row.source}:${row.externalId}`, row]))
     const seen = new Set<string>()
 
@@ -130,8 +129,8 @@ export function syncAccountMap(
   return result
 }
 
-export function loadAccountMap(db: Db): AccountMapRow[] {
-  return db.select().from(accountMap).all()
+export function loadAccountMap(db: Db, tenantId: string): AccountMapRow[] {
+  return db.select().from(accountMap).where(eq(accountMap.tenantId, tenantId)).all()
 }
 
 /** Rows for the given source, keyed by the id that source uses. */
@@ -328,6 +327,7 @@ export function dedupeCandidates(
 /** Marks rows as belonging to one group, with `sourceOfTruthId` the one that counts. */
 export function setDedupeGroup(
   db: Db,
+  tenantId: string,
   group: string,
   accountMapIds: readonly string[],
   sourceOfTruthId: string,
@@ -342,17 +342,17 @@ export function setDedupeGroup(
   db.transaction((tx) => {
     tx.update(accountMap)
       .set({ dedupeGroup: group, isSourceOfTruth: false })
-      .where(inArray(accountMap.id, [...accountMapIds]))
+      .where(and(inArray(accountMap.id, [...accountMapIds]), eq(accountMap.tenantId, tenantId)))
       .run()
     tx.update(accountMap)
       .set({ isSourceOfTruth: true })
-      .where(eq(accountMap.id, sourceOfTruthId))
+      .where(and(eq(accountMap.id, sourceOfTruthId), eq(accountMap.tenantId, tenantId)))
       .run()
     // Grouping two accounts is a judgement about which of them is real, so a
     // matcher that later disagrees has to leave it alone — including the dismissal
     // in #131, which is a decision that two accounts are *not* the same and is worth
     // exactly as much as the decision that they are.
-    markDecided(tx, accountMapIds, ['dedupeGroup', 'isSourceOfTruth'])
+    markDecided(tx, tenantId, accountMapIds, ['dedupeGroup', 'isSourceOfTruth'])
   })
 }
 
@@ -365,12 +365,17 @@ export function setDedupeGroup(
  */
 function markDecided(
   tx: Transaction,
+  tenantId: string,
   ids: readonly string[],
   fields: readonly DecidableField[],
 ): void {
   if (ids.length === 0) return
 
-  for (const row of tx.select().from(accountMap).where(inArray(accountMap.id, [...ids])).all()) {
+  for (const row of tx
+    .select()
+    .from(accountMap)
+    .where(and(inArray(accountMap.id, [...ids]), eq(accountMap.tenantId, tenantId)))
+    .all()) {
     const decided = decidedFields(row)
     const before = decided.size
     for (const field of fields) decided.add(field)
@@ -401,6 +406,7 @@ export interface AccountMapPatch {
  */
 export function updateAccountMap(
   db: Db,
+  tenantId: string,
   id: string,
   patch: AccountMapPatch,
 ): AccountMapRow | null {
@@ -410,14 +416,15 @@ export function updateAccountMap(
       ? {}
       : { includeInNetWorth: patch.includeInNetWorth }),
   }
+  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
   // An empty patch is a read: `set({})` is invalid SQL, and a PATCH with nothing
   // in it is a client bug that should not become a 500.
   if (Object.keys(changes).length === 0) {
-    return db.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+    return db.select().from(accountMap).where(matches).all()[0] ?? null
   }
 
   return db.transaction((tx) => {
-    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    const row = tx.select().from(accountMap).where(matches).all()[0]
     if (row === undefined) return null
 
     // The fields this patch names are now decided, and stay decided even if the
@@ -433,7 +440,7 @@ export function updateAccountMap(
       tx
         .update(accountMap)
         .set({ ...changes, decidedFields: encodeDecidedFields(decided) })
-        .where(eq(accountMap.id, id))
+        .where(matches)
         .returning()
         .all()[0] ?? null
     )
@@ -519,12 +526,14 @@ export function encodeDecidedFields(fields: ReadonlySet<DecidableField>): string
  */
 export function applyDerivedFields(
   db: Db,
+  tenantId: string,
   id: string,
   derived: AccountMapPatch,
   now = new Date(),
 ): AccountMapRow | null {
+  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
   return db.transaction((tx) => {
-    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    const row = tx.select().from(accountMap).where(matches).all()[0]
     if (row === undefined) return null
 
     const decided = decidedFields(row)
@@ -539,7 +548,7 @@ export function applyDerivedFields(
       tx
         .update(accountMap)
         .set({ ...changes, classifiedAt: now })
-        .where(eq(accountMap.id, id))
+        .where(matches)
         .returning()
         .all()[0] ?? null
     )
@@ -639,6 +648,7 @@ export function deriveMirrors(rows: readonly AccountMapRow[]): DerivedMirror[] {
  */
 export function applyDerivedMirror(
   db: Db,
+  tenantId: string,
   mirror: DerivedMirror,
   now = new Date(),
 ): string | null {
@@ -646,7 +656,12 @@ export function applyDerivedMirror(
     const pair = tx
       .select()
       .from(accountMap)
-      .where(inArray(accountMap.id, [mirror.ghostfolioId, mirror.actualId]))
+      .where(
+        and(
+          inArray(accountMap.id, [mirror.ghostfolioId, mirror.actualId]),
+          eq(accountMap.tenantId, tenantId),
+        ),
+      )
       .all()
     if (pair.length !== 2) return null
     // Already grouped by anyone, for any reason, is left alone: the existing group is
@@ -657,11 +672,11 @@ export function applyDerivedMirror(
     const group = crypto.randomUUID()
     tx.update(accountMap)
       .set({ dedupeGroup: group, isSourceOfTruth: false, classifiedAt: now })
-      .where(eq(accountMap.id, mirror.ghostfolioId))
+      .where(and(eq(accountMap.id, mirror.ghostfolioId), eq(accountMap.tenantId, tenantId)))
       .run()
     tx.update(accountMap)
       .set({ dedupeGroup: group, isSourceOfTruth: true, classifiedAt: now })
-      .where(eq(accountMap.id, mirror.actualId))
+      .where(and(eq(accountMap.id, mirror.actualId), eq(accountMap.tenantId, tenantId)))
       .run()
     return group
   })
@@ -679,8 +694,9 @@ export function applyDerivedMirror(
  * An ungrouped row is simply set true and affects nobody, because an account that
  * mirrors nothing is its own source of truth.
  */
-export function setSourceOfTruth(db: Db, id: string): AccountMapRow | null {
-  const row = db.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+export function setSourceOfTruth(db: Db, tenantId: string, id: string): AccountMapRow | null {
+  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
+  const row = db.select().from(accountMap).where(matches).all()[0]
   if (row === undefined) return null
 
   return db.transaction((tx) => {
@@ -688,21 +704,26 @@ export function setSourceOfTruth(db: Db, id: string): AccountMapRow | null {
       const group = tx
         .select()
         .from(accountMap)
-        .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+        .where(and(eq(accountMap.dedupeGroup, row.dedupeGroup), eq(accountMap.tenantId, tenantId)))
         .all()
       tx.update(accountMap)
         .set({ isSourceOfTruth: false })
-        .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+        .where(and(eq(accountMap.dedupeGroup, row.dedupeGroup), eq(accountMap.tenantId, tenantId)))
         .run()
       // The whole group, not just the row named: choosing one source of truth is
       // simultaneously a decision that the others are not, and a rule that flipped
       // the losers back would undo half of one answer.
-      markDecided(tx, group.map((member) => member.id), ['isSourceOfTruth'])
+      markDecided(
+        tx,
+        tenantId,
+        group.map((member) => member.id),
+        ['isSourceOfTruth'],
+      )
     }
     return (
       tx.update(accountMap)
         .set({ isSourceOfTruth: true })
-        .where(eq(accountMap.id, id))
+        .where(matches)
         .returning()
         .all()[0] ?? null
     )
@@ -718,11 +739,12 @@ export function setSourceOfTruth(db: Db, id: string): AccountMapRow | null {
  */
 export function groupAccounts(
   db: Db,
+  tenantId: string,
   accountMapIds: readonly string[],
   sourceOfTruthId: string,
 ): string {
   const group = crypto.randomUUID()
-  setDedupeGroup(db, group, accountMapIds, sourceOfTruthId)
+  setDedupeGroup(db, tenantId, group, accountMapIds, sourceOfTruthId)
   return group
 }
 
@@ -750,29 +772,31 @@ export function groupAccounts(
  * because at most one is ever offered, and because the derived matcher in
  * `deriveMirrors` has already grouped the pairs that are unambiguous.
  */
-export function dismissMirror(db: Db, id: string): AccountMapRow | null {
+export function dismissMirror(db: Db, tenantId: string, id: string): AccountMapRow | null {
+  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
   return db.transaction((tx) => {
-    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+    const row = tx.select().from(accountMap).where(matches).all()[0] ?? null
     if (row === null || row.dedupeGroup !== null) return null
-    markDecided(tx, [id], ['dedupeGroup'])
-    return tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+    markDecided(tx, tenantId, [id], ['dedupeGroup'])
+    return tx.select().from(accountMap).where(matches).all()[0] ?? null
   })
 }
 
-export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
+export function ungroupAccount(db: Db, tenantId: string, id: string): AccountMapRow | null {
+  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
   return db.transaction((tx) => {
     const row =
       tx
         .update(accountMap)
         .set({ dedupeGroup: null, isSourceOfTruth: true })
-        .where(eq(accountMap.id, id))
+        .where(matches)
         .returning()
         .all()[0] ?? null
     if (row === null) return null
     // Ungrouping is as much a decision as grouping was — it says these two accounts
     // are not one — so a matcher must not simply re-propose what was just undone.
-    markDecided(tx, [id], ['dedupeGroup', 'isSourceOfTruth'])
-    return tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0] ?? null
+    markDecided(tx, tenantId, [id], ['dedupeGroup', 'isSourceOfTruth'])
+    return tx.select().from(accountMap).where(matches).all()[0] ?? null
   })
 }
 
@@ -789,26 +813,34 @@ export function ungroupAccount(db: Db, id: string): AccountMapRow | null {
  * source of truth and keeps counting for itself, exactly like an account that was
  * never linked.
  */
-export function unlinkGroup(db: Db, id: string): AccountMapRow[] {
+export function unlinkGroup(db: Db, tenantId: string, id: string): AccountMapRow[] {
   return db.transaction((tx) => {
-    const row = tx.select().from(accountMap).where(eq(accountMap.id, id)).all()[0]
+    const row = tx
+      .select()
+      .from(accountMap)
+      .where(and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId)))
+      .all()[0]
     if (row === undefined || row.dedupeGroup === null) return []
 
     const group = tx
       .select()
       .from(accountMap)
-      .where(eq(accountMap.dedupeGroup, row.dedupeGroup))
+      .where(and(eq(accountMap.dedupeGroup, row.dedupeGroup), eq(accountMap.tenantId, tenantId)))
       .all()
     const ids = group.map((member) => member.id)
 
     tx.update(accountMap)
       .set({ dedupeGroup: null, isSourceOfTruth: true })
-      .where(inArray(accountMap.id, ids))
+      .where(and(inArray(accountMap.id, ids), eq(accountMap.tenantId, tenantId)))
       .run()
     // Same reasoning as `ungroupAccount`: unlinking is a decision, so a later sync
     // must not silently re-propose what was just taken apart.
-    markDecided(tx, ids, ['dedupeGroup', 'isSourceOfTruth'])
+    markDecided(tx, tenantId, ids, ['dedupeGroup', 'isSourceOfTruth'])
 
-    return tx.select().from(accountMap).where(inArray(accountMap.id, ids)).all()
+    return tx
+      .select()
+      .from(accountMap)
+      .where(and(inArray(accountMap.id, ids), eq(accountMap.tenantId, tenantId)))
+      .all()
   })
 }

@@ -155,7 +155,11 @@ async function investmentHalf(
 }
 
 /** Month-ends this install reports on, oldest first, excluding the current month. */
-function targetMonths(db: Db, now: Date): { metrics: string[]; netWorth: string[]; all: string[] } {
+function targetMonths(
+  db: Db,
+  tenantId: string,
+  now: Date,
+): { metrics: string[]; netWorth: string[]; all: string[] } {
   // The current month is excluded because its end has not happened; the nightly pass
   // owns today, and the backfill only ever touches settled months.
   //
@@ -165,9 +169,9 @@ function targetMonths(db: Db, now: Date): { metrics: string[]; netWorth: string[
   // the old month and the other into the new one.
   const all = monthsBefore(monthIn(now, config.TZ), config.JOBS_HISTORY_MONTHS)
 
-  const haveMetrics = metricsDates(db)
-  const haveSnapshots = snapshotDates(db)
-  const earliest = earliestStoredMonth(db)
+  const haveMetrics = metricsDates(db, tenantId)
+  const haveSnapshots = snapshotDates(db, tenantId)
+  const earliest = earliestStoredMonth(db, tenantId)
 
   return {
     all,
@@ -203,7 +207,7 @@ async function backfillNetWorth(
     return { written: 0, skipped: months.length, half: half.kind }
   }
 
-  const scope = await actualScope(db, tenantId, loadAccountMap(db))
+  const scope = await actualScope(db, tenantId, loadAccountMap(db, tenantId))
   let written = 0
   let skipped = 0
 
@@ -216,7 +220,7 @@ async function backfillNetWorth(
       continue
     }
 
-    persistNetWorth(db, computeNetWorth(date, dated))
+    persistNetWorth(db, tenantId, computeNetWorth(date, dated))
     written += 1
   }
 
@@ -248,7 +252,7 @@ function investmentsAt(
 }
 
 async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
-  const months = targetMonths(db, now)
+  const months = targetMonths(db, tenantId, now)
   if (months.metrics.length === 0 && months.netWorth.length === 0) {
     // The steady state, and the reason this check comes before every fetch.
     return { months: months.all.length, pending: 0 }
@@ -267,7 +271,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   const metrics =
     performance === null || months.metrics.length === 0
       ? { written: 0, kept: 0 }
-      : backfillPortfolioValues(db, monthEndValues(performance, months.metrics))
+      : backfillPortfolioValues(db, tenantId, monthEndValues(performance, months.metrics))
 
   // An unreachable Ghostfolio short-circuits the net-worth half rather than letting it
   // fail once per counted account, and it is a skip rather than an Actual-only history:

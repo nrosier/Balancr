@@ -95,9 +95,11 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
 
   if (options.empty === true) return { db, sqlite: ctx.sqlite }
 
+  const tenantId = getSoleTenantId(db)
   const months = [PREVIOUS_MONTH, MONTH]
   persistMonthTotals(
     db,
+    tenantId,
     [totals(PREVIOUS_MONTH, 400_000, 310_000), totals(MONTH, 400_000, 352_000)],
     [
       { month: PREVIOUS_MONTH, txnCount: 0, amountCents: 0 },
@@ -126,11 +128,12 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
   // fact whose category has no meta row is invisible to the API. A fixture that
   // wrote facts alone would leave every category endpoint returning an empty list
   // while passing every assertion that did not look.
-  syncCategoryMeta(db, facts)
-  persistFacts(db, facts, months)
+  syncCategoryMeta(db, tenantId, facts)
+  persistFacts(db, tenantId, facts, months)
 
   persistSignals(
     db,
+    tenantId,
     MONTH,
     [
       {
@@ -162,7 +165,7 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
   // through `syncAccountMap` because `net_worth_snapshots.account_map_id` is a
   // foreign key onto a generated id — a hand-made mapping id would fail the
   // constraint that keeps a snapshot from outliving the account it describes.
-  syncAccountMap(db, [
+  syncAccountMap(db, tenantId, [
     { source: 'actual', externalId: 'acct-checking', name: 'Checking' },
     { source: 'ghostfolio', externalId: 'acct-broker', name: 'Broker' },
     { source: 'actual', externalId: 'acct-card', name: 'Credit card' },
@@ -175,7 +178,9 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     .where(eq(accountMap.externalId, 'acct-card'))
     .run()
 
-  const byExternalId = new Map(loadAccountMap(db).map((row) => [row.externalId, row.id]))
+  const byExternalId = new Map(
+    loadAccountMap(db, tenantId).map((row) => [row.externalId, row.id]),
+  )
   const mappingFor = (externalId: string): string => {
     const id = byExternalId.get(externalId)
     if (id === undefined) throw new Error(`the fixture failed to map ${externalId}`)
@@ -199,7 +204,7 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     isSourceOfTruth: true,
   })
 
-  persistNetWorth(db, {
+  persistNetWorth(db, tenantId, {
     date: SNAPSHOT_DATE,
     // Recomputed on the way out, so these four are what the fixture *intends*
     // rather than what the API will report. Kept honest by matching the accounts:
@@ -217,7 +222,7 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     unresolvedGroups: [],
   })
 
-  persistPortfolioSnapshots(db, SNAPSHOT_DATE, [
+  persistPortfolioSnapshots(db, tenantId, SNAPSHOT_DATE, [
     {
       date: SNAPSHOT_DATE,
       instrument: 'IE00B4L5Y983',
@@ -248,7 +253,7 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     },
   ])
 
-  persistPortfolioMetrics(db, {
+  persistPortfolioMetrics(db, tenantId, {
     date: SNAPSHOT_DATE,
     totalValueCents: 382_143,
     investedValueCents: 382_143,
@@ -260,7 +265,6 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     terAnnualCents: null,
   })
 
-  const tenantId = getSoleTenantId(db)
   const now = new Date()
   for (const name of ['sync', 'portfolio', 'networth', 'signals'] as const) {
     const failed = options.jobsFailed === true && name === 'sync'

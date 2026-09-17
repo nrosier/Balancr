@@ -12,7 +12,6 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots, type AccountKind } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import type { AccountBalance } from './accounts.ts'
 import { config } from '../../config.ts'
 import { LIQUID, resolveInclusion, type NetWorthResult, type NetWorthSummary } from './networth.ts'
@@ -32,9 +31,9 @@ export interface NetWorthPersistResult {
  */
 export function persistNetWorth(
   db: Db,
+  tenantId: string,
   result: NetWorthResult,
 ): NetWorthPersistResult {
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: NetWorthPersistResult = { written: 0, removed: 0 }
 
@@ -71,10 +70,11 @@ export function persistNetWorth(
     const where =
       keep.length > 0
         ? and(
+            eq(netWorthSnapshots.tenantId, tenantId),
             eq(netWorthSnapshots.date, result.date),
             notInArray(netWorthSnapshots.accountMapId, keep),
           )
-        : eq(netWorthSnapshots.date, result.date)
+        : and(eq(netWorthSnapshots.tenantId, tenantId), eq(netWorthSnapshots.date, result.date))
     out.removed += tx.delete(netWorthSnapshots).where(where).run().changes
   })
 
@@ -90,11 +90,12 @@ export function persistNetWorth(
  * a worse one. So "already present" is a reason to leave it alone, and the only date
  * the nightly pass ever writes is its own.
  */
-export function snapshotDates(db: Db): Set<string> {
+export function snapshotDates(db: Db, tenantId: string): Set<string> {
   return new Set(
     db
       .selectDistinct({ date: netWorthSnapshots.date })
       .from(netWorthSnapshots)
+      .where(eq(netWorthSnapshots.tenantId, tenantId))
       .all()
       .map((row) => row.date),
   )
@@ -107,13 +108,17 @@ export function snapshotDates(db: Db): Set<string> {
  * Summed in SQL rather than in JS because this is the one query that runs over
  * every snapshot ever taken.
  */
-export function loadNetWorthHistory(db: Db): { date: string; totalCents: number }[] {
+export function loadNetWorthHistory(
+  db: Db,
+  tenantId: string,
+): { date: string; totalCents: number }[] {
   return db
     .select({
       date: netWorthSnapshots.date,
       totalCents: sql<number>`sum(${netWorthSnapshots.valueCents})`,
     })
     .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.tenantId, tenantId))
     .groupBy(netWorthSnapshots.date)
     .orderBy(netWorthSnapshots.date)
     .all()
@@ -139,10 +144,11 @@ export function loadNetWorthHistory(db: Db): { date: string; totalCents: number 
  * Accounts with no snapshot yet are simply absent rather than zero. Absent means
  * "no evidence"; zero would mean "agrees with every other empty account".
  */
-export function loadLatestAccountBalances(db: Db): AccountBalance[] {
+export function loadLatestAccountBalances(db: Db, tenantId: string): AccountBalance[] {
   const latest = db
     .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
     .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.tenantId, tenantId))
     .get()
   const date = latest?.date ?? null
   if (date === null) return []
@@ -154,14 +160,15 @@ export function loadLatestAccountBalances(db: Db): AccountBalance[] {
       currency: netWorthSnapshots.currency,
     })
     .from(netWorthSnapshots)
-    .where(eq(netWorthSnapshots.date, date))
+    .where(and(eq(netWorthSnapshots.tenantId, tenantId), eq(netWorthSnapshots.date, date)))
     .all()
 }
 
-export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
+export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | null {
   const latest = db
     .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
     .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.tenantId, tenantId))
     .get()
   const date = latest?.date ?? null
   if (date === null) return null
@@ -170,7 +177,7 @@ export function loadLatestNetWorth(db: Db): NetWorthSummary | null {
     .select({ kind: accountMap.kind, valueCents: netWorthSnapshots.valueCents })
     .from(netWorthSnapshots)
     .innerJoin(accountMap, eq(accountMap.id, netWorthSnapshots.accountMapId))
-    .where(eq(netWorthSnapshots.date, date))
+    .where(and(eq(netWorthSnapshots.tenantId, tenantId), eq(netWorthSnapshots.date, date)))
     .all()
 
   const summary: NetWorthSummary = {
@@ -207,10 +214,11 @@ export interface OffBudgetAccount {
  * explicitly excluded from net worth, or lost a dedupe tie for, does not appear here
  * either — the same three judgement calls `computeNetWorth` itself respects.
  */
-export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
+export function loadOffBudgetAccounts(db: Db, tenantId: string): OffBudgetAccount[] {
   const latest = db
     .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
     .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.tenantId, tenantId))
     .get()
   const date = latest?.date ?? null
   if (date === null) return []
@@ -228,7 +236,13 @@ export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
     })
     .from(accountMap)
     .innerJoin(netWorthSnapshots, eq(netWorthSnapshots.accountMapId, accountMap.id))
-    .where(and(eq(accountMap.offBudget, true), eq(netWorthSnapshots.date, date)))
+    .where(
+      and(
+        eq(netWorthSnapshots.tenantId, tenantId),
+        eq(accountMap.offBudget, true),
+        eq(netWorthSnapshots.date, date),
+      ),
+    )
     .all()
 
   const { included } = resolveInclusion(candidates)
@@ -253,8 +267,8 @@ export function loadOffBudgetAccounts(db: Db): OffBudgetAccount[] {
  * list `loadOffBudgetAccounts` returns) — folding every kind in here would make
  * "directly available" the wrong figure to split it out of.
  */
-export function loadOffBudgetLiquidCents(db: Db): number | null {
-  const liquid = loadOffBudgetAccounts(db).filter((account) => LIQUID.has(account.kind))
+export function loadOffBudgetLiquidCents(db: Db, tenantId: string): number | null {
+  const liquid = loadOffBudgetAccounts(db, tenantId).filter((account) => LIQUID.has(account.kind))
   if (liquid.length === 0) return null
   return liquid.reduce((sum, account) => sum + account.balanceCents, 0)
 }

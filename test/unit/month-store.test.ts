@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   forgetMonth,
   latestStoredMonth,
@@ -30,10 +31,12 @@ import type {
 } from '../../src/domain/aggregate/spend.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotals {
@@ -67,8 +70,8 @@ function mismatch(month: string, id: string, difference = 1_000): RecomputeMisma
 
 describe('persistMonthTotals', () => {
   it('round-trips a month exactly, savings rate included', () => {
-    expect(persistMonthTotals(ctx.db, [totals('2026-01')], [])).toBe(1)
-    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    expect(persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [])).toBe(1)
+    const [stored] = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])
     expect(stored).toMatchObject(totals('2026-01'))
     // No fingerprint was passed in, so there is nothing to compare against (#162).
     expect(stored?.factsHash).toBeNull()
@@ -77,15 +80,15 @@ describe('persistMonthTotals', () => {
   it('keeps a null savings rate null rather than storing a zero', () => {
     // A month with no income has no savings rate. Zero would read as "you saved
     // nothing", which is a different and wrong statement.
-    persistMonthTotals(ctx.db, [totals('2026-01', { incomeCents: 0, savingsRateBp: null })], [])
-    expect(loadMonthTotals(ctx.db, ['2026-01'])[0]?.savingsRateBp).toBeNull()
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01', { incomeCents: 0, savingsRateBp: null })], [])
+    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]?.savingsRateBp).toBeNull()
   })
 
   it('replaces a month rather than merging into it', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01', { spentCents: 341_000 })], [])
-    persistMonthTotals(ctx.db, [totals('2026-01', { spentCents: 12_000 })], [])
-    expect(loadMonthTotals(ctx.db, ['2026-01'])).toHaveLength(1)
-    expect(loadMonthTotals(ctx.db, ['2026-01'])[0]?.spentCents).toBe(12_000)
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01', { spentCents: 341_000 })], [])
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01', { spentCents: 12_000 })], [])
+    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])).toHaveLength(1)
+    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]?.spentCents).toBe(12_000)
   })
 
   it('matches uncategorised buckets by month, not by position', () => {
@@ -93,9 +96,9 @@ describe('persistMonthTotals', () => {
     // transactions, so zipping the two lists would attribute March's backlog to
     // January the moment February had none.
     const buckets: UncategorisedBucket[] = [{ month: '2026-03', txnCount: 4, amountCents: 9_900 }]
-    persistMonthTotals(ctx.db, ['2026-01', '2026-02', '2026-03'].map((m) => totals(m)), buckets)
+    persistMonthTotals(ctx.db, TENANT_ID, ['2026-01', '2026-02', '2026-03'].map((m) => totals(m)), buckets)
 
-    expect(loadUncategorised(ctx.db, ['2026-01', '2026-02', '2026-03'])).toEqual([
+    expect(loadUncategorised(ctx.db, TENANT_ID, ['2026-01', '2026-02', '2026-03'])).toEqual([
       { month: '2026-01', txnCount: 0, amountCents: 0 },
       { month: '2026-02', txnCount: 0, amountCents: 0 },
       { month: '2026-03', txnCount: 4, amountCents: 9_900 },
@@ -103,21 +106,21 @@ describe('persistMonthTotals', () => {
   })
 
   it('stores a net-inward backlog as the negative it is', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01')], [
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [
       { month: '2026-01', txnCount: 2, amountCents: -4_500 },
     ])
-    expect(loadUncategorised(ctx.db, ['2026-01'])[0]?.amountCents).toBe(-4_500)
+    expect(loadUncategorised(ctx.db, TENANT_ID, ['2026-01'])[0]?.amountCents).toBe(-4_500)
   })
 
   it('writes nothing and reports nothing for an empty pass', () => {
-    expect(persistMonthTotals(ctx.db, [], [])).toBe(0)
-    expect(loadMonthTotals(ctx.db, [])).toEqual([])
-    expect(loadUncategorised(ctx.db, [])).toEqual([])
+    expect(persistMonthTotals(ctx.db, TENANT_ID, [], [])).toBe(0)
+    expect(loadMonthTotals(ctx.db, TENANT_ID, [])).toEqual([])
+    expect(loadUncategorised(ctx.db, TENANT_ID, [])).toEqual([])
   })
 
   it('skips a month that has never been computed rather than inventing a zero', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01')], [])
-    expect(loadMonthTotals(ctx.db, ['2025-12', '2026-01']).map((m) => m.month)).toEqual(['2026-01'])
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [])
+    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2025-12', '2026-01']).map((m) => m.month)).toEqual(['2026-01'])
   })
 })
 
@@ -135,49 +138,51 @@ describe('persistMonthTotals fingerprints (#162)', () => {
   })
 
   it('sets factsChangedAt fresh for a brand-new month', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
-    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const [stored] = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])
     expect(stored?.factsHash).toBe('hash-a')
     expect(stored?.factsChangedAt).toBeInstanceOf(Date)
   })
 
   it('carries factsChangedAt forward across a re-run whose hash is unchanged', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
-    const first = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const first = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]?.factsChangedAt
 
     vi.setSystemTime(new Date('2026-01-16T00:00:00Z'))
     // A later run, same hash — nothing about the month's facts actually moved.
     persistMonthTotals(
       ctx.db,
+      TENANT_ID,
       [totals('2026-01', { spentCents: 341_000 })],
       [],
       new Map([['2026-01', 'hash-a']]),
     )
-    const second = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+    const second = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]?.factsChangedAt
 
     expect(second).toEqual(first)
   })
 
   it('bumps factsChangedAt when the hash differs from what was stored', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
-    const before = loadMonthTotals(ctx.db, ['2026-01'])[0]?.factsChangedAt
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [], new Map([['2026-01', 'hash-a']]))
+    const before = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]?.factsChangedAt
 
     vi.setSystemTime(new Date('2026-01-16T00:00:00Z'))
     persistMonthTotals(
       ctx.db,
+      TENANT_ID,
       [totals('2026-01', { spentCents: 12_000 })],
       [],
       new Map([['2026-01', 'hash-b']]),
     )
-    const stored = loadMonthTotals(ctx.db, ['2026-01'])[0]
+    const stored = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])[0]
     expect(stored?.factsHash).toBe('hash-b')
     expect(stored?.factsChangedAt).not.toEqual(before)
   })
 
   it('bumps factsChangedAt for a month with no fingerprint passed in at all', () => {
     // No entry in the map — same as a sync pass that never computed one.
-    persistMonthTotals(ctx.db, [totals('2026-01')], [])
-    const [stored] = loadMonthTotals(ctx.db, ['2026-01'])
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01')], [])
+    const [stored] = loadMonthTotals(ctx.db, TENANT_ID, ['2026-01'])
     expect(stored?.factsHash).toBeNull()
     expect(stored?.factsChangedAt).toBeInstanceOf(Date)
   })
@@ -185,11 +190,11 @@ describe('persistMonthTotals fingerprints (#162)', () => {
 
 describe('loadTrailingTotals', () => {
   const store = (months: readonly string[]) =>
-    persistMonthTotals(ctx.db, months.map((month) => totals(month)), [])
+    persistMonthTotals(ctx.db, TENANT_ID, months.map((month) => totals(month)), [])
 
   it('returns the window ascending, ending at the month asked for', () => {
     store(['2025-11', '2025-12', '2026-01', '2026-02'])
-    expect(loadTrailingTotals(ctx.db, '2026-01', 3).map((m) => m.month)).toEqual([
+    expect(loadTrailingTotals(ctx.db, TENANT_ID, '2026-01', 3).map((m) => m.month)).toEqual([
       '2025-11',
       '2025-12',
       '2026-01',
@@ -201,7 +206,7 @@ describe('loadTrailingTotals', () => {
     // raised again. A shorter window is the honest answer; a window spanning the
     // hole would inflate every rate computed from it.
     store(['2025-10', '2025-11', '2026-01', '2026-02'])
-    expect(loadTrailingTotals(ctx.db, '2026-02', 12).map((m) => m.month)).toEqual([
+    expect(loadTrailingTotals(ctx.db, TENANT_ID, '2026-02', 12).map((m) => m.month)).toEqual([
       '2026-01',
       '2026-02',
     ])
@@ -209,41 +214,41 @@ describe('loadTrailingTotals', () => {
 
   it('is empty when the month itself was never computed', () => {
     store(['2025-11', '2025-12'])
-    expect(loadTrailingTotals(ctx.db, '2026-01', 12)).toEqual([])
+    expect(loadTrailingTotals(ctx.db, TENANT_ID, '2026-01', 12)).toEqual([])
   })
 
   it('is empty for a non-positive count', () => {
     store(['2026-01'])
-    expect(loadTrailingTotals(ctx.db, '2026-01', 0)).toEqual([])
+    expect(loadTrailingTotals(ctx.db, TENANT_ID, '2026-01', 0)).toEqual([])
   })
 
   it('returns just the month when the window is one long', () => {
     store(['2025-12', '2026-01'])
-    expect(loadTrailingTotals(ctx.db, '2026-01', 1).map((m) => m.month)).toEqual(['2026-01'])
+    expect(loadTrailingTotals(ctx.db, TENANT_ID, '2026-01', 1).map((m) => m.month)).toEqual(['2026-01'])
   })
 })
 
 describe('persistMismatches', () => {
   it('round-trips the drift rows for a month', () => {
-    expect(persistMismatches(ctx.db, [mismatch('2026-01', 'food')], ['2026-01'])).toEqual({
+    expect(persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])).toEqual({
       months: 1,
       mismatches: 1,
     })
-    expect(loadMismatches(ctx.db, ['2026-01'])).toEqual([mismatch('2026-01', 'food')])
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2026-01'])).toEqual([mismatch('2026-01', 'food')])
   })
 
   it('clears a month that has stopped drifting', () => {
-    persistMismatches(ctx.db, [mismatch('2026-01', 'food')], ['2026-01'])
+    persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])
     // The second pass reports no mismatch for the month, which must clear the row
     // rather than leave a fixed problem on the page.
-    expect(persistMismatches(ctx.db, [], ['2026-01'])).toEqual({ months: 1, mismatches: 0 })
-    expect(loadMismatches(ctx.db, ['2026-01'])).toEqual([])
+    expect(persistMismatches(ctx.db, TENANT_ID, [], ['2026-01'])).toEqual({ months: 1, mismatches: 0 })
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2026-01'])).toEqual([])
   })
 
   it('leaves a month outside the pass alone', () => {
-    persistMismatches(ctx.db, [mismatch('2025-12', 'rent')], ['2025-12'])
-    persistMismatches(ctx.db, [mismatch('2026-01', 'food')], ['2026-01'])
-    expect(loadMismatches(ctx.db, ['2025-12', '2026-01']).map((m) => m.month)).toEqual([
+    persistMismatches(ctx.db, TENANT_ID, [mismatch('2025-12', 'rent')], ['2025-12'])
+    persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2025-12', '2026-01']).map((m) => m.month)).toEqual([
       '2025-12',
       '2026-01',
     ])
@@ -254,38 +259,39 @@ describe('persistMismatches', () => {
     // a mismatch from one of them has no month row to hang on.
     const result = persistMismatches(
       ctx.db,
+      TENANT_ID,
       [mismatch('2024-05', 'old'), mismatch('2026-01', 'food')],
       ['2026-01'],
     )
     expect(result.mismatches).toBe(1)
-    expect(loadMismatches(ctx.db, ['2024-05', '2026-01']).map((m) => m.categoryId)).toEqual(['food'])
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2024-05', '2026-01']).map((m) => m.categoryId)).toEqual(['food'])
   })
 
   it('does nothing at all when the pass covered no months', () => {
-    persistMismatches(ctx.db, [mismatch('2026-01', 'food')], ['2026-01'])
-    expect(persistMismatches(ctx.db, [], [])).toEqual({ months: 0, mismatches: 0 })
+    persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])
+    expect(persistMismatches(ctx.db, TENANT_ID, [], [])).toEqual({ months: 0, mismatches: 0 })
     // An empty month list must not be read as "every month": that would clear the
     // whole table on a pass that found no budget months.
-    expect(loadMismatches(ctx.db, ['2026-01'])).toHaveLength(1)
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2026-01'])).toHaveLength(1)
   })
 })
 
 describe('latestStoredMonth and forgetMonth', () => {
   it('is null before the first sync', () => {
-    expect(latestStoredMonth(ctx.db)).toBeNull()
+    expect(latestStoredMonth(ctx.db, TENANT_ID)).toBeNull()
   })
 
   it('reports the highest month, not the last one written', () => {
-    persistMonthTotals(ctx.db, [totals('2026-02'), totals('2025-12')], [])
-    expect(latestStoredMonth(ctx.db)).toBe('2026-02')
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-02'), totals('2025-12')], [])
+    expect(latestStoredMonth(ctx.db, TENANT_ID)).toBe('2026-02')
   })
 
   it('drops a month and its drift together', () => {
-    persistMonthTotals(ctx.db, [totals('2026-01'), totals('2026-02')], [])
-    persistMismatches(ctx.db, [mismatch('2026-01', 'food')], ['2026-01'])
+    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01'), totals('2026-02')], [])
+    persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])
 
-    forgetMonth(ctx.db, '2026-01')
-    expect(loadMonthTotals(ctx.db, ['2026-01', '2026-02']).map((m) => m.month)).toEqual(['2026-02'])
-    expect(loadMismatches(ctx.db, ['2026-01'])).toEqual([])
+    forgetMonth(ctx.db, TENANT_ID, '2026-01')
+    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2026-01', '2026-02']).map((m) => m.month)).toEqual(['2026-02'])
+    expect(loadMismatches(ctx.db, TENANT_ID, ['2026-01'])).toEqual([])
   })
 })

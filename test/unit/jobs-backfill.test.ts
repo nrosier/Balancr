@@ -152,12 +152,12 @@ beforeEach(() => {
   db = ctx.db
   TENANT_ID = getSoleTenantId(db)
 
-  syncAccountMap(db, [
+  syncAccountMap(db, TENANT_ID, [
     { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
     { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
   ])
-  seedMonth(db, '2026-01')
-  seedMonth(db, '2026-02')
+  seedMonth(db, TENANT_ID, '2026-01')
+  seedMonth(db, TENANT_ID, '2026-02')
 
   gave.accounts = [
     { id: 'a1', name: 'Zichtrekening', offbudget: false, closed: false, last_reconciled: null },
@@ -189,10 +189,10 @@ const run = async (now = NIGHT): Promise<JobDetail> =>
 
 /** Month-end dates the backfill wrote a net-worth snapshot for. */
 const snapshots = (): Record<string, number> =>
-  Object.fromEntries(loadNetWorthHistory(db).map((row) => [row.date, row.totalCents]))
+  Object.fromEntries(loadNetWorthHistory(db, TENANT_ID).map((row) => [row.date, row.totalCents]))
 
 const metrics = (): Record<string, number> =>
-  Object.fromEntries(loadPortfolioValueHistory(db).map((row) => [row.date, row.totalCents]))
+  Object.fromEntries(loadPortfolioValueHistory(db, TENANT_ID).map((row) => [row.date, row.totalCents]))
 
 describe('registration', () => {
   it('runs nightly, in the registry, after the pass that owns today', () => {
@@ -301,7 +301,7 @@ describe('two counted Ghostfolio accounts', () => {
       { id: 'g1', name: 'Bolero', currency: 'EUR', balance: 0, valueInBaseCurrency: 4_000 },
       { id: 'g2', name: 'Pensioensparen', currency: 'EUR', balance: 0, valueInBaseCurrency: 900 },
     ]
-    syncAccountMap(db, [
+    syncAccountMap(db, TENANT_ID, [
       { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
       { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
       { source: 'ghostfolio', externalId: 'g2', name: 'Pensioensparen' },
@@ -462,7 +462,7 @@ describe('the steady state', () => {
     // about and the job returns without opening a connection.
     const window = monthsBefore('2026-03', 24)
     const first = window[0] as string
-    seedMonth(db, first)
+    seedMonth(db, TENANT_ID, first)
     gave.chart = [
       ...window.map((month) => ({ date: endOfMonth(month), value: 3_000 })),
       { date: '2026-03-14', value: 3_250 },
@@ -518,11 +518,11 @@ describe('an install whose budget is younger than the window', () => {
     applyMigrations(ctx.db as never)
     db = ctx.db
     TENANT_ID = getSoleTenantId(db)
-    syncAccountMap(db, [
+    syncAccountMap(db, TENANT_ID, [
       { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
       { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
     ])
-    seedMonth(db, '2026-02')
+    seedMonth(db, TENANT_ID, '2026-02')
 
     const detail = await run()
 
@@ -537,7 +537,7 @@ describe('an install whose budget is younger than the window', () => {
     applyMigrations(ctx.db as never)
     db = ctx.db
     TENANT_ID = getSoleTenantId(db)
-    syncAccountMap(db, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
+    syncAccountMap(db, TENANT_ID, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
 
     const detail = await run()
 
@@ -558,6 +558,6 @@ describe('the account map', () => {
     })
     await run()
 
-    expect(loadAccountMap(db).map((row) => row.externalId).sort()).toEqual(['a1', 'g1'])
+    expect(loadAccountMap(db, TENANT_ID).map((row) => row.externalId).sort()).toEqual(['a1', 'g1'])
   })
 })

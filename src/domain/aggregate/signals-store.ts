@@ -11,10 +11,9 @@
  * throwing. Removing a code should not make an old month unopenable, and the next
  * pass clears the row anyway.
  */
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryGuessCandidates, monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import type { CategoryHistorySample } from './proposal-rules.ts'
 import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
@@ -44,12 +43,12 @@ export interface SignalPersistResult {
  */
 export function persistSignals(
   db: Db,
+  tenantId: string,
   month: string,
   signals: readonly Signal[],
   hygiene: HygieneScore,
   factsHash: string | null = null,
 ): SignalPersistResult {
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = signals.map((signal) => ({
     tenantId,
@@ -66,7 +65,9 @@ export function persistSignals(
   const deductionsJson = JSON.stringify(hygiene.deductions)
 
   db.transaction((tx) => {
-    tx.delete(monthlySignals).where(eq(monthlySignals.month, month)).run()
+    tx.delete(monthlySignals)
+      .where(and(eq(monthlySignals.tenantId, tenantId), eq(monthlySignals.month, month)))
+      .run()
     if (rows.length > 0) tx.insert(monthlySignals).values(rows).run()
 
     tx.insert(monthlyHygiene)
@@ -105,10 +106,10 @@ export interface CategoryGuessCandidate {
  */
 export function persistCategoryGuessCandidates(
   db: Db,
+  tenantId: string,
   month: string,
   candidates: readonly CategoryGuessCandidate[],
 ): void {
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = candidates.map((candidate) => ({
     tenantId,
@@ -123,7 +124,9 @@ export function persistCategoryGuessCandidates(
   }))
 
   db.transaction((tx) => {
-    tx.delete(categoryGuessCandidates).where(eq(categoryGuessCandidates.month, month)).run()
+    tx.delete(categoryGuessCandidates)
+      .where(and(eq(categoryGuessCandidates.tenantId, tenantId), eq(categoryGuessCandidates.month, month)))
+      .run()
     if (rows.length > 0) tx.insert(categoryGuessCandidates).values(rows).run()
   })
 }
@@ -140,11 +143,15 @@ function toCandidate(row: typeof categoryGuessCandidates.$inferSelect): Category
 }
 
 /** The stored candidates for a month, in insertion order. */
-export function loadCategoryGuessCandidates(db: Db, month: string): CategoryGuessCandidate[] {
+export function loadCategoryGuessCandidates(
+  db: Db,
+  tenantId: string,
+  month: string,
+): CategoryGuessCandidate[] {
   const rows = db
     .select()
     .from(categoryGuessCandidates)
-    .where(eq(categoryGuessCandidates.month, month))
+    .where(and(eq(categoryGuessCandidates.tenantId, tenantId), eq(categoryGuessCandidates.month, month)))
     .all()
 
   return rows.map(toCandidate)
@@ -161,6 +168,7 @@ export function loadCategoryGuessCandidates(db: Db, month: string): CategoryGues
  */
 export function loadCategoryGuessCandidatesByIds(
   db: Db,
+  tenantId: string,
   ids: readonly string[],
 ): CategoryGuessCandidate[] {
   if (ids.length === 0) return []
@@ -168,7 +176,12 @@ export function loadCategoryGuessCandidatesByIds(
   const rows = db
     .select()
     .from(categoryGuessCandidates)
-    .where(inArray(categoryGuessCandidates.transactionId, [...ids]))
+    .where(
+      and(
+        eq(categoryGuessCandidates.tenantId, tenantId),
+        inArray(categoryGuessCandidates.transactionId, [...ids]),
+      ),
+    )
     .all()
 
   return rows.map(toCandidate)
@@ -222,11 +235,11 @@ function toMetrics(json: string): Record<string, number> | null {
  * break their ties deterministically, so the read order only has to be stable
  * enough to make a test readable.
  */
-export function loadSignals(db: Db, month: string): Signal[] {
+export function loadSignals(db: Db, tenantId: string, month: string): Signal[] {
   const rows = db
     .select()
     .from(monthlySignals)
-    .where(eq(monthlySignals.month, month))
+    .where(and(eq(monthlySignals.tenantId, tenantId), eq(monthlySignals.month, month)))
     .orderBy(monthlySignals.code, monthlySignals.subjectKey)
     .all()
 
@@ -240,14 +253,18 @@ export function loadSignals(db: Db, month: string): Signal[] {
  * than being left out of the map: a year picker needs to tell "no findings"
  * apart from "not asked about".
  */
-export function loadSignalsForMonths(db: Db, months: readonly string[]): Map<string, Signal[]> {
+export function loadSignalsForMonths(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+): Map<string, Signal[]> {
   const byMonth = new Map<string, Signal[]>(months.map((month) => [month, []]))
   if (months.length === 0) return byMonth
 
   const rows = db
     .select()
     .from(monthlySignals)
-    .where(inArray(monthlySignals.month, [...months]))
+    .where(and(eq(monthlySignals.tenantId, tenantId), inArray(monthlySignals.month, [...months])))
     .orderBy(monthlySignals.month, monthlySignals.code, monthlySignals.subjectKey)
     .all()
 
@@ -288,7 +305,7 @@ function toSignals(rows: readonly (typeof monthlySignals.$inferSelect)[]): Signa
  * or synced before this column existed) is left out: there is nothing to
  * compare against, and it will get one on its next sync.
  */
-export function staleMonths(db: Db, months: readonly string[]): string[] {
+export function staleMonths(db: Db, tenantId: string, months: readonly string[]): string[] {
   if (months.length === 0) return []
 
   return db
@@ -298,19 +315,22 @@ export function staleMonths(db: Db, months: readonly string[]): string[] {
       judgedFactsHash: monthlyHygiene.judgedFactsHash,
     })
     .from(monthlyTotals)
-    .leftJoin(monthlyHygiene, eq(monthlyHygiene.month, monthlyTotals.month))
-    .where(inArray(monthlyTotals.month, [...months]))
+    .leftJoin(
+      monthlyHygiene,
+      and(eq(monthlyHygiene.month, monthlyTotals.month), eq(monthlyHygiene.tenantId, tenantId)),
+    )
+    .where(and(eq(monthlyTotals.tenantId, tenantId), inArray(monthlyTotals.month, [...months])))
     .all()
     .filter((row) => row.factsHash !== null && row.factsHash !== row.judgedFactsHash)
     .map((row) => row.month)
 }
 
 /** Null before the month has ever been judged, which is not the same as 10 000. */
-export function loadHygiene(db: Db, month: string): HygieneScore | null {
+export function loadHygiene(db: Db, tenantId: string, month: string): HygieneScore | null {
   const row = db
     .select()
     .from(monthlyHygiene)
-    .where(eq(monthlyHygiene.month, month))
+    .where(and(eq(monthlyHygiene.tenantId, tenantId), eq(monthlyHygiene.month, month)))
     .get()
   if (row === undefined) return null
 
