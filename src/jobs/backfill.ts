@@ -53,7 +53,6 @@ import { fetchPortfolioPerformance } from '../adapters/ghostfolio/client.ts'
 import type { PortfolioPerformance } from '../adapters/ghostfolio/types.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
 import { loadAccountMap } from '../domain/aggregate/accounts.ts'
 import { earliestStoredMonth } from '../domain/aggregate/month-store.ts'
 import { computeNetWorth, type AccountValue } from '../domain/aggregate/networth.ts'
@@ -247,8 +246,7 @@ function investmentsAt(
   return true
 }
 
-async function run({ db, now, log }: JobContext): Promise<JobDetail> {
-  const tenantId = getSoleTenantId(db)
+async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   const months = targetMonths(db, now)
   if (months.metrics.length === 0 && months.netWorth.length === 0) {
     // The steady state, and the reason this check comes before every fetch.

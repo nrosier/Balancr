@@ -113,6 +113,7 @@ describe('/readyz', () => {
     await open({ jobsFailed: true })
     saveProbe(
       ctx.db,
+      getSoleTenantId(ctx.db),
       'ghostfolio',
       'unreachable',
       {
@@ -171,7 +172,7 @@ describe('/api/status', () => {
   })
 
   it('reports a healthy instance as ready and not degraded', async () => {
-    saveProbe(ctx.db, 'ghostfolio', 'ok', { checks: [], warnings: [] }, new Date())
+    saveProbe(ctx.db, getSoleTenantId(ctx.db), 'ghostfolio', 'ok', { checks: [], warnings: [] }, new Date())
 
     const body = (await status()).json<Status>()
     expect(body.ready).toBe(true)
@@ -231,6 +232,7 @@ describe('/api/status', () => {
   it('passes the probe’s per-path detail through', async () => {
     saveProbe(
       ctx.db,
+      getSoleTenantId(ctx.db),
       'ghostfolio',
       'shape-mismatch',
       {
@@ -268,7 +270,7 @@ describe('/api/status', () => {
   })
 
   it('keeps the verdict when the stored report cannot be read', async () => {
-    saveProbe(ctx.db, 'ghostfolio', 'unreachable', { checks: [], warnings: [] }, new Date())
+    saveProbe(ctx.db, getSoleTenantId(ctx.db), 'ghostfolio', 'unreachable', { checks: [], warnings: [] }, new Date())
     ctx.db.$client.prepare(`update upstream_probes set report_json = '{"nope":1}'`).run()
 
     const body = (await status()).json<Status>()
