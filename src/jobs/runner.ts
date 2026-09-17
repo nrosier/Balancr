@@ -18,7 +18,7 @@
 import { and, desc, eq, notInArray } from 'drizzle-orm'
 import type { Db } from '../db/index.ts'
 import { jobRuns as jobRunsTable, jobs as jobsTable } from '../db/schema.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
+import { allTenantIds } from '../db/tenant.ts'
 import { config } from '../config.ts'
 import { logger } from '../logger.ts'
 import type { Logger } from '../logger.ts'
@@ -44,12 +44,28 @@ const queue = createSerialiser()
  * is touched, because the check and the claim have to be one step: two requests
  * arriving in the same tick would both read an empty set otherwise, and the second
  * would be accepted into a queue it was supposed to be refused from.
+ *
+ * Keyed by `${tenantId}:${name}` rather than `name` alone (#372) — otherwise tenant
+ * B's "sync" would read as in-flight while tenant A's "sync" is running, and a
+ * refresh request for tenant B would be refused for no reason of its own.
  */
 const inFlight = new Set<string>()
 
-/** The jobs running or queued in this process, in the order they were claimed. */
-export function jobsInFlight(): readonly string[] {
-  return [...inFlight]
+const inFlightKey = (tenantId: string, name: string): string => `${tenantId}:${name}`
+/** The `name` half of a key built by `inFlightKey` — never `-1`, every key has one colon. */
+const nameOfKey = (key: string): string => key.slice(key.indexOf(':') + 1)
+
+/**
+ * The jobs running or queued in this process, in the order they were claimed.
+ *
+ * Bare, this returns every tenant's claimed job names (deduplicated) — the form
+ * `status.ts`'s database-unreadable branch uses, since it cannot resolve a tenant
+ * without a database read. Given a `tenantId`, it returns only that tenant's claims.
+ */
+export function jobsInFlight(tenantId?: string): readonly string[] {
+  if (tenantId === undefined) return [...new Set([...inFlight].map(nameOfKey))]
+  const prefix = `${tenantId}:`
+  return [...inFlight].filter((key) => key.startsWith(prefix)).map(nameOfKey)
 }
 
 export interface JobContext {
@@ -59,6 +75,8 @@ export interface JobContext {
    * opens the configured file the moment it is imported.
    */
   readonly db: Db
+  /** The tenant this run is for (#372) — the run's rows are written under this id. */
+  readonly tenantId: string
   /** The tick's instant, passed in so a run is reproducible and testable. */
   readonly now: Date
   readonly log: Logger
@@ -115,8 +133,7 @@ export interface JobStep {
 export type JobRow = typeof jobsTable.$inferSelect
 export type JobRunRow = typeof jobRunsTable.$inferSelect
 
-function upsert(db: Db, name: string, set: Partial<JobRow>): void {
-  const tenantId = getSoleTenantId(db)
+function upsert(db: Db, tenantId: string, name: string, set: Partial<JobRow>): void {
   db.insert(jobsTable)
     .values({ tenantId, name, ...set })
     .onConflictDoUpdate({ target: [jobsTable.tenantId, jobsTable.name], set })
@@ -163,11 +180,11 @@ function updateJobRun(db: Db, id: string, set: Partial<JobRunRow>): void {
  * count in the tens and jobs running at most hourly, this table never grows large
  * enough for the read itself to be the cost worth optimising away.
  */
-export function pruneJobRuns(db: Db, jobName: string, keep: number): void {
+export function pruneJobRuns(db: Db, tenantId: string, jobName: string, keep: number): void {
   const recent = db
     .select({ id: jobRunsTable.id })
     .from(jobRunsTable)
-    .where(eq(jobRunsTable.jobName, jobName))
+    .where(and(eq(jobRunsTable.tenantId, tenantId), eq(jobRunsTable.jobName, jobName)))
     .orderBy(desc(jobRunsTable.startedAt))
     .limit(keep)
     .all()
@@ -175,6 +192,7 @@ export function pruneJobRuns(db: Db, jobName: string, keep: number): void {
   db.delete(jobRunsTable)
     .where(
       and(
+        eq(jobRunsTable.tenantId, tenantId),
         eq(jobRunsTable.jobName, jobName),
         notInArray(
           jobRunsTable.id,
@@ -194,23 +212,24 @@ export function pruneJobRuns(db: Db, jobName: string, keep: number): void {
 export function runJob(
   db: Db,
   job: Job,
+  tenantId: string,
   now = new Date(),
   options: { force?: boolean } = {},
 ): Promise<JobRun> {
   // Before the queue, and synchronously. See `inFlight`.
-  inFlight.add(job.name)
+  inFlight.add(inFlightKey(tenantId, job.name))
 
   return queue(async () => {
-    const jobLog = log.child({ job: job.name })
+    const jobLog = log.child({ job: job.name, tenantId })
     const started = Date.now()
     const runId = crypto.randomUUID()
     const steps: JobStep[] = []
 
-    upsert(db, job.name, { status: 'running', lastRunAt: now, error: null })
+    upsert(db, tenantId, job.name, { status: 'running', lastRunAt: now, error: null })
     db.insert(jobRunsTable)
       .values({
         id: runId,
-        tenantId: getSoleTenantId(db),
+        tenantId,
         jobName: job.name,
         status: 'running',
         startedAt: now,
@@ -222,6 +241,7 @@ export function runJob(
       const detail =
         (await job.run({
           db,
+          tenantId,
           now,
           log: jobLog,
           force: options.force ?? false,
@@ -230,7 +250,7 @@ export function runJob(
       const durationMs = Date.now() - started
       const finished = new Date()
       const runStatus = deriveRunStatus(true, steps)
-      upsert(db, job.name, {
+      upsert(db, tenantId, job.name, {
         status: 'ok',
         lastRunAt: now,
         lastSuccessAt: finished,
@@ -253,7 +273,7 @@ export function runJob(
       // kilobytes, and this column is read by a status panel.
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 2_000)
       const finished = new Date()
-      upsert(db, job.name, {
+      upsert(db, tenantId, job.name, {
         status: 'error',
         lastRunAt: now,
         // `lastSuccessAt` deliberately untouched: how stale the data is matters
@@ -275,8 +295,8 @@ export function runJob(
       // In a `finally` rather than at the end of each branch: both of them return, and
       // a claim released in one but not the other would refuse every later refresh for
       // the lifetime of the process.
-      inFlight.delete(job.name)
-      pruneJobRuns(db, job.name, config.JOB_HISTORY_KEEP)
+      inFlight.delete(inFlightKey(tenantId, job.name))
+      pruneJobRuns(db, tenantId, job.name, config.JOB_HISTORY_KEEP)
     }
   })
 }
@@ -296,28 +316,30 @@ export async function runDueJobs(
   registry: readonly Job[],
   now = new Date(),
 ): Promise<JobRun[]> {
-  const state = new Map(loadJobRows(db).map((row) => [row.name, row]))
   const runs: JobRun[] = []
 
-  for (const job of registry) {
-    const lastRunAt = state.get(job.name)?.lastRunAt ?? null
-    if (!isDue(job.schedule, now, lastRunAt, config.TZ)) continue
-    runs.push(await runJob(db, job, now))
+  for (const tenantId of allTenantIds(db)) {
+    const state = new Map(loadJobRows(db, tenantId).map((row) => [row.name, row]))
+    for (const job of registry) {
+      const lastRunAt = state.get(job.name)?.lastRunAt ?? null
+      if (!isDue(job.schedule, now, lastRunAt, config.TZ)) continue
+      runs.push(await runJob(db, job, tenantId, now))
+    }
   }
 
   return runs
 }
 
-export function loadJobRows(db: Db): JobRow[] {
-  return db.select().from(jobsTable).orderBy(jobsTable.name).all()
+export function loadJobRows(db: Db, tenantId: string): JobRow[] {
+  return db.select().from(jobsTable).where(eq(jobsTable.tenantId, tenantId)).orderBy(jobsTable.name).all()
 }
 
 /** A job's past attempts, most recent first, for the status panel's history view. */
-export function loadJobRuns(db: Db, jobName: string, limit: number): JobRunRow[] {
+export function loadJobRuns(db: Db, tenantId: string, jobName: string, limit: number): JobRunRow[] {
   return db
     .select()
     .from(jobRunsTable)
-    .where(eq(jobRunsTable.jobName, jobName))
+    .where(and(eq(jobRunsTable.tenantId, tenantId), eq(jobRunsTable.jobName, jobName)))
     .orderBy(desc(jobRunsTable.startedAt))
     .limit(limit)
     .all()

@@ -42,6 +42,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { resetComputedData } from '../../domain/aggregate/reset.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import {
@@ -184,7 +185,7 @@ export function registerRefreshRoutes(
         throw forbidden('The AI pass is not part of a refresh. POST /api/ai/refresh runs it.')
       }
 
-      const outcome = startRefresh(db, registry, asked)
+      const outcome = startRefresh(db, registry, getSoleTenantId(db), asked)
       if ('busy' in outcome) throw busyError(outcome.busy)
 
       auditRefresh(db, user.id, outcome)
@@ -210,12 +211,13 @@ export function registerRefreshRoutes(
       // job already running from before this request arrived would otherwise have
       // its output deleted out from under it mid-write. Nothing awaits between this
       // check and the wipe below, so nothing else can start in between either.
-      const busy = jobsInFlight()
+      const tenantId = getSoleTenantId(db)
+      const busy = jobsInFlight(tenantId)
       if (busy.length > 0) throw busyError(busy)
 
       const wiped = resetComputedData(db)
 
-      const outcome = startRefresh(db, registry, RESET_REFRESH)
+      const outcome = startRefresh(db, registry, tenantId, RESET_REFRESH)
       if ('busy' in outcome) throw busyError(outcome.busy)
 
       auditReset(db, user.id, wiped, outcome)
