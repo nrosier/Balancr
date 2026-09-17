@@ -42,6 +42,7 @@ import { registerAuthRoutes } from './routes/auth.ts'
 import { registerBootstrapRoute } from './routes/bootstrap.ts'
 import { registerHealthRoutes } from './routes/health.ts'
 import { registerMonthNoteRoutes } from './routes/month-note.ts'
+import { registerOnboardingRoutes } from './routes/onboarding.ts'
 import { registerProposalRoutes } from './routes/proposals.ts'
 import { registerRefreshRoutes } from './routes/refresh.ts'
 import { registerSettingsRoutes } from './routes/settings.ts'
@@ -159,6 +160,7 @@ export async function buildApp({
   registerHealthRoutes(app, db)
   registerBootstrapRoute(app)
   registerAuthRoutes(app, { db, oidc: oidc === undefined ? oidcClientFromConfig() : oidc })
+  registerOnboardingRoutes(app, db)
   registerApiRoutes(app, db)
   // The five route modules that are allowed to do something other than read, kept
   // out of `routes/api/` so that directory's read-only rule stays checkable by a test

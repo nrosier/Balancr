@@ -319,6 +319,7 @@ const PAYLOAD: Payload = {
   ],
   benchmark: BENCHMARK,
   property: { properties: [] },
+  invites: [],
   integrations: {
     actual: {
       serverUrl: 'https://actual.example.com',
@@ -2253,6 +2254,156 @@ describe('integrations', () => {
     expect((screen.getByLabelText('Server URL') as HTMLInputElement).disabled).toBe(true)
     expect(saveButton('Actual').disabled).toBe(true)
     expect(testButton('Actual').disabled).toBe(true)
+  })
+})
+
+/** Four invites, one per status `statusOf` computes from timestamps alone. */
+const INVITES: Payload['invites'] = [
+  {
+    id: 'inv-pending',
+    label: 'For Jo',
+    createdAt: '2026-09-01T09:00:00.000Z',
+    expiresAt: '2030-01-01T00:00:00.000Z',
+    redeemedAt: null,
+    revokedAt: null,
+  },
+  {
+    id: 'inv-redeemed',
+    label: null,
+    createdAt: '2026-08-20T09:00:00.000Z',
+    expiresAt: '2030-01-01T00:00:00.000Z',
+    redeemedAt: '2026-08-21T09:00:00.000Z',
+    revokedAt: null,
+  },
+  {
+    id: 'inv-revoked',
+    label: 'Old',
+    createdAt: '2026-08-01T09:00:00.000Z',
+    expiresAt: '2030-01-01T00:00:00.000Z',
+    redeemedAt: null,
+    revokedAt: '2026-08-02T09:00:00.000Z',
+  },
+  {
+    id: 'inv-expired',
+    label: 'Stale',
+    createdAt: '2020-01-01T09:00:00.000Z',
+    expiresAt: '2020-02-01T00:00:00.000Z',
+    redeemedAt: null,
+    revokedAt: null,
+  },
+]
+
+describe('members', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/members', 'Members')
+
+  const row = (label: string): HTMLElement => {
+    const found = screen.getByText(label).closest('li')
+    if (found === null) throw new Error(`no invite row for ${label}`)
+    return found as HTMLElement
+  }
+
+  it("shows each invite's status, computed from its own timestamps", async () => {
+    await open({ ...READS, '/api/settings': json({ ...PAYLOAD, invites: INVITES }) })
+
+    expect(within(row('For Jo')).getByText('Pending')).toBeTruthy()
+    expect(within(row('Unlabeled')).getByText('Redeemed')).toBeTruthy()
+    expect(within(row('Old')).getByText('Revoked')).toBeTruthy()
+    expect(within(row('Stale')).getByText('Expired')).toBeTruthy()
+  })
+
+  it('disables revoke once an invite is no longer pending, but not while it still is', async () => {
+    await open({ ...READS, '/api/settings': json({ ...PAYLOAD, invites: INVITES }) })
+
+    expect((within(row('For Jo')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(row('Unlabeled')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(row('Old')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(row('Stale')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('creates an invite, shows the code exactly once, and lists the new invite without a refetch', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/invites': json({
+        invite: {
+          id: 'inv-new',
+          label: 'For Jo',
+          createdAt: '2026-09-10T09:00:00.000Z',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+          redeemedAt: null,
+          revokedAt: null,
+        },
+        code: 'A1B2-C3D4-E5F6-A7B8',
+      }),
+    })
+
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'For Jo' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create invite' }))
+
+    await screen.findByText('A1B2-C3D4-E5F6-A7B8')
+    expect(within(row('For Jo')).getByText('Pending')).toBeTruthy()
+    expect(writes(calls)).toEqual([
+      { path: '/api/settings/invites', method: 'POST', body: { label: 'For Jo' } },
+    ])
+    // The narrow response, not the whole payload — no second GET of /api/settings.
+    expect(calls.filter((call) => call.path === '/api/settings')).toHaveLength(1)
+  })
+
+  it('omits the label entirely rather than sending a blank one', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/invites': json({
+        invite: {
+          id: 'inv-new',
+          label: null,
+          createdAt: '2026-09-10T09:00:00.000Z',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+          redeemedAt: null,
+          revokedAt: null,
+        },
+        code: 'A1B2-C3D4-E5F6-A7B8',
+      }),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create invite' }))
+
+    await screen.findByText('A1B2-C3D4-E5F6-A7B8')
+    expect(writes(calls)).toEqual([{ path: '/api/settings/invites', method: 'POST', body: {} }])
+  })
+
+  it('revokes through the whole payload, like every other action route on this page', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, invites: INVITES }),
+      '/api/settings/invites/inv-pending/revoke': json({
+        ...PAYLOAD,
+        invites: [{ ...INVITES[0], revokedAt: '2026-09-11T09:00:00.000Z' }, ...INVITES.slice(1)],
+      }),
+    })
+
+    fireEvent.click(within(row('For Jo')).getByRole('button', { name: 'Revoke' }))
+
+    await waitFor(() => {
+      expect((within(row('For Jo')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+    expect(writes(calls)).toEqual([
+      { path: '/api/settings/invites/inv-pending/revoke', method: 'POST', body: undefined },
+    ])
+  })
+
+  it('leaves every control disabled for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        invites: INVITES,
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect(screen.getByText('Only the owner can change this.')).toBeTruthy()
+    expect((screen.getByLabelText('Label') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Create invite' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(row('For Jo')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
 

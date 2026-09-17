@@ -7,18 +7,19 @@
  * hand it over. `sub` is opaque and stable for the life of the provider, which is
  * exactly the property wanted.
  *
- * Balancr is single-user by design, and this file is where that shows: the first
- * subject to log in becomes the `owner`, and anyone after that is a `viewer`. It
- * is a deliberate default rather than a config flag, because the failure it avoids
- * is silent — an Authentik policy widened to a group, and the second person
- * through the door holding write access to someone else's finances. Promoting a
- * viewer is a database edit today; the UI for it belongs with the settings screen.
+ * Before #373, an unknown `sub` was auto-provisioned here — first ever login
+ * became the tenant's `owner`, everyone after that a `viewer`. That rule only
+ * made sense while a household could only ever have one tenant. Now an unknown
+ * subject gets no row at all: the callback in `routes/auth.ts` sends it to
+ * onboarding instead, where it either creates a new tenant (as that tenant's
+ * owner, `domain/tenant/provisioning.ts`) or redeems an invite into an existing
+ * one (as a viewer). Promoting a viewer to owner is still a database edit; the
+ * UI for it belongs with the settings screen.
  */
-import { count, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { badRequest, forbidden } from '../errors.ts'
 import type { OidcIdentity } from './oidc.ts'
@@ -26,7 +27,7 @@ import type { SessionUser } from './sessions.ts'
 
 const log = logger.child({ module: 'server.auth.users' })
 
-const toSessionUser = (row: {
+export const toSessionUser = (row: {
   id: string
   tenantId: string
   email: string | null
@@ -43,7 +44,8 @@ const toSessionUser = (row: {
 })
 
 /**
- * Finds or creates the user behind an identity.
+ * Finds the user behind an identity, or null for a subject nobody has ever
+ * assigned to a tenant.
  *
  * Email and display name are refreshed on every login: they are the provider's to
  * own, and a stale name in the UI after someone changes it in Authentik is a small
@@ -53,57 +55,25 @@ const toSessionUser = (row: {
  * A disabled account is refused rather than resurrected. Throwing is right: the
  * caller is a route that must not go on to mint a session.
  */
-export function upsertOidcUser(db: Db, identity: OidcIdentity): SessionUser {
+export function resolveOidcUser(db: Db, identity: OidcIdentity): SessionUser | null {
   const existing = db.select().from(users).where(eq(users.oidcSub, identity.sub)).all()[0]
+  if (existing === undefined) return null
 
-  if (existing !== undefined) {
-    if (existing.disabled) {
-      log.warn({ userId: existing.id }, 'login refused for a disabled account')
-      throw forbidden('This account is disabled.')
-    }
-
-    const email = identity.email ?? existing.email
-    const displayName = identity.name ?? existing.displayName
-    const changed = email !== existing.email || displayName !== existing.displayName
-
-    if (changed) {
-      db.update(users).set({ email, displayName }).where(eq(users.id, existing.id)).run()
-    }
-    db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, existing.id)).run()
-
-    return toSessionUser({ ...existing, email, displayName })
+  if (existing.disabled) {
+    log.warn({ userId: existing.id }, 'login refused for a disabled account')
+    throw forbidden('This account is disabled.')
   }
 
-  // Counted rather than assumed: a local break-glass account created before the
-  // first OIDC login is still a user, and it should not be demoted by having
-  // someone else arrive first.
-  const [existingCount] = db.select({ value: count() }).from(users).all()
-  const isFirstUser = (existingCount?.value ?? 0) === 0
+  const email = identity.email ?? existing.email
+  const displayName = identity.name ?? existing.displayName
+  const changed = email !== existing.email || displayName !== existing.displayName
 
-  // Real tenant membership is #373's job; every account created today belongs
-  // to the sole tenant.
-  const created = db
-    .insert(users)
-    .values({
-      tenantId: getSoleTenantId(db),
-      oidcSub: identity.sub,
-      email: identity.email ?? null,
-      displayName: identity.name ?? null,
-      // `DEFAULT_LOCALE`, not `'en'`. A deployment that set the default to Dutch
-      // means it for the first login too, and the alternative is every new account
-      // starting in a language nobody asked for and having to be corrected on the
-      // settings page.
-      locale: config.DEFAULT_LOCALE,
-      role: isFirstUser ? 'owner' : 'viewer',
-      lastSeenAt: new Date(),
-    })
-    .returning()
-    .all()[0]
+  if (changed) {
+    db.update(users).set({ email, displayName }).where(eq(users.id, existing.id)).run()
+  }
+  db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, existing.id)).run()
 
-  if (created === undefined) throw new Error('user insert returned no row')
-
-  log.info({ userId: created.id, role: created.role }, 'user created from OIDC identity')
-  return toSessionUser(created)
+  return toSessionUser({ ...existing, email, displayName })
 }
 
 /**

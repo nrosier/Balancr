@@ -36,10 +36,12 @@ const createdAt = () =>
 /**
  * A tenant: the boundary every user, config value and computed fact lives inside.
  *
- * Exactly one row exists until #373 builds real provisioning — see
- * `getSoleTenantId` in `db/tenant.ts`. The default-tenant migration
- * (`0024_seed_default_tenant.sql`) creates the one row every pre-existing
- * deployment's data is backfilled onto.
+ * A second row can exist since #373 (see `domain/tenant/provisioning.ts`), but
+ * most of the domain layer still resolves the tenant via `getSoleTenantId` in
+ * `db/tenant.ts`, which throws once a second row does — that threading is a
+ * separate, larger effort #373 deliberately deferred. The default-tenant
+ * migration (`0024_seed_default_tenant.sql`) creates the one row every
+ * pre-existing deployment's data is backfilled onto.
  */
 export const tenants = sqliteTable('tenants', {
   id: uuid().primaryKey(),
@@ -165,6 +167,57 @@ export const loginFlows = sqliteTable(
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('login_flows_expires_idx').on(t.expiresAt)],
+)
+
+/**
+ * An invite an owner hands out of band (#373) — there is no email-sending
+ * anywhere in this codebase, so a code is copied/shared by the owner, not
+ * emailed. Durable, unlike `loginFlows`: the invite panel needs to show
+ * history, not just "still pending", so redemption updates the row rather
+ * than deleting it. The code itself is never stored — `codeHash` is
+ * `sha256(code)`, the same idiom `sessions.id` uses for tokens.
+ */
+export const tenantInvites = sqliteTable(
+  'tenant_invites',
+  {
+    id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    codeHash: text('code_hash').notNull(),
+    label: text(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    redeemedAt: integer('redeemed_at', { mode: 'timestamp_ms' }),
+    redeemedBy: text('redeemed_by').references(() => users.id),
+    revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [
+    uniqueIndex('tenant_invites_code_hash_uq').on(t.codeHash),
+    index('tenant_invites_tenant_idx').on(t.tenantId, t.createdAt),
+  ],
+)
+
+/**
+ * An OIDC identity the callback has authenticated but not yet assigned a
+ * tenant to (#373) — the gap between "Authentik vouches for this person" and
+ * "which household". Not `loginFlows` (consumed by the callback itself) or
+ * `sessions` (no `userId` exists yet). Same hash-the-token idiom as sessions.
+ */
+export const pendingIdentities = sqliteTable(
+  'pending_identities',
+  {
+    id: text().primaryKey(), // sha256(token), hex
+    oidcSub: text('oidc_sub').notNull(),
+    email: text(),
+    displayName: text('display_name'),
+    createdAt: createdAt(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('pending_identities_expires_idx').on(t.expiresAt)],
 )
 
 // ============================================================================
@@ -1291,6 +1344,8 @@ export const schema = {
   localCredentials,
   sessions,
   loginFlows,
+  tenantInvites,
+  pendingIdentities,
   accountMap,
   categoryMeta,
   clarificationQueue,

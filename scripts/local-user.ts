@@ -65,7 +65,9 @@ async function main(): Promise<void> {
   const email = args['email']
 
   if (email === undefined || email === 'true' || !email.includes('@')) {
-    write('usage: npm run auth:local -- --email you@example.com [--name "Your Name"]\n')
+    write(
+      'usage: npm run auth:local -- --email you@example.com [--name "Your Name"] [--tenant <id>]\n',
+    )
     process.exitCode = 2
     return
   }
@@ -97,10 +99,12 @@ async function main(): Promise<void> {
   }
 
   const name = args['name']
+  const tenant = args['tenant']
   const result = await provisionLocalCredential(db, {
     email,
     password,
     displayName: name === undefined || name === 'true' ? undefined : name,
+    tenantId: tenant === undefined || tenant === 'true' ? undefined : tenant,
   })
 
   write(`\n${bold(result.replaced ? 'Password replaced' : 'Local login created')}\n`)
