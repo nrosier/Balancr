@@ -37,6 +37,7 @@ import {
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import type { RedactedPayload } from '../../src/domain/ai/redact.ts'
 import { loadRunPayload, recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
@@ -53,6 +54,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  importEnvIntegrationsOnce(db)
 })
 
 afterEach(() => {
