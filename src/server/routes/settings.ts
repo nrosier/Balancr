@@ -35,6 +35,7 @@ import type { Db } from '../../db/index.ts'
 import { encryptField } from '../../db/field-crypto.ts'
 import { tenantIntegrations } from '../../db/schema.ts'
 import { getSoleTenantId } from '../../db/tenant.ts'
+import { integrationsRow } from '../../db/tenant-integrations.ts'
 import { withTestHost } from '../../egress.ts'
 import {
   BAND_CLASSES,
@@ -93,7 +94,7 @@ import {
   REFERENCE_OVERRIDE_KEY,
   saveReferenceOverride,
 } from '../../domain/benchmark/reference.ts'
-import { aiAvailability } from '../../domain/ai/availability.ts'
+import { tenantAiAvailability } from '../../domain/ai/availability.ts'
 import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
 import {
@@ -638,26 +639,6 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
 }
 
 /**
- * The sole tenant's stored Actual/Ghostfolio/Gemini connection (#369).
- *
- * `importEnvIntegrationsOnce` runs at boot, before any request can reach this route,
- * so a missing row means the process never finished starting up rather than a state
- * this handler should recover from.
- */
-function integrationsRow(db: Db): typeof tenantIntegrations.$inferSelect {
-  const tenantId = getSoleTenantId(db)
-  const row = db
-    .select()
-    .from(tenantIntegrations)
-    .where(eq(tenantIntegrations.tenantId, tenantId))
-    .all()[0]
-  if (row === undefined) {
-    throw new Error('tenantIntegrations has no row for the sole tenant — did startup import run?')
-  }
-  return row
-}
-
-/**
  * The connection, with every secret replaced by whether it is set (#369).
  *
  * Never the ciphertext and never the plaintext: a secret that round-tripped through
@@ -733,7 +714,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       signals: candidate.signals,
     })),
     ai: {
-      availability: aiAvailability(),
+      availability: tenantAiAvailability(db),
       models: { fast: config.GEMINI_MODEL_FAST, deep: config.GEMINI_MODEL_DEEP },
       month: budget.month,
       spentMicroEur: budget.spentMicroEur,

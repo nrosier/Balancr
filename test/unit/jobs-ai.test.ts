@@ -23,7 +23,8 @@ import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { aiFindings, aiRuns, proposals } from '../../src/db/schema.ts'
+import { aiFindings, aiRuns, proposals, tenantIntegrations } from '../../src/db/schema.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import { openQuestionCount } from '../../src/domain/ai/clarify.ts'
@@ -55,6 +56,10 @@ beforeEach(() => {
   applyMigrations(ctx.db as never)
   db = ctx.db
   TENANT_ID = getSoleTenantId(db)
+  // The job reads AI availability from the tenant's own row (#370), not from
+  // `.env` directly, so every test needs one — `test/setup.ts`'s GEMINI_API_KEY
+  // makes this tenant credentialed by default, matching the pre-#370 behaviour.
+  importEnvIntegrationsOnce(db)
 })
 
 afterEach(() => {
@@ -374,9 +379,12 @@ describe('with the model unavailable', () => {
    * the ops log names (#165).
    */
   const off = [
-    { reason: 'notConfigured', env: { GEMINI_API_KEY: undefined } },
-    { reason: 'switchedOff', env: { AI_ENABLED: 'false' } },
-    { reason: 'budgetZero', env: { GEMINI_MONTHLY_BUDGET_EUR: '0' } },
+    // Credential comes from the tenant's own row (#370), not `.env` — so
+    // `notConfigured` is exercised by clearing that row's key rather than by
+    // stubbing `GEMINI_API_KEY`, which the job no longer reads for this check.
+    { reason: 'notConfigured', env: {}, clearKey: true },
+    { reason: 'switchedOff', env: { AI_ENABLED: 'false' }, clearKey: false },
+    { reason: 'budgetZero', env: { GEMINI_MONTHLY_BUDGET_EUR: '0' }, clearKey: false },
   ] as const
 
   /**
@@ -396,9 +404,15 @@ describe('with the model unavailable', () => {
     vi.resetModules()
   })
 
-  for (const { reason, env } of off) {
+  for (const { reason, env, clearKey } of off) {
     it(`reports ${reason} without calling the model or logging a capped run`, async () => {
       seedTwoMonths()
+      if (clearKey) {
+        db.update(tenantIntegrations)
+          .set({ geminiApiKeyEnc: null })
+          .where(eq(tenantIntegrations.tenantId, TENANT_ID))
+          .run()
+      }
       const job = await freshJob(env)
 
       const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail

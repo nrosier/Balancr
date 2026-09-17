@@ -101,6 +101,17 @@
     "scenario": "Scenario",
     "settings": "Settings"
   },
+  "notConfigured": {
+    "actual": {
+      "body": "Connect Actual in Settings to see your budget here.",
+      "title": "Actual isn't connected"
+    },
+    "cta": "Go to Settings → Integrations",
+    "ghostfolio": {
+      "body": "Connect Ghostfolio in Settings to see your portfolio here.",
+      "title": "Ghostfolio isn't connected"
+    }
+  },
   "notFound": {
     "back": "Back to overview",
     "lede": "There is nothing at that address.",

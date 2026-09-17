@@ -67,7 +67,7 @@ import {
   loadSignalsForMonths,
   type CategoryGuessCandidate,
 } from '../../../domain/aggregate/signals-store.ts'
-import { aiAvailability } from '../../../domain/ai/availability.ts'
+import { tenantAiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
 import { loadNarrative, noteChangedSince, renderNarrative } from '../../../domain/ai/narrative.ts'
@@ -117,7 +117,7 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
 
   return insightsSchema.parse({
     freshness: freshness(db),
-    ai: aiAvailability(),
+    ai: tenantAiAvailability(db),
     owner: options.owner ?? false,
     month,
     factsChangedAt: factsChangedAt?.toISOString() ?? null,

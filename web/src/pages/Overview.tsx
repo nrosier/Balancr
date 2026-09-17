@@ -39,6 +39,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
+import { NotConfigured } from '../ui/NotConfigured.tsx'
 import type { Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -72,7 +73,20 @@ export function Overview(): ReactNode {
           come from four different jobs, so the refresh control here asks for all of them
           — which is the request `/api/refresh` answers when it is given no list at all.
         */}
-        {(data) => <Figures data={data} onRefreshed={resource.reload} />}
+        {(data) => {
+          const missing = (['actual', 'ghostfolio'] as const).filter(
+            (integration) => !data[`${integration}Configured` as const],
+          )
+          return missing.length > 0 ? (
+            <>
+              {missing.map((integration) => (
+                <NotConfigured key={integration} integration={integration} />
+              ))}
+            </>
+          ) : (
+            <Figures data={data} onRefreshed={resource.reload} />
+          )
+        }}
       </DataState>
     </>
   )
