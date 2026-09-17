@@ -27,8 +27,10 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
-import { auditLog, monthlyTotals, users } from '../../src/db/schema.ts'
+import { encryptField } from '../../src/db/field-crypto.ts'
+import { auditLog, monthlyTotals, tenantIntegrations, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { AI_OFF_REASONS } from '../../src/domain/ai/availability.ts'
 import { auditValues, loadAuditTrail, type AuditRow } from '../../src/domain/audit.ts'
@@ -43,6 +45,7 @@ import { requireAiAvailable } from '../../src/server/routes/ai.ts'
 import { requireJobsEnabled } from '../../src/server/routes/refresh.ts'
 import type { Freshness, RefreshAccepted } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -51,13 +54,13 @@ let viewer: string
 let ran: string[]
 let open: () => void
 
-function signIn(db: Db, role: 'owner' | 'viewer'): string {
+function signIn(db: Db, role: 'owner' | 'viewer', tenantId: string = getSoleTenantId(db)): string {
   const row = db
     .insert(users)
     .values({
-      tenantId: getSoleTenantId(db),
+      tenantId,
       oidcSub: `sub-${crypto.randomUUID()}`,
-      email: `${role}@example.test`,
+      email: `${role}-${crypto.randomUUID()}@example.test`,
       displayName: role,
       locale: 'en',
       role,
@@ -194,6 +197,24 @@ describe('POST /api/refresh', () => {
     // The names, not just the status: a refresh button has one line to explain itself
     // in, and "sync is running" is the difference between waiting and filing a bug.
     expect(error.message).toContain('sync')
+  })
+
+  it("starts the requester's own tenant, and a busy tenant does not block another's (#376 phase 3)", async () => {
+    // Before #376 phase 3, this route asked `getSoleTenantId(db)` for the tenant to
+    // start jobs for — which throws the moment a second tenant exists, rather than
+    // silently starting tenant A's jobs for a request tenant B's owner made.
+    const tenantA = getSoleTenantId(ctx.db)
+    const tenantB = createSecondTenant(ctx.db)
+    const ownerB = signIn(ctx.db, 'owner', tenantB)
+
+    const resB = await post('/api/refresh', { jobs: ['sync'] }, { token: ownerB })
+    expect(resB.statusCode).toBe(202)
+    expect(jobsInFlight(tenantB)).toContain('sync')
+    // Tenant A's pipeline is untouched by tenant B's running job.
+    expect(jobsInFlight(tenantA)).toEqual([])
+
+    const resA = await post('/api/refresh', { jobs: ['portfolio'] })
+    expect(resA.statusCode).toBe(202)
   })
 
   it('refuses an unknown job rather than quietly dropping it', async () => {
@@ -354,6 +375,14 @@ describe('POST /api/refresh/reset', () => {
     const res = await post('/api/refresh/reset', undefined, { anonymous: true })
     expect(res.statusCode).toBe(401)
   })
+
+  // No cross-tenant isolation test here, unlike `POST /api/refresh` above: #376 phase 3
+  // correctly scopes the *jobs this route starts* to the requester's own tenant, but
+  // `resetComputedData` (`domain/aggregate/reset.ts`, called just above `startRefresh`
+  // in the handler) deletes every tenant's rows with no tenant filter at all — a
+  // pre-existing bug this phase's own scoping fix does not touch, filed as #379. A test
+  // asserting isolation here would fail against that bug, not against anything phase 3
+  // changed.
 })
 
 describe('POST /api/ai/refresh', () => {
@@ -381,6 +410,26 @@ describe('POST /api/ai/refresh', () => {
   it('refuses without a CSRF token', async () => {
     const res = await post('/api/ai/refresh', undefined, { csrf: false })
     expect(res.statusCode).toBe(403)
+  })
+
+  it("starts the requester's own tenant's pass, not another tenant's (#376 phase 3)", async () => {
+    // Before #376 phase 3, this route asked `getSoleTenantId(db)` for the tenant to
+    // run the AI pass against — which throws the moment a second tenant exists.
+    const tenantA = getSoleTenantId(ctx.db)
+    const tenantB = createSecondTenant(ctx.db)
+    ctx.db
+      .update(tenantIntegrations)
+      .set({ geminiApiKeyEnc: encryptField('tenant-b-key'), geminiMonthlyBudgetEurMicro: 5_000_000 })
+      .where(eq(tenantIntegrations.tenantId, tenantB))
+      .run()
+    const ownerB = signIn(ctx.db, 'owner', tenantB)
+
+    const res = await post('/api/ai/refresh', undefined, { token: ownerB })
+
+    expect(res.statusCode).toBe(202)
+    expect(jobsInFlight(tenantB)).toEqual(['ai'])
+    // Tenant A's pipeline is untouched by tenant B's running AI pass.
+    expect(jobsInFlight(tenantA)).toEqual([])
   })
 
   it('shares the one-at-a-time claim with the ordinary refresh', async () => {
