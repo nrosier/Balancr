@@ -103,7 +103,7 @@ export interface InsightsOptions {
 
 export function buildInsights(db: Db, tenantId: string, options: InsightsOptions = {}): Insights {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const month = resolveMonth(db, options.month)
+  const month = resolveMonth(db, tenantId, options.month)
   const runsPeriod = resolveBenchmarkPeriod(options.runsPeriod)
   const signalsPeriod = resolveBenchmarkPeriod(options.signalsPeriod)
   // Per month and per locale, unlike before, when it was the newest narrative in this
@@ -111,9 +111,10 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
   // simplification: on the 3rd of September the page printed August's review with no
   // period beside it, and there was no way to ask for July's. The cost is that a month
   // with no narrative now says so — which is the truth, and the button beside it is #158.
-  const narrative = month === null ? null : loadNarrative(db, month, locale)
+  const narrative = month === null ? null : loadNarrative(db, tenantId, month, locale)
   const spend = budgetState(db, tenantId)
-  const factsChangedAt = month === null ? null : loadMonthTotals(db, [month])[0]?.factsChangedAt ?? null
+  const factsChangedAt =
+    month === null ? null : loadMonthTotals(db, tenantId, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
     freshness: freshness(db),
@@ -121,11 +122,17 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     owner: options.owner ?? false,
     month,
     factsChangedAt: factsChangedAt?.toISOString() ?? null,
-    months: storedMonths(db),
-    signals: month === null ? [] : loadSignals(db, month),
-    signalsHistory: month === null || signalsPeriod !== 'year' ? [] : signalsHistoryFor(db, month),
+    months: storedMonths(db, tenantId),
+    signals: month === null ? [] : loadSignals(db, tenantId, month),
+    signalsHistory:
+      month === null || signalsPeriod !== 'year' ? [] : signalsHistoryFor(db, tenantId, month),
     categoryGuessCandidates:
-      month === null ? [] : wireCandidates(loadCategoryGuessCandidates(db, month), loadCategoryMeta(db)),
+      month === null
+        ? []
+        : wireCandidates(
+            loadCategoryGuessCandidates(db, tenantId, month),
+            loadCategoryMeta(db, tenantId),
+          ),
     narrative:
       narrative === null
         ? null
@@ -133,12 +140,12 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
             period: narrative.period,
             locale: narrative.locale,
             // Rendered, not stored: `bodyMd` still has the model's labels in it.
-            html: renderNarrative(db, narrative),
+            html: renderNarrative(db, tenantId, narrative),
             generatedAt: narrative.createdAt.toISOString(),
             model: loadRun(db, narrative.runId)?.model ?? null,
-            noteChanged: noteChangedSince(db, narrative),
+            noteChanged: noteChangedSince(db, tenantId, narrative),
           },
-    questions: openQuestions(db, locale).map((card) => ({
+    questions: openQuestions(db, tenantId, locale).map((card) => ({
       id: card.id,
       categoryId: card.categoryId,
       categoryName: card.categoryName,
@@ -150,8 +157,8 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
       materialityBp: card.materialityBp,
       createdAt: card.createdAt.toISOString(),
     })),
-    proposals: pendingProposals(db).map((row) => {
-      const card = renderProposal(db, row, locale)
+    proposals: pendingProposals(db, tenantId).map((row) => {
+      const card = renderProposal(db, tenantId, row, locale)
       return {
         id: card.id,
         type: card.type,
@@ -199,9 +206,13 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
  * since a plain `WHERE month IN (...)` is cheaper than special-casing which
  * months of the year are worth asking about.
  */
-function signalsHistoryFor(db: Db, month: string): { month: string; signals: Signal[] }[] {
+function signalsHistoryFor(
+  db: Db,
+  tenantId: string,
+  month: string,
+): { month: string; signals: Signal[] }[] {
   const months = monthRange(`${month.slice(0, 4)}-01`, month)
-  const byMonth = loadSignalsForMonths(db, months)
+  const byMonth = loadSignalsForMonths(db, tenantId, months)
 
   const history: { month: string; signals: Signal[] }[] = []
   for (const candidate of months) {

@@ -38,7 +38,6 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import type { Equivalence } from './schema.ts'
 import { MAX_HOUSEHOLD_MEMBERS, SHARED_COST_DIRECTIONS } from './vocabulary.ts'
@@ -190,8 +189,7 @@ export function equivalentAdults(
  * Same contract as `loadProfile` and `loadParams`: reading degrades, writing throws. A
  * roster nobody can parse should cost the level comparison, not the budget page.
  */
-export function loadHousehold(db: Db): Household {
-  const tenantId = getSoleTenantId(db)
+export function loadHousehold(db: Db, tenantId: string): Household {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -229,8 +227,7 @@ export function loadHousehold(db: Db): Household {
  * the only two gestures a form makes on a list are "here is the new one" and "remove a
  * row". A merge would make the second impossible to express.
  */
-export function saveHousehold(db: Db, patch: HouseholdPatch): Household {
-  const tenantId = getSoleTenantId(db)
+export function saveHousehold(db: Db, tenantId: string, patch: HouseholdPatch): Household {
   const next = householdSchema.parse(patch ?? {})
   const valueJson = JSON.stringify(next)
 
