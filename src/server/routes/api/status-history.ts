@@ -10,7 +10,6 @@
  * name is a client bug, not a job with no history yet.
  */
 import type { Db } from '../../../db/index.ts'
-import { getSoleTenantId } from '../../../db/tenant.ts'
 import { findJob, loadJobRuns, type JobRunRow, type JobStep } from '../../../jobs/index.ts'
 import { badRequest } from '../../errors.ts'
 import { jobHistorySchema, type JobHistory } from './schemas.ts'
@@ -54,13 +53,18 @@ function resolveLimit(raw: unknown): number {
   return value
 }
 
-export function buildJobHistory(db: Db, jobParam: unknown, limitParam: unknown): JobHistory {
+export function buildJobHistory(
+  db: Db,
+  tenantId: string,
+  jobParam: unknown,
+  limitParam: unknown,
+): JobHistory {
   if (typeof jobParam !== 'string' || findJob(jobParam) === undefined) {
     throw badRequest('job must name a registered job.')
   }
   const limit = resolveLimit(limitParam)
 
-  const runs = loadJobRuns(db, getSoleTenantId(db), jobParam, limit)
+  const runs = loadJobRuns(db, tenantId, jobParam, limit)
 
   return jobHistorySchema.parse({
     jobName: jobParam,

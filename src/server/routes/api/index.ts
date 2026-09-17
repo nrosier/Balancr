@@ -112,7 +112,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
    */
   app.get('/api/insights/runs/:id/payload', (request: FastifyRequest) => {
     const { id } = request.params as { id: string }
-    const payload = buildRunPayload(db, id)
+    const payload = buildRunPayload(db, requireUser(request).tenantId, id)
     // The ledger is pruned, and a run that has aged out is exactly the case a page
     // holding a stale list will ask for.
     if (payload === null) throw notFound('No such AI run.')
@@ -127,7 +127,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // Expanded on demand from a row in the panel above; see `status-history.ts`.
   app.get('/api/status/history', (request: FastifyRequest) => {
     const query = request.query as { job?: unknown; limit?: unknown } | undefined
-    return buildJobHistory(db, query?.job, query?.limit)
+    return buildJobHistory(db, requireUser(request).tenantId, query?.job, query?.limit)
   })
 
   // The version number in the header opens a dialog on this. See `changelog.ts` for

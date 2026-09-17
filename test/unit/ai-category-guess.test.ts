@@ -162,7 +162,7 @@ describe('runCategoryGuess', () => {
       { id: 'txn-8', ok: false, reason: 'no_candidate' },
     ])
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db)).toHaveLength(0)
+    expect(recentRuns(db, tenantId)).toHaveLength(0)
   })
 
   it('records a capped run, telling a cached id apart from one never cached at all', async () => {
@@ -187,7 +187,7 @@ describe('runCategoryGuess', () => {
       { id: 'txn-9', ok: false, reason: 'no_candidate' },
     ])
     expect(recorded.prompts).toHaveLength(0)
-    const rows = recentRuns(db)
+    const rows = recentRuns(db, tenantId)
     expect(rows[0]?.status).toBe('capped')
     expect(rows[0]?.kind).toBe('category_guess')
     expect(rows[0]?.period).toBeNull()
@@ -202,8 +202,8 @@ describe('runCategoryGuess', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
     expect(outcome.results).toEqual([{ id: 'txn-1', ok: false, reason: 'call_failed' }])
-    expect(recentRuns(db)[0]?.status).toBe('error')
-    expect(recentRuns(db)[0]?.error).toContain('socket hang up')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('error')
+    expect(recentRuns(db, tenantId)[0]?.error).toContain('socket hang up')
   })
 
   it('records a bad response without throwing', async () => {
@@ -215,7 +215,7 @@ describe('runCategoryGuess', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('bad_response')
     expect(outcome.results).toEqual([{ id: 'txn-1', ok: false, reason: 'bad_response' }])
-    expect(recentRuns(db)[0]?.status).toBe('error')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('error')
   })
 
   it('turns a grounded guess into a real proposal', async () => {
@@ -236,9 +236,9 @@ describe('runCategoryGuess', () => {
       categoryId: 'food',
       payeeName: 'Colruyt',
     })
-    expect(recentRuns(db)[0]?.status).toBe('ok')
-    expect(recentRuns(db)[0]?.kind).toBe('category_guess')
-    expect(recentRuns(db)[0]?.period).toBeNull()
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('ok')
+    expect(recentRuns(db, tenantId)[0]?.kind).toBe('category_guess')
+    expect(recentRuns(db, tenantId)[0]?.period).toBeNull()
   })
 
   it('drops a guess for a label that candidate was never offered, rather than mapping it', async () => {
