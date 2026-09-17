@@ -1,0 +1,8 @@
+{
+    "concertSecureCoder.autoScanOnTypingStop": true,
+    "concertSecureCoder.autoScanOnSave": true,
+    "concertSecureCoder.fixConfidenceThreshold": 90,
+    "concertSecureCoder.scanDebounceTime": 4000,
+    "concertSecureCoder.apiCallTimeLimit": 10,
+    "concertSecureCoder.excludedFiles": "README.md\nCHANGELOG.md\nscripts/verify-image.sh\nsrc/i18n/locales/nl/settings.json\nsrc/i18n/locales/nl/common.json\n"
+}
