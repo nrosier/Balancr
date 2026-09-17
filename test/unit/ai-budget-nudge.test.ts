@@ -58,7 +58,7 @@ beforeEach(() => {
   db = ctx.db
   tenantId = getSoleTenantId(db)
   importEnvIntegrationsOnce(db)
-  runId = recordRun(db, {
+  runId = recordRun(db, tenantId, {
     kind: 'findings',
     model: 'gemini-3.7-flash',
     locale: 'en',
@@ -66,7 +66,7 @@ beforeEach(() => {
     payloadHash: 'unrelated-hash',
     status: 'ok',
   })
-  seedMonth(db, MONTH, {
+  seedMonth(db, tenantId, MONTH, {
     facts: [
       fact(MONTH, 'food', { categoryName: 'Groceries', budgetedCents: 12_000 }),
       fact(MONTH, 'rent', { categoryName: 'Rent', budgetedCents: 90_000 }),
@@ -100,7 +100,7 @@ function fakeGemini(reply: string | Error): Recorded {
 
 /** A pending `budget_amount.set` suggestion for one category — #45's own trailing-average proposal. */
 async function seedBudgetProposal(categoryId: string, month: string, amountCents: number): Promise<void> {
-  await createProposal(db, {
+  await createProposal(db, tenantId, {
     type: 'budget_amount.set',
     targetRef: encodeBudgetTarget(categoryId, month),
     payload: { amountCents },
@@ -121,7 +121,7 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('is free and refused when the note is set but nothing is pending', () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
 
     const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
 
@@ -131,7 +131,7 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('prices a real batch and allows it under budget', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
 
     const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
@@ -143,9 +143,9 @@ describe('estimateBudgetNudge', () => {
   })
 
   it('is refused once the month budget is already exceeded', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'budget_nudge',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -179,7 +179,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('skips with no aiRuns row when the note is set but nothing is pending', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     const recorded = fakeGemini('never called')
 
     const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
@@ -192,9 +192,9 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a capped run and makes no call', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'budget_nudge',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -217,7 +217,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a failed call without throwing', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini(new Error('socket hang up'))
 
@@ -231,7 +231,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('records a bad response without throwing', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('not json at all')
 
@@ -243,7 +243,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('turns a grounded adjustment into a real, superseding proposal', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March, about 150 euros.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March, about 150 euros.')
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":18000}]}')
 
@@ -253,7 +253,7 @@ describe('runBudgetNudge', () => {
     expect(outcome.degraded).toBe(false)
     expect(outcome.adjusted).toBe(1)
     expect(outcome.dropped).toEqual([])
-    const pending = pendingBudgetProposals(db, MONTH)
+    const pending = pendingBudgetProposals(db, tenantId, MONTH)
     expect(pending).toHaveLength(1)
     expect(JSON.parse(pending[0]?.payloadJson ?? '{}')).toEqual({ amountCents: 18_000 })
     expect(recentRuns(db)[0]?.status).toBe('ok')
@@ -262,7 +262,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('drops an adjustment outside the magnitude bound, rather than clamping it', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     // Ten times the suggested amount — well outside [suggested/3, suggested*3].
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":150000}]}')
@@ -272,14 +272,14 @@ describe('runBudgetNudge', () => {
     expect(outcome.status).toBe('ok')
     expect(outcome.adjusted).toBe(0)
     expect(outcome.dropped).toEqual([{ label: 'c1', amountCents: 150_000, reason: 'out_of_range' }])
-    expect(pendingBudgetProposals(db, MONTH)).toHaveLength(1)
-    expect(JSON.parse(pendingBudgetProposals(db, MONTH)[0]?.payloadJson ?? '{}')).toEqual({
+    expect(pendingBudgetProposals(db, tenantId, MONTH)).toHaveLength(1)
+    expect(JSON.parse(pendingBudgetProposals(db, tenantId, MONTH)[0]?.payloadJson ?? '{}')).toEqual({
       amountCents: 15_000,
     })
   })
 
   it('drops an adjustment for a label that candidate was never offered, rather than mapping it', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     // `c9` is not one of this batch's real labels — a hallucinated or borrowed one.
     fakeGemini('{"adjustments":[{"label":"c9","amountCents":18000}]}')
@@ -301,7 +301,7 @@ describe('runBudgetNudge', () => {
    */
   describe('the reason it stores', () => {
     const nudgeWithReason = async (reason: string): Promise<ProposalRow> => {
-      saveMonthNote(db, MONTH, 'Replacing the washing machine in March, about 400 euros.')
+      saveMonthNote(db, tenantId, MONTH, 'Replacing the washing machine in March, about 400 euros.')
       await seedBudgetProposal('food', MONTH, 15_000)
       fakeGemini(
         JSON.stringify({ adjustments: [{ label: 'c1', amountCents: 18_000, reason }] }),
@@ -309,7 +309,7 @@ describe('runBudgetNudge', () => {
 
       const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
       expect(outcome.adjusted).toBe(1)
-      return pendingBudgetProposals(db, MONTH)[0] as ProposalRow
+      return pendingBudgetProposals(db, tenantId, MONTH)[0] as ProposalRow
     }
 
     it("keeps the model's own sentence, tagged with the locale it was written in", async () => {
@@ -341,13 +341,13 @@ describe('runBudgetNudge', () => {
         code: 'note_adjusted',
         params: { month: MONTH },
       })
-      expect(renderProposal(db, row, 'en').explanation).toBe(
+      expect(renderProposal(db, tenantId, row, 'en').explanation).toBe(
         'Adjusted after reading your note for March 2026.',
       )
     })
 
     it('asks the model for a reason, and says how long it may be', async () => {
-      saveMonthNote(db, MONTH, 'Dentist bill in March.')
+      saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
       await seedBudgetProposal('food', MONTH, 15_000)
       const recorded = fakeGemini('{"adjustments":[]}')
 
@@ -358,7 +358,7 @@ describe('runBudgetNudge', () => {
   })
 
   it('does not let one ProposalError abort the rest of the batch', async () => {
-    saveMonthNote(db, MONTH, 'Dentist bill and car insurance both due in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill and car insurance both due in March.')
     // `food`'s current budgeted amount (12 000, from the fixture) is exactly what
     // the model answers below — a no-op `createProposal` refuses, while `rent`'s
     // adjustment is a real change and must still go through.
@@ -373,7 +373,7 @@ describe('runBudgetNudge', () => {
     expect(outcome.status).toBe('ok')
     expect(outcome.adjusted).toBe(1)
     expect(outcome.dropped).toEqual([])
-    const pending = pendingBudgetProposals(db, MONTH)
+    const pending = pendingBudgetProposals(db, tenantId, MONTH)
     expect(pending.map((row) => JSON.parse(row.payloadJson))).toEqual(
       expect.arrayContaining([{ amountCents: 15_000 }, { amountCents: 120_000 }]),
     )
@@ -383,7 +383,7 @@ describe('runBudgetNudge', () => {
     db.$client.exec(
       `UPDATE category_meta SET sensitive = 1 WHERE category_id = 'food'`,
     )
-    saveMonthNote(db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(db, tenantId, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
     const recorded = fakeGemini('{"adjustments":[]}')
 

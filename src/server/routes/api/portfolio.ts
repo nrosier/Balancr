@@ -52,12 +52,12 @@ import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
 export function buildPortfolio(db: Db, tenantId: string): Portfolio {
-  const date = latestSnapshotDate(db)
-  const metrics = date === null ? null : loadPortfolioMetrics(db, date)
-  const holdings = date === null ? [] : loadSnapshot(db, date)
+  const date = latestSnapshotDate(db, tenantId)
+  const metrics = date === null ? null : loadPortfolioMetrics(db, tenantId, date)
+  const holdings = date === null ? [] : loadSnapshot(db, tenantId, date)
   const split = knownSplit(metrics)
   const today = new Date().toISOString().slice(0, 10)
-  const properties = loadProperties(db).properties
+  const properties = loadProperties(db, tenantId).properties
 
   return portfolioSchema.parse({
     freshness: freshness(db),
@@ -93,11 +93,11 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
       // Largest first: a holdings table is read to see what dominates.
       .sort((a, b) => b.valueCents - a.valueCents),
     // The whole curve, unconditionally: the chart's whole point is the trend up to now.
-    history: loadPortfolioValueHistory(db),
+    history: loadPortfolioValueHistory(db, tenantId),
     // Against today's risk profile even when `metrics`/`holdings` are historical — there
     // is no historical profile to compare against, so "what would today's bands have
     // said back then" is the only reading available.
-    advice: adviceFor(db, metrics, split.investedValueCents, holdings),
+    advice: adviceFor(db, tenantId, metrics, split.investedValueCents, holdings),
     properties: properties.map((property) => ({
       id: property.id,
       kind: property.kind,
@@ -114,7 +114,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
     totalPropertyEquityCents: totalEquityCents(properties, today),
     // Every off-budget account, any kind — the full list `netWorth.liquidOffBudgetCents`
     // (on `overviewSchema`) only summarizes the liquid slice of (#353).
-    offBudgetAccounts: loadOffBudgetAccounts(db).map((account) => ({
+    offBudgetAccounts: loadOffBudgetAccounts(db, tenantId).map((account) => ({
       id: account.accountMapId,
       name: account.name,
       balanceCents: account.balanceCents,

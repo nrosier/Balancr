@@ -37,6 +37,7 @@ let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let owner: string
 let viewer: string
+let tenantId: string
 /** A real run row: `proposals.run_id` is a foreign key. */
 let runId: string
 
@@ -99,7 +100,7 @@ function nudge(body: object, token = owner) {
 
 /** A pending `budget_amount.set` suggestion for `cat-groceries`, #45's own trailing-average proposal. */
 async function seedPendingProposal(amountCents = 80_000): Promise<void> {
-  await createProposal(ctx.db, {
+  await createProposal(ctx.db, tenantId, {
     type: 'budget_amount.set',
     targetRef: encodeBudgetTarget('cat-groceries', MONTH),
     payload: { amountCents },
@@ -113,10 +114,11 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   ctx = apiFixture()
+  tenantId = getSoleTenantId(ctx.db)
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
-  runId = recordRun(ctx.db, {
+  runId = recordRun(ctx.db, tenantId, {
     kind: 'findings',
     model: 'gemini-3.7-flash',
     locale: 'en',
@@ -145,7 +147,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
   })
 
   it('prices a real batch without spending anything', async () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(ctx.db, tenantId, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
 
     const res = await estimate('')
@@ -155,7 +157,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
   })
 
   it('is visible to a viewer too, since it is free', async () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(ctx.db, tenantId, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
     const res = await estimate('', viewer)
     expect(res.statusCode).toBe(200)
@@ -174,7 +176,7 @@ describe('GET /api/ai/estimate?kind=budget_nudge', () => {
 
 describe('POST /api/ai/budget-nudge', () => {
   it('turns a grounded adjustment into a real proposal and bills the fast model', async () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March, about 150 euros.')
+    saveMonthNote(ctx.db, tenantId, MONTH, 'Dentist bill in March, about 150 euros.')
     await seedPendingProposal()
     const fake = fakeGemini('{"adjustments":[{"label":"c1","amountCents":95000}]}')
 
@@ -187,15 +189,15 @@ describe('POST /api/ai/budget-nudge', () => {
     expect(body.costMicroEur).toBeGreaterThan(0)
     expect(fake.calls).toBe(1)
 
-    const pending = pendingBudgetProposals(ctx.db, MONTH)
+    const pending = pendingBudgetProposals(ctx.db, tenantId, MONTH)
     expect(pending).toHaveLength(1)
     expect(JSON.parse(pending[0]?.payloadJson ?? '{}')).toEqual({ amountCents: 95_000 })
   })
 
   it('is capped once the month budget is already exceeded', async () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(ctx.db, tenantId, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
-    recordRun(ctx.db, {
+    recordRun(ctx.db, tenantId, {
       kind: 'budget_nudge',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -222,13 +224,13 @@ describe('POST /api/ai/budget-nudge', () => {
     expect(body.status).toBe('skipped')
     expect(body.reason).toBe('no_note')
     expect(fake.calls).toBe(0)
-    expect(pendingBudgetProposals(ctx.db, MONTH).map((row) => JSON.parse(row.payloadJson))).toEqual([
+    expect(pendingBudgetProposals(ctx.db, tenantId, MONTH).map((row) => JSON.parse(row.payloadJson))).toEqual([
       { amountCents: 80_000 },
     ])
   })
 
   it('is refused for a viewer', async () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
+    saveMonthNote(ctx.db, tenantId, MONTH, 'Dentist bill in March.')
     await seedPendingProposal()
     const fake = fakeGemini('{"adjustments":[]}')
 

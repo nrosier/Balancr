@@ -778,16 +778,16 @@ describe('the stored household', () => {
   }
 
   it('is one person until somebody says otherwise', () => {
-    expect(loadHousehold(ctx.db)).toEqual(DEFAULT_HOUSEHOLD)
+    expect(loadHousehold(ctx.db, TENANT_ID)).toEqual(DEFAULT_HOUSEHOLD)
   })
 
   it('round-trips a roster, the share, and which way the share reads', () => {
-    saveHousehold(ctx.db, {
+    saveHousehold(ctx.db, TENANT_ID, {
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
       sharedCostDirection: 'my_share',
     })
-    expect(loadHousehold(ctx.db)).toEqual({
+    expect(loadHousehold(ctx.db, TENANT_ID)).toEqual({
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
       sharedCostDirection: 'my_share',
@@ -798,43 +798,43 @@ describe('the stored household', () => {
     // Wholesale, like every other field here (#215). Omission reverting to the reading
     // the app had before the field existed is the safe half of that trade: it under-claims
     // rather than inventing a total nothing has held.
-    saveHousehold(ctx.db, { members: [], sharedCostDirection: 'my_share' })
-    expect(loadHousehold(ctx.db).sharedCostDirection).toBe('my_share')
-    saveHousehold(ctx.db, { members: [] })
-    expect(loadHousehold(ctx.db).sharedCostDirection).toBe('whole_invoice')
+    saveHousehold(ctx.db, TENANT_ID, { members: [], sharedCostDirection: 'my_share' })
+    expect(loadHousehold(ctx.db, TENANT_ID).sharedCostDirection).toBe('my_share')
+    saveHousehold(ctx.db, TENANT_ID, { members: [] })
+    expect(loadHousehold(ctx.db, TENANT_ID).sharedCostDirection).toBe('whole_invoice')
   })
 
   it('round-trips a name for the first person, and drops it when the patch omits it (#215)', () => {
-    saveHousehold(ctx.db, { members: [], selfLabel: '  Nick  ' })
-    expect(loadHousehold(ctx.db).selfLabel).toBe('Nick')
+    saveHousehold(ctx.db, TENANT_ID, { members: [], selfLabel: '  Nick  ' })
+    expect(loadHousehold(ctx.db, TENANT_ID).selfLabel).toBe('Nick')
 
     // Wholesale, like every other field here: a patch that says nothing about the name
     // clears it, the same direction `sharedCostBp` already takes for the same reason.
-    saveHousehold(ctx.db, { members: [] })
-    expect(loadHousehold(ctx.db).selfLabel).toBeUndefined()
+    saveHousehold(ctx.db, TENANT_ID, { members: [] })
+    expect(loadHousehold(ctx.db, TENANT_ID).selfLabel).toBeUndefined()
   })
 
   it('is replaced whole, so a row can be removed', () => {
-    saveHousehold(ctx.db, {
+    saveHousehold(ctx.db, TENANT_ID, {
       members: [{ birthYear: 2013 }, { birthYear: 2016 }],
     })
-    saveHousehold(ctx.db, { members: [{ birthYear: 2013 }] })
-    expect(loadHousehold(ctx.db).members).toHaveLength(1)
+    saveHousehold(ctx.db, TENANT_ID, { members: [{ birthYear: 2013 }] })
+    expect(loadHousehold(ctx.db, TENANT_ID).members).toHaveLength(1)
   })
 
   it('degrades to one person rather than throwing, for either kind of damage', () => {
     // Reading degrades and writing throws, the same contract `loadProfile` has: a
     // roster nobody can parse should cost the level comparison, not the budget page.
     write('{ not json')
-    expect(loadHousehold(ctx.db)).toEqual(DEFAULT_HOUSEHOLD)
+    expect(loadHousehold(ctx.db, TENANT_ID)).toEqual(DEFAULT_HOUSEHOLD)
 
     ctx.db.delete(settings).run()
     write(JSON.stringify({ members: [{ birthYear: 'last year' }] }))
-    expect(loadHousehold(ctx.db)).toEqual(DEFAULT_HOUSEHOLD)
+    expect(loadHousehold(ctx.db, TENANT_ID)).toEqual(DEFAULT_HOUSEHOLD)
   })
 
   it('refuses to store what it could not read back', () => {
-    expect(() => saveHousehold(ctx.db, { members: [{ birthYear: 12 }] })).toThrow()
+    expect(() => saveHousehold(ctx.db, TENANT_ID, { members: [{ birthYear: 12 }] })).toThrow()
   })
 })
 
@@ -855,10 +855,10 @@ describe('the stored correction to the average household (#290)', () => {
   }
 
   it('is absent until somebody types one, and then round-trips', () => {
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)).toBeNull()
 
-    saveReferenceOverride(ctx.db, patch, new Date('2026-09-07T10:00:00Z'))
-    expect(loadReferenceOverride(ctx.db)).toEqual({
+    saveReferenceOverride(ctx.db, TENANT_ID, patch, new Date('2026-09-07T10:00:00Z'))
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)).toEqual({
       ...patch,
       savedOn: '2026-09-07',
     })
@@ -869,17 +869,17 @@ describe('the stored correction to the average household (#290)', () => {
     // it, and a figure whose freshness cannot be wrong is not freshness — `verifiedDate`
     // refuses a future day for exactly that reason, so the stamp can only ever be today
     // or, in this test, a day that has already happened.
-    saveReferenceOverride(ctx.db, patch, new Date('2026-03-01T23:30:00Z'))
-    expect(loadReferenceOverride(ctx.db)?.savedOn).toBe('2026-03-01')
+    saveReferenceOverride(ctx.db, TENANT_ID, patch, new Date('2026-03-01T23:30:00Z'))
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)?.savedOn).toBe('2026-03-01')
   })
 
   it('is replaced rather than merged, and cleared back to nothing', () => {
-    saveReferenceOverride(ctx.db, patch)
-    saveReferenceOverride(ctx.db, { ...patch, meanMonthlyCents: 380_000 })
-    expect(loadReferenceOverride(ctx.db)?.meanMonthlyCents).toBe(380_000)
+    saveReferenceOverride(ctx.db, TENANT_ID, patch)
+    saveReferenceOverride(ctx.db, TENANT_ID, { ...patch, meanMonthlyCents: 380_000 })
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)?.meanMonthlyCents).toBe(380_000)
 
-    clearReferenceOverride(ctx.db)
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    clearReferenceOverride(ctx.db, TENANT_ID)
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)).toBeNull()
   })
 
   it('degrades to the file rather than throwing, for either kind of damage', () => {
@@ -889,7 +889,7 @@ describe('the stored correction to the average household (#290)', () => {
       .insert(settings)
       .values({ tenantId: TENANT_ID, key: REFERENCE_OVERRIDE_KEY, valueJson: '{ not json' })
       .run()
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)).toBeNull()
 
     ctx.db.delete(settings).run()
     ctx.db
@@ -900,13 +900,13 @@ describe('the stored correction to the average household (#290)', () => {
         valueJson: JSON.stringify({ ...patch }),
       })
       .run()
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, TENANT_ID)).toBeNull()
   })
 
   it('refuses to store what it could not read back', () => {
-    expect(() => saveReferenceOverride(ctx.db, { ...patch, meanMonthlyCents: 0 })).toThrow()
-    expect(() => saveReferenceOverride(ctx.db, { ...patch, equivalentAdultsBp: 9_999 })).toThrow()
-    expect(() => saveReferenceOverride(ctx.db, { ...patch, citation: 'HBS' })).toThrow()
+    expect(() => saveReferenceOverride(ctx.db, TENANT_ID, { ...patch, meanMonthlyCents: 0 })).toThrow()
+    expect(() => saveReferenceOverride(ctx.db, TENANT_ID, { ...patch, equivalentAdultsBp: 9_999 })).toThrow()
+    expect(() => saveReferenceOverride(ctx.db, TENANT_ID, { ...patch, citation: 'HBS' })).toThrow()
   })
 })
 

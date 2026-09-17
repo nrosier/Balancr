@@ -166,8 +166,8 @@ async function syncAccounts(
     )
   }
 
-  const result = syncAccountMap(db, sightings)
-  const classified = classifyGhostfolio(db, evidence, log)
+  const result = syncAccountMap(db, tenantId, sightings)
+  const classified = classifyGhostfolio(db, tenantId, evidence, log)
   return {
     created: result.created,
     renamed: result.renamed,
@@ -196,12 +196,13 @@ async function syncAccounts(
  */
 export function classifyGhostfolio(
   db: Db,
+  tenantId: string,
   evidence: readonly GhostfolioAccountEvidence[],
   log: Logger,
 ): { reclassified: number; mirrored: number } {
   if (evidence.length === 0) return { reclassified: 0, mirrored: 0 }
 
-  const byExternalId = accountMapBySource(loadAccountMap(db), 'ghostfolio')
+  const byExternalId = accountMapBySource(loadAccountMap(db, tenantId), 'ghostfolio')
   let reclassified = 0
   for (const seen of evidence) {
     const row = byExternalId.get(seen.externalId)
@@ -211,16 +212,16 @@ export function classifyGhostfolio(
     // person has decided is refused, and `applyDerivedFields` still returns the row
     // — so comparing against the intent would report relabellings that never
     // happened, on exactly the accounts someone had already corrected by hand.
-    const after = applyDerivedFields(db, row.id, { kind })
+    const after = applyDerivedFields(db, tenantId, row.id, { kind })
     if (after !== null && after.kind !== row.kind) reclassified += 1
   }
 
   // Read again: the mirror rule matches on `kind`, so it has to see the labels the
   // pass above just wrote rather than the ones it started from.
-  const mirrors = deriveMirrors(loadAccountMap(db))
+  const mirrors = deriveMirrors(loadAccountMap(db, tenantId))
   let mirrored = 0
   for (const mirror of mirrors) {
-    if (applyDerivedMirror(db, mirror) === null) continue
+    if (applyDerivedMirror(db, tenantId, mirror) === null) continue
     mirrored += 1
     // At info, not debug: this removes an account from net worth, and a total that
     // dropped needs a line somebody can find that says which account and why.
@@ -236,7 +237,7 @@ export function classifyGhostfolio(
 async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDetail> {
   await step('connect', () => syncActual(db, tenantId))
 
-  const params = loadParams(db)
+  const params = loadParams(db, tenantId)
   const currentMonth = currentMonthIn(config.TZ)
 
   const fetched = await step('fetch', async () => {
@@ -319,7 +320,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     const aggregate = aggregateSpend({
       history,
       recomputed,
-      frequencies: loadFrequencies(db),
+      frequencies: loadFrequencies(db, tenantId),
       targetMonths: targets,
       committed,
       dayCurves,
@@ -329,8 +330,8 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     // Categories before facts: `loadFrequencies` above read the previous pass's
     // rows, so a category seen for the first time today gets its row now and is
     // classifiable by the next pass.
-    const categories = syncCategoryMeta(db, aggregate.facts)
-    const facts = persistFacts(db, aggregate.facts, targets)
+    const categories = syncCategoryMeta(db, tenantId, aggregate.facts)
+    const facts = persistFacts(db, tenantId, aggregate.facts, targets)
     // Month totals cover the target months, so the uncategorised backlog stored
     // here is the backlog over the months this install reports on
     // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
@@ -351,8 +352,14 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
         monthFingerprint(factsByMonth.get(total.month) ?? [], total),
       ]),
     )
-    const months = persistMonthTotals(db, aggregate.totals, aggregate.uncategorised, fingerprints)
-    const drift = persistMismatches(db, aggregate.mismatches, targets)
+    const months = persistMonthTotals(
+      db,
+      tenantId,
+      aggregate.totals,
+      aggregate.uncategorised,
+      fingerprints,
+    )
+    const drift = persistMismatches(db, tenantId, aggregate.mismatches, targets)
 
     return { aggregate, categories, facts, months, drift }
   })

@@ -77,22 +77,23 @@ export function emergencyFundCentimonths(
 export const COVER_WINDOW_MONTHS = 12
 
 export function buildOverview(db: Db, tenantId: string): Overview {
-  const month = latestStoredMonth(db)
-  const totals = month === null ? null : (loadMonthTotals(db, [month])[0] ?? null)
-  const hygiene = month === null ? null : loadHygiene(db, month)
-  const netWorth = loadLatestNetWorth(db)
-  const months = storedMonths(db)
+  const month = latestStoredMonth(db, tenantId)
+  const totals = month === null ? null : (loadMonthTotals(db, tenantId, [month])[0] ?? null)
+  const hygiene = month === null ? null : loadHygiene(db, tenantId, month)
+  const netWorth = loadLatestNetWorth(db, tenantId)
+  const months = storedMonths(db, tenantId)
   // Every stored month, not a trailing window (#345): the period picker's availability
   // set is `months` itself, and a grayed-in cell has to have a real flow to sum, however
   // far back it falls.
-  const flows = loadMonthTotals(db, months)
-  const coverWindow = month === null ? [] : loadTrailingTotals(db, month, COVER_WINDOW_MONTHS)
+  const flows = loadMonthTotals(db, tenantId, months)
+  const coverWindow =
+    month === null ? [] : loadTrailingTotals(db, tenantId, month, COVER_WINDOW_MONTHS)
   // Priced as of right now, not as of `netWorth.date`: a mortgage amortizes with the
   // calendar, not with whatever night the net-worth job last ran (#227).
   const today = new Date().toISOString().slice(0, 10)
-  const properties = loadProperties(db).properties
+  const properties = loadProperties(db, tenantId).properties
   const propertyEquity = totalEquityCents(properties, today)
-  const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db)
+  const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db, tenantId)
   const integrations = integrationAvailability(db, tenantId)
 
   return overviewSchema.parse({
@@ -121,7 +122,7 @@ export function buildOverview(db: Db, tenantId: string): Overview {
             // see `loadOffBudgetLiquidCents`.
             liquidOffBudgetCents,
           },
-    history: loadNetWorthHistory(db),
+    history: loadNetWorthHistory(db, tenantId),
     month,
     months,
     flows: flows.map((entry) => ({
@@ -149,7 +150,9 @@ export function buildOverview(db: Db, tenantId: string): Overview {
         ? null
         : {
             ...hygiene,
-            signals: loadSignals(db, month).filter((signal) => HYGIENE_CODES.has(signal.code)),
+            signals: loadSignals(db, tenantId, month).filter((signal) =>
+              HYGIENE_CODES.has(signal.code),
+            ),
           },
     actualConfigured: integrations.actual,
     ghostfolioConfigured: integrations.ghostfolio,

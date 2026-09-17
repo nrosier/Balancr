@@ -39,7 +39,6 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/index.ts";
 import { settings } from "../../db/schema.ts";
-import { getSoleTenantId } from "../../db/tenant.ts";
 import { logger } from "../../logger.ts";
 import { verifiedDateSchema } from "../verified-date.ts";
 import type { Benchmark } from "./model.ts";
@@ -78,8 +77,7 @@ export type ReferenceOverridePatch = Omit<ReferenceOverride, "savedOn">;
  * reason: an override nobody can parse should cost the level comparison and leave the file's
  * figure standing, not take down the page that would let somebody fix it.
  */
-export function loadReferenceOverride(db: Db): ReferenceOverride | null {
-  const tenantId = getSoleTenantId(db);
+export function loadReferenceOverride(db: Db, tenantId: string): ReferenceOverride | null {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -113,10 +111,10 @@ export function loadReferenceOverride(db: Db): ReferenceOverride | null {
 /** Validates and stores an override, stamping the day it was stored. */
 export function saveReferenceOverride(
   db: Db,
+  tenantId: string,
   patch: ReferenceOverridePatch,
   today: Date = new Date(),
 ): ReferenceOverride {
-  const tenantId = getSoleTenantId(db);
   const next = referenceOverrideSchema.parse({
     ...patch,
     savedOn: today.toISOString().slice(0, 10),
@@ -135,8 +133,7 @@ export function saveReferenceOverride(
 }
 
 /** Removes the override, so the file's figure applies again. */
-export function clearReferenceOverride(db: Db): void {
-  const tenantId = getSoleTenantId(db);
+export function clearReferenceOverride(db: Db, tenantId: string): void {
   db.delete(settings)
     .where(and(eq(settings.tenantId, tenantId), eq(settings.key, REFERENCE_OVERRIDE_KEY)))
     .run();

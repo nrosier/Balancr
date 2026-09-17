@@ -9,7 +9,6 @@
  */
 import { fetchPayeeCategoryHistory, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { addMonths, endOfMonth, startOfMonth } from '../../util/month.ts'
 import { loadCategoryTrends } from '../aggregate/facts.ts'
 import type { CategoryGuessCandidate } from '../aggregate/signals-store.ts'
@@ -35,8 +34,11 @@ import { createProposal, encodeBudgetTarget, ProposalError } from './proposals.t
  * wholesale-replaced for this month once at the end, same reasoning as
  * `persistSignals`.
  */
-export async function generateCategoryProposals(db: Db, month: string): Promise<number> {
-  const tenantId = getSoleTenantId(db)
+export async function generateCategoryProposals(
+  db: Db,
+  tenantId: string,
+  month: string,
+): Promise<number> {
   const transactions = await fetchUncategorisedTransactions(
     db,
     tenantId,
@@ -66,7 +68,7 @@ export async function generateCategoryProposals(db: Db, month: string): Promise<
     }
 
     try {
-      await createProposal(db, {
+      await createProposal(db, tenantId, {
         type: 'transaction_category.set',
         targetRef: txn.id,
         payload: { categoryId: suggestion.categoryId, payeeName: txn.payeeName },
@@ -77,7 +79,7 @@ export async function generateCategoryProposals(db: Db, month: string): Promise<
     }
   }
 
-  persistCategoryGuessCandidates(db, month, candidates)
+  persistCategoryGuessCandidates(db, tenantId, month, candidates)
   return created
 }
 
@@ -98,16 +100,17 @@ export async function generateCategoryProposals(db: Db, month: string): Promise<
  */
 export async function generateBudgetProposals(
   db: Db,
+  tenantId: string,
   month: string,
   signals: readonly Signal[],
   facts: readonly MonthlyFact[],
 ): Promise<number> {
   let created = 0
-  const trends = loadCategoryTrends(db, addMonths(month, -1), 12)
+  const trends = loadCategoryTrends(db, tenantId, addMonths(month, -1), 12)
 
   for (const suggestion of suggestBudgetAmounts(signals, facts, trends.byCategory)) {
     try {
-      await createProposal(db, {
+      await createProposal(db, tenantId, {
         type: 'budget_amount.set',
         targetRef: encodeBudgetTarget(suggestion.categoryId, month),
         payload: { amountCents: suggestion.amountCents },

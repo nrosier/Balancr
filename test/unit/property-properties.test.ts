@@ -57,40 +57,40 @@ describe('the stored properties', () => {
   }
 
   it('is an empty list until somebody writes one', () => {
-    expect(loadProperties(ctx.db)).toEqual(DEFAULT_PROPERTIES)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
     expect(DEFAULT_PROPERTIES.properties).toEqual([])
   })
 
   it('round-trips a full list', () => {
-    const next = saveProperties(ctx.db, { properties: [property()] })
-    expect(loadProperties(ctx.db)).toEqual(next)
+    const next = saveProperties(ctx.db, TENANT_ID, { properties: [property()] })
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
   })
 
   it('round-trips a rental alongside a primary residence', () => {
-    const next = saveProperties(ctx.db, {
+    const next = saveProperties(ctx.db, TENANT_ID, {
       properties: [
         property(),
         property({ id: 'flat', kind: 'rental', label: 'Antwerp flat', rentCents: 90_000, mortgage: null }),
       ],
     })
-    expect(loadProperties(ctx.db)).toEqual(next)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
   })
 
   it('degrades to an empty list rather than throwing, for either kind of damage', () => {
     write('{ not json')
-    expect(loadProperties(ctx.db)).toEqual(DEFAULT_PROPERTIES)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
 
     ctx.db.delete(settings).run()
     write(JSON.stringify({ properties: [{ id: 'home', kind: 'castle' }] }))
-    expect(loadProperties(ctx.db)).toEqual(DEFAULT_PROPERTIES)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
   })
 
   it('refuses an out-of-range rate or term', () => {
     expect(() =>
-      saveProperties(ctx.db, { properties: [property({ mortgage: mortgage({ rateBp: 5_001 }) })] }),
+      saveProperties(ctx.db, TENANT_ID, { properties: [property({ mortgage: mortgage({ rateBp: 5_001 }) })] }),
     ).toThrow()
     expect(() =>
-      saveProperties(ctx.db, {
+      saveProperties(ctx.db, TENANT_ID, {
         properties: [property({ mortgage: mortgage({ remainingTermMonths: 601 }) })],
       }),
     ).toThrow()
@@ -98,13 +98,13 @@ describe('the stored properties', () => {
 
   it('refuses an unknown field', () => {
     expect(() =>
-      saveProperties(ctx.db, { properties: [{ ...property(), extra: true } as never] }),
+      saveProperties(ctx.db, TENANT_ID, { properties: [{ ...property(), extra: true } as never] }),
     ).toThrow()
   })
 
   it('refuses more than twenty properties', () => {
     const many = Array.from({ length: 21 }, (_, index) => property({ id: `p${index}` }))
-    expect(() => saveProperties(ctx.db, { properties: many })).toThrow()
+    expect(() => saveProperties(ctx.db, TENANT_ID, { properties: many })).toThrow()
   })
 })
 

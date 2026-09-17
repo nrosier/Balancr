@@ -14,16 +14,19 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { knownSplit, type PortfolioMetricsResult } from '../../src/domain/portfolio/metrics.ts'
 import { monthEndMetrics, persistPortfolioMetrics } from '../../src/domain/portfolio/store.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: ReturnType<typeof createTestDb>['db']
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
 })
 
 /** A metrics row. `total` carries the identifying value, so a test can name the row it got. */
@@ -48,10 +51,10 @@ describe('monthEndMetrics', () => {
   it('takes the last row of each month, not the first', () => {
     // Metrics are computed on every sync, so a month holds twenty or thirty rows. The one
     // that means "how the portfolio stood in July" is the last of them.
-    persistPortfolioMetrics(db, metrics('2026-07-03', 100))
-    persistPortfolioMetrics(db, metrics('2026-07-19', 200))
-    persistPortfolioMetrics(db, metrics('2026-07-31', 300))
-    expect(totals(monthEndMetrics(db, 6))).toEqual([300])
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-03', 100))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-19', 200))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-31', 300))
+    expect(totals(monthEndMetrics(db, TENANT_ID, 6))).toEqual([300])
   })
 
   it('returns one row per month, oldest first', () => {
@@ -62,50 +65,50 @@ describe('monthEndMetrics', () => {
       ['2026-07-15', 30],
       ['2026-07-31', 31],
     ] as const) {
-      persistPortfolioMetrics(db, metrics(date, total))
+      persistPortfolioMetrics(db, TENANT_ID, metrics(date, total))
     }
     // Ascending, like every other history in this codebase — and the order the caller
     // reverses to count back from the newest. Newest-first here would count forwards.
-    expect(totals(monthEndMetrics(db, 6))).toEqual([11, 20, 31])
+    expect(totals(monthEndMetrics(db, TENANT_ID, 6))).toEqual([11, 20, 31])
   })
 
   it('counts months, not rows', () => {
     // The limit is a number of months. Applied to rows it would return three readings from
     // July and call them three months.
-    persistPortfolioMetrics(db, metrics('2026-07-10', 1))
-    persistPortfolioMetrics(db, metrics('2026-07-20', 2))
-    persistPortfolioMetrics(db, metrics('2026-07-31', 3))
-    persistPortfolioMetrics(db, metrics('2026-08-31', 4))
-    persistPortfolioMetrics(db, metrics('2026-09-30', 5))
-    expect(totals(monthEndMetrics(db, 2))).toEqual([4, 5])
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-10', 1))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-20', 2))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-31', 3))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-08-31', 4))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-09-30', 5))
+    expect(totals(monthEndMetrics(db, TENANT_ID, 2))).toEqual([4, 5])
   })
 
   it('leaves a gap absent rather than repeating the month either side of it', () => {
     // June never synced. The caller has to be able to see that, because a run counted
     // through a hole is the difference between a drift and two unrelated readings.
-    persistPortfolioMetrics(db, metrics('2026-05-31', 10))
-    persistPortfolioMetrics(db, metrics('2026-07-31', 30))
-    const months = monthEndMetrics(db, 6).map((row) => row.date.slice(0, 7))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-05-31', 10))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-31', 30))
+    const months = monthEndMetrics(db, TENANT_ID, 6).map((row) => row.date.slice(0, 7))
     expect(months).toEqual(['2026-05', '2026-07'])
   })
 
   it('crosses a year end in the right order', () => {
-    persistPortfolioMetrics(db, metrics('2025-12-31', 10))
-    persistPortfolioMetrics(db, metrics('2026-01-31', 20))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2025-12-31', 10))
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-01-31', 20))
     // String months sort correctly across the boundary; a numeric month would not.
-    expect(totals(monthEndMetrics(db, 3))).toEqual([10, 20])
+    expect(totals(monthEndMetrics(db, TENANT_ID, 3))).toEqual([10, 20])
   })
 
   it('is empty on an instance that has never synced, and asks for nothing', () => {
-    expect(monthEndMetrics(db, 12)).toEqual([])
+    expect(monthEndMetrics(db, TENANT_ID, 12)).toEqual([])
     // Zero months is a caller with a threshold of zero, not a request for everything.
-    persistPortfolioMetrics(db, metrics('2026-07-31', 10))
-    expect(monthEndMetrics(db, 0)).toEqual([])
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-31', 10))
+    expect(monthEndMetrics(db, TENANT_ID, 0)).toEqual([])
   })
 
   it('carries the split through, because that is what the shares are shares of', () => {
-    persistPortfolioMetrics(db, metrics('2026-07-31', 500_000, 400_000, 100_000))
-    const row = monthEndMetrics(db, 6)[0]
+    persistPortfolioMetrics(db, TENANT_ID, metrics('2026-07-31', 500_000, 400_000, 100_000))
+    const row = monthEndMetrics(db, TENANT_ID, 6)[0]
     expect(row?.investedValueCents).toBe(400_000)
     expect(row?.cashValueCents).toBe(100_000)
   })

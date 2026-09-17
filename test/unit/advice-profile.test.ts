@@ -186,12 +186,12 @@ describe('bandsOf and isPreset', () => {
 
 describe('loadProfile', () => {
   it('returns the default when there is no row', () => {
-    expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
+    expect(loadProfile(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROFILE)
   })
 
   it('degrades to the default rather than throwing on a row that is not JSON', () => {
     ctx.db.insert(settings).values({ tenantId: TENANT_ID, key: PROFILE_KEY, valueJson: 'balanced' }).run()
-    expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
+    expect(loadProfile(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROFILE)
   })
 
   it('degrades to the default on bands that no longer parse', () => {
@@ -201,62 +201,62 @@ describe('loadProfile', () => {
       .insert(settings)
       .values({ tenantId: TENANT_ID, key: PROFILE_KEY, valueJson: JSON.stringify({ profile: 'custom' }) })
       .run()
-    expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
+    expect(loadProfile(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROFILE)
   })
 })
 
 describe('saveProfile', () => {
   it('stores a preset by name, with no bands of its own', () => {
-    const saved = saveProfile(ctx.db, { profile: 'growth' })
+    const saved = saveProfile(ctx.db, TENANT_ID, { profile: 'growth' })
     expect(saved.profile).toBe('growth')
     expect(saved.bands).toBeUndefined()
-    expect(bandsOf(loadProfile(ctx.db))).toEqual(PROFILE_PRESETS.growth)
+    expect(bandsOf(loadProfile(ctx.db, TENANT_ID))).toEqual(PROFILE_PRESETS.growth)
   })
 
   it('keeps the tolerance when only the profile changes', () => {
-    saveProfile(ctx.db, { toleranceBp: 250, minTradeCents: 100_000 })
-    const saved = saveProfile(ctx.db, { profile: 'defensive' })
+    saveProfile(ctx.db, TENANT_ID, { toleranceBp: 250, minTradeCents: 100_000 })
+    const saved = saveProfile(ctx.db, TENANT_ID, { profile: 'defensive' })
     expect(saved).toEqual({ profile: 'defensive', toleranceBp: 250, minTradeCents: 100_000 })
   })
 
   it('calls the profile custom the moment somebody edits the bands', () => {
-    saveProfile(ctx.db, { profile: 'growth' })
+    saveProfile(ctx.db, TENANT_ID, { profile: 'growth' })
     const edited = bands({
       EQUITY: { minBp: 6_000, targetBp: 7_000, maxBp: 8_000 },
       FIXED_INCOME: { minBp: 1_500, targetBp: 2_500, maxBp: 4_000 },
     })
-    const saved = saveProfile(ctx.db, { bands: edited })
+    const saved = saveProfile(ctx.db, TENANT_ID, { bands: edited })
     expect(saved.profile).toBe('custom')
     expect(saved.bands).toEqual(edited)
   })
 
   it('drops edited bands again when a preset is chosen', () => {
-    saveProfile(ctx.db, {
+    saveProfile(ctx.db, TENANT_ID, {
       bands: bands({
         EQUITY: { minBp: 6_000, targetBp: 7_000, maxBp: 8_000 },
         FIXED_INCOME: { minBp: 1_500, targetBp: 2_500, maxBp: 4_000 },
       }),
     })
-    const saved = saveProfile(ctx.db, { profile: 'balanced' })
+    const saved = saveProfile(ctx.db, TENANT_ID, { profile: 'balanced' })
     expect(saved.bands).toBeUndefined()
     // Not merely absent from the return value: gone from the row, so a later read of a
     // preset cannot resurrect somebody's old floors.
     const row = ctx.db.select({ valueJson: settings.valueJson }).from(settings).get()
     expect(row?.valueJson).not.toContain('7000')
-    expect(bandsOf(loadProfile(ctx.db))).toEqual(PROFILE_PRESETS.balanced)
+    expect(bandsOf(loadProfile(ctx.db, TENANT_ID))).toEqual(PROFILE_PRESETS.balanced)
   })
 
   it('throws rather than storing bands that contradict each other', () => {
     expect(() =>
-      saveProfile(ctx.db, {
+      saveProfile(ctx.db, TENANT_ID, {
         bands: bands({ EQUITY: { minBp: 5_500, targetBp: 6_000, maxBp: 7_500 } }),
       }),
     ).toThrow()
-    expect(loadProfile(ctx.db)).toEqual(DEFAULT_PROFILE)
+    expect(loadProfile(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROFILE)
   })
 
   it('round-trips through the row rather than through memory', () => {
-    const saved = saveProfile(ctx.db, { profile: 'custom', bands: PROFILE_PRESETS.defensive })
-    expect(loadProfile(ctx.db)).toEqual(saved)
+    const saved = saveProfile(ctx.db, TENANT_ID, { profile: 'custom', bands: PROFILE_PRESETS.defensive })
+    expect(loadProfile(ctx.db, TENANT_ID)).toEqual(saved)
   })
 })

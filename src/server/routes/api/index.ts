@@ -83,9 +83,9 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
 
   app.get('/api/portfolio', (request: FastifyRequest) => buildPortfolio(db, requireUser(request).tenantId))
 
-  app.get('/api/forecast', () => buildForecast(db))
+  app.get('/api/forecast', (request: FastifyRequest) => buildForecast(db, requireUser(request).tenantId))
 
-  app.get('/api/scenario', () => buildScenario(db))
+  app.get('/api/scenario', (request: FastifyRequest) => buildScenario(db, requireUser(request).tenantId))
 
   app.get('/api/insights', (request: FastifyRequest) => {
     const query = request.query as { month?: unknown; runsPeriod?: unknown; signalsPeriod?: unknown } | undefined

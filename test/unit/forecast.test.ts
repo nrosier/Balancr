@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import type { ExpectedFrequency } from '../../src/domain/aggregate/baseline.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
@@ -22,12 +23,14 @@ const ANCHOR = '2026-08'
 
 let ctx: ReturnType<typeof createTestDb>
 let ids: Record<string, string>
+let tenantId: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  syncAccountMap(ctx.db, [{ source: 'actual', externalId: 'checking', name: 'Zichtrekening' }])
-  ids = Object.fromEntries(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
+  tenantId = getSoleTenantId(ctx.db)
+  syncAccountMap(ctx.db, tenantId, [{ source: 'actual', externalId: 'checking', name: 'Zichtrekening' }])
+  ids = Object.fromEntries(loadAccountMap(ctx.db, tenantId).map((row) => [row.externalId, row.id]))
 })
 
 function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotals {
@@ -72,9 +75,10 @@ function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): 
 
 /** Marks `ANCHOR` as the latest aggregated month, with a starting balance. */
 function seedAnchor(liquidCents = 500_000, totalsOverrides: Partial<MonthTotals> = {}): void {
-  persistMonthTotals(ctx.db, [totals(ANCHOR, totalsOverrides)], [])
+  persistMonthTotals(ctx.db, tenantId, [totals(ANCHOR, totalsOverrides)], [])
   persistNetWorth(
     ctx.db,
+    tenantId,
     computeNetWorth(`${ANCHOR}-28`, [
       {
         accountMapId: ids.checking as string,
@@ -101,12 +105,12 @@ function classify(
 
 describe('projectCashflow', () => {
   it('is null before the first aggregation pass', () => {
-    expect(projectCashflow(ctx.db)).toBeNull()
+    expect(projectCashflow(ctx.db, tenantId)).toBeNull()
   })
 
   it('is null with a stored month but no net-worth snapshot yet', () => {
-    persistMonthTotals(ctx.db, [totals(ANCHOR)], [])
-    expect(projectCashflow(ctx.db)).toBeNull()
+    persistMonthTotals(ctx.db, tenantId, [totals(ANCHOR)], [])
+    expect(projectCashflow(ctx.db, tenantId)).toBeNull()
   })
 
   it('folds a monthly income and a monthly fixed cost into every one of the 12 months', () => {
@@ -118,11 +122,11 @@ describe('projectCashflow', () => {
     const rent = fact(ANCHOR, 'rent', {
       baseline: { baselineCents: 90_000, currentCents: 90_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
-    syncCategoryMeta(ctx.db, [salary, rent])
-    persistFacts(ctx.db, [salary, rent], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [salary, rent])
+    persistFacts(ctx.db, tenantId, [salary, rent], [ANCHOR])
     classify('rent', 'fixed')
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     expect(forecast?.months).toHaveLength(FORECAST_HORIZON_MONTHS)
     expect(forecast?.months.map((m) => m.month)).toEqual([
       '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02',
@@ -145,11 +149,11 @@ describe('projectCashflow', () => {
     // Last seen two months before the anchor, so the next occurrence is one
     // month after it, then every three months from there.
     const gas = fact('2026-06', 'gas', { spentCents: 24_000 })
-    syncCategoryMeta(ctx.db, [gas])
-    persistFacts(ctx.db, [gas], ['2026-06'])
+    syncCategoryMeta(ctx.db, tenantId, [gas])
+    persistFacts(ctx.db, tenantId, [gas], ['2026-06'])
     classify('gas', 'fixed', { expectedFrequency: 'quarterly' })
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     const withBills = forecast?.months.filter((m) => m.bills.length > 0) ?? []
     expect(withBills.map((m) => m.month)).toEqual(['2026-09', '2026-12', '2027-03', '2027-06'])
     for (const month of withBills) {
@@ -163,11 +167,11 @@ describe('projectCashflow', () => {
   it('places an annual bill exactly once, twelve months after it last landed', () => {
     seedAnchor()
     const insurance = fact('2026-03', 'insurance', { spentCents: 48_000 })
-    syncCategoryMeta(ctx.db, [insurance])
-    persistFacts(ctx.db, [insurance], ['2026-03'])
+    syncCategoryMeta(ctx.db, tenantId, [insurance])
+    persistFacts(ctx.db, tenantId, [insurance], ['2026-03'])
     classify('insurance', 'fixed', { expectedFrequency: 'annual' })
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     const withBills = forecast?.months.filter((m) => m.bills.length > 0) ?? []
     expect(withBills.map((m) => m.month)).toEqual(['2027-03'])
     expect(withBills[0]?.bills).toEqual([{ categoryId: 'insurance', name: 'insurance', amountCents: 48_000 }])
@@ -181,13 +185,13 @@ describe('projectCashflow', () => {
       baseline: { baselineCents: 20_000, currentCents: 20_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
     const noHistory = fact(ANCHOR, 'newbill', { spentCents: 0 })
-    syncCategoryMeta(ctx.db, [unclassified, hidden, noHistory])
-    persistFacts(ctx.db, [unclassified, hidden, noHistory], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [unclassified, hidden, noHistory])
+    persistFacts(ctx.db, tenantId, [unclassified, hidden, noHistory], [ANCHOR])
     classify('archived', 'fixed')
     classify('newbill', 'fixed', { expectedFrequency: 'annual' })
     // 'misc' is left with nature: null (the default), never classified.
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     for (const month of forecast?.months ?? []) {
       expect(month.incomeCents).toBe(0)
       expect(month.fixedCents).toBe(0)
@@ -202,12 +206,12 @@ describe('projectCashflow', () => {
     // must place it nowhere.
     const bonus = fact('2026-03', 'bonus', { isIncome: true, spentCents: 200_000 })
     const gift = fact('2026-03', 'gift', { spentCents: 50_000 })
-    syncCategoryMeta(ctx.db, [bonus, gift])
-    persistFacts(ctx.db, [bonus, gift], ['2026-03'])
+    syncCategoryMeta(ctx.db, tenantId, [bonus, gift])
+    persistFacts(ctx.db, tenantId, [bonus, gift], ['2026-03'])
     classify('bonus', 'income', { expectedFrequency: 'irregular' })
     classify('gift', 'fixed', { expectedFrequency: 'irregular' })
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     for (const month of forecast?.months ?? []) {
       expect(month.incomeCents).toBe(0)
       expect(month.bills).toEqual([])
@@ -219,11 +223,11 @@ describe('projectCashflow', () => {
     const rent = fact(ANCHOR, 'rent', {
       baseline: { baselineCents: 90_000, currentCents: 90_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
-    syncCategoryMeta(ctx.db, [rent])
-    persistFacts(ctx.db, [rent], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [rent])
+    persistFacts(ctx.db, tenantId, [rent], [ANCHOR])
     classify('rent', 'fixed')
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     for (const month of forecast?.months ?? []) {
       // A single stored month's `ewma` is just that month's own figure.
       expect(month.fixedCents).toBe(90_000 + 150_000)
@@ -236,11 +240,11 @@ describe('projectCashflow', () => {
     const rent = fact(ANCHOR, 'rent', {
       baseline: { baselineCents: 90_000, currentCents: 90_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
-    syncCategoryMeta(ctx.db, [rent])
-    persistFacts(ctx.db, [rent], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [rent])
+    persistFacts(ctx.db, tenantId, [rent], [ANCHOR])
     classify('rent', 'fixed')
 
-    const forecast = projectCashflow(ctx.db)
+    const forecast = projectCashflow(ctx.db, tenantId)
     expect(forecast?.months[0]?.balanceCents).toBe(10_000 - 90_000)
     expect(forecast?.months[11]?.balanceCents).toBe(10_000 - 90_000 * 12)
   })

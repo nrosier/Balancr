@@ -54,15 +54,15 @@ export interface ScenarioBaseline {
   startingValueCents: number | null
 }
 
-export function scenarioBaseline(db: Db): ScenarioBaseline {
-  const month = latestStoredMonth(db)
-  const { investments } = savingsContext(db)
+export function scenarioBaseline(db: Db, tenantId: string): ScenarioBaseline {
+  const month = latestStoredMonth(db, tenantId)
+  const { investments } = savingsContext(db, tenantId)
 
   let baselineCents: number | null = null
   if (month !== null && investments.size > 0) {
     let sum = 0
     let hasBaseline = false
-    for (const row of loadFacts(db, month)) {
+    for (const row of loadFacts(db, tenantId, month)) {
       if (!investments.has(row.categoryId) || row.baseline === null) continue
       sum += row.baseline.baselineCents
       hasBaseline = true
@@ -70,7 +70,7 @@ export function scenarioBaseline(db: Db): ScenarioBaseline {
     baselineCents = hasBaseline ? sum : null
   }
 
-  const netWorth = loadLatestNetWorth(db)
+  const netWorth = loadLatestNetWorth(db, tenantId)
   return {
     month,
     baselineCents,

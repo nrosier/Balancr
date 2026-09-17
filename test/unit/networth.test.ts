@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   applyDerivedMirror,
   deriveMirrors,
@@ -197,10 +198,15 @@ describe('a Ghostfolio mirror of a bank account', () => {
   const BROKER_CENTS = 4_890_000
 
   /** Sync, classify and group, exactly as the sync job does. */
-  const settle = (): { db: ReturnType<typeof createTestDb>['db']; rows: AccountMapRow[] } => {
+  const settle = (): {
+    db: ReturnType<typeof createTestDb>['db']
+    tenantId: string
+    rows: AccountMapRow[]
+  } => {
     const ctx = createTestDb()
     applyMigrations(ctx.db as never)
-    syncAccountMap(ctx.db, [
+    const tenantId = getSoleTenantId(ctx.db)
+    syncAccountMap(ctx.db, tenantId, [
       { source: 'actual', externalId: 'a-current', name: 'Argenta zichtrekening' },
       {
         source: 'ghostfolio',
@@ -228,10 +234,10 @@ describe('a Ghostfolio mirror of a bank account', () => {
         }),
       },
     ])
-    for (const pair of deriveMirrors(loadAccountMap(ctx.db))) {
-      applyDerivedMirror(ctx.db, pair)
+    for (const pair of deriveMirrors(loadAccountMap(ctx.db, tenantId))) {
+      applyDerivedMirror(ctx.db, tenantId, pair)
     }
-    return { db: ctx.db, rows: loadAccountMap(ctx.db) }
+    return { db: ctx.db, tenantId, rows: loadAccountMap(ctx.db, tenantId) }
   }
 
   /** The rows valued the way `collectAccountValues` values them. */
@@ -289,12 +295,13 @@ describe('a Ghostfolio mirror of a bank account', () => {
     // would be correct on the reporting instance and silently lose this money.
     const ctx = createTestDb()
     applyMigrations(ctx.db as never)
-    syncAccountMap(ctx.db, [
+    const tenantId = getSoleTenantId(ctx.db)
+    syncAccountMap(ctx.db, tenantId, [
       { source: 'actual', externalId: 'a-current', name: 'Argenta zichtrekening' },
       { source: 'ghostfolio', externalId: 'g-revolut', name: 'Revolut', holdsInvestments: false },
     ])
-    const mirrors = deriveMirrors(loadAccountMap(ctx.db))
-    const rows = loadAccountMap(ctx.db)
+    const mirrors = deriveMirrors(loadAccountMap(ctx.db, tenantId))
+    const rows = loadAccountMap(ctx.db, tenantId)
     const result = computeNetWorth(
       '2026-03-01',
       rows.map((row) =>
@@ -320,14 +327,14 @@ describe('a Ghostfolio mirror of a bank account', () => {
   it('stops deduping once someone says the two are different accounts', () => {
     // The overstatement comes back, on purpose: the person looking at the panel is
     // better informed than the name match, and the job may not overrule them.
-    const { db, rows } = settle()
+    const { db, tenantId, rows } = settle()
     const ghostfolio = rows.find((row) => row.externalId === 'g-current')
     if (ghostfolio === undefined) throw new Error('the fixture produced no mirror')
-    ungroupAccount(db, ghostfolio.id)
+    ungroupAccount(db, tenantId, ghostfolio.id)
 
-    const result = computeNetWorth('2026-03-01', valued(loadAccountMap(db)))
+    const result = computeNetWorth('2026-03-01', valued(loadAccountMap(db, tenantId)))
     expect(result.totalCents).toBe(CURRENT_CENTS * 2 + BROKER_CENTS)
-    expect(deriveMirrors(loadAccountMap(db))).toEqual([])
+    expect(deriveMirrors(loadAccountMap(db, tenantId))).toEqual([])
   })
 })
 

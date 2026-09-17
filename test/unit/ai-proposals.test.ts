@@ -87,7 +87,7 @@ beforeEach(() => {
   TENANT_ID = getSoleTenantId(db)
   // `proposals.applied_by` is a foreign key; the audit trail's actor is not.
   db.insert(users).values({ id: 'u1', tenantId: TENANT_ID, locale: 'en' }).run()
-  runId = recordRun(db, {
+  runId = recordRun(db, TENANT_ID, {
     kind: 'findings',
     model: 'gemini-3.7-flash',
     locale: 'en',
@@ -95,7 +95,7 @@ beforeEach(() => {
     payloadHash: 'unrelated-hash',
     status: 'ok',
   })
-  seedMonth(db, MONTH, {
+  seedMonth(db, TENANT_ID, MONTH, {
     facts: [
       fact(MONTH, 'food', { categoryName: 'Groceries' }),
       fact(MONTH, 'rent', { categoryName: 'Rent' }),
@@ -105,9 +105,9 @@ beforeEach(() => {
 
 const propose = (
   payload: Record<string, unknown>,
-  overrides: Partial<Parameters<typeof createProposal>[1]> = {},
+  overrides: Partial<Parameters<typeof createProposal>[2]> = {},
 ): Promise<ProposalRow> =>
-  createProposal(db, {
+  createProposal(db, TENANT_ID, {
     type: 'category_meta.set',
     targetRef: 'food',
     payload,
@@ -220,13 +220,13 @@ describe('createProposal', () => {
     const first = await propose({ nature: 'variable' })
     const second = await propose({ nature: 'fixed' })
 
-    expect(loadProposal(db, first.id)?.status).toBe('expired')
-    expect(pendingProposals(db).map((row) => row.id)).toEqual([second.id])
+    expect(loadProposal(db, TENANT_ID, first.id)?.status).toBe('expired')
+    expect(pendingProposals(db, TENANT_ID).map((row) => row.id)).toEqual([second.id])
   })
 
   it('refuses a type with no handler', async () => {
     await expect(
-      createProposal(db, {
+      createProposal(db, TENANT_ID, {
         type: 'actual.category.rename' as 'category_meta.set',
         targetRef: 'food',
         payload: {},
@@ -242,7 +242,7 @@ describe('createProposal', () => {
 describe('renderProposal', () => {
   it('names the fields and values in the reader language', async () => {
     const row = await propose({ nature: 'variable' })
-    const card = renderProposal(db, row, 'nl')
+    const card = renderProposal(db, TENANT_ID, row, 'nl')
 
     expect(card.targetName).toBe('Groceries')
     expect(card.fields[0]).toEqual({
@@ -257,8 +257,8 @@ describe('renderProposal', () => {
   it('reads the same change back in the other language', async () => {
     // Why the diff stores values: this row was written once, in one session.
     const row = await propose({ custodyShared: true })
-    expect(renderProposal(db, row, 'en').fields[0]?.after).toBe('Yes')
-    expect(renderProposal(db, row, 'nl').fields[0]?.after).toBe('Ja')
+    expect(renderProposal(db, TENANT_ID, row, 'en').fields[0]?.after).toBe('Yes')
+    expect(renderProposal(db, TENANT_ID, row, 'nl').fields[0]?.after).toBe('Ja')
   })
 
   it('translates the privacy warning', async () => {
@@ -268,12 +268,12 @@ describe('renderProposal', () => {
       .run()
 
     const row = await propose({ sensitive: false })
-    expect(renderProposal(db, row, 'en').fields[0]?.warn).toMatch(/category name/)
+    expect(renderProposal(db, TENANT_ID, row, 'en').fields[0]?.warn).toMatch(/category name/)
   })
 
   it('shows free text as it was written', async () => {
     const row = await propose({ userDescription: 'Weekly supermarket run' })
-    const card = renderProposal(db, row, 'en')
+    const card = renderProposal(db, TENANT_ID, row, 'en')
     expect(card.fields[0]?.after).toBe('Weekly supermarket run')
   })
 
@@ -281,18 +281,18 @@ describe('renderProposal', () => {
     const row = await propose({ nature: 'variable' })
     ctx.sqlite.prepare('delete from category_meta where category_id = ?').run('food')
 
-    expect(renderProposal(db, row, 'en').targetName).toBe('food')
+    expect(renderProposal(db, TENANT_ID, row, 'en').targetName).toBe('food')
   })
 
   it('renders an unreadable diff as no fields rather than throwing', async () => {
     const row = await propose({ nature: 'variable' })
     ctx.sqlite.prepare('update proposals set rendered_diff_json = ?').run('{not json')
 
-    expect(renderProposal(db, loadProposal(db, row.id) as ProposalRow, 'en').fields).toEqual([])
+    expect(renderProposal(db, TENANT_ID, loadProposal(db, TENANT_ID, row.id) as ProposalRow, 'en').fields).toEqual([])
   })
 
   it('exposes the raw proposed amount for a budget_amount.set card, and null for every other type (#220)', async () => {
-    const budgetRow = await createProposal(db, {
+    const budgetRow = await createProposal(db, TENANT_ID, {
       type: 'budget_amount.set',
       targetRef: encodeBudgetTarget('food', MONTH),
       payload: { amountCents: 15_000 },
@@ -301,8 +301,8 @@ describe('renderProposal', () => {
     })
     const metaRow = await propose({ nature: 'variable' })
 
-    expect(renderProposal(db, budgetRow, 'en').amountCents).toBe(15_000)
-    expect(renderProposal(db, metaRow, 'en').amountCents).toBeNull()
+    expect(renderProposal(db, TENANT_ID, budgetRow, 'en').amountCents).toBe(15_000)
+    expect(renderProposal(db, TENANT_ID, metaRow, 'en').amountCents).toBeNull()
   })
 })
 
@@ -316,9 +316,9 @@ describe('renderProposal', () => {
  */
 describe('a proposal reason', () => {
   const budgetProposal = (
-    why?: Parameters<typeof createProposal>[1]['why'],
+    why?: Parameters<typeof createProposal>[2]['why'],
   ): Promise<ProposalRow> =>
-    createProposal(db, {
+    createProposal(db, TENANT_ID, {
       type: 'budget_amount.set',
       targetRef: encodeBudgetTarget('food', MONTH),
       payload: { amountCents: 15_000 },
@@ -354,10 +354,10 @@ describe('a proposal reason', () => {
       params: { months: 12 },
     })
 
-    expect(renderProposal(db, row, 'en').explanation).toBe(
+    expect(renderProposal(db, TENANT_ID, row, 'en').explanation).toBe(
       'This envelope is already overspent, so the amount is what the last 12 months of spending average out to.',
     )
-    expect(renderProposal(db, row, 'nl').explanation).toBe(
+    expect(renderProposal(db, TENANT_ID, row, 'nl').explanation).toBe(
       'Deze envelope is al overschreden, dus het bedrag is het gemiddelde van de uitgaven van de laatste 12 maanden.',
     )
   })
@@ -369,7 +369,7 @@ describe('a proposal reason', () => {
       params: { months: 1 },
     })
 
-    expect(renderProposal(db, row, 'en').explanation).toMatch(/last 1 month\b/)
+    expect(renderProposal(db, TENANT_ID, row, 'en').explanation).toMatch(/last 1 month\b/)
   })
 
   it('names the month in the reader language for a note-driven adjustment', async () => {
@@ -379,10 +379,10 @@ describe('a proposal reason', () => {
       params: { month: MONTH },
     })
 
-    expect(renderProposal(db, row, 'en').explanation).toBe(
+    expect(renderProposal(db, TENANT_ID, row, 'en').explanation).toBe(
       'Adjusted after reading your note for March 2026.',
     )
-    expect(renderProposal(db, row, 'nl').explanation).toBe(
+    expect(renderProposal(db, TENANT_ID, row, 'nl').explanation).toBe(
       'Aangepast na het lezen van je notitie voor maart 2026.',
     )
   })
@@ -391,15 +391,15 @@ describe('a proposal reason', () => {
     const text = 'Your note mentions replacing the washing machine this month.'
     const row = await budgetProposal({ source: 'ai', text, locale: 'en' })
 
-    expect(renderProposal(db, row, 'en').explanation).toBe(text)
-    expect(renderProposal(db, row, 'nl').explanation).toBe(text)
+    expect(renderProposal(db, TENANT_ID, row, 'en').explanation).toBe(text)
+    expect(renderProposal(db, TENANT_ID, row, 'nl').explanation).toBe(text)
   })
 
   it('is null on a proposal nobody wrote a reason for', async () => {
     const row = await propose({ nature: 'variable' })
 
     expect(rawExplanation(row.id)).toBeNull()
-    expect(renderProposal(db, row, 'en').explanation).toBeNull()
+    expect(renderProposal(db, TENANT_ID, row, 'en').explanation).toBeNull()
   })
 
   // Each of these is a row already in the table when the code that reads it changed.
@@ -413,9 +413,9 @@ describe('a proposal reason', () => {
     const row = await budgetProposal({ source: 'rule', code: 'short_history' })
     ctx.sqlite.prepare('update proposals set explanation_json = ? where id = ?').run(stored, row.id)
 
-    const reloaded = loadProposal(db, row.id) as ProposalRow
+    const reloaded = loadProposal(db, TENANT_ID, row.id) as ProposalRow
     expect(storedWhy(reloaded)).toBeNull()
-    expect(renderProposal(db, reloaded, 'en').explanation).toBeNull()
+    expect(renderProposal(db, TENANT_ID, reloaded, 'en').explanation).toBeNull()
   })
 
   /**
@@ -435,7 +435,7 @@ describe('a proposal reason', () => {
         const row = await budgetProposal({ source: 'rule', code, params: ALL_PARAMS })
 
         for (const lang of ['en', 'nl']) {
-          const text = renderProposal(db, row, lang).explanation
+          const text = renderProposal(db, TENANT_ID, row, lang).explanation
           expect(text, `${code} [${lang}] did not render`).not.toBeNull()
           // A `{{var}}` left in the output means the catalogue and `WHY_VARS`
           // disagree about a variable name.
@@ -458,9 +458,9 @@ describe('a proposal reason', () => {
       .prepare('update proposals set explanation_json = ? where id = ?')
       .run('{"source":"rule","code":"overspent_trailing"}', row.id)
 
-    const reloaded = loadProposal(db, row.id) as ProposalRow
+    const reloaded = loadProposal(db, TENANT_ID, row.id) as ProposalRow
     expect(storedWhy(reloaded)).toEqual({ source: 'rule', code: 'overspent_trailing' })
-    expect(renderProposal(db, reloaded, 'en').explanation).toBeNull()
+    expect(renderProposal(db, TENANT_ID, reloaded, 'en').explanation).toBeNull()
   })
 
   it('drops model prose longer than the bound the nudge enforces', async () => {
@@ -469,7 +469,7 @@ describe('a proposal reason', () => {
       .prepare('update proposals set explanation_json = ? where id = ?')
       .run(JSON.stringify({ source: 'ai', text: 'x'.repeat(161), locale: 'en' }), row.id)
 
-    expect(renderProposal(db, loadProposal(db, row.id) as ProposalRow, 'en').explanation).toBeNull()
+    expect(renderProposal(db, TENANT_ID, loadProposal(db, TENANT_ID, row.id) as ProposalRow, 'en').explanation).toBeNull()
   })
 })
 
@@ -481,7 +481,7 @@ describe('applyProposal', () => {
       .run()
     const row = await propose({ nature: 'variable' })
 
-    await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     const meta = metaOf('food')
     expect(meta.nature).toBe('variable')
@@ -491,9 +491,9 @@ describe('applyProposal', () => {
 
   it('marks it applied, with who and when', async () => {
     const row = await propose({ nature: 'variable' })
-    await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
-    const applied = loadProposal(db, row.id)
+    const applied = loadProposal(db, TENANT_ID, row.id)
     expect(applied?.status).toBe('applied')
     expect(applied?.appliedBy).toBe('u1')
     expect(applied?.appliedAt?.getTime()).toBe(NOW.getTime())
@@ -501,7 +501,7 @@ describe('applyProposal', () => {
 
   it('records what it changed, the run behind it and the proposal itself', async () => {
     const row = await propose({ nature: 'variable' })
-    const result = await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    const result = await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     const entry = loadAuditTrail(db, { entityRef: 'food' })[0]
     expect(entry?.id).toBe(result.auditId)
@@ -522,25 +522,25 @@ describe('applyProposal', () => {
       .where(eq(categoryMeta.categoryId, 'food'))
       .run()
 
-    const result = await applyProposal(db, { id: row.id, now: NOW })
+    const result = await applyProposal(db, TENANT_ID, { id: row.id, now: NOW })
 
     expect(result.fields).toEqual([])
-    expect(loadProposal(db, row.id)?.status).toBe('applied')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('applied')
     expect(JSON.parse(loadAuditTrail(db)[0]?.afterJson ?? 'null')).toEqual({})
   })
 
   it('refuses one that was already decided', async () => {
     const row = await propose({ nature: 'variable' })
-    await applyProposal(db, { id: row.id, now: NOW })
+    await applyProposal(db, TENANT_ID, { id: row.id, now: NOW })
 
-    await expect(applyProposal(db, { id: row.id, now: NOW })).rejects.toThrow(/already applied/)
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/already applied/)
   })
 
   it('refuses one that has expired', async () => {
     const row = await propose({ nature: 'variable' })
     const later = new Date((row.expiresAt as Date).getTime() + 1_000)
 
-    await expect(applyProposal(db, { id: row.id, now: later })).rejects.toThrow(/expired/)
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: later })).rejects.toThrow(/expired/)
     expect(metaOf('food').nature).toBeNull()
   })
 
@@ -552,23 +552,23 @@ describe('applyProposal', () => {
       .prepare('update proposals set payload_json = ? where id = ?')
       .run('{"nature":"whatever"}', row.id)
 
-    await expect(applyProposal(db, { id: row.id, now: NOW })).rejects.toThrow(/can no longer be applied/)
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/can no longer be applied/)
     expect(metaOf('food').nature).toBeNull()
-    expect(loadProposal(db, row.id)?.status).toBe('pending')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('pending')
   })
 
   it('leaves the row pending and the trail empty when the target is gone', async () => {
     const row = await propose({ nature: 'variable' })
     ctx.sqlite.prepare('delete from category_meta where category_id = ?').run('food')
 
-    await expect(applyProposal(db, { id: row.id, now: NOW })).rejects.toThrow(/no metadata/)
-    expect(loadProposal(db, row.id)?.status).toBe('pending')
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/no metadata/)
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('pending')
     expect(loadAuditTrail(db)).toHaveLength(0)
   })
 
   it('does not touch confidence, which measures what the user stated themselves', async () => {
     const row = await propose({ nature: 'variable' })
-    await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     expect(metaOf('food').confidence).toBe(0)
   })
@@ -577,7 +577,7 @@ describe('applyProposal', () => {
 describe('transaction_category.set', () => {
   const proposeCategoryChange = (
     payload: Record<string, unknown> = { categoryId: 'food', payeeName: 'Albert Heijn' },
-    overrides: Partial<Parameters<typeof createProposal>[1]> = {},
+    overrides: Partial<Parameters<typeof createProposal>[2]> = {},
   ): Promise<ProposalRow> =>
     propose(payload, { type: 'transaction_category.set', targetRef: 'txn1', ...overrides })
 
@@ -612,7 +612,7 @@ describe('transaction_category.set', () => {
     vi.mocked(fetchTransaction).mockResolvedValue({ id: 'txn1', categoryId: 'rent', payeeId: 'p1' })
 
     const row = await proposeCategoryChange()
-    expect(renderProposal(db, row, 'en').targetName).toBe('Albert Heijn')
+    expect(renderProposal(db, TENANT_ID, row, 'en').targetName).toBe('Albert Heijn')
   })
 
   it('applies by writing the category to Actual, with no local mirror to update', async () => {
@@ -620,11 +620,11 @@ describe('transaction_category.set', () => {
     vi.mocked(updateTransactionCategory).mockResolvedValue(undefined)
     const row = await proposeCategoryChange()
 
-    const result = await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    const result = await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     expect(updateTransactionCategory).toHaveBeenCalledWith(db, TENANT_ID, 'txn1', 'food')
     expect(result.fields).toEqual([{ field: 'category', before: 'Rent', after: 'Groceries' }])
-    expect(loadProposal(db, row.id)?.status).toBe('applied')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('applied')
     expect(loadAuditTrail(db, { entityRef: 'txn1' })[0]?.action).toBe('proposal.apply')
   })
 
@@ -633,9 +633,9 @@ describe('transaction_category.set', () => {
     vi.mocked(updateTransactionCategory).mockRejectedValue(new Error('Actual is down'))
     const row = await proposeCategoryChange()
 
-    await expect(applyProposal(db, { id: row.id, now: NOW })).rejects.toThrow(/Actual is down/)
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/Actual is down/)
 
-    expect(loadProposal(db, row.id)?.status).toBe('pending')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('pending')
     expect(loadAuditTrail(db)).toHaveLength(0)
   })
 
@@ -646,13 +646,13 @@ describe('transaction_category.set', () => {
     // window `applyRemote` is awaited in — the exact race `applyProposal`'s
     // re-check inside its transaction guards against.
     vi.mocked(updateTransactionCategory).mockImplementation(async () => {
-      rejectProposal(db, { id: row.id, now: NOW })
+      rejectProposal(db, TENANT_ID, { id: row.id, now: NOW })
     })
 
-    await expect(applyProposal(db, { id: row.id, now: NOW })).rejects.toThrow(/already rejected/)
+    await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/already rejected/)
 
     expect(updateTransactionCategory).toHaveBeenCalledTimes(1)
-    expect(loadProposal(db, row.id)?.status).toBe('rejected')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('rejected')
     // Only the reject's audit entry — the apply never committed.
     expect(loadAuditTrail(db)).toHaveLength(1)
     expect(loadAuditTrail(db)[0]?.action).toBe('proposal.reject')
@@ -664,7 +664,7 @@ describe('budget_amount.set', () => {
 
   const proposeBudgetChange = (
     amountCents: number,
-    overrides: Partial<Parameters<typeof createProposal>[1]> = {},
+    overrides: Partial<Parameters<typeof createProposal>[2]> = {},
   ): Promise<ProposalRow> =>
     propose({ amountCents }, { type: 'budget_amount.set', targetRef: target, ...overrides })
 
@@ -695,14 +695,14 @@ describe('budget_amount.set', () => {
 
   it('names the target with the category and the month', async () => {
     const row = await proposeBudgetChange(15_000)
-    expect(renderProposal(db, row, 'en').targetName).toBe('Groceries (2026-03)')
+    expect(renderProposal(db, TENANT_ID, row, 'en').targetName).toBe('Groceries (2026-03)')
   })
 
   it('applies by writing the amount to Actual, without patching the local mirror', async () => {
     vi.mocked(setCategoryBudgetAmount).mockResolvedValue(undefined)
     const row = await proposeBudgetChange(15_000)
 
-    const result = await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    const result = await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     expect(setCategoryBudgetAmount).toHaveBeenCalledWith(db, TENANT_ID, MONTH, 'food', 15_000)
     expect(result.fields).toEqual([
@@ -714,7 +714,7 @@ describe('budget_amount.set', () => {
   })
 
   it('pendingBudgetProposals lists only that month\'s pending budget_amount.set rows, oldest first', async () => {
-    const other = await createProposal(db, {
+    const other = await createProposal(db, TENANT_ID, {
       type: 'budget_amount.set',
       targetRef: encodeBudgetTarget('rent', MONTH),
       payload: { amountCents: 15_000 },
@@ -723,8 +723,8 @@ describe('budget_amount.set', () => {
     })
     const first = await proposeBudgetChange(15_000, { now: new Date('2026-03-11T09:00:00Z') })
     // A different month, and a different proposal type, must both be excluded.
-    seedMonth(db, '2026-04', { facts: [fact('2026-04', 'food')] })
-    await createProposal(db, {
+    seedMonth(db, TENANT_ID, '2026-04', { facts: [fact('2026-04', 'food')] })
+    await createProposal(db, TENANT_ID, {
       type: 'budget_amount.set',
       targetRef: encodeBudgetTarget('food', '2026-04'),
       payload: { amountCents: 16_000 },
@@ -732,7 +732,7 @@ describe('budget_amount.set', () => {
     })
     await propose({ nature: 'variable' })
 
-    const rows = pendingBudgetProposals(db, MONTH)
+    const rows = pendingBudgetProposals(db, TENANT_ID, MONTH)
 
     expect(rows.map((row) => row.id)).toEqual([other.id, first.id])
   })
@@ -742,17 +742,17 @@ describe('adjustProposal', () => {
   const target = encodeBudgetTarget('food', MONTH)
 
   const proposeBudgetChange = (amountCents: number): Promise<ProposalRow> =>
-    createProposal(db, { type: 'budget_amount.set', targetRef: target, payload: { amountCents }, runId, now: NOW })
+    createProposal(db, TENANT_ID, { type: 'budget_amount.set', targetRef: target, payload: { amountCents }, runId, now: NOW })
 
   it('supersedes the original with a fresh proposal at the adjusted amount', async () => {
     const original = await proposeBudgetChange(15_000)
 
-    const result = await adjustProposal(db, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
+    const result = await adjustProposal(db, TENANT_ID, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
 
     expect(result.status).toBe('pending')
     expect(result.id).not.toBe(original.id)
-    expect(loadProposal(db, original.id)?.status).toBe('expired')
-    const adjusted = loadProposal(db, result.id)
+    expect(loadProposal(db, TENANT_ID, original.id)?.status).toBe('expired')
+    const adjusted = loadProposal(db, TENANT_ID, result.id)
     expect(storedDiff(adjusted as ProposalRow)?.fields).toEqual([
       { field: 'amount', before: formatMoney(12_000), after: formatMoney(16_000) },
     ])
@@ -761,14 +761,14 @@ describe('adjustProposal', () => {
   it('rejects the original instead of erroring when the adjustment matches what is already budgeted', async () => {
     const original = await proposeBudgetChange(15_000)
 
-    const result = await adjustProposal(db, { id: original.id, amountCents: 12_000, userId: 'u1', now: NOW })
+    const result = await adjustProposal(db, TENANT_ID, { id: original.id, amountCents: 12_000, userId: 'u1', now: NOW })
 
     expect(result).toEqual({ id: original.id, status: 'rejected' })
-    expect(loadProposal(db, original.id)?.status).toBe('rejected')
+    expect(loadProposal(db, TENANT_ID, original.id)?.status).toBe('rejected')
   })
 
   it('says the owner set this amount, replacing whatever explained the old one (#273)', async () => {
-    const original = await createProposal(db, {
+    const original = await createProposal(db, TENANT_ID, {
       type: 'budget_amount.set',
       targetRef: target,
       payload: { amountCents: 15_000 },
@@ -779,37 +779,37 @@ describe('adjustProposal', () => {
       why: { source: 'ai', text: 'Your note mentions a dentist visit.', locale: 'en' },
     })
 
-    const result = await adjustProposal(db, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
+    const result = await adjustProposal(db, TENANT_ID, { id: original.id, amountCents: 16_000, userId: 'u1', now: NOW })
 
-    const adjusted = loadProposal(db, result.id) as ProposalRow
+    const adjusted = loadProposal(db, TENANT_ID, result.id) as ProposalRow
     expect(storedWhy(adjusted)).toEqual({ source: 'rule', code: 'owner_edit' })
-    expect(renderProposal(db, adjusted, 'en').explanation).toBe('You set this amount yourself.')
+    expect(renderProposal(db, TENANT_ID, adjusted, 'en').explanation).toBe('You set this amount yourself.')
   })
 
   it('refuses a proposal that is not budget_amount.set', async () => {
     const row = await propose({ nature: 'variable' })
-    await expect(adjustProposal(db, { id: row.id, amountCents: 1_000 })).rejects.toThrow(/not budget_amount\.set/)
+    await expect(adjustProposal(db, TENANT_ID, { id: row.id, amountCents: 1_000 })).rejects.toThrow(/not budget_amount\.set/)
   })
 
   it('refuses one that was already decided', async () => {
     const original = await proposeBudgetChange(15_000)
-    rejectProposal(db, { id: original.id, now: NOW })
+    rejectProposal(db, TENANT_ID, { id: original.id, now: NOW })
 
-    await expect(adjustProposal(db, { id: original.id, amountCents: 16_000 })).rejects.toThrow(/already rejected/)
+    await expect(adjustProposal(db, TENANT_ID, { id: original.id, amountCents: 16_000 })).rejects.toThrow(/already rejected/)
   })
 
   it('refuses an id that does not exist', async () => {
-    await expect(adjustProposal(db, { id: 'nope', amountCents: 1_000 })).rejects.toThrow(/does not exist/)
+    await expect(adjustProposal(db, TENANT_ID, { id: 'nope', amountCents: 1_000 })).rejects.toThrow(/does not exist/)
   })
 })
 
 describe('rejectProposal', () => {
   it('records the decision without changing anything', async () => {
     const row = await propose({ nature: 'variable' })
-    const rejected = rejectProposal(db, { id: row.id, userId: 'u1', now: NOW })
+    const rejected = rejectProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
     expect(rejected.status).toBe('rejected')
-    expect(loadProposal(db, row.id)?.status).toBe('rejected')
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('rejected')
     expect(metaOf('food').nature).toBeNull()
 
     const entry = loadAuditTrail(db)[0]
@@ -820,18 +820,18 @@ describe('rejectProposal', () => {
 
   it('refuses one that was already decided', async () => {
     const row = await propose({ nature: 'variable' })
-    rejectProposal(db, { id: row.id, now: NOW })
+    rejectProposal(db, TENANT_ID, { id: row.id, now: NOW })
 
-    expect(() => rejectProposal(db, { id: row.id, now: NOW })).toThrow(/already rejected/)
+    expect(() => rejectProposal(db, TENANT_ID, { id: row.id, now: NOW })).toThrow(/already rejected/)
   })
 
   it('frees the target for a fresh proposal next month', async () => {
     const first = await propose({ nature: 'variable' })
-    rejectProposal(db, { id: first.id, now: NOW })
+    rejectProposal(db, TENANT_ID, { id: first.id, now: NOW })
 
     const second = await propose({ nature: 'fixed' })
-    expect(pendingProposals(db).map((row) => row.id)).toEqual([second.id])
-    expect(proposalHistory(db, 'food')).toHaveLength(2)
+    expect(pendingProposals(db, TENANT_ID).map((row) => row.id)).toEqual([second.id])
+    expect(proposalHistory(db, TENANT_ID, 'food')).toHaveLength(2)
   })
 })
 
@@ -841,38 +841,38 @@ describe('expireProposals', () => {
     const row = await propose({ nature: 'variable' })
     const later = new Date((row.expiresAt as Date).getTime() + 1_000)
 
-    expect(expireProposals(db, later)).toBe(1)
-    expect(loadProposal(db, row.id)?.status).toBe('expired')
+    expect(expireProposals(db, TENANT_ID, later)).toBe(1)
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('expired')
     expect(loadAuditTrail(db)).toHaveLength(0)
   })
 
   it('leaves a proposal that is still current alone', async () => {
     await propose({ nature: 'variable' })
-    expect(expireProposals(db, NOW)).toBe(0)
+    expect(expireProposals(db, TENANT_ID, NOW)).toBe(0)
   })
 
   it('is safe to run twice', async () => {
     const row = await propose({ nature: 'variable' })
     const later = new Date((row.expiresAt as Date).getTime() + 1_000)
 
-    expireProposals(db, later)
-    expect(expireProposals(db, later)).toBe(0)
+    expireProposals(db, TENANT_ID, later)
+    expect(expireProposals(db, TENANT_ID, later)).toBe(0)
   })
 
   it('ignores one that was already applied', async () => {
     const row = await propose({ nature: 'variable' })
-    await applyProposal(db, { id: row.id, now: NOW })
+    await applyProposal(db, TENANT_ID, { id: row.id, now: NOW })
     const later = new Date((row.expiresAt as Date).getTime() + 1_000)
 
-    expireProposals(db, later)
-    expect(loadProposal(db, row.id)?.status).toBe('applied')
+    expireProposals(db, TENANT_ID, later)
+    expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('applied')
   })
 
   it('never expires a proposal without a deadline', async () => {
     const row = await propose({ nature: 'variable' })
     ctx.sqlite.prepare('update proposals set expires_at = null where id = ?').run(row.id)
 
-    expect(expireProposals(db, new Date('2030-01-01'))).toBe(0)
+    expect(expireProposals(db, TENANT_ID, new Date('2030-01-01'))).toBe(0)
     expect(db.select().from(proposals).all()[0]?.status).toBe('pending')
   })
 })

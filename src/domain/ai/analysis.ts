@@ -37,7 +37,6 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiFindings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import type { Signal } from '../aggregate/overspend.ts'
@@ -262,11 +261,12 @@ export interface PreparedMonth {
 /** Null when the month has no facts, exactly as `collectBundle` reports it. */
 export function prepareMonth(
   db: Db,
+  tenantId: string,
   month: string,
   locale: string,
   caps: RankCaps = DEFAULT_CAPS,
 ): PreparedMonth | null {
-  const bundle = collectBundle(db, month, locale)
+  const bundle = collectBundle(db, tenantId, month, locale)
   if (bundle === null) return null
 
   const ranked = rankSignals(bundle.signals, caps)
@@ -436,7 +436,7 @@ export function estimateAnalysis(
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
   const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
-  const prepared = prepareMonth(db, options.month, locale)
+  const prepared = prepareMonth(db, tenantId, options.month, locale)
 
   if (prepared === null) {
     return {
@@ -451,7 +451,7 @@ export function estimateAnalysis(
 
   const payloadChars = JSON.stringify(prepared.payload).length
   const prompt = resolvePromptFor(db, locale, undefined)
-  const reused = findReusableRun(db, {
+  const reused = findReusableRun(db, tenantId, {
     kind: 'findings',
     period: options.month,
     locale,
@@ -519,7 +519,7 @@ export async function runAnalysis(
 
   const base = { month, locale, dropped: [] as DroppedItem[], clarifications: [], queued: 0 }
 
-  const prepared = prepareMonth(db, month, locale, options.caps ?? DEFAULT_CAPS)
+  const prepared = prepareMonth(db, tenantId, month, locale, options.caps ?? DEFAULT_CAPS)
   if (prepared === null) {
     log.info({ month }, 'no facts for the month; analysis skipped')
     return {
@@ -541,7 +541,7 @@ export async function runAnalysis(
   const prompt = resolvePromptFor(db, locale, options.promptId)
 
   if (options.force !== true) {
-    const reused = findReusableRun(db, {
+    const reused = findReusableRun(db, tenantId, {
       kind,
       period: month,
       locale,
@@ -550,7 +550,7 @@ export async function runAnalysis(
       model,
     })
     if (reused !== null) {
-      const runId = recordRun(db, {
+      const runId = recordRun(db, tenantId, {
         kind,
         model,
         locale,
@@ -580,7 +580,7 @@ export async function runAnalysis(
   if (!decision.allowed) {
     // Recorded at zero cost: nothing was sent. The payload is stored anyway, so
     // the audit view shows what *would* have gone out.
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind,
       model,
       locale,
@@ -615,7 +615,7 @@ export async function runAnalysis(
     })
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind,
       model,
       locale,
@@ -646,7 +646,7 @@ export async function runAnalysis(
     grounded = groundResponse(parseAnalysisResponse(result.text), payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind,
       model: result.model,
       locale,
@@ -675,7 +675,7 @@ export async function runAnalysis(
   }
 
   const findings = renderGrounded(grounded.findings, sources, locale)
-  const runId = recordRun(db, {
+  const runId = recordRun(db, tenantId, {
     kind,
     model: result.model,
     locale,
@@ -688,7 +688,7 @@ export async function runAnalysis(
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
-  if (persist) persistFindings(db, runId, month, grounded.findings, sources)
+  if (persist) persistFindings(db, tenantId, runId, month, grounded.findings, sources)
 
   if (grounded.dropped.length > 0) {
     // Worth a log line at warn: a model returning findings nothing computed is
@@ -701,7 +701,7 @@ export async function runAnalysis(
   // function, and the one output of a run that accumulates value across months is
   // exactly the one a caller could forget to persist.
   const queued = persist
-    ? enqueueClarifications(db, {
+    ? enqueueClarifications(db, tenantId, {
         month,
         candidates: clarifications,
         runId,
@@ -734,12 +734,12 @@ export async function runAnalysis(
  */
 export function persistFindings(
   db: Db,
+  tenantId: string,
   runId: string,
   month: string,
   findings: readonly GroundedFinding[],
   sources: ReadonlyMap<string, Signal>,
 ): number {
-  const tenantId = getSoleTenantId(db)
   const rows = []
   for (const finding of findings) {
     const source = sources.get(signalKey(finding.code, finding.label))

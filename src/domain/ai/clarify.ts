@@ -31,7 +31,6 @@ import { CLARIFICATION_GUESS_VALUES } from '../../adapters/gemini/schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, clarificationQueue } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { recordAudit } from '../audit.ts'
@@ -179,18 +178,21 @@ function alreadyKnown(code: ClarificationCode, meta: CategoryMetaRow): boolean {
  * room for two, the two are the ones about the largest categories rather than the
  * two the model happened to mention first.
  */
-export function enqueueClarifications(db: Db, options: EnqueueOptions): EnqueueResult {
+export function enqueueClarifications(
+  db: Db,
+  tenantId: string,
+  options: EnqueueOptions,
+): EnqueueResult {
   const policy = options.policy ?? DEFAULT_CLARIFY_POLICY
   const now = options.now ?? new Date()
   const result: EnqueueResult = { enqueued: [], skipped: [] }
   if (options.candidates.length === 0) return result
 
-  const tenantId = getSoleTenantId(db)
-  const monthSpentCents = loadMonthTotals(db, [options.month])[0]?.spentCents ?? 0
+  const monthSpentCents = loadMonthTotals(db, tenantId, [options.month])[0]?.spentCents ?? 0
   const spentFor = new Map(
-    loadFacts(db, options.month).map((fact) => [fact.categoryId, fact.spentCents]),
+    loadFacts(db, tenantId, options.month).map((fact) => [fact.categoryId, fact.spentCents]),
   )
-  const meta = loadCategoryMeta(db)
+  const meta = loadCategoryMeta(db, tenantId)
 
   const categoryIds = [...new Set(options.candidates.map((one) => one.categoryId))]
   const history = db
@@ -200,13 +202,15 @@ export function enqueueClarifications(db: Db, options: EnqueueOptions): EnqueueR
       status: clarificationQueue.status,
     })
     .from(clarificationQueue)
-    .where(inArray(clarificationQueue.categoryId, categoryIds))
+    .where(
+      and(eq(clarificationQueue.tenantId, tenantId), inArray(clarificationQueue.categoryId, categoryIds)),
+    )
     .all()
   const asked = new Map(history.map((row) => [`${row.categoryId} ${row.questionCode}`, row.status]))
 
   // Queue-wide, not per category: the cap exists to bound what a person is asked
   // in total, and five questions about one envelope is worse than five about five.
-  const openNow = openQuestionCount(db)
+  const openNow = openQuestionCount(db, tenantId)
 
   const scored = options.candidates
     .map((candidate) => ({
@@ -349,14 +353,18 @@ export function choicesFor(code: ClarificationCode, locale: string): AnswerChoic
  */
 export function openQuestions(
   db: Db,
+  tenantId: string,
   locale: string = config.DEFAULT_LOCALE,
   limit = 20,
 ): ClarificationCard[] {
   const rows = db
     .select({ queue: clarificationQueue, name: categoryMeta.nameSnapshot })
     .from(clarificationQueue)
-    .leftJoin(categoryMeta, eq(categoryMeta.categoryId, clarificationQueue.categoryId))
-    .where(eq(clarificationQueue.status, 'open'))
+    .leftJoin(
+      categoryMeta,
+      and(eq(categoryMeta.categoryId, clarificationQueue.categoryId), eq(categoryMeta.tenantId, tenantId)),
+    )
+    .where(and(eq(clarificationQueue.tenantId, tenantId), eq(clarificationQueue.status, 'open')))
     .all()
 
   return rows
@@ -391,11 +399,11 @@ export function openQuestions(
 }
 
 /** How many questions are waiting. For a badge, without loading the cards. */
-export function openQuestionCount(db: Db): number {
+export function openQuestionCount(db: Db, tenantId: string): number {
   return db
     .select({ id: clarificationQueue.id })
     .from(clarificationQueue)
-    .where(eq(clarificationQueue.status, 'open'))
+    .where(and(eq(clarificationQueue.tenantId, tenantId), eq(clarificationQueue.status, 'open')))
     .all().length
 }
 
@@ -472,15 +480,16 @@ export interface AnswerResult {
  * question stayed open would be asked again, and a question marked answered whose
  * value was rolled back would never be asked again.
  */
-export function answerClarification(db: Db, options: AnswerOptions): AnswerResult {
+export function answerClarification(
+  db: Db,
+  tenantId: string,
+  options: AnswerOptions,
+): AnswerResult {
   const now = options.now ?? new Date()
 
   return db.transaction((tx) => {
-    const row = tx
-      .select()
-      .from(clarificationQueue)
-      .where(eq(clarificationQueue.id, options.id))
-      .get()
+    const matches = and(eq(clarificationQueue.id, options.id), eq(clarificationQueue.tenantId, tenantId))
+    const row = tx.select().from(clarificationQueue).where(matches).get()
     if (row === undefined) throw new ClarifyError(`clarification ${options.id} does not exist`)
     if (row.status !== 'open') {
       throw new ClarifyError(`clarification ${options.id} is already ${row.status}`)
@@ -492,26 +501,17 @@ export function answerClarification(db: Db, options: AnswerOptions): AnswerResul
     const field = ANSWER_FIELD[code]
     const after = parseAnswer(code, options.value)
 
-    const meta = tx
-      .select()
-      .from(categoryMeta)
-      .where(eq(categoryMeta.categoryId, row.categoryId))
-      .get()
+    const metaMatches = and(eq(categoryMeta.categoryId, row.categoryId), eq(categoryMeta.tenantId, tenantId))
+    const meta = tx.select().from(categoryMeta).where(metaMatches).get()
     if (meta === undefined) {
       throw new ClarifyError(`category ${row.categoryId} has no metadata row`)
     }
     const before = (meta[field] ?? null) as string | boolean | null
 
     const confidence = Math.min(100, meta.confidence + CONFIDENCE_PER_ANSWER)
-    tx.update(categoryMeta)
-      .set({ [field]: after, confidence, updatedAt: now })
-      .where(eq(categoryMeta.categoryId, row.categoryId))
-      .run()
+    tx.update(categoryMeta).set({ [field]: after, confidence, updatedAt: now }).where(metaMatches).run()
 
-    tx.update(clarificationQueue)
-      .set({ status: 'answered', answeredAt: now })
-      .where(eq(clarificationQueue.id, row.id))
-      .run()
+    tx.update(clarificationQueue).set({ status: 'answered', answeredAt: now }).where(matches).run()
 
     const auditId = recordAudit(tx, {
       action: 'clarification.answer',
@@ -541,23 +541,21 @@ export interface DismissOptions {
  * the row that stops the question being re-asked should be traceable to whoever
  * made it.
  */
-export function dismissClarification(db: Db, options: DismissOptions): void {
+export function dismissClarification(db: Db, tenantId: string, options: DismissOptions): void {
   const now = options.now ?? new Date()
 
   db.transaction((tx) => {
-    const row = tx
-      .select()
-      .from(clarificationQueue)
-      .where(and(eq(clarificationQueue.id, options.id), eq(clarificationQueue.status, 'open')))
-      .get()
+    const matches = and(
+      eq(clarificationQueue.id, options.id),
+      eq(clarificationQueue.tenantId, tenantId),
+      eq(clarificationQueue.status, 'open'),
+    )
+    const row = tx.select().from(clarificationQueue).where(matches).get()
     if (row === undefined) {
       throw new ClarifyError(`clarification ${options.id} is not open`)
     }
 
-    tx.update(clarificationQueue)
-      .set({ status: 'dismissed', answeredAt: now })
-      .where(eq(clarificationQueue.id, row.id))
-      .run()
+    tx.update(clarificationQueue).set({ status: 'dismissed', answeredAt: now }).where(matches).run()
 
     recordAudit(tx, {
       action: 'clarification.dismiss',

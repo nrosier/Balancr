@@ -84,7 +84,7 @@ export function narrativePeriod(now: Date): string {
 
 async function run({ db, tenantId, now, log, force }: JobContext): Promise<JobDetail> {
   // First, because it is free and correct even on a night with no network.
-  const expired = expireProposals(db, now)
+  const expired = expireProposals(db, tenantId, now)
 
   // One check for all three ways the layer can be off, so the ops row names the
   // variable to change rather than saying "0 findings" for the third night running.
@@ -103,7 +103,7 @@ async function run({ db, tenantId, now, log, force }: JobContext): Promise<JobDe
     }
   }
 
-  const latest = latestStoredMonth(db)
+  const latest = latestStoredMonth(db, tenantId)
   if (latest === null) {
     // Before the first sync there is nothing to analyse. A state to report, not a
     // failure: the ops table should say "ok, 0 months".

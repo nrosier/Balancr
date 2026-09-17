@@ -41,12 +41,14 @@ import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: ReturnType<typeof createTestDb>['db']
+let tenantId: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
   importEnvIntegrationsOnce(db as never)
+  tenantId = getSoleTenantId(db)
 })
 
 const MODEL = 'gemini-3.7-flash'
@@ -88,12 +90,12 @@ function at(id: string, month: string): string {
 
 /** A run recorded in a given month. */
 const runIn = (month: string, overrides: Partial<RecordRun> = {}): string =>
-  at(recordRun(db, run(overrides)), month)
+  at(recordRun(db, tenantId, run(overrides)), month)
 
 describe('recordRun', () => {
   it('stores the payload verbatim, which is what makes the audit possible', () => {
     const payload = { month: '2026-03', categories: [{ label: 'c1', name: 'Groceries' }] }
-    const id = recordRun(db, run({ payload }))
+    const id = recordRun(db, tenantId, run({ payload }))
 
     // Not a summary, not a hash: the JSON, so a person can look for a payee.
     expect(loadRunPayload(db, id)).toEqual(payload)
@@ -101,7 +103,7 @@ describe('recordRun', () => {
   })
 
   it('derives the cost from the model and the tokens', () => {
-    const id = recordRun(db, run())
+    const id = recordRun(db, tenantId, run())
     expect(loadRun(db, id)?.costMicroEur).toBe(
       costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
     )
@@ -109,7 +111,7 @@ describe('recordRun', () => {
 
   it('records a refused run at zero cost, with the payload it would have sent', () => {
     // A missing answer that explains itself, rather than one that is just absent.
-    const id = recordRun(db, refused('capped'))
+    const id = recordRun(db, tenantId, refused('capped'))
     const row = loadRun(db, id)
     expect(row?.status).toBe('capped')
     expect(row?.costMicroEur).toBe(0)
@@ -118,22 +120,22 @@ describe('recordRun', () => {
   })
 
   it('prices an unknown model rather than treating it as free', () => {
-    const id = recordRun(db, run({ model: 'gemini-9-something' }))
+    const id = recordRun(db, tenantId, run({ model: 'gemini-9-something' }))
     expect(loadRun(db, id)?.costMicroEur).toBeGreaterThan(0)
   })
 
   it('accepts an override for a price we do not model', () => {
-    const id = recordRun(db, run({ costMicroEurOverride: 4_242 }))
+    const id = recordRun(db, tenantId, run({ costMicroEurOverride: 4_242 }))
     expect(loadRun(db, id)?.costMicroEur).toBe(4_242)
   })
 
   it('keeps the error text on a failed run', () => {
-    const id = recordRun(db, run({ status: 'error', error: 'model response was not JSON' }))
+    const id = recordRun(db, tenantId, run({ status: 'error', error: 'model response was not JSON' }))
     expect(loadRun(db, id)?.error).toBe('model response was not JSON')
   })
 
   it('leaves promptId null for a run on the built-in prompt', () => {
-    const id = recordRun(db, run())
+    const id = recordRun(db, tenantId, run())
     expect(loadRun(db, id)?.promptId).toBeNull()
   })
 })
@@ -147,7 +149,7 @@ describe('loadRun and loadRunPayload', () => {
   it('returns null rather than throwing on unreadable JSON', () => {
     // The audit view: a row whose payload cannot be parsed is itself the finding,
     // and it must not take the page down.
-    const id = recordRun(db, run())
+    const id = recordRun(db, tenantId, run())
     ctx.sqlite.prepare('update ai_runs set payload_json = ? where id = ?').run('{oops', id)
     expect(loadRunPayload(db, id)).toBeNull()
   })
@@ -155,19 +157,19 @@ describe('loadRun and loadRunPayload', () => {
 
 describe('latestSuccessfulRun', () => {
   it('is the newest ok run of that kind', () => {
-    const older = recordRun(db, run())
+    const older = recordRun(db, tenantId, run())
     backdate(older, new Date('2026-03-01T00:00:00Z'))
-    const newer = recordRun(db, run())
+    const newer = recordRun(db, tenantId, run())
     backdate(newer, new Date('2026-03-02T00:00:00Z'))
 
     expect(latestSuccessfulRun(db, 'findings')?.id).toBe(newer)
   })
 
   it('ignores errored and capped runs, which have no usable output', () => {
-    const good = recordRun(db, run())
+    const good = recordRun(db, tenantId, run())
     backdate(good, new Date('2026-03-01T00:00:00Z'))
     for (const status of ['error', 'capped', 'blocked'] as const) {
-      const id = recordRun(db, run({ status }))
+      const id = recordRun(db, tenantId, run({ status }))
       backdate(id, new Date('2026-03-05T00:00:00Z'))
     }
 
@@ -175,7 +177,7 @@ describe('latestSuccessfulRun', () => {
   })
 
   it('does not cross kinds', () => {
-    recordRun(db, run({ kind: 'narrative' }))
+    recordRun(db, tenantId, run({ kind: 'narrative' }))
     expect(latestSuccessfulRun(db, 'findings')).toBeNull()
   })
 
@@ -225,8 +227,8 @@ describe('findReusableRun', () => {
     })
 
   it('matches a run agreeing on every field of the key', () => {
-    const id = recordRun(db, source())
-    expect(findReusableRun(db, key())?.id).toBe(id)
+    const id = recordRun(db, tenantId, source())
+    expect(findReusableRun(db, tenantId, key())?.id).toBe(id)
   })
 
   it.each([
@@ -236,47 +238,47 @@ describe('findReusableRun', () => {
     ['payloadHash', { payloadHash: 'hash-b' }],
     ['model', { model: 'gemini-3.1-pro-preview' }],
   ] as const)('misses when %s differs', (_field, override) => {
-    recordRun(db, source(override))
-    expect(findReusableRun(db, key())).toBeNull()
+    recordRun(db, tenantId, source(override))
+    expect(findReusableRun(db, tenantId, key())).toBeNull()
   })
 
   it('misses when promptId differs', () => {
-    recordRun(db, source({ promptId: promptB }))
-    expect(findReusableRun(db, key())).toBeNull()
+    recordRun(db, tenantId, source({ promptId: promptB }))
+    expect(findReusableRun(db, tenantId, key())).toBeNull()
   })
 
   it('matches a null promptId only against a null promptId', () => {
-    recordRun(db, source({ promptId: null }))
-    expect(findReusableRun(db, key({ promptId: null }))).not.toBeNull()
-    expect(findReusableRun(db, key())).toBeNull()
+    recordRun(db, tenantId, source({ promptId: null }))
+    expect(findReusableRun(db, tenantId, key({ promptId: null }))).not.toBeNull()
+    expect(findReusableRun(db, tenantId, key())).toBeNull()
   })
 
   it.each(['capped', 'error', 'blocked', 'reused'] as const)(
     'never treats a %s run as a source',
     (status) => {
-      recordRun(db, source({ status }))
-      expect(findReusableRun(db, key())).toBeNull()
+      recordRun(db, tenantId, source({ status }))
+      expect(findReusableRun(db, tenantId, key())).toBeNull()
     },
   )
 
   it('returns the newest match when several agree', () => {
-    const older = recordRun(db, source())
+    const older = recordRun(db, tenantId, source())
     backdate(older, new Date('2026-03-01T00:00:00Z'))
-    const newer = recordRun(db, source())
+    const newer = recordRun(db, tenantId, source())
     backdate(newer, new Date('2026-03-05T00:00:00Z'))
 
-    expect(findReusableRun(db, key())?.id).toBe(newer)
+    expect(findReusableRun(db, tenantId, key())?.id).toBe(newer)
   })
 
   it('is null on an empty ledger', () => {
-    expect(findReusableRun(db, key())).toBeNull()
+    expect(findReusableRun(db, tenantId, key())).toBeNull()
   })
 })
 
 describe('recentRuns', () => {
   it('is newest first and honours the limit', () => {
     for (let day = 1; day <= 5; day += 1) {
-      const id = recordRun(db, run())
+      const id = recordRun(db, tenantId, run())
       backdate(id, new Date(`2026-03-0${day}T00:00:00Z`))
     }
 
@@ -290,15 +292,15 @@ describe('recentRuns', () => {
   })
 
   it('includes every status, because the spend page shows refusals too', () => {
-    recordRun(db, run({ status: 'capped' }))
-    recordRun(db, run({ status: 'error' }))
+    recordRun(db, tenantId, run({ status: 'capped' }))
+    recordRun(db, tenantId, run({ status: 'error' }))
     expect(recentRuns(db)).toHaveLength(2)
   })
 
   it('scoped to a month, keeps that month and every run about no month at all (#158)', () => {
-    const august = recordRun(db, run({ period: '2026-08' }))
-    const july = recordRun(db, run({ period: '2026-07' }))
-    const chat = recordRun(db, run({ period: null }))
+    const august = recordRun(db, tenantId, run({ period: '2026-08' }))
+    const july = recordRun(db, tenantId, run({ period: '2026-07' }))
+    const chat = recordRun(db, tenantId, run({ period: null }))
 
     const rows = recentRuns(db, 50, '2026-08').map((row) => row.id)
     expect(rows).toContain(august)
@@ -307,17 +309,17 @@ describe('recentRuns', () => {
   })
 
   it('leaves every run in when no period is asked for, the spend page ledger', () => {
-    recordRun(db, run({ period: '2026-08' }))
-    recordRun(db, run({ period: '2026-07' }))
-    recordRun(db, run({ period: null }))
+    recordRun(db, tenantId, run({ period: '2026-08' }))
+    recordRun(db, tenantId, run({ period: '2026-07' }))
+    recordRun(db, tenantId, run({ period: null }))
     expect(recentRuns(db, 50)).toHaveLength(3)
   })
 
   it('scoped to a year, keeps every month in it and every run about no month at all (#345)', () => {
-    const august2026 = recordRun(db, run({ period: '2026-08' }))
-    const january2026 = recordRun(db, run({ period: '2026-01' }))
-    const august2025 = recordRun(db, run({ period: '2025-08' }))
-    const chat = recordRun(db, run({ period: null }))
+    const august2026 = recordRun(db, tenantId, run({ period: '2026-08' }))
+    const january2026 = recordRun(db, tenantId, run({ period: '2026-01' }))
+    const august2025 = recordRun(db, tenantId, run({ period: '2025-08' }))
+    const chat = recordRun(db, tenantId, run({ period: null }))
 
     const rows = recentRuns(db, 50, { kind: 'year', value: '2026' }).map((row) => row.id)
     expect(rows).toContain(august2026)
@@ -327,8 +329,8 @@ describe('recentRuns', () => {
   })
 
   it('accepts a month via the same {kind, value} shape as a plain string', () => {
-    const august = recordRun(db, run({ period: '2026-08' }))
-    const july = recordRun(db, run({ period: '2026-07' }))
+    const august = recordRun(db, tenantId, run({ period: '2026-08' }))
+    const july = recordRun(db, tenantId, run({ period: '2026-07' }))
 
     const rows = recentRuns(db, 50, { kind: 'month', value: '2026-08' }).map((row) => row.id)
     expect(rows).toContain(august)
@@ -365,7 +367,7 @@ describe('ai_spend_monthly', () => {
     // An errored run still cost money; a capped one costs zero. Summing the
     // column is therefore right in both directions, with no status filter.
     runIn('2026-03', { status: 'error' })
-    at(recordRun(db, refused('capped')), '2026-03')
+    at(recordRun(db, tenantId, refused('capped')), '2026-03')
 
     const month = loadSpendMonth(db, '2026-03')
     expect(month.runCount).toBe(2)
@@ -386,7 +388,7 @@ describe('ai_spend_monthly', () => {
   it('groups by the UTC month, the same rule spendMonthOf uses', () => {
     // 2026-03-01 00:30 Brussels is still February in UTC. The boundary hour is
     // the documented cost of a view SQLite can actually compute.
-    const id = recordRun(db, run())
+    const id = recordRun(db, tenantId, run())
     backdate(id, new Date('2026-02-28T23:30:00Z'))
 
     expect(loadSpendMonth(db, '2026-02').runCount).toBe(1)

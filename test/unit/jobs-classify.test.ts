@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import pino from 'pino'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   loadAccountMap,
   syncAccountMap,
@@ -25,10 +26,12 @@ import { classifyGhostfolio } from '../../src/jobs/sync.ts'
 const log = pino({ level: 'silent' })
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
 })
 
 const CURRENT_CENTS = 124_055
@@ -59,7 +62,7 @@ const brokerEvidence: GhostfolioAccountEvidence = {
  * the state this pass has to correct.
  */
 const seed = (): void => {
-  syncAccountMap(ctx.db, [
+  syncAccountMap(ctx.db, TENANT_ID, [
     { source: 'actual', externalId: 'a-current', name: 'Argenta zichtrekening' },
     { source: 'ghostfolio', externalId: 'g-current', name: 'Argenta zichtrekening' },
     { source: 'ghostfolio', externalId: 'g-broker', name: 'Bolero' },
@@ -67,7 +70,7 @@ const seed = (): void => {
 }
 
 const byExternalId = (externalId: string): AccountMapRow => {
-  const row = loadAccountMap(ctx.db).find((candidate) => candidate.externalId === externalId)
+  const row = loadAccountMap(ctx.db, TENANT_ID).find((candidate) => candidate.externalId === externalId)
   if (row === undefined) throw new Error(`no row for ${externalId}`)
   return row
 }
@@ -75,7 +78,7 @@ const byExternalId = (externalId: string): AccountMapRow => {
 describe('classifyGhostfolio', () => {
   it('relabels the mirror, leaves the broker, and groups the pair in one pass', () => {
     seed()
-    const result = classifyGhostfolio(ctx.db, [mirrorEvidence, brokerEvidence], log)
+    const result = classifyGhostfolio(ctx.db, TENANT_ID, [mirrorEvidence, brokerEvidence], log)
 
     expect(result).toEqual({ reclassified: 1, mirrored: 1 })
     expect(byExternalId('g-current').kind).toBe('cash')
@@ -90,8 +93,8 @@ describe('classifyGhostfolio', () => {
 
   it('is quiet and idempotent the second time', () => {
     seed()
-    classifyGhostfolio(ctx.db, [mirrorEvidence, brokerEvidence], log)
-    const again = classifyGhostfolio(ctx.db, [mirrorEvidence, brokerEvidence], log)
+    classifyGhostfolio(ctx.db, TENANT_ID, [mirrorEvidence, brokerEvidence], log)
+    const again = classifyGhostfolio(ctx.db, TENANT_ID, [mirrorEvidence, brokerEvidence], log)
 
     // Nothing changed, so nothing is reported: a job detail that claimed a
     // relabelling every night would make the one real one impossible to notice.
@@ -102,8 +105,8 @@ describe('classifyGhostfolio', () => {
     // Someone has said this account holds positions. The pass still runs, still
     // stamps the row, and must not report a change it did not make.
     seed()
-    updateAccountMap(ctx.db, byExternalId('g-current').id, { kind: 'investment' })
-    const result = classifyGhostfolio(ctx.db, [mirrorEvidence, brokerEvidence], log)
+    updateAccountMap(ctx.db, TENANT_ID, byExternalId('g-current').id, { kind: 'investment' })
+    const result = classifyGhostfolio(ctx.db, TENANT_ID, [mirrorEvidence, brokerEvidence], log)
 
     expect(result).toEqual({ reclassified: 0, mirrored: 0 })
     expect(byExternalId('g-current').kind).toBe('investment')
@@ -114,7 +117,7 @@ describe('classifyGhostfolio', () => {
 
   it('stamps every account it looked at, whatever it concluded', () => {
     seed()
-    classifyGhostfolio(ctx.db, [mirrorEvidence, brokerEvidence], log)
+    classifyGhostfolio(ctx.db, TENANT_ID, [mirrorEvidence, brokerEvidence], log)
 
     // `classifiedAt` is how the panel says when a label was last derived, so it has
     // to move for the account that was already right as well.
@@ -128,7 +131,7 @@ describe('classifyGhostfolio', () => {
     // An outage must not relabel or group anything: an empty evidence list is "no
     // news", and treating it as "no investments" would regroup the whole map.
     seed()
-    expect(classifyGhostfolio(ctx.db, [], log)).toEqual({ reclassified: 0, mirrored: 0 })
+    expect(classifyGhostfolio(ctx.db, TENANT_ID, [], log)).toEqual({ reclassified: 0, mirrored: 0 })
     expect(byExternalId('g-current').kind).toBe('investment')
     expect(byExternalId('g-current').dedupeGroup).toBeNull()
   })
@@ -137,6 +140,6 @@ describe('classifyGhostfolio', () => {
     seed()
     const stranger: GhostfolioAccountEvidence = { ...mirrorEvidence, externalId: 'g-unknown' }
 
-    expect(classifyGhostfolio(ctx.db, [stranger], log)).toEqual({ reclassified: 0, mirrored: 0 })
+    expect(classifyGhostfolio(ctx.db, TENANT_ID, [stranger], log)).toEqual({ reclassified: 0, mirrored: 0 })
   })
 })

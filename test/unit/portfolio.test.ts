@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   portfolioDetailsSchema,
   toCents,
@@ -687,26 +688,29 @@ describe('the Ghostfolio summary, as the probe reconciles against it', () => {
 
 describe('persistence', () => {
   let ctx: ReturnType<typeof createTestDb>
+  let TENANT_ID: string
 
   beforeEach(() => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
+    TENANT_ID = getSoleTenantId(ctx.db)
   })
 
   const snapshot = (date: string, ...symbols: string[]) =>
     toHoldingSnapshots(date, details(...symbols.map((symbol) => holding({ symbol }))), 'EUR')
 
   it('writes one row per holding', () => {
-    const result = persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A', 'B'))
+    const result = persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A', 'B'))
 
     expect(result).toEqual({ written: 2, removed: 0 })
-    expect(loadSnapshot(ctx.db, '2026-03-01').map((row) => row.instrument)).toEqual(['A', 'B'])
+    expect(loadSnapshot(ctx.db, TENANT_ID, '2026-03-01').map((row) => row.instrument)).toEqual(['A', 'B'])
   })
 
   it('corrects the day rather than duplicating it', () => {
-    persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A'))
     const again = persistPortfolioSnapshots(
       ctx.db,
+      TENANT_ID,
       '2026-03-01',
       toHoldingSnapshots(
         '2026-03-01',
@@ -716,46 +720,46 @@ describe('persistence', () => {
     )
 
     expect(again).toEqual({ written: 1, removed: 0 })
-    const rows = loadSnapshot(ctx.db, '2026-03-01')
+    const rows = loadSnapshot(ctx.db, TENANT_ID, '2026-03-01')
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ valueCents: 200_000, priceCents: 20_000 })
   })
 
   it('removes a position sold since the earlier pass', () => {
-    persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A', 'B'))
-    const again = persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A', 'B'))
+    const again = persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A'))
 
     expect(again).toEqual({ written: 1, removed: 1 })
-    expect(loadSnapshot(ctx.db, '2026-03-01').map((row) => row.instrument)).toEqual(['A'])
+    expect(loadSnapshot(ctx.db, TENANT_ID, '2026-03-01').map((row) => row.instrument)).toEqual(['A'])
   })
 
   it('clears the day when the portfolio is emptied', () => {
     // The empty-list branch: `notInArray` over nothing matches nothing in SQL, so
     // without it yesterday's holdings would stand as today's.
-    persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A'))
-    const again = persistPortfolioSnapshots(ctx.db, '2026-03-01', [])
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A'))
+    const again = persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', [])
 
     expect(again).toEqual({ written: 0, removed: 1 })
-    expect(loadSnapshot(ctx.db, '2026-03-01')).toEqual([])
+    expect(loadSnapshot(ctx.db, TENANT_ID, '2026-03-01')).toEqual([])
   })
 
   it('leaves other dates alone', () => {
-    persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A'))
-    persistPortfolioSnapshots(ctx.db, '2026-03-02', snapshot('2026-03-02', 'B'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-02', snapshot('2026-03-02', 'B'))
 
-    expect(loadSnapshot(ctx.db, '2026-03-01')).toHaveLength(1)
-    expect(loadSnapshot(ctx.db, '2026-03-02')).toHaveLength(1)
+    expect(loadSnapshot(ctx.db, TENANT_ID, '2026-03-01')).toHaveLength(1)
+    expect(loadSnapshot(ctx.db, TENANT_ID, '2026-03-02')).toHaveLength(1)
   })
 
   it('upserts the metrics row and round-trips the allocation', () => {
     const holdings = snapshot('2026-03-01', 'A')
-    persistPortfolioMetrics(ctx.db, computePortfolioMetrics('2026-03-01', holdings, null))
-    persistPortfolioMetrics(ctx.db, {
+    persistPortfolioMetrics(ctx.db, TENANT_ID, computePortfolioMetrics('2026-03-01', holdings, null))
+    persistPortfolioMetrics(ctx.db, TENANT_ID, {
       ...computePortfolioMetrics('2026-03-01', holdings, null),
       twrBp: 1_500,
     })
 
-    expect(loadPortfolioValueHistory(ctx.db)).toEqual([
+    expect(loadPortfolioValueHistory(ctx.db, TENANT_ID)).toEqual([
       { date: '2026-03-01', totalCents: 100_000 },
     ])
     const row = ctx.db.query.portfolioMetrics.findFirst().sync()
@@ -768,11 +772,11 @@ describe('persistence', () => {
   it('reports the latest snapshot date, and null before the first one', () => {
     // This is what the hygiene score reads to decide whether prices are stale;
     // "no snapshot at all" must be distinguishable from "an old one".
-    expect(latestSnapshotDate(ctx.db)).toBeNull()
+    expect(latestSnapshotDate(ctx.db, TENANT_ID)).toBeNull()
 
-    persistPortfolioSnapshots(ctx.db, '2026-03-01', snapshot('2026-03-01', 'A'))
-    persistPortfolioSnapshots(ctx.db, '2026-02-01', snapshot('2026-02-01', 'A'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-03-01', snapshot('2026-03-01', 'A'))
+    persistPortfolioSnapshots(ctx.db, TENANT_ID, '2026-02-01', snapshot('2026-02-01', 'A'))
 
-    expect(latestSnapshotDate(ctx.db)).toBe('2026-03-01')
+    expect(latestSnapshotDate(ctx.db, TENANT_ID)).toBe('2026-03-01')
   })
 })
