@@ -38,6 +38,7 @@ import { eq } from 'drizzle-orm'
 import { config } from '../../src/config.ts'
 import { prompts, tenantIntegrations } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: ReturnType<typeof createTestDb>['db']
@@ -98,13 +99,13 @@ describe('recordRun', () => {
     const id = recordRun(db, tenantId, run({ payload }))
 
     // Not a summary, not a hash: the JSON, so a person can look for a payee.
-    expect(loadRunPayload(db, id)).toEqual(payload)
-    expect(loadRun(db, id)?.payloadJson).toBe(JSON.stringify(payload))
+    expect(loadRunPayload(db, tenantId, id)).toEqual(payload)
+    expect(loadRun(db, tenantId, id)?.payloadJson).toBe(JSON.stringify(payload))
   })
 
   it('derives the cost from the model and the tokens', () => {
     const id = recordRun(db, tenantId, run())
-    expect(loadRun(db, id)?.costMicroEur).toBe(
+    expect(loadRun(db, tenantId, id)?.costMicroEur).toBe(
       costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
     )
   })
@@ -112,38 +113,38 @@ describe('recordRun', () => {
   it('records a refused run at zero cost, with the payload it would have sent', () => {
     // A missing answer that explains itself, rather than one that is just absent.
     const id = recordRun(db, tenantId, refused('capped'))
-    const row = loadRun(db, id)
+    const row = loadRun(db, tenantId, id)
     expect(row?.status).toBe('capped')
     expect(row?.costMicroEur).toBe(0)
     expect(row?.inputTokens).toBe(0)
-    expect(loadRunPayload(db, id)).not.toBeNull()
+    expect(loadRunPayload(db, tenantId, id)).not.toBeNull()
   })
 
   it('prices an unknown model rather than treating it as free', () => {
     const id = recordRun(db, tenantId, run({ model: 'gemini-9-something' }))
-    expect(loadRun(db, id)?.costMicroEur).toBeGreaterThan(0)
+    expect(loadRun(db, tenantId, id)?.costMicroEur).toBeGreaterThan(0)
   })
 
   it('accepts an override for a price we do not model', () => {
     const id = recordRun(db, tenantId, run({ costMicroEurOverride: 4_242 }))
-    expect(loadRun(db, id)?.costMicroEur).toBe(4_242)
+    expect(loadRun(db, tenantId, id)?.costMicroEur).toBe(4_242)
   })
 
   it('keeps the error text on a failed run', () => {
     const id = recordRun(db, tenantId, run({ status: 'error', error: 'model response was not JSON' }))
-    expect(loadRun(db, id)?.error).toBe('model response was not JSON')
+    expect(loadRun(db, tenantId, id)?.error).toBe('model response was not JSON')
   })
 
   it('leaves promptId null for a run on the built-in prompt', () => {
     const id = recordRun(db, tenantId, run())
-    expect(loadRun(db, id)?.promptId).toBeNull()
+    expect(loadRun(db, tenantId, id)?.promptId).toBeNull()
   })
 })
 
 describe('loadRun and loadRunPayload', () => {
   it('returns null for an id that does not exist', () => {
-    expect(loadRun(db, 'nope')).toBeNull()
-    expect(loadRunPayload(db, 'nope')).toBeNull()
+    expect(loadRun(db, tenantId, 'nope')).toBeNull()
+    expect(loadRunPayload(db, tenantId, 'nope')).toBeNull()
   })
 
   it('returns null rather than throwing on unreadable JSON', () => {
@@ -151,7 +152,15 @@ describe('loadRun and loadRunPayload', () => {
     // and it must not take the page down.
     const id = recordRun(db, tenantId, run())
     ctx.sqlite.prepare('update ai_runs set payload_json = ? where id = ?').run('{oops', id)
-    expect(loadRunPayload(db, id)).toBeNull()
+    expect(loadRunPayload(db, tenantId, id)).toBeNull()
+  })
+
+  it("does not return another tenant's run (#377)", () => {
+    const otherTenantId = createSecondTenant(db)
+    const id = recordRun(db, tenantId, run())
+
+    expect(loadRun(db, otherTenantId, id)).toBeNull()
+    expect(loadRunPayload(db, otherTenantId, id)).toBeNull()
   })
 })
 
@@ -162,7 +171,7 @@ describe('latestSuccessfulRun', () => {
     const newer = recordRun(db, tenantId, run())
     backdate(newer, new Date('2026-03-02T00:00:00Z'))
 
-    expect(latestSuccessfulRun(db, 'findings')?.id).toBe(newer)
+    expect(latestSuccessfulRun(db, tenantId, 'findings')?.id).toBe(newer)
   })
 
   it('ignores errored and capped runs, which have no usable output', () => {
@@ -173,16 +182,22 @@ describe('latestSuccessfulRun', () => {
       backdate(id, new Date('2026-03-05T00:00:00Z'))
     }
 
-    expect(latestSuccessfulRun(db, 'findings')?.id).toBe(good)
+    expect(latestSuccessfulRun(db, tenantId, 'findings')?.id).toBe(good)
   })
 
   it('does not cross kinds', () => {
     recordRun(db, tenantId, run({ kind: 'narrative' }))
-    expect(latestSuccessfulRun(db, 'findings')).toBeNull()
+    expect(latestSuccessfulRun(db, tenantId, 'findings')).toBeNull()
   })
 
   it('is null on an empty ledger', () => {
-    expect(latestSuccessfulRun(db, 'findings')).toBeNull()
+    expect(latestSuccessfulRun(db, tenantId, 'findings')).toBeNull()
+  })
+
+  it("does not cross tenants (#377)", () => {
+    const otherTenantId = createSecondTenant(db)
+    recordRun(db, tenantId, run())
+    expect(latestSuccessfulRun(db, otherTenantId, 'findings')).toBeNull()
   })
 })
 
@@ -282,7 +297,7 @@ describe('recentRuns', () => {
       backdate(id, new Date(`2026-03-0${day}T00:00:00Z`))
     }
 
-    const rows = recentRuns(db, 3)
+    const rows = recentRuns(db, tenantId, 3)
     expect(rows).toHaveLength(3)
     expect(rows.map((row) => row.createdAt.getTime())).toEqual([
       new Date('2026-03-05T00:00:00Z').getTime(),
@@ -294,7 +309,7 @@ describe('recentRuns', () => {
   it('includes every status, because the spend page shows refusals too', () => {
     recordRun(db, tenantId, run({ status: 'capped' }))
     recordRun(db, tenantId, run({ status: 'error' }))
-    expect(recentRuns(db)).toHaveLength(2)
+    expect(recentRuns(db, tenantId)).toHaveLength(2)
   })
 
   it('scoped to a month, keeps that month and every run about no month at all (#158)', () => {
@@ -302,7 +317,7 @@ describe('recentRuns', () => {
     const july = recordRun(db, tenantId, run({ period: '2026-07' }))
     const chat = recordRun(db, tenantId, run({ period: null }))
 
-    const rows = recentRuns(db, 50, '2026-08').map((row) => row.id)
+    const rows = recentRuns(db, tenantId, 50, '2026-08').map((row) => row.id)
     expect(rows).toContain(august)
     expect(rows).toContain(chat)
     expect(rows).not.toContain(july)
@@ -312,7 +327,7 @@ describe('recentRuns', () => {
     recordRun(db, tenantId, run({ period: '2026-08' }))
     recordRun(db, tenantId, run({ period: '2026-07' }))
     recordRun(db, tenantId, run({ period: null }))
-    expect(recentRuns(db, 50)).toHaveLength(3)
+    expect(recentRuns(db, tenantId, 50)).toHaveLength(3)
   })
 
   it('scoped to a year, keeps every month in it and every run about no month at all (#345)', () => {
@@ -321,7 +336,7 @@ describe('recentRuns', () => {
     const august2025 = recordRun(db, tenantId, run({ period: '2025-08' }))
     const chat = recordRun(db, tenantId, run({ period: null }))
 
-    const rows = recentRuns(db, 50, { kind: 'year', value: '2026' }).map((row) => row.id)
+    const rows = recentRuns(db, tenantId, 50, { kind: 'year', value: '2026' }).map((row) => row.id)
     expect(rows).toContain(august2026)
     expect(rows).toContain(january2026)
     expect(rows).toContain(chat)
@@ -332,9 +347,17 @@ describe('recentRuns', () => {
     const august = recordRun(db, tenantId, run({ period: '2026-08' }))
     const july = recordRun(db, tenantId, run({ period: '2026-07' }))
 
-    const rows = recentRuns(db, 50, { kind: 'month', value: '2026-08' }).map((row) => row.id)
+    const rows = recentRuns(db, tenantId, 50, { kind: 'month', value: '2026-08' }).map(
+      (row) => row.id,
+    )
     expect(rows).toContain(august)
     expect(rows).not.toContain(july)
+  })
+
+  it('does not cross tenants (#377)', () => {
+    const otherTenantId = createSecondTenant(db)
+    recordRun(db, tenantId, run())
+    expect(recentRuns(db, otherTenantId, 50)).toHaveLength(0)
   })
 })
 

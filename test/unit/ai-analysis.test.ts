@@ -235,7 +235,7 @@ describe('runAnalysis on a month with nothing to analyse', () => {
       expect(outcome.status).toBe('skipped')
       expect(outcome.reason).toBe('no_facts')
       expect(outcome.runId).toBeNull()
-      expect(recentRuns(db)).toHaveLength(0)
+      expect(recentRuns(db, tenantId)).toHaveLength(0)
     })
   })
 })
@@ -358,7 +358,7 @@ describe('runAnalysis', () => {
     fakeGemini(response([]), { promptTokenCount: 2_500, candidatesTokenCount: 300 })
 
     const outcome = await runAnalysis(db, tenantId, { month: MONTH, locale: 'nl' })
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
 
     expect(row?.id).toBe(outcome.runId)
     expect(row?.kind).toBe('findings')
@@ -368,7 +368,7 @@ describe('runAnalysis', () => {
     expect(row?.model).toBe('gemini-3.7-flash-002')
     expect(row?.inputTokens).toBe(2_500)
     expect(row?.costMicroEur).toBeGreaterThan(0)
-    expect(loadRunPayload(db, row?.id ?? '')).not.toBeNull()
+    expect(loadRunPayload(db, tenantId, row?.id ?? '')).not.toBeNull()
   })
 })
 
@@ -395,12 +395,12 @@ describe('runAnalysis when it cannot ask the model', () => {
     expect(outcome.findings).toHaveLength(2)
     expect(recorded.prompts).toHaveLength(0)
 
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('capped')
     // Nothing was sent, so nothing is billed — but the payload is stored, so the
     // audit view shows what would have gone out.
     expect(row?.costMicroEur).toBe(0)
-    expect(loadRunPayload(db, row?.id ?? '')).not.toBeNull()
+    expect(loadRunPayload(db, tenantId, row?.id ?? '')).not.toBeNull()
   })
 
   it('degrades on a transport failure without throwing', async () => {
@@ -413,7 +413,7 @@ describe('runAnalysis when it cannot ask the model', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
     expect(outcome.findings).toHaveLength(1)
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('error')
     expect(row?.error).toContain('socket hang up')
   })
@@ -431,7 +431,7 @@ describe('runAnalysis when it cannot ask the model', () => {
 
     expect(outcome.reason).toBe('bad_response')
     expect(outcome.costMicroEur).toBeGreaterThan(0)
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('error')
     expect(row?.outputTokens).toBe(400)
     expect(row?.costMicroEur).toBeGreaterThan(0)
@@ -469,7 +469,7 @@ describe('runAnalysis reuse (#160)', () => {
     expect(second.costMicroEur).toBe(0)
     expect(second.findings).toEqual(first.findings)
 
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('reused')
     expect(row?.reusedFromRunId).toBe(first.runId)
   })

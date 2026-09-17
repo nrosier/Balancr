@@ -52,6 +52,7 @@ import {
   loadProposal,
   pendingProposals,
 } from '../../src/domain/ai/proposals.ts'
+import { loadRun, loadRunPayload, recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
 import { fact, totals } from '../fixtures/month.ts'
 
 const MONTH = '2026-08'
@@ -306,5 +307,26 @@ describe('AI proposals', () => {
 
     await expect(applyProposal(db, tenantB, { id: proposal.id })).rejects.toThrow()
     expect(loadProposal(db, tenantA, proposal.id)?.status).toBe('pending')
+  })
+})
+
+describe('AI runs', () => {
+  it('never loads, reads, or lists another tenant\'s run (#377)', () => {
+    const runId = recordRun(db, tenantA, {
+      kind: 'findings',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: MONTH },
+      payloadHash: 'hash-a',
+      status: 'ok',
+    })
+
+    expect(loadRun(db, tenantB, runId)).toBeNull()
+    expect(loadRunPayload(db, tenantB, runId)).toBeNull()
+    expect(recentRuns(db, tenantB, 50)).toHaveLength(0)
+
+    expect(loadRun(db, tenantA, runId)?.id).toBe(runId)
+    expect(loadRunPayload(db, tenantA, runId)).toEqual({ month: MONTH })
+    expect(recentRuns(db, tenantA, 50)).toHaveLength(1)
   })
 })
