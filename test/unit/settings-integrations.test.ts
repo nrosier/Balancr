@@ -39,6 +39,7 @@ import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
 import type { IntegrationTest, IntegrationsSetting, Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 const genai = vi.hoisted(() => ({
   calls: [] as unknown[],
@@ -382,6 +383,14 @@ describe('PATCH /api/settings/integrations/gemini', () => {
   })
 })
 
+// No cross-tenant isolation test for the three PATCH handlers above (actual/
+// ghostfolio/gemini): #376 phase 3 correctly scopes each handler's own write to
+// `user.tenantId`, but every one of them ends `return buildSettings(db, request)`,
+// which transitively calls `loadParams(db)` (`domain/aggregate/params.ts`) — still
+// calling `getSoleTenantId(db)` internally, and it throws the moment a second tenant
+// exists, regardless of which tenant made the request. That's phase 4 scope. A test
+// asserting isolation here would fail on that throw, not on anything phase 3 changed.
+
 describe('POST /api/settings/integrations/actual/test', () => {
   it('reports success without writing anything to the stored row', async () => {
     vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
@@ -436,6 +445,39 @@ describe('POST /api/settings/integrations/actual/test', () => {
     expect(res.statusCode).toBe(409)
     expect(res.json<ErrorBody>().error.code).toBe('conflict')
     expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+
+    release()
+    await running
+  })
+
+  it("checks the requester's own tenant for a busy job, not another tenant's (#376 phase 3)", async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+    const tenantB = createSecondTenant(ctx.db)
+
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fakeJob: Job = {
+      name: 'sync',
+      schedule: { kind: 'interval', minutes: 60 },
+      run: async () => {
+        await gate
+      },
+    }
+    // Tenant B has a job running. Before #376 phase 3, this route asked
+    // `getSoleTenantId(db)` — which throws the moment a second tenant exists at all,
+    // rather than silently checking the wrong tenant's jobs.
+    const running = runJob(ctx.db, fakeJob, tenantB)
+
+    const res = await post(
+      '/api/settings/integrations/actual/test',
+      { serverUrl: 'http://actual.test:5006', syncId: 'test-sync-id', password: 'candidate' },
+      { token: owner },
+    )
+
+    expect(res.statusCode).toBe(200)
+    expect(vi.mocked(testActualConnection)).toHaveBeenCalled()
 
     release()
     await running

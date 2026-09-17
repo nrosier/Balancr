@@ -35,7 +35,6 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { encryptField } from '../../db/field-crypto.ts'
 import { tenantIntegrations } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
 import { withTestHost } from '../../egress.ts'
 import {
@@ -1033,7 +1032,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.patch('/api/settings/integrations/actual', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(actualIntegrationPatchRequest, request.body)
-    const tenantId = getSoleTenantId(db)
+    const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
@@ -1066,7 +1065,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.patch('/api/settings/integrations/ghostfolio', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
-    const tenantId = getSoleTenantId(db)
+    const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
@@ -1097,7 +1096,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.patch('/api/settings/integrations/gemini', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(geminiIntegrationPatchRequest, request.body)
-    const tenantId = getSoleTenantId(db)
+    const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
@@ -1243,10 +1242,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     '/api/settings/integrations/actual/test',
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
-      requireOwner(request)
+      const user = requireOwner(request)
       const candidate = parseBody(actualIntegrationTestRequest, request.body)
 
-      const busy = jobsInFlight(getSoleTenantId(db))
+      const busy = jobsInFlight(user.tenantId)
       if (busy.length > 0) throw busyError(busy)
 
       const result = await withTestHost(candidate.serverUrl, () => testActualConnection(candidate))
