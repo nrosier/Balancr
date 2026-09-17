@@ -23,6 +23,7 @@ export type SettingsSectionId =
   | 'benchmark'
   | 'property'
   | 'integrations'
+  | 'members'
 
 export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
@@ -33,6 +34,7 @@ export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'benchmark', path: '/settings/benchmark', labelKey: 'settings:nav.benchmark' },
   { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
   { id: 'integrations', path: '/settings/integrations', labelKey: 'settings:nav.integrations' },
+  { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
 ]
 
 /** The section an arbitrary `/settings*` path belongs to; an unknown one lands on General. */

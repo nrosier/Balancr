@@ -33,6 +33,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, type CsrfConfig } from './api/client.ts'
 import { CsrfProvider } from './api/csrf.tsx'
 import { SessionExpiryProvider } from './api/resource.tsx'
+import { Onboarding } from './auth/Onboarding.tsx'
 import { fetchSession, type SessionResponse } from './auth/session.ts'
 import { SignIn } from './auth/SignIn.tsx'
 import './auth/signin.css'
@@ -131,6 +132,9 @@ export function App({ bootstrap }: AppProps): ReactNode {
   }
 
   if (!session.authenticated || session.user === null) {
+    if (session.pending !== null) {
+      return <Onboarding pending={session.pending} csrf={csrf} onProvisioned={load} />
+    }
     return <SignIn methods={session.methods} csrf={csrf} onSignedIn={load} />
   }
 

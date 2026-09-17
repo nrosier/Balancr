@@ -34,6 +34,17 @@
     "localDisabled": "Lokaal aanmelden is niet beschikbaar vanaf dit netwerk.",
     "lockedUntil": "Te veel pogingen. Geblokkeerd tot {{when}}.",
     "noMethods": "Er is geen aanmeldmethode beschikbaar vanaf dit netwerk.",
+    "onboarding": {
+      "createTab": "Een nieuw huishouden aanmaken",
+      "householdLabel": "Naam van het huishouden",
+      "codeLabel": "Uitnodigingscode",
+      "lede": "Je bent aangemeld, maar er is nog geen huishouden dat op je wacht.",
+      "ledeNamed": "Welkom, {{who}}. Er is nog geen huishouden dat op je wacht.",
+      "modeLabel": "Hoe wil je aansluiten",
+      "redeemTab": "Een uitnodigingscode inwisselen",
+      "submit": "Doorgaan",
+      "submitting": "Bezig…"
+    },
     "or": "of",
     "password": "Wachtwoord",
     "signIn": "Aanmelden",

@@ -253,11 +253,30 @@
     "nl": "Dutch",
     "title": "Language"
   },
+  "members": {
+    "createButton": "Create invite",
+    "createLabel": "Label",
+    "createPlaceholder": "e.g. For Jo",
+    "createdReads": "Created {{when}}",
+    "codeShownOnce": "Share this code with them. It will not be shown again.",
+    "empty": "No invites yet.",
+    "hint": "Invite codes let someone else join this household as a viewer. Hand a code out however you like — nothing here sends it for you.",
+    "revoke": "Revoke",
+    "status": {
+      "expired": "Expired",
+      "pending": "Pending",
+      "redeemed": "Redeemed",
+      "revoked": "Revoked"
+    },
+    "title": "Members",
+    "unlabeled": "Unlabeled"
+  },
   "nav": {
     "accounts": "Accounts",
     "benchmark": "Benchmark",
     "general": "General",
     "integrations": "Integrations",
+    "members": "Members",
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",

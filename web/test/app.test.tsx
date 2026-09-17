@@ -38,12 +38,14 @@ const BOOTSTRAP: BootstrapResponse = {
 const ANONYMOUS: SessionResponse = {
   authenticated: false,
   user: null,
+  pending: null,
   methods: { oidc: true, local: false },
 }
 
 const SIGNED_IN: SessionResponse = {
   authenticated: true,
   user: { tenantId: 'tenant-1', email: 'nick@example.com', displayName: 'Nick', locale: 'en', role: 'owner' },
+  pending: null,
   methods: { oidc: true, local: false },
 }
 

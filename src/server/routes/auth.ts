@@ -37,14 +37,16 @@ import {
   startLoginFlow,
 } from '../auth/login-flow.ts'
 import { verifyLocalLogin } from '../auth/local.ts'
+import { beginOnboarding, PENDING_IDENTITY_TTL_MS, peekPendingIdentity } from '../auth/onboarding.ts'
 import type { OidcClient } from '../auth/oidc.ts'
 import { createSession, destroySession, sessionTtlMs } from '../auth/sessions.ts'
-import { upsertOidcUser } from '../auth/users.ts'
+import { resolveOidcUser } from '../auth/users.ts'
 import {
   clearedCookie,
   cookieAttributes,
   CSRF_COOKIE,
   LOGIN_FLOW_COOKIE,
+  ONBOARDING_COOKIE,
   SESSION_COOKIE,
 } from '../cookies.ts'
 import { newCsrfToken } from '../csrf.ts'
@@ -100,23 +102,39 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
    * what to render, and neither part is a secret — an unauthenticated caller can
    * already discover which endpoints exist.
    */
-  app.get('/auth/session', publicRoute, (request: FastifyRequest): SessionResponse => ({
-    authenticated: request.user !== undefined,
-    user:
-      request.user === undefined
-        ? null
-        : {
-            email: request.user.email,
-            displayName: request.user.displayName,
-            locale: request.user.locale,
-            role: request.user.role,
-            tenantId: request.user.tenantId,
-          },
-    // `local` answers "would a password work from where you are", not "is the
-    // feature switched on" — the login screen uses this to decide whether to draw
-    // the form, and a form that is guaranteed to 404 is worse than no form.
-    methods: { oidc: oidc !== null, local: localLoginAvailable(request) },
-  }))
+  app.get(
+    '/auth/session',
+    publicRoute,
+    (request: FastifyRequest): SessionResponse => {
+      // Only asked when there is no session already — an onboarding cookie left
+      // over from a browser that has since signed in some other way is not worth
+      // a lookup.
+      const onboardingToken = request.cookies[ONBOARDING_COOKIE]
+      const pending =
+        request.user === undefined && typeof onboardingToken === 'string' && onboardingToken.length > 0
+          ? peekPendingIdentity(db, onboardingToken)
+          : null
+
+      return {
+        authenticated: request.user !== undefined,
+        user:
+          request.user === undefined
+            ? null
+            : {
+                email: request.user.email,
+                displayName: request.user.displayName,
+                locale: request.user.locale,
+                role: request.user.role,
+                tenantId: request.user.tenantId,
+              },
+        pending: pending === null ? null : { email: pending.email, displayName: pending.displayName },
+        // `local` answers "would a password work from where you are", not "is the
+        // feature switched on" — the login screen uses this to decide whether to draw
+        // the form, and a form that is guaranteed to 404 is worse than no form.
+        methods: { oidc: oidc !== null, local: localLoginAvailable(request) },
+      }
+    },
+  )
 
   app.post('/auth/logout', publicRoute, (request: FastifyRequest, reply: FastifyReply) => {
     const token = request.sessionToken
@@ -265,12 +283,26 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
       throw loginFailed()
     }
 
-    const user = upsertOidcUser(db, identity)
+    const user = resolveOidcUser(db, identity)
 
     // Any session this browser already had is ended rather than left running. It
     // may belong to a different account, and it certainly should not outlive a
     // deliberate re-login.
     if (request.sessionToken !== undefined) destroySession(db, request.sessionToken)
+
+    if (user === null) {
+      // A `sub` with no `users` row: not provisioned here (#373) — sent to
+      // onboarding instead, where it either creates a new tenant or redeems an
+      // invite into an existing one.
+      const pending = beginOnboarding(db, identity)
+      void reply.setCookie(
+        ONBOARDING_COOKIE,
+        pending.token,
+        cookieAttributes(true, Math.floor(PENDING_IDENTITY_TTL_MS / 1000)),
+      )
+      log.info({ sub: identity.sub }, 'OIDC identity has no tenant yet; sent to onboarding')
+      return reply.redirect(flow.returnTo, 303)
+    }
 
     const session = createSession(db, {
       userId: user.id,
