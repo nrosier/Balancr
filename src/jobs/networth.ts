@@ -16,7 +16,6 @@ import { fetchAccountBalances, fetchAccounts as fetchActualAccounts } from '../a
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
 import {
   accountMapBySource,
   loadAccountMap,
@@ -153,8 +152,7 @@ export async function collectAccountValues(
   return values
 }
 
-async function run({ db, now, log }: JobContext): Promise<JobDetail> {
-  const tenantId = getSoleTenantId(db)
+async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   const date = dateIn(now, config.TZ)
   const values = await collectAccountValues(db, tenantId, now, log)
   const result = computeNetWorth(date, values)
