@@ -376,13 +376,20 @@ describe('POST /api/refresh/reset', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  // No cross-tenant isolation test here, unlike `POST /api/refresh` above: #376 phase 3
-  // correctly scopes the *jobs this route starts* to the requester's own tenant, but
-  // `resetComputedData` (`domain/aggregate/reset.ts`, called just above `startRefresh`
-  // in the handler) deletes every tenant's rows with no tenant filter at all — a
-  // pre-existing bug this phase's own scoping fix does not touch, filed as #379. A test
-  // asserting isolation here would fail against that bug, not against anything phase 3
-  // changed.
+  it("wipes only the requester's own tenant, leaving another tenant's rows untouched (#379)", async () => {
+    const tenantA = getSoleTenantId(ctx.db)
+    const tenantB = createSecondTenant(ctx.db)
+    ctx.db.insert(monthlyTotals).values({ tenantId: tenantB, month: '2026-08' }).run()
+    const ownerB = signIn(ctx.db, 'owner', tenantB)
+
+    const res = await post('/api/refresh/reset', undefined, { token: ownerB })
+
+    expect(res.statusCode).toBe(202)
+    // Tenant B's own row is gone...
+    expect(ctx.db.select().from(monthlyTotals).where(eq(monthlyTotals.tenantId, tenantB)).all()).toHaveLength(0)
+    // ...and tenant A's fixture rows are exactly as they were.
+    expect(ctx.db.select().from(monthlyTotals).where(eq(monthlyTotals.tenantId, tenantA)).all()).toHaveLength(2)
+  })
 })
 
 describe('POST /api/ai/refresh', () => {

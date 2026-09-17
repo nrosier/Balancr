@@ -30,19 +30,20 @@ import { ghostfolioCheck, jobsCheck } from '../../src/server/routes/api/status.t
 import type { Status } from '../../src/server/routes/api/schemas.ts'
 import type { JobRow } from '../../src/jobs/index.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let session: string
 
-function signIn(db: Db): string {
+function signIn(db: Db, tenantId: string = getSoleTenantId(db)): string {
   const row = db
     .insert(users)
     .values({
-      tenantId: getSoleTenantId(db),
+      tenantId,
       oidcSub: `sub-${crypto.randomUUID()}`,
-      email: 'nick@example.test',
+      email: `${crypto.randomUUID()}@example.test`,
       displayName: 'Nick',
       locale: 'en',
       role: 'owner',
@@ -278,6 +279,23 @@ describe('/api/status', () => {
     expect(body.probes[0]?.status).toBe('unreachable')
     // Degraded, because unreachable resolves itself and the pages are still right.
     expect(check(body, 'ghostfolio').status).toBe('degraded')
+  })
+
+  it("never shows another tenant's probe (#380)", async () => {
+    const tenantB = createSecondTenant(ctx.db)
+    saveProbe(
+      ctx.db,
+      tenantB,
+      'ghostfolio',
+      'shape-mismatch',
+      { checks: [], warnings: ['tenant B only'] },
+      new Date(),
+    )
+    // Tenant A has never had a probe run at all.
+
+    const body = (await status()).json<Status>()
+    expect(body.probes).toEqual([])
+    expect(check(body, 'ghostfolio')).toEqual({ name: 'ghostfolio', status: 'unknown', reason: 'neverRun' })
   })
 })
 

@@ -13,6 +13,7 @@
  * ledger would make the budget guard think less was spent than actually was, which
  * is a real overspend risk rather than a stale figure. So they stay out.
  */
+import { eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import {
   categoryGuessCandidates,
@@ -58,12 +59,16 @@ const COMPUTED_TABLES = [
  * Returns the count from each table, which is what the caller's audit entry
  * records as `before` — "how much was there" is the only useful trail for an
  * operation whose whole point is that none of it survives.
+ *
+ * Scoped to `tenantId`: every table above carries that column, and a reset with
+ * no filter would wipe every other household's computed facts along with the
+ * caller's own (#379).
  */
-export function resetComputedData(db: Db): ResetResult[] {
+export function resetComputedData(db: Db, tenantId: string): ResetResult[] {
   return db.transaction((tx) =>
     COMPUTED_TABLES.map(({ name, table }) => ({
       table: name,
-      rows: tx.delete(table).run().changes,
+      rows: tx.delete(table).where(eq(table.tenantId, tenantId)).run().changes,
     })),
   )
 }
