@@ -31,6 +31,7 @@ import {
 } from '../../src/adapters/ghostfolio/client.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 
 const AUTH = '/api/v1/auth/anonymous'
@@ -65,6 +66,7 @@ interface Call {
 
 let calls: Call[]
 let db: Db
+let tenantId: string
 
 /** Answers every read with a shape its schema accepts, and records the method. */
 function stubFetch(): void {
@@ -100,6 +102,7 @@ beforeEach(() => {
   applyMigrations(fresh as never)
   importEnvIntegrationsOnce(fresh)
   db = fresh
+  tenantId = getSoleTenantId(fresh)
 
   calls = []
   resetGhostfolioToken()
@@ -116,10 +119,10 @@ describe('what the adapter actually sends', () => {
     // All four reads in one test on purpose: the assertion is about the set of requests
     // this adapter is capable of making, and a per-endpoint test would pass while a
     // fifth endpoint added tomorrow went unchecked.
-    await fetchHealth(db)
-    await fetchPortfolioDetails(db)
-    await fetchPortfolioPerformance(db)
-    await fetchAccounts(db)
+    await fetchHealth(db, tenantId)
+    await fetchPortfolioDetails(db, tenantId)
+    await fetchPortfolioPerformance(db, tenantId)
+    await fetchAccounts(db, tenantId)
 
     const writes = calls.filter(
       (call) => call.method !== undefined && call.method.toUpperCase() !== 'GET',
@@ -128,8 +131,8 @@ describe('what the adapter actually sends', () => {
   })
 
   it('sends the token call once and then reads on the cached JWT', async () => {
-    await fetchPortfolioDetails(db)
-    await fetchAccounts(db)
+    await fetchPortfolioDetails(db, tenantId)
+    await fetchAccounts(db, tenantId)
 
     // Not a performance assertion. A token call per read would mean the POST is on the
     // ordinary request path rather than behind the cache, which is the shape this file
@@ -138,7 +141,7 @@ describe('what the adapter actually sends', () => {
   })
 
   it('asks for the liveness check without a token at all', async () => {
-    await fetchHealth(db)
+    await fetchHealth(db, tenantId)
     // The one read that must work before authentication, and therefore the one read
     // whose `authenticated: false` is load-bearing rather than incidental.
     expect(calls).toEqual([{ path: '/api/v1/health', method: undefined }])
@@ -196,10 +199,10 @@ describe('the read-only boundary', () => {
 
   it('keeps the token call unparameterised, so it cannot become a general POST', () => {
     const code = client()
-    // `token(db)` — no path or method argument. A `token(db, path: string)` would be
-    // the old permissive `request()` wearing a different name, and every guarantee
-    // above would still pass.
-    expect(code).toContain('async function token(db: Db): Promise<string>')
+    // `token(db, tenantId)` — no path or method argument. A `token(db, tenantId, path:
+    // string)` would be the old permissive `request()` wearing a different name, and
+    // every guarantee above would still pass.
+    expect(code).toContain('async function token(db: Db, tenantId: string): Promise<string>')
     expect(code).toContain("const path = '/api/v1/auth/anonymous'")
   })
 })

@@ -123,7 +123,7 @@ export async function collectAccountValues(
   const ghostfolioRows = accountMapBySource(rows, 'ghostfolio')
   if (ghostfolioRows.size > 0) {
     try {
-      for (const account of toAccountValues(await fetchGhostfolioAccounts(db))) {
+      for (const account of toAccountValues(await fetchGhostfolioAccounts(db, tenantId))) {
         const row = ghostfolioRows.get(account.externalId)
         if (!row) continue
         values.push({

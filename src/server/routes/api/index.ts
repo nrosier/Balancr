@@ -24,6 +24,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
+import { requireUser } from '../../auth/guard.ts'
 import { notFound } from '../../errors.ts'
 import { buildBudget } from './budget.ts'
 import { buildChangelog } from './changelog.ts'
@@ -62,7 +63,7 @@ export function resolveLocale(request: FastifyRequest): string {
 }
 
 export function registerApiRoutes(app: FastifyInstance, db: Db): void {
-  app.get('/api/overview', () => buildOverview(db))
+  app.get('/api/overview', (request: FastifyRequest) => buildOverview(db, requireUser(request).tenantId))
 
   app.get('/api/budget', (request: FastifyRequest) => {
     const query = request.query as
@@ -70,6 +71,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
       | undefined
     return buildBudget(
       db,
+      requireUser(request).tenantId,
       query?.month,
       // Only so the page knows whether to draw the month note's editor.
       // `PATCH /api/budget/note` gates itself; this is presentation (#158, #270).
@@ -79,7 +81,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
     )
   })
 
-  app.get('/api/portfolio', () => buildPortfolio(db))
+  app.get('/api/portfolio', (request: FastifyRequest) => buildPortfolio(db, requireUser(request).tenantId))
 
   app.get('/api/forecast', () => buildForecast(db))
 
@@ -87,7 +89,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
 
   app.get('/api/insights', (request: FastifyRequest) => {
     const query = request.query as { month?: unknown; runsPeriod?: unknown; signalsPeriod?: unknown } | undefined
-    return buildInsights(db, {
+    return buildInsights(db, requireUser(request).tenantId, {
       month: query?.month,
       runsPeriod: query?.runsPeriod,
       signalsPeriod: query?.signalsPeriod,

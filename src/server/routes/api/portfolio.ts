@@ -51,7 +51,7 @@ import {
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
-export function buildPortfolio(db: Db): Portfolio {
+export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   const date = latestSnapshotDate(db)
   const metrics = date === null ? null : loadPortfolioMetrics(db, date)
   const holdings = date === null ? [] : loadSnapshot(db, date)
@@ -120,6 +120,6 @@ export function buildPortfolio(db: Db): Portfolio {
       balanceCents: account.balanceCents,
       currency: account.currency,
     })),
-    ghostfolioConfigured: integrationAvailability(db).ghostfolio,
+    ghostfolioConfigured: integrationAvailability(db, tenantId).ghostfolio,
   })
 }

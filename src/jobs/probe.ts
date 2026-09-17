@@ -46,7 +46,7 @@ const storedCheck = (check: ProbeCheck): StoredReport['checks'][number] => ({
 })
 
 async function run({ db, tenantId, log }: JobContext): Promise<JobDetail> {
-  const report = await probeGhostfolio(db)
+  const report = await probeGhostfolio(db, tenantId)
 
   const stored: StoredReport = {
     checks: report.checks.map(storedCheck),

@@ -36,6 +36,7 @@ import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { recordRun, recentRuns, loadRunPayload } from '../../src/domain/ai/runs.ts'
 import type { RedactedPayload } from '../../src/domain/ai/redact.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
@@ -43,6 +44,7 @@ const MONTH = '2026-03'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let tenantId: string
 
 beforeAll(async () => {
   await initI18n()
@@ -52,6 +54,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  tenantId = getSoleTenantId(db)
   importEnvIntegrationsOnce(db)
 })
 
@@ -228,7 +231,7 @@ describe('runAnalysis on a month with nothing to analyse', () => {
   it('records nothing at all', () => {
     // An error row for a month that has simply not been aggregated yet would be a
     // permanent failure in the ledger for something nobody attempted.
-    return runAnalysis(db, { month: '2026-01' }).then((outcome) => {
+    return runAnalysis(db, tenantId, { month: '2026-01' }).then((outcome) => {
       expect(outcome.status).toBe('skipped')
       expect(outcome.reason).toBe('no_facts')
       expect(outcome.runId).toBeNull()
@@ -248,7 +251,7 @@ describe('runAnalysis', () => {
       ]),
     )
 
-    const outcome = await runAnalysis(db, { month: MONTH, locale: 'en' })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH, locale: 'en' })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.degraded).toBe(false)
@@ -268,7 +271,7 @@ describe('runAnalysis', () => {
     seedTypicalMonth()
     const recorded = fakeGemini(response([]))
 
-    await runAnalysis(db, { month: MONTH })
+    await runAnalysis(db, tenantId, { month: MONTH })
 
     const sent = recorded.prompts[0] ?? ''
     expect(sent).toContain(DATA_OPEN)
@@ -287,7 +290,7 @@ describe('runAnalysis', () => {
       ]),
     )
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.findings.map((finding) => finding.code)).toEqual(['over_available'])
     expect(outcome.dropped).toEqual([
@@ -303,7 +306,7 @@ describe('runAnalysis', () => {
       response([{ code: 'over_available', label: food, severity: 'info', confidence: 40 }]),
     )
 
-    const lowered = await runAnalysis(db, { month: MONTH })
+    const lowered = await runAnalysis(db, tenantId, { month: MONTH })
     expect(lowered.findings[0]?.severity).toBe('info')
 
     // And the other direction: `uncategorised_backlog` is capped at warn by its
@@ -313,7 +316,7 @@ describe('runAnalysis', () => {
     fakeGemini(
       response([{ code: 'uncategorised_backlog', label: 'household', severity: 'alert', confidence: 80 }]),
     )
-    const clamped = await runAnalysis(db, { month: MONTH })
+    const clamped = await runAnalysis(db, tenantId, { month: MONTH })
     expect(clamped.findings[0]?.severity).toBe('warn')
   })
 
@@ -324,7 +327,7 @@ describe('runAnalysis', () => {
     const food = labelOf('food')
     fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 55 }]))
 
-    await runAnalysis(db, { month: MONTH })
+    await runAnalysis(db, tenantId, { month: MONTH })
 
     const rows = db.select().from(aiFindings).all()
     expect(rows[0]?.metric).toBe('overspendCents')
@@ -343,7 +346,7 @@ describe('runAnalysis', () => {
       ),
     )
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.clarifications).toEqual([
       { code: 'nature_unknown', categoryId: 'food', categoryName: 'Groceries', guess: 'variable' },
@@ -354,7 +357,7 @@ describe('runAnalysis', () => {
     seedTypicalMonth()
     fakeGemini(response([]), { promptTokenCount: 2_500, candidatesTokenCount: 300 })
 
-    const outcome = await runAnalysis(db, { month: MONTH, locale: 'nl' })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH, locale: 'nl' })
     const row = recentRuns(db)[0]
 
     expect(row?.id).toBe(outcome.runId)
@@ -383,7 +386,7 @@ describe('runAnalysis when it cannot ask the model', () => {
     })
     const recorded = fakeGemini(response([]))
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('capped')
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -405,7 +408,7 @@ describe('runAnalysis when it cannot ask the model', () => {
     seedTypicalMonth()
     fakeGemini(new Error('socket hang up'))
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
@@ -424,7 +427,7 @@ describe('runAnalysis when it cannot ask the model', () => {
       candidatesTokenCount: 400,
     })
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.reason).toBe('bad_response')
     expect(outcome.costMicroEur).toBeGreaterThan(0)
@@ -438,7 +441,7 @@ describe('runAnalysis when it cannot ask the model', () => {
     seedTypicalMonth()
     fakeGemini(response([{ code: 'spending_too_high', label: 'c1', severity: 'alert', confidence: 99 }]))
 
-    const outcome = await runAnalysis(db, { month: MONTH })
+    const outcome = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(outcome.reason).toBe('bad_response')
     expect(outcome.findings).toHaveLength(1)
@@ -454,11 +457,11 @@ describe('runAnalysis reuse (#160)', () => {
       response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
     )
 
-    const first = await runAnalysis(db, { month: MONTH })
+    const first = await runAnalysis(db, tenantId, { month: MONTH })
     expect(first.status).toBe('ok')
     expect(recorded.prompts).toHaveLength(1)
 
-    const second = await runAnalysis(db, { month: MONTH })
+    const second = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(recorded.prompts).toHaveLength(1)
     expect(second.status).toBe('ok')
@@ -477,11 +480,11 @@ describe('runAnalysis reuse (#160)', () => {
     const recorded = fakeGemini(
       response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
     )
-    await runAnalysis(db, { month: MONTH })
+    await runAnalysis(db, tenantId, { month: MONTH })
 
     seedTypicalMonth([overspend('food', 12_000, 'Groceries')])
     fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
-    const second = await runAnalysis(db, { month: MONTH })
+    const second = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(recorded.prompts).toHaveLength(1)
     expect(second.reason).not.toBe('reused')
@@ -494,9 +497,9 @@ describe('runAnalysis reuse (#160)', () => {
     const recorded = fakeGemini(
       response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
     )
-    await runAnalysis(db, { month: MONTH })
+    await runAnalysis(db, tenantId, { month: MONTH })
 
-    const second = await runAnalysis(db, { month: MONTH, force: true })
+    const second = await runAnalysis(db, tenantId, { month: MONTH, force: true })
 
     expect(recorded.prompts).toHaveLength(2)
     expect(second.reason).not.toBe('reused')
@@ -509,7 +512,7 @@ describe('runAnalysis reuse (#160)', () => {
     seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
     const food = labelOf('food')
     fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
-    const first = await runAnalysis(db, { month: MONTH })
+    const first = await runAnalysis(db, tenantId, { month: MONTH })
     expect(first.status).toBe('ok')
 
     recordRun(db, {
@@ -525,7 +528,7 @@ describe('runAnalysis reuse (#160)', () => {
     const recorded = fakeGemini(
       response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]),
     )
-    const second = await runAnalysis(db, { month: MONTH })
+    const second = await runAnalysis(db, tenantId, { month: MONTH })
 
     expect(recorded.prompts).toHaveLength(0)
     expect(second.status).toBe('ok')
@@ -539,7 +542,7 @@ describe('estimateAnalysis reuse (#160)', () => {
     seedTypicalMonth([overspend('food', 8_000, 'Groceries')])
     const food = labelOf('food')
     fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
-    await runAnalysis(db, { month: MONTH })
+    await runAnalysis(db, tenantId, { month: MONTH })
 
     recordRun(db, {
       kind: 'findings',
@@ -551,7 +554,7 @@ describe('estimateAnalysis reuse (#160)', () => {
       costMicroEurOverride: eurToMicroEur(500),
     })
 
-    const estimate = estimateAnalysis(db, { month: MONTH })
+    const estimate = estimateAnalysis(db, tenantId, { month: MONTH })
 
     expect(estimate.allowed).toBe(true)
     expect(estimate.estimateMicroEur).toBe(0)

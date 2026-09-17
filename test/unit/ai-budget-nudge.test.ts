@@ -17,6 +17,7 @@ import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { config } from '../../src/config.ts'
 import { estimateBudgetNudge, runBudgetNudge } from '../../src/domain/ai/budget-nudge.ts'
 import {
@@ -47,6 +48,7 @@ beforeAll(async () => {
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let tenantId: string
 /** A real run row: `proposals.run_id` is a foreign key. */
 let runId: string
 
@@ -54,6 +56,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  tenantId = getSoleTenantId(db)
   importEnvIntegrationsOnce(db)
   runId = recordRun(db, {
     kind: 'findings',
@@ -109,7 +112,7 @@ describe('estimateBudgetNudge', () => {
   it('is free and refused when the note is empty, even with a proposal pending', async () => {
     await seedBudgetProposal('food', MONTH, 15_000)
 
-    const outcome = estimateBudgetNudge(db, { month: MONTH })
+    const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.allowed).toBe(false)
     expect(outcome.reason).toBe('no_note')
@@ -120,7 +123,7 @@ describe('estimateBudgetNudge', () => {
   it('is free and refused when the note is set but nothing is pending', () => {
     saveMonthNote(db, MONTH, 'Dentist bill in March.')
 
-    const outcome = estimateBudgetNudge(db, { month: MONTH })
+    const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.allowed).toBe(false)
     expect(outcome.reason).toBe('no_candidates')
@@ -131,7 +134,7 @@ describe('estimateBudgetNudge', () => {
     saveMonthNote(db, MONTH, 'Dentist bill in March.')
     await seedBudgetProposal('food', MONTH, 15_000)
 
-    const outcome = estimateBudgetNudge(db, { month: MONTH })
+    const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.allowed).toBe(true)
     expect(outcome.reason).toBeNull()
@@ -152,7 +155,7 @@ describe('estimateBudgetNudge', () => {
       costMicroEurOverride: eurToMicroEur(500),
     })
 
-    const outcome = estimateBudgetNudge(db, { month: MONTH })
+    const outcome = estimateBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.allowed).toBe(false)
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -164,7 +167,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     const recorded = fakeGemini('never called')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_note')
@@ -179,7 +182,7 @@ describe('runBudgetNudge', () => {
     saveMonthNote(db, MONTH, 'Dentist bill in March.')
     const recorded = fakeGemini('never called')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_candidates')
@@ -202,7 +205,7 @@ describe('runBudgetNudge', () => {
     })
     const recorded = fakeGemini('never called')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('capped')
     expect(outcome.reason).toBe('month_budget_exceeded')
@@ -218,7 +221,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini(new Error('socket hang up'))
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
@@ -232,7 +235,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('not json at all')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('bad_response')
@@ -244,7 +247,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":18000}]}')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.degraded).toBe(false)
@@ -264,7 +267,7 @@ describe('runBudgetNudge', () => {
     // Ten times the suggested amount — well outside [suggested/3, suggested*3].
     fakeGemini('{"adjustments":[{"label":"c1","amountCents":150000}]}')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.adjusted).toBe(0)
@@ -281,7 +284,7 @@ describe('runBudgetNudge', () => {
     // `c9` is not one of this batch's real labels — a hallucinated or borrowed one.
     fakeGemini('{"adjustments":[{"label":"c9","amountCents":18000}]}')
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.dropped).toEqual([{ label: 'c9', amountCents: 18_000, reason: 'unknown_label' }])
@@ -304,7 +307,7 @@ describe('runBudgetNudge', () => {
         JSON.stringify({ adjustments: [{ label: 'c1', amountCents: 18_000, reason }] }),
       )
 
-      const outcome = await runBudgetNudge(db, { month: MONTH })
+      const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
       expect(outcome.adjusted).toBe(1)
       return pendingBudgetProposals(db, MONTH)[0] as ProposalRow
     }
@@ -348,7 +351,7 @@ describe('runBudgetNudge', () => {
       await seedBudgetProposal('food', MONTH, 15_000)
       const recorded = fakeGemini('{"adjustments":[]}')
 
-      await runBudgetNudge(db, { month: MONTH })
+      await runBudgetNudge(db, tenantId, { month: MONTH })
 
       expect(recorded.prompts[0]).toMatch(/Keep each reason under 160 characters/)
     })
@@ -365,7 +368,7 @@ describe('runBudgetNudge', () => {
       '{"adjustments":[{"label":"c1","amountCents":12000},{"label":"c2","amountCents":120000}]}',
     )
 
-    const outcome = await runBudgetNudge(db, { month: MONTH })
+    const outcome = await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(outcome.status).toBe('ok')
     expect(outcome.adjusted).toBe(1)
@@ -384,7 +387,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     const recorded = fakeGemini('{"adjustments":[]}')
 
-    await runBudgetNudge(db, { month: MONTH })
+    await runBudgetNudge(db, tenantId, { month: MONTH })
 
     expect(recorded.prompts[0] ?? '').not.toContain('Groceries')
   })

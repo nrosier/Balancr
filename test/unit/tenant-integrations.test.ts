@@ -16,6 +16,7 @@ import {
   integrationAvailability,
 } from '../../src/db/tenant-integrations.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 function freshDb(): Db {
   const { db } = createTestDb()
@@ -78,8 +79,11 @@ describe('importEnvIntegrationsOnce', () => {
  * tenant independent provisioning. Until then, this is the only way to exercise it.
  */
 describe('integrationAvailability', () => {
-  function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferInsert>): void {
-    const tenantId = getSoleTenantId(db)
+  function insertRow(
+    db: Db,
+    tenantId: string,
+    overrides: Partial<typeof tenantIntegrations.$inferInsert>,
+  ): void {
     db.insert(tenantIntegrations)
       .values({
         tenantId,
@@ -93,67 +97,102 @@ describe('integrationAvailability', () => {
         googleCloudProject: null,
         ...overrides,
       })
+      .onConflictDoUpdate({ target: tenantIntegrations.tenantId, set: { tenantId, ...overrides } })
       .run()
   }
 
   it('reports actual and ghostfolio unavailable on an all-empty row', () => {
     const db = freshDb()
-    insertRow(db, {})
-    expect(integrationAvailability(db)).toEqual({ actual: false, ghostfolio: false, ai: false })
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, {})
+    expect(integrationAvailability(db, tenantId)).toEqual({ actual: false, ghostfolio: false, ai: false })
   })
 
   it('reports actual available once its three fields are all set, independent of ghostfolio', () => {
     const db = freshDb()
-    insertRow(db, {
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, {
       actualServerUrl: 'http://actual.test:5006',
       actualSyncId: 'sync-id',
       actualPasswordEnc: encryptField('password'),
     })
-    const availability = integrationAvailability(db)
+    const availability = integrationAvailability(db, tenantId)
     expect(availability.actual).toBe(true)
     expect(availability.ghostfolio).toBe(false)
   })
 
   it('reports ghostfolio available once its two fields are set, independent of actual', () => {
     const db = freshDb()
-    insertRow(db, {
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, {
       ghostfolioUrl: 'http://ghostfolio.test:3333',
       ghostfolioSecurityTokenEnc: encryptField('token'),
     })
-    const availability = integrationAvailability(db)
+    const availability = integrationAvailability(db, tenantId)
     expect(availability.ghostfolio).toBe(true)
     expect(availability.actual).toBe(false)
   })
 
   it('reports ai unavailable for an aistudio row with no key, available once one is set', () => {
     const db = freshDb()
-    insertRow(db, { geminiProvider: 'aistudio', geminiApiKeyEnc: null })
-    expect(integrationAvailability(db).ai).toBe(false)
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, { geminiProvider: 'aistudio', geminiApiKeyEnc: null })
+    expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
-    insertRow(db2, { geminiProvider: 'aistudio', geminiApiKeyEnc: encryptField('key') })
-    expect(integrationAvailability(db2).ai).toBe(true)
+    const tenantId2 = getSoleTenantId(db2)
+    insertRow(db2, tenantId2, { geminiProvider: 'aistudio', geminiApiKeyEnc: encryptField('key') })
+    expect(integrationAvailability(db2, tenantId2).ai).toBe(true)
   })
 
   it('reports ai unavailable for a vertex row with no project, available once one is set', () => {
     const db = freshDb()
-    insertRow(db, { geminiProvider: 'vertex', googleCloudProject: null })
-    expect(integrationAvailability(db).ai).toBe(false)
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, { geminiProvider: 'vertex', googleCloudProject: null })
+    expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
-    insertRow(db2, { geminiProvider: 'vertex', googleCloudProject: 'my-gcp-project' })
-    expect(integrationAvailability(db2).ai).toBe(true)
+    const tenantId2 = getSoleTenantId(db2)
+    insertRow(db2, tenantId2, { geminiProvider: 'vertex', googleCloudProject: 'my-gcp-project' })
+    expect(integrationAvailability(db2, tenantId2).ai).toBe(true)
   })
 
   it('ignores googleCloudProject for an aistudio row and geminiApiKeyEnc for a vertex row', () => {
     const db = freshDb()
+    const tenantId = getSoleTenantId(db)
     // An aistudio row with a leftover project value but no key: still unavailable.
-    insertRow(db, { geminiProvider: 'aistudio', geminiApiKeyEnc: null, googleCloudProject: 'stale-project' })
-    expect(integrationAvailability(db).ai).toBe(false)
+    insertRow(db, tenantId, { geminiProvider: 'aistudio', geminiApiKeyEnc: null, googleCloudProject: 'stale-project' })
+    expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
+    const tenantId2 = getSoleTenantId(db2)
     // A vertex row with a leftover key but no project: still unavailable.
-    insertRow(db2, { geminiProvider: 'vertex', googleCloudProject: null, geminiApiKeyEnc: encryptField('stale-key') })
-    expect(integrationAvailability(db2).ai).toBe(false)
+    insertRow(db2, tenantId2, {
+      geminiProvider: 'vertex',
+      googleCloudProject: null,
+      geminiApiKeyEnc: encryptField('stale-key'),
+    })
+    expect(integrationAvailability(db2, tenantId2).ai).toBe(false)
+  })
+
+  it('keeps two tenants in the same database from cross-contaminating (#376 phase 2)', () => {
+    const db = freshDb()
+    const tenantA = getSoleTenantId(db)
+    const tenantB = createSecondTenant(db)
+
+    insertRow(db, tenantA, {
+      actualServerUrl: 'http://actual.test:5006',
+      actualSyncId: 'sync-id',
+      actualPasswordEnc: encryptField('password'),
+      geminiProvider: 'aistudio',
+      geminiApiKeyEnc: encryptField('key'),
+    })
+    // Tenant B is left with the all-empty placeholder `createSecondTenant` seeds —
+    // everything unavailable — so a leak toward tenant A's row would show up as a
+    // false positive here rather than a false negative.
+    insertRow(db, tenantB, {})
+
+    expect(integrationAvailability(db, tenantA)).toEqual({ actual: true, ghostfolio: false, ai: true })
+    expect(integrationAvailability(db, tenantB)).toEqual({ actual: false, ghostfolio: false, ai: false })
   })
 })
