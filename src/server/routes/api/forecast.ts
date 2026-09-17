@@ -13,7 +13,7 @@ import { forecastSchema, type Forecast } from './schemas.ts'
 
 export function buildForecast(db: Db, tenantId: string): Forecast {
   return forecastSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     forecast: projectCashflow(db, tenantId),
   })
 }

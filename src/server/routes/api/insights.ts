@@ -117,7 +117,7 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     month === null ? null : loadMonthTotals(db, tenantId, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     ai: tenantAiAvailability(db, tenantId),
     owner: options.owner ?? false,
     month,

@@ -19,7 +19,6 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { getSoleTenantId } from '../../../db/tenant.ts'
 import { loadJobRows, type JobRow } from '../../../jobs/index.ts'
 
 /**
@@ -81,8 +80,8 @@ const describe = (row: JobRow): JobFreshness => ({
  * which on a new deployment is every job, and describing that as staleness would
  * mean the first thing a new user sees is a warning about nothing.
  */
-export function freshness(db: Db): Freshness {
-  const rows = loadJobRows(db, getSoleTenantId(db))
+export function freshness(db: Db, tenantId: string): Freshness {
+  const rows = loadJobRows(db, tenantId)
   const byName = new Map(rows.map((row) => [row.name, row]))
 
   const data = DATA_JOBS.map((name) => byName.get(name)).filter(
