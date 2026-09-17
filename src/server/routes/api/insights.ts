@@ -101,7 +101,7 @@ export interface InsightsOptions {
   owner?: boolean
 }
 
-export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
+export function buildInsights(db: Db, tenantId: string, options: InsightsOptions = {}): Insights {
   const locale = options.locale ?? config.DEFAULT_LOCALE
   const month = resolveMonth(db, options.month)
   const runsPeriod = resolveBenchmarkPeriod(options.runsPeriod)
@@ -112,12 +112,12 @@ export function buildInsights(db: Db, options: InsightsOptions = {}): Insights {
   // period beside it, and there was no way to ask for July's. The cost is that a month
   // with no narrative now says so — which is the truth, and the button beside it is #158.
   const narrative = month === null ? null : loadNarrative(db, month, locale)
-  const spend = budgetState(db)
+  const spend = budgetState(db, tenantId)
   const factsChangedAt = month === null ? null : loadMonthTotals(db, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
     freshness: freshness(db),
-    ai: tenantAiAvailability(db),
+    ai: tenantAiAvailability(db, tenantId),
     owner: options.owner ?? false,
     month,
     factsChangedAt: factsChangedAt?.toISOString() ?? null,

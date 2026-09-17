@@ -14,6 +14,7 @@ import { createTestDb, type Db } from '../../src/db/index.ts'
 import { tenantIntegrations } from '../../src/db/schema.ts'
 import { resolvedIntegrations } from '../../src/db/tenant-integrations.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 function freshDb(): Db {
   const { db } = createTestDb()
@@ -21,8 +22,7 @@ function freshDb(): Db {
   return db
 }
 
-function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferInsert>): void {
-  const tenantId = getSoleTenantId(db)
+function insertRow(db: Db, tenantId: string, overrides: Partial<typeof tenantIntegrations.$inferInsert>): void {
   db.insert(tenantIntegrations)
     .values({
       tenantId,
@@ -39,15 +39,20 @@ function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferIn
       geminiMonthlyBudgetEurMicro: 42_000_000,
       ...overrides,
     })
+    .onConflictDoUpdate({
+      target: tenantIntegrations.tenantId,
+      set: { tenantId, ...overrides },
+    })
     .run()
 }
 
 describe('resolvedIntegrations', () => {
   it('decrypts every secret field and passes the plain ones through unchanged', () => {
     const db = freshDb()
-    insertRow(db, {})
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, {})
 
-    expect(resolvedIntegrations(db)).toEqual({
+    expect(resolvedIntegrations(db, tenantId)).toEqual({
       actual: {
         serverUrl: 'https://actual.example.com',
         password: 'actual-password',
@@ -71,17 +76,49 @@ describe('resolvedIntegrations', () => {
 
   it('round-trips a set e2e password rather than leaving it null', () => {
     const db = freshDb()
-    insertRow(db, { actualE2ePasswordEnc: encryptField('e2e-secret') })
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, { actualE2ePasswordEnc: encryptField('e2e-secret') })
 
-    expect(resolvedIntegrations(db).actual.e2ePassword).toBe('e2e-secret')
+    expect(resolvedIntegrations(db, tenantId).actual.e2ePassword).toBe('e2e-secret')
   })
 
   it('reports a null gemini api key as null rather than decrypting it', () => {
     const db = freshDb()
-    insertRow(db, { geminiProvider: 'vertex', geminiApiKeyEnc: null, googleCloudProject: 'my-gcp-project' })
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, { geminiProvider: 'vertex', geminiApiKeyEnc: null, googleCloudProject: 'my-gcp-project' })
 
-    const gemini = resolvedIntegrations(db).gemini
+    const gemini = resolvedIntegrations(db, tenantId).gemini
     expect(gemini.apiKey).toBeNull()
     expect(gemini.project).toBe('my-gcp-project')
+  })
+
+  it('keeps two tenants in the same database from cross-contaminating (#376 phase 2)', () => {
+    const db = freshDb()
+    const tenantA = getSoleTenantId(db)
+    const tenantB = createSecondTenant(db)
+    insertRow(db, tenantA, {
+      actualServerUrl: 'https://actual.tenant-a.example.com',
+      ghostfolioUrl: 'https://ghostfolio.tenant-a.example.com',
+      geminiProvider: 'aistudio',
+      geminiApiKeyEnc: encryptField('tenant-a-key'),
+    })
+    insertRow(db, tenantB, {
+      actualServerUrl: 'https://actual.tenant-b.example.com',
+      ghostfolioUrl: 'https://ghostfolio.tenant-b.example.com',
+      geminiProvider: 'vertex',
+      geminiApiKeyEnc: null,
+      googleCloudProject: 'tenant-b-project',
+    })
+
+    const a = resolvedIntegrations(db, tenantA)
+    const b = resolvedIntegrations(db, tenantB)
+
+    expect(a.actual.serverUrl).toBe('https://actual.tenant-a.example.com')
+    expect(a.ghostfolio.url).toBe('https://ghostfolio.tenant-a.example.com')
+    expect(a.gemini).toMatchObject({ provider: 'aistudio', apiKey: 'tenant-a-key', project: null })
+
+    expect(b.actual.serverUrl).toBe('https://actual.tenant-b.example.com')
+    expect(b.ghostfolio.url).toBe('https://ghostfolio.tenant-b.example.com')
+    expect(b.gemini).toMatchObject({ provider: 'vertex', apiKey: null, project: 'tenant-b-project' })
   })
 })

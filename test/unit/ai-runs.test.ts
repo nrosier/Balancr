@@ -417,9 +417,13 @@ describe('ai_spend_monthly', () => {
 
 describe('budgetState', () => {
   const now = new Date('2026-03-15T03:00:00Z')
+  let tenantId: string
+  beforeEach(() => {
+    tenantId = getSoleTenantId(db)
+  })
 
   it('reports an untouched month as fully available', () => {
-    const state = budgetState(db, now)
+    const state = budgetState(db, tenantId, now)
     expect(state.month).toBe('2026-03')
     expect(state.spentMicroEur).toBe(0)
     expect(state.budgetMicroEur).toBe(eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR))
@@ -431,7 +435,7 @@ describe('budgetState', () => {
   it('measures spend against the budget in basis points', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(3.75) })
 
-    const state = budgetState(db, now)
+    const state = budgetState(db, tenantId, now)
     expect(state.spentMicroEur).toBe(eurToMicroEur(3.75))
     // 3.75 of 15 euro.
     expect(state.usedBp).toBe(2_500)
@@ -442,7 +446,7 @@ describe('budgetState', () => {
   it('clamps an overspend rather than reporting a negative remainder', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(20) })
 
-    const state = budgetState(db, now)
+    const state = budgetState(db, tenantId, now)
     expect(state.remainingMicroEur).toBe(0)
     expect(state.usedBp).toBe(10_000)
     expect(state.exceeded).toBe(true)
@@ -450,32 +454,36 @@ describe('budgetState', () => {
 
   it('is exceeded exactly at the budget, not one micro-euro past it', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR) })
-    expect(budgetState(db, now).exceeded).toBe(true)
+    expect(budgetState(db, tenantId, now).exceeded).toBe(true)
   })
 
   it("ignores another month's spend", () => {
     runIn('2026-02', { costMicroEurOverride: eurToMicroEur(20) })
-    expect(budgetState(db, now).exceeded).toBe(false)
+    expect(budgetState(db, tenantId, now).exceeded).toBe(false)
   })
 
   it('converts to euros for a banner', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(2.5) })
-    expect(budgetEur(budgetState(db, now))).toEqual({ spent: 2.5, budget: 15 })
+    expect(budgetEur(budgetState(db, tenantId, now))).toEqual({ spent: 2.5, budget: 15 })
   })
 })
 
 describe('checkBudget', () => {
   const now = new Date('2026-03-15T03:00:00Z')
+  let tenantId: string
+  beforeEach(() => {
+    tenantId = getSoleTenantId(db)
+  })
 
   it('allows a call inside the budget', () => {
-    const decision = checkBudget(db, eurToMicroEur(0.02), now)
+    const decision = checkBudget(db, tenantId, eurToMicroEur(0.02), now)
     expect(decision).toMatchObject({ allowed: true, reason: 'ok' })
   })
 
   it('refuses once the month is spent, with a code rather than a sentence', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(15) })
 
-    const decision = checkBudget(db, 0, now)
+    const decision = checkBudget(db, tenantId, 0, now)
     expect(decision.allowed).toBe(false)
     expect(decision.reason).toBe('month_budget_exceeded')
     // The state travels with the decision: the banner shows the figures.
@@ -486,18 +494,18 @@ describe('checkBudget', () => {
     // A month at 95% must not be allowed to start a run costing half the budget.
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(14.5) })
 
-    const decision = checkBudget(db, eurToMicroEur(1), now)
+    const decision = checkBudget(db, tenantId, eurToMicroEur(1), now)
     expect(decision.allowed).toBe(false)
     expect(decision.reason).toBe('estimate_exceeds_remaining')
   })
 
   it('allows an estimate that exactly fits', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(14) })
-    expect(checkBudget(db, eurToMicroEur(1), now).allowed).toBe(true)
+    expect(checkBudget(db, tenantId, eurToMicroEur(1), now).allowed).toBe(true)
   })
 
   it('allows a call with no estimate given', () => {
-    expect(checkBudget(db, undefined, now).allowed).toBe(true)
+    expect(checkBudget(db, tenantId, undefined, now).allowed).toBe(true)
   })
 })
 
@@ -511,11 +519,13 @@ describe('a zero budget', () => {
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 
-    const state = budgetState(db, new Date('2026-03-15T03:00:00Z'))
+    const state = budgetState(db, tenantId, new Date('2026-03-15T03:00:00Z'))
     expect(state.budgetMicroEur).toBe(0)
     expect(state.exceeded).toBe(true)
     // Not NaN, which is what a naive percentage of zero would give.
     expect(state.usedBp).toBe(10_000)
-    expect(checkBudget(db, 0, new Date('2026-03-15T03:00:00Z')).reason).toBe('month_budget_exceeded')
+    expect(checkBudget(db, tenantId, 0, new Date('2026-03-15T03:00:00Z')).reason).toBe(
+      'month_budget_exceeded',
+    )
   })
 })

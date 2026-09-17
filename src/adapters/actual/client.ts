@@ -183,7 +183,7 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
   workers.set(tenantId, worker)
   attachChild(tenantId, worker)
 
-  const integrations = resolvedIntegrations(db)
+  const integrations = resolvedIntegrations(db, tenantId)
   const openConfig: ActualOpenConfig = {
     serverUrl: integrations.actual.serverUrl,
     password: integrations.actual.password,

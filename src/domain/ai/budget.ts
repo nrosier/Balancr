@@ -100,10 +100,10 @@ export interface BudgetState {
  * alternative, treating it as unlimited, is the one reading that could produce a
  * bill nobody asked for.
  */
-export function budgetState(db: Db, now: Date = new Date()): BudgetState {
+export function budgetState(db: Db, tenantId: string, now: Date = new Date()): BudgetState {
   const month = spendMonthOf(now)
   const spentMicroEur = loadSpendMonth(db, month).costMicroEur
-  const budgetMicroEur = resolvedIntegrations(db).gemini.budgetEurMicro
+  const budgetMicroEur = resolvedIntegrations(db, tenantId).gemini.budgetEurMicro
 
   return {
     month,
@@ -138,10 +138,11 @@ export interface BudgetDecision {
  */
 export function checkBudget(
   db: Db,
+  tenantId: string,
   estimateMicroEur = 0,
   now: Date = new Date(),
 ): BudgetDecision {
-  const state = budgetState(db, now)
+  const state = budgetState(db, tenantId, now)
   if (state.exceeded) return { allowed: false, state, reason: 'month_budget_exceeded' }
   if (estimateMicroEur > state.remainingMicroEur) {
     return { allowed: false, state, reason: 'estimate_exceeds_remaining' }

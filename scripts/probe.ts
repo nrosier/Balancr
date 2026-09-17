@@ -82,10 +82,9 @@ const RECONCILED_MONTHS = 3
  */
 const roundingSlackCents = (roundings: number): number => Math.max(1, Math.ceil(roundings / 2))
 
-async function probeActual(): Promise<void> {
+async function probeActual(tenantId: string): Promise<void> {
   heading('Actual Budget')
 
-  const tenantId = getSoleTenantId(db)
   // The first call opens and downloads the budget; everything after is cheap.
   await syncActual(db, tenantId)
   const health = actualHealth(tenantId)
@@ -304,11 +303,11 @@ function reconcileFigure(
   )
 }
 
-async function reconcileNetWorth(): Promise<void> {
+async function reconcileNetWorth(tenantId: string): Promise<void> {
   heading('Reconciliation — net worth')
 
   const date = todayIn(config.TZ)
-  const details = await fetchPortfolioDetails(db)
+  const details = await fetchPortfolioDetails(db, tenantId)
   const holdings = toHoldingSnapshots(date, details, config.BASE_CURRENCY)
   // No performance: `twrBp` is not part of any total, and fetching it would make a
   // reconciliation depend on the one endpoint the nightly job already tolerates
@@ -328,7 +327,7 @@ async function reconcileNetWorth(): Promise<void> {
   reconcileFigure('invested', metrics.investedValueCents, summary?.currentValueInBaseCurrency, holdings.length)
   reconcileFigure('broker cash', metrics.cashValueCents, summary?.totalCashInBaseCurrency, holdings.length)
 
-  const accounts = toAccountValues(await fetchGhostfolioAccounts(db))
+  const accounts = toAccountValues(await fetchGhostfolioAccounts(db, tenantId))
   const counted = accounts.filter((account) => !account.excluded)
   const countedCents = counted.reduce((sum, account) => sum + account.valueCents, 0)
   const excluded = accounts.filter((account) => account.excluded)
@@ -353,9 +352,9 @@ async function reconcileNetWorth(): Promise<void> {
   }
 }
 
-async function probeGhostfolioSide(): Promise<void> {
+async function probeGhostfolioSide(tenantId: string): Promise<void> {
   heading('Ghostfolio')
-  const report = await probeGhostfolio(db)
+  const report = await probeGhostfolio(db, tenantId)
 
   for (const check of report.checks) {
     if (check.status === 'ok') ok(`${check.path} — ${check.detail}`)
@@ -370,7 +369,7 @@ async function probeGhostfolioSide(): Promise<void> {
   if (report.status !== 'ok') return
   // Only once every endpoint parsed. Reconciling against a payload we already know
   // we misread would compare two of our own misreadings and call them agreement.
-  await reconcileNetWorth()
+  await reconcileNetWorth(tenantId)
 }
 
 async function main(): Promise<void> {
@@ -380,10 +379,12 @@ async function main(): Promise<void> {
     timeZone: config.TZ,
   })
 
+  const tenantId = getSoleTenantId(db)
+
   // Sequential: interleaved stdout is unreadable, and the Actual adapter
   // serialises its operations anyway.
   try {
-    await probeActual()
+    await probeActual(tenantId)
   } catch (error) {
     bad(`Actual probe failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
@@ -393,7 +394,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    await probeGhostfolioSide()
+    await probeGhostfolioSide(tenantId)
   } catch (error) {
     bad(`Ghostfolio probe failed: ${error instanceof Error ? error.message : String(error)}`)
   }
