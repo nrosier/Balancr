@@ -110,7 +110,7 @@ const day = (asOf: Date): string => asOf.toISOString().slice(0, 10)
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
   fetchAccounts: () => Promise.resolve(gave.accounts),
-  fetchAccountBalances: (accountIds: string[], asOf: Date) => {
+  fetchAccountBalances: (_db: Db, _tenantId: string, accountIds: string[], asOf: Date) => {
     const date = day(asOf)
     gave.balanceDates.push(date)
     const onDate = gave.balances[date] ?? {}

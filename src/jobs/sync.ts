@@ -25,6 +25,7 @@ import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio
 import { toCents } from '../adapters/ghostfolio/types.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { getSoleTenantId } from '../db/tenant.ts'
 import {
   accountMapBySource,
   applyDerivedFields,
@@ -100,12 +101,12 @@ export function planMonths(
   return { load, targets }
 }
 
-async function fetchHistory(months: readonly string[]): Promise<BudgetMonth[]> {
+async function fetchHistory(db: Db, tenantId: string, months: readonly string[]): Promise<BudgetMonth[]> {
   const out: BudgetMonth[] = []
   // Sequential on purpose: every call goes through the Actual serialiser anyway,
   // so `Promise.all` over 36 months would buy nothing and only make the order of
   // a failure unpredictable.
-  for (const month of months) out.push(await fetchBudgetMonth(month))
+  for (const month of months) out.push(await fetchBudgetMonth(db, tenantId, month))
   return out
 }
 
@@ -119,6 +120,7 @@ async function fetchHistory(months: readonly string[]): Promise<BudgetMonth[]> {
  */
 async function syncAccounts(
   db: Db,
+  tenantId: string,
   log: Logger,
 ): Promise<{
   created: number
@@ -129,7 +131,7 @@ async function syncAccounts(
   /** Pairs newly grouped as the same money. */
   mirrored: number
 }> {
-  const sightings: AccountSighting[] = (await fetchActualAccounts()).map((account) => ({
+  const sightings: AccountSighting[] = (await fetchActualAccounts(db, tenantId)).map((account) => ({
     source: 'actual' as const,
     externalId: account.id,
     name: account.name,
@@ -233,13 +235,14 @@ export function classifyGhostfolio(
 }
 
 async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
-  await step('connect', () => syncActual())
+  const tenantId = getSoleTenantId(db)
+  await step('connect', () => syncActual(db, tenantId))
 
   const params = loadParams(db)
   const currentMonth = currentMonthIn(config.TZ)
 
   const fetched = await step('fetch', async () => {
-    const available = await fetchBudgetMonths()
+    const available = await fetchBudgetMonths(db, tenantId)
     const { load, targets } = planMonths(
       available,
       currentMonth,
@@ -249,8 +252,10 @@ async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
 
     if (targets.length === 0) return { ready: false as const, load, targets }
 
-    const history = await fetchHistory(load)
+    const history = await fetchHistory(db, tenantId, load)
     const recomputed = await fetchRecomputedSpend(
+      db,
+      tenantId,
       startOfMonth(load[0] as string),
       endOfMonth(load[load.length - 1] as string),
     )
@@ -263,10 +268,12 @@ async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
     const today = todayIn(config.TZ)
     const committed = targets.includes(currentMonth)
       ? committedForMonth({
-          schedules: await fetchSchedules(),
+          schedules: await fetchSchedules(db, tenantId),
           month: currentMonth,
           today,
           paidThisMonth: await fetchSchedulesPaidThisMonth(
+            db,
+            tenantId,
             startOfMonth(currentMonth),
             endOfMonth(currentMonth),
           ),
@@ -282,6 +289,8 @@ async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
     const dayCurves = targets.includes(currentMonth)
       ? buildDayCurves({
           daily: await fetchRecomputedSpendDaily(
+            db,
+            tenantId,
             startOfMonth(dayCurveHistoryMonths[0] as string),
             endOfMonth(addMonths(currentMonth, -1)),
           ),
@@ -351,7 +360,7 @@ async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
   })
   const { aggregate, categories, facts, months, drift } = computed
 
-  const accounts = await step('accounts', () => syncAccounts(db, log))
+  const accounts = await step('accounts', () => syncAccounts(db, tenantId, log))
 
   return {
     months: targets.length,

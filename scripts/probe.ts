@@ -19,7 +19,7 @@
  */
 import {
   actualHealth,
-  closeActual,
+  closeAllActual,
   ENVELOPE_BUDGET_TYPES,
   syncActual,
 } from '../src/adapters/actual/client.ts'
@@ -40,6 +40,7 @@ import { probeGhostfolio } from '../src/adapters/ghostfolio/probe.ts'
 import { toCents } from '../src/adapters/ghostfolio/types.ts'
 import { config } from '../src/config.ts'
 import { db } from '../src/db/index.ts'
+import { getSoleTenantId } from '../src/db/tenant.ts'
 import { computePortfolioMetrics } from '../src/domain/portfolio/metrics.ts'
 import {
   toAccountValues,
@@ -84,9 +85,10 @@ const roundingSlackCents = (roundings: number): number => Math.max(1, Math.ceil(
 async function probeActual(): Promise<void> {
   heading('Actual Budget')
 
+  const tenantId = getSoleTenantId(db)
   // The first call opens and downloads the budget; everything after is cheap.
-  await syncActual()
-  const health = actualHealth()
+  await syncActual(db, tenantId)
+  const health = actualHealth(tenantId)
   ok(`connected — server ${health.serverVersion ?? 'unknown'}, api ${health.apiVersion}`)
   if (!health.versionAligned) {
     warn(
@@ -112,11 +114,11 @@ async function probeActual(): Promise<void> {
     )
   }
 
-  const accounts = await fetchActualAccounts()
-  const categories = await fetchCategories()
-  const groups = await fetchCategoryGroups()
-  const months = await fetchBudgetMonths()
-  const range = await fetchTransactionDateRange()
+  const accounts = await fetchActualAccounts(db, tenantId)
+  const categories = await fetchCategories(db, tenantId)
+  const groups = await fetchCategoryGroups(db, tenantId)
+  const months = await fetchBudgetMonths(db, tenantId)
+  const range = await fetchTransactionDateRange(db, tenantId)
 
   const offBudget = accounts.filter((a) => a.offbudget).length
   ok(`${accounts.length} accounts — ${accounts.length - offBudget} on-budget, ${offBudget} off-budget`)
@@ -143,7 +145,7 @@ async function probeActual(): Promise<void> {
   }
 
   const results: MonthReconciliation[] = []
-  for (const month of window) results.push(await reconcile(month))
+  for (const month of window) results.push(await reconcile(tenantId, month))
 
   heading('Reconciliation — verdict')
   const drifted = results.filter((result) => result.drift > 0)
@@ -177,11 +179,11 @@ interface MonthReconciliation {
  * a hygiene rule (transfers, splits, off-budget, starting balances) disagrees
  * with Actual, and that same rule feeds the baselines and the AI findings.
  */
-async function reconcile(month: string): Promise<MonthReconciliation> {
+async function reconcile(tenantId: string, month: string): Promise<MonthReconciliation> {
   heading(`Reconciliation — ${month}`)
 
-  const budget = await fetchBudgetMonth(month)
-  const rows = await fetchRecomputedSpend(`${month}-01`, endOfMonth(month))
+  const budget = await fetchBudgetMonth(db, tenantId, month)
+  const rows = await fetchRecomputedSpend(db, tenantId, `${month}-01`, endOfMonth(month))
 
   ok(
     `Actual reports income ${formatMoney(budget.totalIncomeCents)}, ` +
@@ -387,7 +389,7 @@ async function main(): Promise<void> {
   } finally {
     // Leaving the budget open holds a lock on dataDir that the running container
     // needs.
-    await closeActual()
+    await closeAllActual()
   }
 
   try {

@@ -30,6 +30,7 @@ import {
 import { fetchCategories } from '../../adapters/actual/queries.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { loadCategoryMeta } from '../aggregate/facts.ts'
@@ -168,7 +169,7 @@ async function prepareGuessBatch(
   if (candidates.length === 0) return null
 
   const categoryMetaById = loadCategoryMeta(db)
-  const categories = await fetchCategories()
+  const categories = await fetchCategories(db, getSoleTenantId(db))
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
 
   const inputs: GuessCandidateInput[] = candidates.map((candidate) => ({
