@@ -24,6 +24,7 @@ import { runJob, type JobStep } from '../../src/jobs/runner.ts'
 import { syncJob } from '../../src/jobs/sync.ts'
 import { budgetMonth } from '../fixtures/budget.ts'
 import type { BudgetMonth } from '../../src/adapters/actual/queries.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 /** Well before any real "now": keeps `targets` from ever including the current month. */
 const MONTHS = ['2020-01', '2020-02', '2020-03']
@@ -56,11 +57,13 @@ vi.mock('../../src/adapters/ghostfolio/client.ts', async (importOriginal) => ({
 }))
 
 let db: Db
+let TENANT_ID: string
 
 beforeEach(() => {
   const ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
   gave.months = [...MONTHS]
 })
 
@@ -77,7 +80,7 @@ const steps = (): JobStep[] => {
 
 describe('a real sync run', () => {
   it('records connect, fetch, compute and accounts, in order, all ok', async () => {
-    await runJob(db, syncJob)
+    await runJob(db, syncJob, TENANT_ID)
 
     expect(steps().map((step) => step.name)).toEqual(['connect', 'fetch', 'compute', 'accounts'])
     expect(steps().every((step) => step.status === 'ok')).toBe(true)

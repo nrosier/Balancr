@@ -43,6 +43,7 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
+import { getSoleTenantId } from '../../../db/tenant.ts'
 import {
   describeSchedule,
   jobsInFlight,
@@ -158,7 +159,8 @@ export function buildStatus(db: Db): Status {
     })
   }
 
-  const rows = loadJobRows(db)
+  const tenantId = getSoleTenantId(db)
+  const rows = loadJobRows(db, tenantId)
   const byName = new Map(rows.map((row) => [row.name, row]))
   const probes = loadProbes(db)
 
@@ -196,7 +198,7 @@ export function buildStatus(db: Db): Status {
       error: row.status === 'error' ? row.error : null,
       schedule: scheduleOf(row.name),
     })),
-    queued: jobsInFlight(),
+    queued: jobsInFlight(tenantId),
     probes: probes.map((probe) => ({
       source: probe.source,
       status: probe.status,

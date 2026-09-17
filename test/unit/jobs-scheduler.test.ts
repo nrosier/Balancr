@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { jobs as jobsTable } from '../../src/db/schema.ts'
+import { jobs as jobsTable, tenants } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadJobRows, type Job } from '../../src/jobs/runner.ts'
 import { createScheduler } from '../../src/jobs/scheduler.ts'
@@ -141,9 +141,26 @@ describe('createScheduler', () => {
     createScheduler(ctx.db, []).start()
     await settle()
 
-    const row = loadJobRows(ctx.db).find((candidate) => candidate.name === 'sync')
+    const row = loadJobRows(ctx.db, TENANT_ID).find((candidate) => candidate.name === 'sync')
     expect(row).toMatchObject({ status: 'error' })
     expect(row!.error).toMatch(/interrupted/)
+  })
+
+  it('runs a tick for every tenant, each with its own ctx.tenantId', async () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    const seen: string[] = []
+    const job: Job = {
+      name: 'counted',
+      schedule: { kind: 'interval', minutes: 60 },
+      async run(jobCtx) {
+        seen.push(jobCtx.tenantId)
+      },
+    }
+
+    createScheduler(ctx.db, [job]).start()
+    await settle()
+
+    expect(seen).toEqual([TENANT_ID, other.id])
   })
 
   it('survives a tick that throws outright', async () => {

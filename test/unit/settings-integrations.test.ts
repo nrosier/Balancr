@@ -425,7 +425,7 @@ describe('POST /api/settings/integrations/actual/test', () => {
         await gate
       },
     }
-    const running = runJob(ctx.db, fakeJob)
+    const running = runJob(ctx.db, fakeJob, getSoleTenantId(ctx.db))
 
     const res = await post('/api/settings/integrations/actual/test', {
       serverUrl: 'http://actual.test:5006',

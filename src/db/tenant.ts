@@ -13,3 +13,17 @@ export function getSoleTenantId(db: Db): string {
   if (!row || rows.length !== 1) throw new Error(`expected exactly one tenant, found ${rows.length}`)
   return row.id
 }
+
+/**
+ * Every tenant the scheduler must fan out over (#372), ordered by creation so a
+ * tick's fan-out order is stable and reproducible rather than whatever order
+ * SQLite happens to return.
+ */
+export function allTenantIds(db: Db): string[] {
+  return db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .orderBy(tenants.createdAt)
+    .all()
+    .map((row) => row.id)
+}
