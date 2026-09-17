@@ -38,6 +38,7 @@ import {
 } from '../../src/db/schema.ts'
 import { resetComputedData } from '../../src/domain/aggregate/reset.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let TENANT_ID: string
@@ -60,20 +61,31 @@ beforeEach(() => {
   TENANT_ID = getSoleTenantId(ctx.db)
 })
 
-/** One row in every table Balancr has, computed and durable alike. */
-function seed(): { userId: string; accountMapId: string; runId: string } {
+/**
+ * One row in every table Balancr has, computed and durable alike.
+ *
+ * Takes `tenantId` and a `suffix` rather than closing over `TENANT_ID`, so the
+ * cross-tenant test below can seed two tenants' worth of rows without their
+ * globally-unique ids (`accountMap.id`, `aiRuns.id`, ...) colliding.
+ */
+function seed(tenantId: string, suffix = '1'): { userId: string; accountMapId: string; runId: string } {
   const db = ctx.db
 
   const [user] = db
     .insert(users)
-    .values({ id: 'user-1', tenantId: TENANT_ID, email: 'owner@example.com', role: 'owner' })
+    .values({
+      id: `user-${suffix}`,
+      tenantId,
+      email: `owner-${suffix}@example.com`,
+      role: 'owner',
+    })
     .returning({ id: users.id })
     .all()
   const userId = user!.id
 
   db.insert(sessions)
     .values({
-      id: 'session-1',
+      id: `session-${suffix}`,
       userId,
       method: 'local',
       expiresAt: new Date('2026-12-31'),
@@ -83,8 +95,8 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
   const [account] = db
     .insert(accountMap)
     .values({
-      id: 'account-1',
-      tenantId: TENANT_ID,
+      id: `account-${suffix}`,
+      tenantId,
       source: 'actual',
       externalId: 'ext-1',
       name: 'Checking',
@@ -94,24 +106,30 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
   const accountMapId = account!.id
 
   db.insert(categoryMeta)
-    .values({ tenantId: TENANT_ID, categoryId: 'cat-1', nameSnapshot: 'Nutsvoorzieningen' })
+    .values({ tenantId, categoryId: 'cat-1', nameSnapshot: 'Nutsvoorzieningen' })
     .run()
 
   db.insert(clarificationQueue)
-    .values({ id: 'clar-1', tenantId: TENANT_ID, categoryId: 'cat-1', questionCode: 'frequency' })
+    .values({ id: `clar-${suffix}`, tenantId, categoryId: 'cat-1', questionCode: 'frequency' })
     .run()
 
-  db.insert(settings).values({ tenantId: TENANT_ID, key: 'locale', valueJson: '"nl"' }).run()
+  db.insert(settings).values({ tenantId, key: 'locale', valueJson: '"nl"' }).run()
 
   db.insert(prompts)
-    .values({ id: 'prompt-1', key: 'analysis.system', locale: 'nl', version: 1, body: 'x' })
+    .values({
+      id: `prompt-${suffix}`,
+      key: `analysis.system-${suffix}`,
+      locale: 'nl',
+      version: 1,
+      body: 'x',
+    })
     .run()
 
   const [run] = db
     .insert(aiRuns)
     .values({
-      id: 'run-1',
-      tenantId: TENANT_ID,
+      id: `run-${suffix}`,
+      tenantId,
       kind: 'findings',
       model: 'gemini-x',
       locale: 'nl',
@@ -123,12 +141,12 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
   const runId = run!.id
 
   db.insert(aiFindings)
-    .values({ id: 'finding-1', tenantId: TENANT_ID, runId, code: 'above_baseline' })
+    .values({ id: `finding-${suffix}`, tenantId, runId, code: 'above_baseline' })
     .run()
   db.insert(aiNarratives)
     .values({
-      id: 'narrative-1',
-      tenantId: TENANT_ID,
+      id: `narrative-${suffix}`,
+      tenantId,
       runId,
       period: '2026-08',
       locale: 'nl',
@@ -138,8 +156,8 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
 
   db.insert(proposals)
     .values({
-      id: 'proposal-1',
-      tenantId: TENANT_ID,
+      id: `proposal-${suffix}`,
+      tenantId,
       type: 'category_meta.set',
       targetRef: 'cat-1',
       payloadJson: '{}',
@@ -147,18 +165,16 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     .run()
 
   db.insert(auditLog)
-    .values({ id: 'audit-1', action: 'jobs.refresh', entity: 'jobs', entityRef: 'refresh' })
+    .values({ id: `audit-${suffix}`, action: 'jobs.refresh', entity: 'jobs', entityRef: 'refresh' })
     .run()
 
-  db.insert(jobs).values({ name: 'sync', tenantId: TENANT_ID }).run()
+  db.insert(jobs).values({ name: `sync-${suffix}`, tenantId }).run()
 
-  db.insert(monthlyCategoryFacts)
-    .values({ tenantId: TENANT_ID, month: '2026-08', categoryId: 'cat-1' })
-    .run()
-  db.insert(monthlyTotals).values({ tenantId: TENANT_ID, month: '2026-08' }).run()
+  db.insert(monthlyCategoryFacts).values({ tenantId, month: '2026-08', categoryId: 'cat-1' }).run()
+  db.insert(monthlyTotals).values({ tenantId, month: '2026-08' }).run()
   db.insert(recomputeMismatches)
     .values({
-      tenantId: TENANT_ID,
+      tenantId,
       month: '2026-08',
       categoryId: 'cat-1',
       categoryName: 'Nutsvoorzieningen',
@@ -168,11 +184,11 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     })
     .run()
   db.insert(monthlyHygiene)
-    .values({ tenantId: TENANT_ID, month: '2026-08', scoreBp: 10_000, deductionsJson: '[]' })
+    .values({ tenantId, month: '2026-08', scoreBp: 10_000, deductionsJson: '[]' })
     .run()
   db.insert(monthlySignals)
     .values({
-      tenantId: TENANT_ID,
+      tenantId,
       month: '2026-08',
       code: 'above_baseline',
       subjectKey: 'cat-1',
@@ -182,7 +198,7 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
     .run()
   db.insert(categoryGuessCandidates)
     .values({
-      tenantId: TENANT_ID,
+      tenantId,
       month: '2026-08',
       transactionId: 'txn-1',
       payeeId: 'payee-1',
@@ -191,12 +207,10 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
       historyJson: '[]',
     })
     .run()
-  db.insert(netWorthSnapshots)
-    .values({ tenantId: TENANT_ID, date: '2026-08-15', accountMapId, valueCents: 100_000 })
-    .run()
+  db.insert(netWorthSnapshots).values({ tenantId, date: '2026-08-15', accountMapId, valueCents: 100_000 }).run()
   db.insert(portfolioSnapshots)
     .values({
-      tenantId: TENANT_ID,
+      tenantId,
       date: '2026-08-15',
       instrument: 'IE00B4L5Y983',
       quantity: '1.5',
@@ -204,16 +218,16 @@ function seed(): { userId: string; accountMapId: string; runId: string } {
       valueCents: 12_000,
     })
     .run()
-  db.insert(portfolioMetrics).values({ tenantId: TENANT_ID, date: '2026-08-15' }).run()
+  db.insert(portfolioMetrics).values({ tenantId, date: '2026-08-15' }).run()
 
   return { userId, accountMapId, runId }
 }
 
 describe('resetComputedData', () => {
   it('empties exactly the nine computed tables and nothing else', () => {
-    seed()
+    seed(TENANT_ID)
 
-    const result = resetComputedData(ctx.db)
+    const result = resetComputedData(ctx.db, TENANT_ID)
 
     expect(result).toHaveLength(COMPUTED_TABLES.length)
     for (const { name } of COMPUTED_TABLES) {
@@ -240,5 +254,23 @@ describe('resetComputedData', () => {
     expect(ctx.db.select().from(proposals).all()).toHaveLength(1)
     expect(ctx.db.select().from(auditLog).all()).toHaveLength(1)
     expect(ctx.db.select().from(jobs).all()).toHaveLength(1)
+  })
+
+  it('never touches another tenant\'s computed rows (#379)', () => {
+    const tenantB = createSecondTenant(ctx.db, 'Second')
+    seed(TENANT_ID, 'a')
+    seed(tenantB, 'b')
+
+    const result = resetComputedData(ctx.db, tenantB)
+
+    // Only tenant B's rows were counted and wiped.
+    for (const { name } of COMPUTED_TABLES) {
+      expect(result.find((row) => row.table === name)?.rows).toBe(1)
+    }
+    for (const { table } of COMPUTED_TABLES) {
+      const remaining = ctx.db.select().from(table).all() as { tenantId: string }[]
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]?.tenantId).toBe(TENANT_ID)
+    }
   })
 })
