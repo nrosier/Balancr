@@ -115,6 +115,7 @@ type InvestmentHalf =
  * cannot be backfilled at all.
  */
 async function investmentHalf(
+  db: Db,
   contributions: readonly AccountValue[],
   months: readonly string[],
   log: Logger,
@@ -126,7 +127,7 @@ async function investmentHalf(
   for (const target of rows) {
     let performance: PortfolioPerformance
     try {
-      performance = await fetchPortfolioPerformance('max', target.externalId)
+      performance = await fetchPortfolioPerformance(db, 'max', target.externalId)
     } catch (error) {
       log.warn({ err: error, account: target.name }, 'Ghostfolio account series unavailable')
       return { kind: 'unavailable', why: `no performance series for ${target.name}` }
@@ -190,7 +191,7 @@ async function backfillNetWorth(
   // month-ends below, and it means the historical dates are classified by exactly the
   // function that classifies the live one.
   const today = computeNetWorth(dateIn(now, config.TZ), values)
-  const half = await investmentHalf(today.contributions, months, log)
+  const half = await investmentHalf(db, today.contributions, months, log)
 
   if (half.kind === 'unavailable') {
     log.warn(
@@ -253,7 +254,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
 
   let performance: PortfolioPerformance | null = null
   try {
-    performance = await fetchPortfolioPerformance()
+    performance = await fetchPortfolioPerformance(db)
   } catch (error) {
     log.warn(
       { err: error },
