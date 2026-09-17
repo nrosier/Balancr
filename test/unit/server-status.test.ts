@@ -108,6 +108,26 @@ describe('/readyz', () => {
     for (const entry of checks) expect(Object.keys(entry).sort()).toEqual(['name', 'status'])
   })
 
+  it("reports the worst tenant's verdict, not just the first (#378)", async () => {
+    // Tenant A (the sole tenant `open()` signs into) never runs a probe. Tenant B's
+    // ghostfolio breaks in a way no later probe fixes on its own — a contract change,
+    // not an outage — and that is the one #378 says this endpoint must not hide.
+    const tenantB = createSecondTenant(ctx.db)
+    saveProbe(
+      ctx.db,
+      tenantB,
+      'ghostfolio',
+      'shape-mismatch',
+      { checks: [], warnings: [] },
+      new Date(),
+    )
+
+    const body = (await readyz()).json<{ degraded: boolean; checks: { name: string; status: string }[] }>()
+
+    expect(body.degraded).toBe(true)
+    expect(body.checks.find((c) => c.name === 'ghostfolio')?.status).toBe('failed')
+  })
+
   it('says nothing a signed-in reader would be told', async () => {
     await app.close()
     ctx.sqlite.close()

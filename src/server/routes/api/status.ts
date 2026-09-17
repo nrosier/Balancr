@@ -43,6 +43,7 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
+import { allTenantIds } from '../../../db/tenant.ts'
 import {
   describeSchedule,
   jobsInFlight,
@@ -221,7 +222,7 @@ export interface Readiness {
   degraded: boolean
   version: string | null
   at: string
-  checks: { name: string; status: string }[]
+  checks: { name: Status['checks'][number]['name']; status: Status['checks'][number]['status'] }[]
 }
 
 export function terse(status: Status): Readiness {
@@ -233,5 +234,51 @@ export function terse(status: Status): Readiness {
     // `reason` is left out too. 'shapeMismatch' names a Ghostfolio contract to anyone
     // who asks; 'degraded' is all an orchestrator needs to decide anything.
     checks: status.checks.map((check) => ({ name: check.name, status: check.status })),
+  }
+}
+
+const CHECK_NAMES = ['database', 'actual', 'ghostfolio', 'jobs'] as const
+
+/** Worse first: an `ok` anywhere loses to any real verdict, and a `failed` anywhere wins. */
+const SEVERITY: Record<Readiness['checks'][number]['status'], number> = {
+  ok: 0,
+  unknown: 1,
+  degraded: 2,
+  failed: 3,
+}
+
+/**
+ * `/readyz`'s per-check verdicts, resolved for #378: worst-of across every tenant.
+ *
+ * `/readyz` has no session and therefore no tenant of its own to ask about. Reporting
+ * only one tenant (the old `getSoleTenantId` exception) would leave a second tenant's
+ * outage invisible to the one endpoint an operator actually polls. Readiness itself —
+ * the `ready` flag — stays single-valued and untouched by this: it turns on nothing
+ * but `databaseReadable`, which is instance-wide, not per-tenant. Only the four
+ * per-check statuses that feed `degraded` change once there is more than one tenant
+ * to ask, and they change by taking the worst answer any tenant gave.
+ */
+export function buildReadiness(db: Db): Readiness {
+  if (!databaseReadable(db)) return terse(buildStatus(db, ''))
+
+  const perTenant = allTenantIds(db).map((tenantId) => terse(buildStatus(db, tenantId)))
+
+  const checks = CHECK_NAMES.map((name) => {
+    let worst: Readiness['checks'][number] = { name, status: 'unknown' }
+    for (const readiness of perTenant) {
+      const candidate = readiness.checks.find((check) => check.name === name)
+      if (candidate !== undefined && SEVERITY[candidate.status] > SEVERITY[worst.status]) {
+        worst = candidate
+      }
+    }
+    return worst
+  })
+
+  return {
+    ready: true,
+    degraded: checks.some((check) => check.name !== 'database' && check.status !== 'ok'),
+    version: APP_VERSION,
+    at: new Date().toISOString(),
+    checks,
   }
 }
