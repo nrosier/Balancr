@@ -53,6 +53,7 @@ import { fetchPortfolioPerformance } from '../adapters/ghostfolio/client.ts'
 import type { PortfolioPerformance } from '../adapters/ghostfolio/types.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { getSoleTenantId } from '../db/tenant.ts'
 import { loadAccountMap } from '../domain/aggregate/accounts.ts'
 import { earliestStoredMonth } from '../domain/aggregate/month-store.ts'
 import { computeNetWorth, type AccountValue } from '../domain/aggregate/networth.ts'
@@ -182,11 +183,12 @@ function targetMonths(db: Db, now: Date): { metrics: string[]; netWorth: string[
 
 async function backfillNetWorth(
   db: Db,
+  tenantId: string,
   months: readonly string[],
   now: Date,
   log: Logger,
 ): Promise<{ written: number; skipped: number; half: InvestmentHalf['kind'] }> {
-  const values = await collectAccountValues(db, now, log)
+  const values = await collectAccountValues(db, tenantId, now, log)
   // Today's figure, computed only to be asked which rows count. Cheap next to the
   // month-ends below, and it means the historical dates are classified by exactly the
   // function that classifies the live one.
@@ -201,13 +203,13 @@ async function backfillNetWorth(
     return { written: 0, skipped: months.length, half: half.kind }
   }
 
-  const scope = await actualScope(loadAccountMap(db))
+  const scope = await actualScope(db, tenantId, loadAccountMap(db))
   let written = 0
   let skipped = 0
 
   for (const month of months) {
     const date = endOfMonth(month)
-    const dated = await actualValuesAt(scope, asOf(date))
+    const dated = await actualValuesAt(db, tenantId, scope, asOf(date))
 
     if (half.kind === 'accounts' && !investmentsAt(date, half.series, dated)) {
       skipped += 1
@@ -246,6 +248,7 @@ function investmentsAt(
 }
 
 async function run({ db, now, log }: JobContext): Promise<JobDetail> {
+  const tenantId = getSoleTenantId(db)
   const months = targetMonths(db, now)
   if (months.metrics.length === 0 && months.netWorth.length === 0) {
     // The steady state, and the reason this check comes before every fetch.
@@ -276,7 +279,7 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
       ? { written: 0, skipped: 0, half: 'none' as const }
       : performance === null
         ? { written: 0, skipped: months.netWorth.length, half: 'unavailable' as const }
-        : await backfillNetWorth(db, months.netWorth, now, log)
+        : await backfillNetWorth(db, tenantId, months.netWorth, now, log)
 
   return {
     months: months.all.length,

@@ -32,7 +32,7 @@
  * what must be true before the port opens, and what must be released before the
  * process exits — and nothing else.
  */
-import { closeActual } from './adapters/actual/client.ts'
+import { closeAllActual } from './adapters/actual/client.ts'
 import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
@@ -167,13 +167,15 @@ async function main(): Promise<void> {
     void (async () => {
       try {
         // Stopped first so no new job starts while the process is closing. A job
-        // already mid-flight finishes; `closeActual` waits behind it on the same
-        // queue, which is what keeps the dataDir lock from being released early.
+        // already mid-flight finishes; `closeAllActual` waits behind it on that
+        // tenant's own queue, which is what keeps each tenant's dataDir lock from
+        // being released early. Tenants are drained independently (one stuck
+        // worker does not block the others), each with its own timeout.
         scheduler.stop()
         await app.close()
         // Actual holds a lock on its dataDir; leaving it held makes the next
         // start fail with a file already in use.
-        await closeActual()
+        await closeAllActual()
         closeDatabase()
       } finally {
         process.exit(0)

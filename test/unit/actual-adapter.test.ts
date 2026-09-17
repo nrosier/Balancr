@@ -68,7 +68,7 @@ describe('budget style (#108)', () => {
   it('tests membership rather than one spelling, which is how the bug happened', () => {
     // A test on the set alone would pass while the check beside it still compared
     // against a single literal. This is the half that regressed.
-    const source = readFileSync('src/adapters/actual/client.ts', 'utf8')
+    const source = readFileSync('src/adapters/actual/worker.ts', 'utf8')
     expect(source).toContain('ENVELOPE_BUDGET_TYPES.has(health.budgetType)')
     expect(source.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain("!== 'rollover'")
   })
@@ -92,6 +92,7 @@ describe('read-only boundary', () => {
     const source = [
       'src/adapters/actual/client.ts',
       'src/adapters/actual/queries.ts',
+      'src/adapters/actual/worker.ts',
     ]
       .map((file) => stripComments(readFileSync(file, 'utf8')))
       .join('\n')
@@ -135,18 +136,22 @@ describe('read-only boundary', () => {
 })
 
 describe('health', () => {
+  // No worker for this id has ever been spawned, so both calls hit the
+  // "never opened" default regardless of which id is used.
+  const TENANT_ID = 'health-test-tenant'
+
   it('reports closed before anything connects', () => {
-    const health = actualHealth()
+    const health = actualHealth(TENANT_ID)
     expect(health.opened).toBe(false)
     expect(health.serverVersion).toBeNull()
     expect(health.apiVersion).toBe(EXPECTED_API_VERSION)
   })
 
   it('returns a copy, so callers cannot mutate adapter state', () => {
-    const health = actualHealth()
+    const health = actualHealth(TENANT_ID)
     // The cast is the point: `Readonly<ActualHealth>` stops this at compile time,
     // and the copy stops it at runtime for JavaScript callers.
     ;(health as ActualHealth).opened = true
-    expect(actualHealth().opened).toBe(false)
+    expect(actualHealth(TENANT_ID).opened).toBe(false)
   })
 })

@@ -19,6 +19,7 @@
 import { fetchAccounts } from '../adapters/actual/queries.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
+import { getSoleTenantId } from '../db/tenant.ts'
 import { loadFacts } from '../domain/aggregate/facts.ts'
 import type { AccountReconciliation } from '../domain/aggregate/hygiene.ts'
 import {
@@ -79,9 +80,11 @@ export function reconciledDate(raw: string | null, timeZone: string): string | n
 
 /** Actual's accounts in the shape the hygiene producer wants. */
 export async function collectReconciliations(
+  db: Db,
+  tenantId: string,
   timeZone: string,
 ): Promise<AccountReconciliation[]> {
-  return (await fetchAccounts()).map((account) => ({
+  return (await fetchAccounts(db, tenantId)).map((account) => ({
     accountId: account.id,
     name: account.name,
     lastReconciled: reconciledDate(account.last_reconciled, timeZone),
@@ -203,12 +206,13 @@ async function run({ db, now, log }: JobContext): Promise<JobDetail> {
     return { months: 0, signals: 0 }
   }
 
+  const tenantId = getSoleTenantId(db)
   const params = loadParams(db)
   const latestSnapshot = latestSnapshotDate(db)
   const shared: Shared = {
     today: dateIn(now, config.TZ),
     latest,
-    accounts: await collectReconciliations(config.TZ),
+    accounts: await collectReconciliations(db, tenantId, config.TZ),
     netWorth: loadLatestNetWorth(db),
     netWorthHistory: loadNetWorthHistory(db),
     latestPortfolioSnapshot: latestSnapshot,

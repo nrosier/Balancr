@@ -179,7 +179,7 @@ interface ProposalHandler {
    * to re-apply by hand after a crash between this call succeeding and the
    * local commit that follows it.
    */
-  readonly applyRemote?: (targetRef: string, payload: unknown) => Promise<void>
+  readonly applyRemote?: (db: Db, targetRef: string, payload: unknown) => Promise<void>
 }
 
 const loadMeta = (
@@ -321,7 +321,7 @@ const transactionCategorySetHandler: ProposalHandler = {
 
   diff: async (writer, targetRef, payload) => {
     const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
-    const current = await fetchTransaction(targetRef)
+    const current = await fetchTransaction(writer as Db, getSoleTenantId(writer as Db), targetRef)
     if (current === null) throw new ProposalError(`transaction ${targetRef} no longer exists`)
     if (current.categoryId === clean.categoryId) return []
 
@@ -347,9 +347,9 @@ const transactionCategorySetHandler: ProposalHandler = {
     return clean.success ? clean.data.payeeName : null
   },
 
-  applyRemote: async (targetRef, payload) => {
+  applyRemote: async (db, targetRef, payload) => {
     const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
-    await updateTransactionCategory(targetRef, clean.categoryId)
+    await updateTransactionCategory(db, getSoleTenantId(db), targetRef, clean.categoryId)
   },
 }
 
@@ -412,10 +412,10 @@ const budgetAmountSetHandler: ProposalHandler = {
     return `${name} (${month})`
   },
 
-  applyRemote: async (targetRef, payload) => {
+  applyRemote: async (db, targetRef, payload) => {
     const clean = budgetAmountSetHandler.parse(payload) as BudgetAmountSet
     const { categoryId, month } = decodeBudgetTarget(targetRef)
-    await setCategoryBudgetAmount(month, categoryId, clean.amountCents)
+    await setCategoryBudgetAmount(db, getSoleTenantId(db), month, categoryId, clean.amountCents)
   },
 }
 
@@ -869,7 +869,7 @@ export async function applyProposal(db: Db, options: DecideOptions): Promise<App
   const fields = await handler.diff(db, initial.targetRef, payload)
 
   if (handler.applyRemote !== undefined) {
-    await handler.applyRemote(initial.targetRef, payload)
+    await handler.applyRemote(db, initial.targetRef, payload)
   }
 
   return db.transaction((tx) => {
