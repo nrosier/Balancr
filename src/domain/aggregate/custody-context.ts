@@ -28,12 +28,12 @@ export interface CustodyContext {
   readonly household: Household
 }
 
-export function custodyContext(db: Db): CustodyContext {
+export function custodyContext(db: Db, tenantId: string): CustodyContext {
   const shared = new Set<string>()
-  for (const [categoryId, meta] of loadCategoryMeta(db)) {
+  for (const [categoryId, meta] of loadCategoryMeta(db, tenantId)) {
     if (meta.custodyShared) shared.add(categoryId)
   }
-  return { shared, household: loadHousehold(db) }
+  return { shared, household: loadHousehold(db, tenantId) }
 }
 
 /** One period's split, given a context that was loaded once — one month's rows, or

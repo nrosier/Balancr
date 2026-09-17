@@ -21,20 +21,23 @@ import {
 } from '../../src/domain/aggregate/networth-store.ts'
 import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 /** Real `account_map` rows, because the snapshot table has a foreign key to them. */
 let ids: Record<string, string>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  syncAccountMap(ctx.db, [
+  TENANT_ID = getSoleTenantId(ctx.db)
+  syncAccountMap(ctx.db, TENANT_ID, [
     { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
     { source: 'actual', externalId: 'a2', name: 'Beleggingen', offBudget: true },
     { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
   ])
-  ids = Object.fromEntries(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
+  ids = Object.fromEntries(loadAccountMap(ctx.db, TENANT_ID).map((row) => [row.externalId, row.id]))
 })
 
 function account(externalId: string, valueCents: number, overrides: Partial<AccountValue> = {}): AccountValue {
@@ -59,6 +62,7 @@ describe('persistNetWorth', () => {
   it('writes one row per counted account', () => {
     const result = persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [account('a1', 250_000), account('g1', 1_500_000)]),
     )
 
@@ -68,8 +72,8 @@ describe('persistNetWorth', () => {
   })
 
   it('corrects the day rather than duplicating it', () => {
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
-    const second = persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 260_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    const second = persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 260_000)]))
 
     expect(second).toEqual({ written: 1, removed: 0 })
     expect(rows()).toHaveLength(1)
@@ -79,11 +83,12 @@ describe('persistNetWorth', () => {
   it('removes a row whose account stopped counting', () => {
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [account('a1', 250_000), account('g1', 1_500_000)]),
     )
 
     // The mirror is now deduplicated against Ghostfolio, so it must leave.
-    const second = persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    const second = persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
 
     expect(second).toEqual({ written: 1, removed: 1 })
     expect(rows().map((row) => row.accountMapId)).toEqual([ids.a1])
@@ -92,10 +97,11 @@ describe('persistNetWorth', () => {
   it('clears the day when nothing counts at all', () => {
     // `notInArray` with an empty list matches nothing in SQL, so this is the case
     // that would silently leave yesterday's figures standing as today's.
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
 
     const second = persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [account('a1', 250_000, { includeInNetWorth: false })]),
     )
 
@@ -104,8 +110,8 @@ describe('persistNetWorth', () => {
   })
 
   it('leaves other dates alone', () => {
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-02', [account('g1', 1_500_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-02', [account('g1', 1_500_000)]))
 
     expect(rows()).toHaveLength(2)
   })
@@ -115,10 +121,10 @@ describe('persistNetWorth', () => {
       account('a2', 1_490_000, { dedupeGroup: 'broker', isSourceOfTruth: false, kind: 'other' }),
       account('g1', 1_500_000, { dedupeGroup: 'broker', kind: 'investment' }),
     ])
-    persistNetWorth(ctx.db, result)
+    persistNetWorth(ctx.db, TENANT_ID, result)
 
     expect(rows().map((row) => row.accountMapId)).toEqual([ids.g1])
-    expect(loadNetWorthHistory(ctx.db)).toEqual([{ date: '2026-03-01', totalCents: 1_500_000 }])
+    expect(loadNetWorthHistory(ctx.db, TENANT_ID)).toEqual([{ date: '2026-03-01', totalCents: 1_500_000 }])
   })
 })
 
@@ -126,14 +132,16 @@ describe('loadNetWorthHistory', () => {
   it('sums the accounts per date, ascending', () => {
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-02-01', [account('a1', 250_000), account('g1', 1_400_000)]),
     )
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [account('a1', 240_000), account('g1', 1_500_000)]),
     )
 
-    expect(loadNetWorthHistory(ctx.db)).toEqual([
+    expect(loadNetWorthHistory(ctx.db, TENANT_ID)).toEqual([
       { date: '2026-02-01', totalCents: 1_650_000 },
       { date: '2026-03-01', totalCents: 1_740_000 },
     ])
@@ -142,29 +150,31 @@ describe('loadNetWorthHistory', () => {
   it('nets a debt off the total rather than ignoring it', () => {
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [
         account('a1', 250_000),
         account('a2', -40_000, { kind: 'credit' }),
       ]),
     )
 
-    expect(loadNetWorthHistory(ctx.db)).toEqual([{ date: '2026-03-01', totalCents: 210_000 }])
+    expect(loadNetWorthHistory(ctx.db, TENANT_ID)).toEqual([{ date: '2026-03-01', totalCents: 210_000 }])
   })
 
   it('is empty before the first pass', () => {
-    expect(loadNetWorthHistory(ctx.db)).toEqual([])
+    expect(loadNetWorthHistory(ctx.db, TENANT_ID)).toEqual([])
   })
 })
 
 describe('loadLatestAccountBalances', () => {
   it('reads the most recent date only, and never blends two of them', () => {
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 100_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 100_000)]))
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-04-01', [account('a1', 148_233), account('g1', 148_233)]),
     )
 
-    const balances = loadLatestAccountBalances(ctx.db).sort((a, b) =>
+    const balances = loadLatestAccountBalances(ctx.db, TENANT_ID).sort((a, b) =>
       a.accountMapId.localeCompare(b.accountMapId),
     )
 
@@ -177,15 +187,15 @@ describe('loadLatestAccountBalances', () => {
     // The matcher reads these to compare balances, and absent must mean "no evidence".
     // A zero would mean "agrees with every other empty account", which would pair every
     // dormant account with every other one.
-    persistNetWorth(ctx.db, computeNetWorth('2026-04-01', [account('a1', 148_233)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-04-01', [account('a1', 148_233)]))
 
-    const balances = loadLatestAccountBalances(ctx.db)
+    const balances = loadLatestAccountBalances(ctx.db, TENANT_ID)
 
     expect(balances.map((row) => row.accountMapId)).toEqual([ids['a1']])
   })
 
   it('returns nothing before the first pass has run', () => {
-    expect(loadLatestAccountBalances(ctx.db)).toEqual([])
+    expect(loadLatestAccountBalances(ctx.db, TENANT_ID)).toEqual([])
   })
 })
 
@@ -193,18 +203,19 @@ describe('loadOffBudgetAccounts', () => {
   it('names the off-budget accounts that count toward net worth, with their balance', () => {
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth('2026-03-01', [account('a1', 250_000), account('a2', -18_000_000)]),
     )
 
-    expect(loadOffBudgetAccounts(ctx.db)).toEqual([
+    expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([
       { accountMapId: ids.a2, name: 'Beleggingen', balanceCents: -18_000_000, currency: 'EUR', kind: 'other' },
     ])
   })
 
   it('skips an on-budget account even though it counts toward net worth', () => {
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
 
-    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+    expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
   })
 
   it('drops an off-budget account someone has since excluded from net worth', () => {
@@ -212,24 +223,24 @@ describe('loadOffBudgetAccounts', () => {
     // is a decision made afterwards, before the next nightly pass re-derives it.
     // Same three judgement calls `computeNetWorth` respects — a person's exclusion
     // must not resurface here just because the account happens to be off-budget.
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
     ctx.db.update(accountMap).set({ includeInNetWorth: false }).where(eq(accountMap.id, ids.a2 as string)).run()
 
-    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+    expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
   })
 
   it('drops an off-budget account that has since lost its dedupe tie', () => {
-    persistNetWorth(ctx.db, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
     ctx.db
       .update(accountMap)
       .set({ dedupeGroup: 'mortgage', isSourceOfTruth: false })
       .where(eq(accountMap.id, ids.a2 as string))
       .run()
 
-    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+    expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
   })
 
   it('returns nothing before the first pass has run', () => {
-    expect(loadOffBudgetAccounts(ctx.db)).toEqual([])
+    expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
   })
 })

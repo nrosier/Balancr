@@ -25,10 +25,10 @@ export interface SavingsContext {
   readonly investments: ReadonlySet<string>
 }
 
-export function savingsContext(db: Db): SavingsContext {
+export function savingsContext(db: Db, tenantId: string): SavingsContext {
   const savings = new Set<string>()
   const investments = new Set<string>()
-  for (const [categoryId, meta] of loadCategoryMeta(db)) {
+  for (const [categoryId, meta] of loadCategoryMeta(db, tenantId)) {
     if (meta.nature === 'savings') savings.add(categoryId)
     else if (meta.nature === 'investments') investments.add(categoryId)
   }

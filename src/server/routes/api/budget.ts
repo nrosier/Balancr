@@ -64,8 +64,8 @@ const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
  * client that sends `2026-13` has a bug, and answering it with a different month's
  * numbers under the label it asked for would hide that bug behind plausible data.
  */
-export function resolveMonth(db: Db, raw: unknown): string | null {
-  if (raw === undefined || raw === null || raw === '') return latestStoredMonth(db)
+export function resolveMonth(db: Db, tenantId: string, raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return latestStoredMonth(db, tenantId)
   if (typeof raw !== 'string' || !MONTH_PATTERN.test(raw)) {
     throw badRequest('month must be YYYY-MM.')
   }
@@ -98,7 +98,7 @@ export function buildBudget(
   benchmarkPeriodParam: unknown = undefined,
   custodyPeriodParam: unknown = undefined,
 ): Budget {
-  const month = resolveMonth(db, monthParam)
+  const month = resolveMonth(db, tenantId, monthParam)
   // Nothing computed at all: report the empty state under the current month rather
   // than inventing one, so the client has a label for its own "no data yet" screen.
   const resolved = month ?? new Date().toISOString().slice(0, 7)
@@ -106,11 +106,11 @@ export function buildBudget(
   // Hoisted, because the benchmark comparison is a function of the same rows the
   // category list is built from. Loading them twice would let one of the two see a
   // mapping the other did not, which is how a card and a table come to disagree.
-  const facts = loadFacts(db, resolved)
-  const history = loadTrailingTotals(db, resolved, HISTORY_MONTHS)
-  const trends = loadCategoryTrends(db, resolved, TREND_MONTHS)
-  const totals = loadMonthTotals(db, [resolved])[0] ?? null
-  const uncategorised = loadUncategorised(db, [resolved])[0] ?? null
+  const facts = loadFacts(db, tenantId, resolved)
+  const history = loadTrailingTotals(db, tenantId, resolved, HISTORY_MONTHS)
+  const trends = loadCategoryTrends(db, tenantId, resolved, TREND_MONTHS)
+  const totals = loadMonthTotals(db, tenantId, [resolved])[0] ?? null
+  const uncategorised = loadUncategorised(db, tenantId, [resolved])[0] ?? null
 
   const benchmarkPeriod = resolveBenchmarkPeriod(benchmarkPeriodParam)
   const { months: benchmarkMonths, periodMonths } = benchmarkPeriodWindow(
@@ -124,7 +124,7 @@ export function buildBudget(
   const benchmarkRows =
     benchmarkMonths.length === 1 && benchmarkMonths[0] === resolved
       ? facts
-      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, m))))
+      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m))))
 
   // Its own independent window: a reader can widen the custody card to a year without
   // widening the benchmark card, so this is not `benchmarkMonths` under another name
@@ -134,7 +134,7 @@ export function buildBudget(
   const custodyRows =
     custodyMonths.length === 1 && custodyMonths[0] === resolved
       ? facts
-      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, m))))
+      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m))))
 
   return budgetSchema.parse({
     freshness: freshness(db),
@@ -143,7 +143,7 @@ export function buildBudget(
     // Every stored month, not the window `history` covers: the picker has to keep
     // offering August while July is on screen, and a month that was never computed
     // still needs somewhere to navigate to.
-    months: storedMonths(db),
+    months: storedMonths(db, tenantId),
     totals:
       totals === null
         ? null
@@ -193,15 +193,15 @@ export function buildBudget(
         trends.byCategory.get(fact.categoryId) ??
         new Array<number>(trends.months.length).fill(0),
     })),
-    signals: loadSignals(db, resolved),
+    signals: loadSignals(db, tenantId, resolved),
     benchmark: compareMonth(
-      benchmarkContext(db),
+      benchmarkContext(db, tenantId),
       resolved,
       benchmarkRows,
       benchmarkPeriod,
       periodMonths,
     ),
-    custody: splitMonth(custodyContext(db), resolved, custodyRows),
+    custody: splitMonth(custodyContext(db, tenantId), resolved, custodyRows),
     uncategorised:
       uncategorised === null
         ? null

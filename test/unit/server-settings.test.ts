@@ -48,6 +48,7 @@ let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let owner: string
 let viewer: string
+let tenantId: string
 
 function signIn(db: Db, role: 'owner' | 'viewer', locale = 'en'): string {
   const row = db
@@ -103,7 +104,7 @@ const auditActions = (db: Db): string[] =>
     .all()
     .map((row) => row.action)
 
-const accountIds = (): string[] => loadAccountMap(ctx.db).map((row) => row.id)
+const accountIds = (): string[] => loadAccountMap(ctx.db, tenantId).map((row) => row.id)
 
 beforeAll(async () => {
   await initI18n()
@@ -111,6 +112,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   ctx = apiFixture()
+  tenantId = getSoleTenantId(ctx.db)
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
@@ -231,7 +233,7 @@ describe('PATCH /api/settings/params', () => {
     // The trap this exists for: a patch schema built out of `.partial()` still
     // applies the inner `.default()`s, so a request naming one group would come
     // back with every other group reset to the shipped numbers — with no error.
-    saveParams(ctx.db, { overspend: { baselineWarnBp: 3_000 } })
+    saveParams(ctx.db, tenantId, { overspend: { baselineWarnBp: 3_000 } })
 
     const res = await patch('/api/settings/params', { baseline: { windowMonths: 6 } })
     expect(res.statusCode).toBe(200)
@@ -240,7 +242,7 @@ describe('PATCH /api/settings/params', () => {
     expect(params.baseline.windowMonths).toBe(6)
     expect(params.overspend.baselineWarnBp).toBe(3_000)
     expect(params.baseline.halfLifeMonths).toBe(DEFAULT_PARAMS.baseline.halfLifeMonths)
-    expect(loadParams(ctx.db).overspend.baselineWarnBp).toBe(3_000)
+    expect(loadParams(ctx.db, tenantId).overspend.baselineWarnBp).toBe(3_000)
   })
 
   it('refuses a field name it does not know instead of dropping it', async () => {
@@ -251,7 +253,7 @@ describe('PATCH /api/settings/params', () => {
     expect(res.json<ErrorBody>().error.issues).toEqual([
       { path: 'baseline.windowMonth', message: 'Unknown field.' },
     ])
-    expect(loadParams(ctx.db)).toEqual(DEFAULT_PARAMS)
+    expect(loadParams(ctx.db, tenantId)).toEqual(DEFAULT_PARAMS)
   })
 
   it('refuses a value outside the range the aggregation can use', async () => {
@@ -294,7 +296,7 @@ describe('PATCH /api/settings/params', () => {
       token: viewer,
     })
     expect(res.statusCode).toBe(403)
-    expect(loadParams(ctx.db)).toEqual(DEFAULT_PARAMS)
+    expect(loadParams(ctx.db, tenantId)).toEqual(DEFAULT_PARAMS)
   })
 })
 
@@ -312,14 +314,14 @@ describe('PATCH /api/settings/household', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json<Settings>().benchmark.household.sharedCostBp).toBe(6_000)
-    expect(loadHousehold(ctx.db).sharedCostBp).toBe(6_000)
+    expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBe(6_000)
   })
 
   it('stores a name for the first person and answers with it (#215)', async () => {
     const res = await send_({ members: [], selfLabel: 'Nick' })
 
     expect(res.json<Settings>().benchmark.household.selfLabel).toBe('Nick')
-    expect(loadHousehold(ctx.db).selfLabel).toBe('Nick')
+    expect(loadHousehold(ctx.db, tenantId).selfLabel).toBe('Nick')
   })
 
   it('drops the first person\'s name when a later patch omits it, like the roster it travels with', async () => {
@@ -327,7 +329,7 @@ describe('PATCH /api/settings/household', () => {
     const res = await send_({ members: [] })
 
     expect(res.json<Settings>().benchmark.household.selfLabel).toBeUndefined()
-    expect(loadHousehold(ctx.db).selfLabel).toBeUndefined()
+    expect(loadHousehold(ctx.db, tenantId).selfLabel).toBeUndefined()
   })
 
   it('takes null as "derive it from the roster again"', async () => {
@@ -335,7 +337,7 @@ describe('PATCH /api/settings/household', () => {
     const res = await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], sharedCostBp: null })
 
     expect(res.json<Settings>().benchmark.household.sharedCostBp).toBeNull()
-    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+    expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
   })
 
   it('drops a stated share when the patch omits it, like the roster it travels with', async () => {
@@ -343,7 +345,7 @@ describe('PATCH /api/settings/household', () => {
     // surviving a roster edit invisibly is how somebody reads a split they had removed.
     await send_({ members: [], sharedCostBp: 6_000 })
     await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }] })
-    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+    expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
   })
 
   it('refuses a share outside 0–100%, naming the field', async () => {
@@ -352,13 +354,13 @@ describe('PATCH /api/settings/household', () => {
     expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual([
       'sharedCostBp',
     ])
-    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+    expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
   })
 
   it('is refused for a viewer', async () => {
     const res = await send_({ members: [], sharedCostBp: 6_000 }, { token: viewer })
     expect(res.statusCode).toBe(403)
-    expect(loadHousehold(ctx.db).sharedCostBp).toBeNull()
+    expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
   })
 })
 
@@ -383,7 +385,7 @@ describe('PATCH /api/settings/benchmark-reference', () => {
     // to, and a correction whose starting point is invisible is one nobody can check.
     expect(payload.file?.referenceHousehold?.status).toBe('confirmed')
     expect(payload.file?.transcribed).toContain('reference_household')
-    expect(loadReferenceOverride(ctx.db)).toMatchObject(reference)
+    expect(loadReferenceOverride(ctx.db, tenantId)).toMatchObject(reference)
   })
 
   it('takes null as "use the file\'s figure again"', async () => {
@@ -395,7 +397,7 @@ describe('PATCH /api/settings/benchmark-reference', () => {
     // Cleared rather than stored as a copy of the file: a copy would leave a permanent
     // "not confirmed" caveat on a confirmed figure, and would ignore the next edition.
     expect(res.json<Settings>().benchmark.file?.transcribed).not.toContain('reference_household')
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, tenantId)).toBeNull()
   })
 
   it('refuses a household smaller than one person, naming the field', async () => {
@@ -408,7 +410,7 @@ describe('PATCH /api/settings/benchmark-reference', () => {
     expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual([
       'equivalentAdultsBp',
     ])
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, tenantId)).toBeNull()
   })
 
   it('refuses a correction with no citation, because that is the whole provenance', async () => {
@@ -430,7 +432,7 @@ describe('PATCH /api/settings/benchmark-reference', () => {
   it('is refused for a viewer', async () => {
     const res = await send_({ reference }, { token: viewer })
     expect(res.statusCode).toBe(403)
-    expect(loadReferenceOverride(ctx.db)).toBeNull()
+    expect(loadReferenceOverride(ctx.db, tenantId)).toBeNull()
   })
 })
 
@@ -652,7 +654,7 @@ describe('PATCH /api/settings/advice', () => {
     expect(advice.bands).toEqual(PROFILE_PRESETS.defensive)
     // Picking a preset has to mean picking its numbers. Bands left behind would make
     // the screen say "defensive" over somebody else's allocation.
-    expect(loadProfile(ctx.db).bands).toBeUndefined()
+    expect(loadProfile(ctx.db, tenantId).bands).toBeUndefined()
   })
 
   it('turns an edited preset into a custom profile rather than relabelling it', async () => {
@@ -680,7 +682,7 @@ describe('PATCH /api/settings/advice', () => {
     expect(res.json<ErrorBody>().error.issues).toEqual([
       { path: 'bands', message: 'targets add up to 110.00% instead of 100%' },
     ])
-    expect(loadProfile(ctx.db).bands).toBeUndefined()
+    expect(loadProfile(ctx.db, tenantId).bands).toBeUndefined()
   })
 
   it('refuses a target outside its own band', async () => {
@@ -702,7 +704,7 @@ describe('PATCH /api/settings/advice', () => {
     })
 
     expect(res.statusCode).toBe(400)
-    expect(loadProfile(ctx.db).bands).toBeUndefined()
+    expect(loadProfile(ctx.db, tenantId).bands).toBeUndefined()
   })
 
   it('changes the thresholds without touching the bands', async () => {
@@ -738,7 +740,7 @@ describe('PATCH /api/settings/advice', () => {
   it('is refused for a viewer', async () => {
     const res = await patch('/api/settings/advice', { profile: 'growth' }, { token: viewer })
     expect(res.statusCode).toBe(403)
-    expect(loadProfile(ctx.db).profile).toBe('balanced')
+    expect(loadProfile(ctx.db, tenantId).profile).toBe('balanced')
   })
 })
 

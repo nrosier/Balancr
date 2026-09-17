@@ -28,7 +28,6 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
 
@@ -88,8 +87,7 @@ export type Properties = z.infer<typeof propertiesSchema>
 
 export const DEFAULT_PROPERTIES: Properties = propertiesSchema.parse({})
 
-export function loadProperties(db: Db): Properties {
-  const tenantId = getSoleTenantId(db)
+export function loadProperties(db: Db, tenantId: string): Properties {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -117,8 +115,11 @@ export function loadProperties(db: Db): Properties {
   return parsed.data
 }
 
-export function saveProperties(db: Db, patch: { properties: PropertyPatch[] }): Properties {
-  const tenantId = getSoleTenantId(db)
+export function saveProperties(
+  db: Db,
+  tenantId: string,
+  patch: { properties: PropertyPatch[] },
+): Properties {
   const next = propertiesSchema.parse(patch ?? {})
   const valueJson = JSON.stringify(next)
 

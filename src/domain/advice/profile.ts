@@ -34,7 +34,6 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import {
   BAND_CLASSES,
@@ -227,8 +226,7 @@ export function isPreset(profile: RiskProfile): boolean {
  * Same contract as `loadParams`: reading degrades, writing throws. A profile nobody
  * can parse should not take the portfolio page down, and the log names the key.
  */
-export function loadProfile(db: Db): RiskProfile {
-  const tenantId = getSoleTenantId(db)
+export function loadProfile(db: Db, tenantId: string): RiskProfile {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -268,9 +266,8 @@ export function loadProfile(db: Db): RiskProfile {
  * to mean. Editing bands without naming a profile makes it `custom`, because the
  * numbers are the profile and a preset's name on somebody else's numbers is a lie.
  */
-export function saveProfile(db: Db, patch: RiskProfilePatch): RiskProfile {
-  const tenantId = getSoleTenantId(db)
-  const current = loadProfile(db)
+export function saveProfile(db: Db, tenantId: string, patch: RiskProfilePatch): RiskProfile {
+  const current = loadProfile(db, tenantId)
   const incoming = patch ?? {}
 
   const named = incoming.profile !== undefined && incoming.profile !== 'custom'

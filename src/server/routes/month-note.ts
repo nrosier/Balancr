@@ -16,7 +16,7 @@ import type { Db } from '../../db/index.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { loadMonthNote, saveMonthNote, MONTH_NOTE_KEY } from '../../domain/ai/month-note.ts'
 import { isMonth, isYear } from '../../util/month.ts'
-import { requireOwner } from '../auth/guard.ts'
+import { requireOwner, requireUser } from '../auth/guard.ts'
 import { badRequest, invalidBody } from '../errors.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 
@@ -36,18 +36,19 @@ const monthNotePatchRequest = z.strictObject({ month: notePeriodKey, text: z.str
 
 export function registerMonthNoteRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/budget/note', (request: FastifyRequest) => {
+    const user = requireUser(request)
     const month = resolveMonth((request.query as { month?: unknown } | undefined)?.month)
-    return { text: loadMonthNote(db, month) }
+    return { text: loadMonthNote(db, user.tenantId, month) }
   })
 
   app.patch('/api/budget/note', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const { month, text } = parseBody(monthNotePatchRequest, request.body)
 
-    const before = loadMonthNote(db, month)
+    const before = loadMonthNote(db, user.tenantId, month)
     let after: string
     try {
-      after = saveMonthNote(db, month, text)
+      after = saveMonthNote(db, user.tenantId, month, text)
     } catch (error) {
       if (error instanceof z.ZodError) {
         throw invalidBody('The request body was not valid.', fieldIssues(error))

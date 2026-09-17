@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { BaselineResult } from '../../src/domain/aggregate/baseline.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import { monthsBefore } from '../../src/util/month.ts'
@@ -37,6 +38,7 @@ const MONTH = '2026-03'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let tenantId: string
 
 beforeEach(() => {
   vi.mocked(fetchTransaction).mockReset()
@@ -46,6 +48,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  tenantId = getSoleTenantId(db)
 })
 
 function baseline(baselineCents: number): BaselineResult {
@@ -80,7 +83,7 @@ function seedTrailingSpend(categoryId: string, recentCents: number, olderCents: 
   const priorMonths = monthsBefore(MONTH, 12)
   priorMonths.forEach((month, at) => {
     const spentCents = at >= priorMonths.length - 3 ? recentCents : olderCents
-    seedMonth(db, month, {
+    seedMonth(db, tenantId, month, {
       facts: [fact(month, categoryId, { spentCents, budgetedCents: spentCents + 1_000 })],
       judged: false,
     })
@@ -105,10 +108,10 @@ describe('generateCategoryProposals', () => {
       payeeId: 'payee-1',
     })
 
-    const created = await generateCategoryProposals(db, MONTH)
+    const created = await generateCategoryProposals(db, tenantId, MONTH)
 
     expect(created).toBe(1)
-    const rows = pendingProposals(db)
+    const rows = pendingProposals(db, tenantId)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ type: 'transaction_category.set', targetRef: 'txn-1' })
     expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ categoryId: 'food', payeeName: 'Colruyt' })
@@ -123,10 +126,10 @@ describe('generateCategoryProposals', () => {
       { categoryId: 'other' },
     ])
 
-    const created = await generateCategoryProposals(db, MONTH)
+    const created = await generateCategoryProposals(db, tenantId, MONTH)
 
     expect(created).toBe(0)
-    expect(pendingProposals(db)).toHaveLength(0)
+    expect(pendingProposals(db, tenantId)).toHaveLength(0)
     expect(fetchTransaction).not.toHaveBeenCalled()
   })
 
@@ -139,9 +142,9 @@ describe('generateCategoryProposals', () => {
       { categoryId: 'other' },
     ])
 
-    await generateCategoryProposals(db, MONTH)
+    await generateCategoryProposals(db, tenantId, MONTH)
 
-    const candidates = loadCategoryGuessCandidates(db, MONTH)
+    const candidates = loadCategoryGuessCandidates(db, tenantId, MONTH)
     expect(candidates).toHaveLength(1)
     expect(candidates[0]).toMatchObject({
       transactionId: 'txn-1',
@@ -164,9 +167,9 @@ describe('generateCategoryProposals', () => {
     ])
     vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([{ categoryId: null }])
 
-    await generateCategoryProposals(db, MONTH)
+    await generateCategoryProposals(db, tenantId, MONTH)
 
-    expect(loadCategoryGuessCandidates(db, MONTH)).toHaveLength(0)
+    expect(loadCategoryGuessCandidates(db, tenantId, MONTH)).toHaveLength(0)
   })
 
   it("re-running for one month leaves another month's cached candidates alone", async () => {
@@ -177,15 +180,15 @@ describe('generateCategoryProposals', () => {
       { categoryId: 'food' },
       { categoryId: 'other' },
     ])
-    await generateCategoryProposals(db, '2026-02')
+    await generateCategoryProposals(db, tenantId, '2026-02')
 
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValueOnce([
       { id: 'txn-new', payeeId: 'payee-2', payeeName: 'Delhaize', amountCents: -1500, date: '2026-03-05' },
     ])
-    await generateCategoryProposals(db, MONTH)
+    await generateCategoryProposals(db, tenantId, MONTH)
 
-    expect(loadCategoryGuessCandidates(db, '2026-02')).toHaveLength(1)
-    expect(loadCategoryGuessCandidates(db, MONTH)).toHaveLength(1)
+    expect(loadCategoryGuessCandidates(db, tenantId, '2026-02')).toHaveLength(1)
+    expect(loadCategoryGuessCandidates(db, tenantId, MONTH)).toHaveLength(1)
   })
 
   it('skips a transaction already carrying the suggested category', async () => {
@@ -204,10 +207,10 @@ describe('generateCategoryProposals', () => {
       payeeId: 'payee-1',
     })
 
-    const created = await generateCategoryProposals(db, MONTH)
+    const created = await generateCategoryProposals(db, tenantId, MONTH)
 
     expect(created).toBe(0)
-    expect(pendingProposals(db)).toHaveLength(0)
+    expect(pendingProposals(db, tenantId)).toHaveLength(0)
   })
 
   it('skips a transaction with no payee to match against', async () => {
@@ -215,7 +218,7 @@ describe('generateCategoryProposals', () => {
       { id: 'txn-1', payeeId: null, payeeName: null, amountCents: -4200, date: '2026-03-05' },
     ])
 
-    const created = await generateCategoryProposals(db, MONTH)
+    const created = await generateCategoryProposals(db, tenantId, MONTH)
 
     expect(created).toBe(0)
     expect(fetchPayeeCategoryHistory).not.toHaveBeenCalled()
@@ -226,12 +229,12 @@ describe('generateBudgetProposals', () => {
   it('proposes the weighted trailing average for a category with a triggered signal', async () => {
     seedTrailingSpend('food', 20_000, 10_000)
     const facts = [fact(MONTH, 'food', { spentCents: 20_000, budgetedCents: 12_000, baseline: baseline(15_070) })]
-    seedMonth(db, MONTH, { facts })
+    seedMonth(db, tenantId, MONTH, { facts })
 
-    const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
+    const created = await generateBudgetProposals(db, tenantId, MONTH, [signal()], facts)
 
     expect(created).toBe(1)
-    const rows = pendingProposals(db)
+    const rows = pendingProposals(db, tenantId)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ type: 'budget_amount.set' })
     expect(decodeBudgetTarget(rows[0]!.targetRef)).toEqual({ categoryId: 'food', month: MONTH })
@@ -255,31 +258,31 @@ describe('generateBudgetProposals', () => {
     // window at all, so the suggested amount is unchanged from the first test.
     seedTrailingSpend('food', 20_000, 10_000)
     const facts = [fact(MONTH, 'food', { spentCents: 800, budgetedCents: 12_000, baseline: baseline(15_070) })]
-    seedMonth(db, MONTH, { facts })
+    seedMonth(db, tenantId, MONTH, { facts })
 
-    const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
+    const created = await generateBudgetProposals(db, tenantId, MONTH, [signal()], facts)
 
     expect(created).toBe(1)
-    const rows = pendingProposals(db)
+    const rows = pendingProposals(db, tenantId)
     expect(JSON.parse(rows[0]!.payloadJson)).toEqual({ amountCents: 16_000 })
   })
 
   it('skips a category already at the weighted trailing average', async () => {
     seedTrailingSpend('food', 15_000, 15_000)
     const facts = [fact(MONTH, 'food', { spentCents: 15_000, budgetedCents: 15_000, baseline: baseline(15_070) })]
-    seedMonth(db, MONTH, { facts })
+    seedMonth(db, tenantId, MONTH, { facts })
 
-    const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
+    const created = await generateBudgetProposals(db, tenantId, MONTH, [signal()], facts)
 
     expect(created).toBe(0)
-    expect(pendingProposals(db)).toHaveLength(0)
+    expect(pendingProposals(db, tenantId)).toHaveLength(0)
   })
 
   it('skips a category with no baseline yet', async () => {
     const facts = [fact(MONTH, 'food', { budgetedCents: 12_000, baseline: null })]
-    seedMonth(db, MONTH, { facts })
+    seedMonth(db, tenantId, MONTH, { facts })
 
-    const created = await generateBudgetProposals(db, MONTH, [signal()], facts)
+    const created = await generateBudgetProposals(db, tenantId, MONTH, [signal()], facts)
 
     expect(created).toBe(0)
   })

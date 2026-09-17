@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { persistSignals } from '../../src/domain/aggregate/signals-store.ts'
@@ -26,10 +27,12 @@ import {
 } from '../../src/domain/portfolio/store.ts'
 
 let ctx: ReturnType<typeof createTestDb>
+let tenantId: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  tenantId = getSoleTenantId(ctx.db)
 })
 
 function holding(overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot {
@@ -54,26 +57,26 @@ describe('collectBundle refuses to invent a month', () => {
   it('is null before the signals pass has judged the month', () => {
     // The hygiene row is the marker: `persistSignals` writes one even for a month
     // with nothing to report, so its absence means "not analysed", not "clean".
-    seedMonth(ctx.db, '2026-03', { judged: false })
-    expect(collectBundle(ctx.db, '2026-03')).toBeNull()
+    seedMonth(ctx.db, tenantId, '2026-03', { judged: false })
+    expect(collectBundle(ctx.db, tenantId, '2026-03')).toBeNull()
   })
 
   it('is null when the month has been judged but its totals are gone', () => {
     // A recompute that dropped the month, or a shortened history window. An
     // analysis of a month with no totals would be an analysis of zero, and the
     // model has no way to tell the difference.
-    persistSignals(ctx.db, '2026-03', [], clean)
-    expect(collectBundle(ctx.db, '2026-03')).toBeNull()
+    persistSignals(ctx.db, tenantId, '2026-03', [], clean)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')).toBeNull()
   })
 
   it('is null for a month nothing has ever touched', () => {
-    expect(collectBundle(ctx.db, '2026-01')).toBeNull()
+    expect(collectBundle(ctx.db, tenantId, '2026-01')).toBeNull()
   })
 
   it('collects a month with no signals at all', () => {
     // A clean month is a legitimate analysis: "nothing is wrong" is an answer.
-    seedMonth(ctx.db, '2026-03')
-    const bundle = collectBundle(ctx.db, '2026-03')
+    seedMonth(ctx.db, tenantId, '2026-03')
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
     expect(bundle?.signals).toEqual([])
     expect(bundle?.hygiene.scoreBp).toBe(10_000)
   })
@@ -81,8 +84,8 @@ describe('collectBundle refuses to invent a month', () => {
 
 describe('collectBundle history', () => {
   it('ends at the month being analysed and does not repeat it', () => {
-    for (const month of ['2026-01', '2026-02', '2026-03']) seedMonth(ctx.db, month)
-    const bundle = collectBundle(ctx.db, '2026-03')
+    for (const month of ['2026-01', '2026-02', '2026-03']) seedMonth(ctx.db, tenantId, month)
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
     expect(bundle?.totals.month).toBe('2026-03')
     expect(bundle?.totalsHistory.map((m) => m.month)).toEqual(['2026-01', '2026-02'])
   })
@@ -90,14 +93,14 @@ describe('collectBundle history', () => {
   it('stops at a gap rather than averaging across it', () => {
     // The same rule the signals pass follows, and for the same reason: the honest
     // answer to a hole in the history is a shorter window.
-    for (const month of ['2026-01', '2026-03', '2026-04']) seedMonth(ctx.db, month)
-    const bundle = collectBundle(ctx.db, '2026-04')
+    for (const month of ['2026-01', '2026-03', '2026-04']) seedMonth(ctx.db, tenantId, month)
+    const bundle = collectBundle(ctx.db, tenantId, '2026-04')
     expect(bundle?.totalsHistory.map((m) => m.month)).toEqual(['2026-03'])
   })
 
   it('analyses a month that is the only one there', () => {
-    seedMonth(ctx.db, '2026-03')
-    const bundle = collectBundle(ctx.db, '2026-03')
+    seedMonth(ctx.db, tenantId, '2026-03')
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
     expect(bundle?.totalsHistory).toEqual([])
     expect(bundle?.totals.month).toBe('2026-03')
   })
@@ -105,8 +108,8 @@ describe('collectBundle history', () => {
   it('analyses a past month with the window that ends at it', () => {
     // Asking for February in April must not hand the model March and April: a
     // trailing window is relative to the month being judged, not to today.
-    for (const month of ['2026-01', '2026-02', '2026-03']) seedMonth(ctx.db, month)
-    const bundle = collectBundle(ctx.db, '2026-02')
+    for (const month of ['2026-01', '2026-02', '2026-03']) seedMonth(ctx.db, tenantId, month)
+    const bundle = collectBundle(ctx.db, tenantId, '2026-02')
     expect(bundle?.totals.month).toBe('2026-02')
     expect(bundle?.totalsHistory.map((m) => m.month)).toEqual(['2026-01'])
   })
@@ -114,8 +117,8 @@ describe('collectBundle history', () => {
 
 describe('collectBundle categories', () => {
   it('attaches the meta row to every category', () => {
-    seedMonth(ctx.db, '2026-03')
-    const bundle = collectBundle(ctx.db, '2026-03')
+    seedMonth(ctx.db, tenantId, '2026-03')
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
     expect(bundle?.categories.map((c) => c.fact.categoryId)).toEqual(['food', 'rent'])
     expect(bundle?.categories.every((c) => c.meta !== null)).toBe(true)
   })
@@ -123,7 +126,7 @@ describe('collectBundle categories', () => {
   it('drops a hidden category with nothing in it', () => {
     // A budget accumulates retired envelopes. Forty empty ones cost tokens and
     // invite the model to remark on them.
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-03', {
       facts: [
         fact('2026-03', 'food'),
         fact('2026-03', 'old-hobby', {
@@ -136,7 +139,7 @@ describe('collectBundle categories', () => {
         }),
       ],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.categories.map((c) => c.fact.categoryId)).toEqual([
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.categories.map((c) => c.fact.categoryId)).toEqual([
       'food',
     ])
   })
@@ -144,7 +147,7 @@ describe('collectBundle categories', () => {
   it('keeps a hidden category that saw money', () => {
     // Spending in an envelope that was retired is exactly the kind of thing worth
     // saying out loud.
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-03', {
       facts: [
         fact('2026-03', 'food'),
         fact('2026-03', 'old-hobby', {
@@ -155,11 +158,11 @@ describe('collectBundle categories', () => {
         }),
       ],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.categories).toHaveLength(2)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.categories).toHaveLength(2)
   })
 
   it('keeps a hidden category that was budgeted but not yet spent', () => {
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-03', {
       facts: [
         fact('2026-03', 'old-hobby', {
           hidden: true,
@@ -169,7 +172,7 @@ describe('collectBundle categories', () => {
         }),
       ],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.categories).toHaveLength(1)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.categories).toHaveLength(1)
   })
 })
 
@@ -178,36 +181,36 @@ describe('collectBundle hygiene', () => {
     // One authority per figure: the signals pass computed the score over a
     // specific window, and a second opinion here would be a second authority for
     // the same number — visibly disagreeing with the page the user is reading.
-    seedMonth(ctx.db, '2026-03', { signals: [] })
-    persistSignals(ctx.db, '2026-03', [], {
+    seedMonth(ctx.db, tenantId, '2026-03', { signals: [] })
+    persistSignals(ctx.db, tenantId, '2026-03', [], {
       scoreBp: 7_250,
       deductions: [{ reason: 'uncategorised', bp: 2_750 }],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.hygiene.scoreBp).toBe(7_250)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.hygiene.scoreBp).toBe(7_250)
   })
 
   it('sums the backlog over the whole window, not just the month', () => {
     // An uncategorised transaction from January is still uncategorised in March.
     // The backlog is one to-do list, which is why it is summed over the window.
-    seedMonth(ctx.db, '2026-02', {
+    seedMonth(ctx.db, tenantId, '2026-02', {
       uncategorised: [{ month: '2026-02', txnCount: 3, amountCents: -4_000 }],
     })
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-03', {
       uncategorised: [{ month: '2026-03', txnCount: 2, amountCents: -1_500 }],
     })
-    const hygiene = collectBundle(ctx.db, '2026-03')?.hygiene
+    const hygiene = collectBundle(ctx.db, tenantId, '2026-03')?.hygiene
     expect(hygiene?.uncategorisedCount).toBe(5)
     expect(hygiene?.uncategorisedCents).toBe(5_500)
   })
 
   it('sums magnitudes, so a refund does not cancel a charge', () => {
-    seedMonth(ctx.db, '2026-02', {
+    seedMonth(ctx.db, tenantId, '2026-02', {
       uncategorised: [{ month: '2026-02', txnCount: 1, amountCents: -8_000 }],
     })
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-03', {
       uncategorised: [{ month: '2026-03', txnCount: 1, amountCents: 8_000 }],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.hygiene.uncategorisedCents).toBe(16_000)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.hygiene.uncategorisedCents).toBe(16_000)
   })
 
   it('counts drift for the analysed month only', () => {
@@ -221,32 +224,32 @@ describe('collectBundle hygiene', () => {
       recomputedCents: 9_500,
       differenceCents: 500,
     })
-    seedMonth(ctx.db, '2026-02', { mismatches: [mismatch('2026-02', 'food')] })
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-02', { mismatches: [mismatch('2026-02', 'food')] })
+    seedMonth(ctx.db, tenantId, '2026-03', {
       mismatches: [mismatch('2026-03', 'food'), mismatch('2026-03', 'rent')],
     })
-    expect(collectBundle(ctx.db, '2026-03')?.hygiene.mismatchCount).toBe(2)
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.hygiene.mismatchCount).toBe(2)
   })
 })
 
 describe('collectPortfolio', () => {
   it('is null before the first snapshot', () => {
-    expect(collectPortfolio(ctx.db)).toBeNull()
+    expect(collectPortfolio(ctx.db, tenantId)).toBeNull()
   })
 
   it('is null for a snapshot whose metrics were never written', () => {
     // The portfolio job wrote holdings and then failed. A holding count with no
     // value behind it would put a portfolio worth nothing in front of the model.
-    persistPortfolioSnapshots(ctx.db, '2026-03-31', [holding()])
-    expect(collectPortfolio(ctx.db)).toBeNull()
+    persistPortfolioSnapshots(ctx.db, tenantId, '2026-03-31', [holding()])
+    expect(collectPortfolio(ctx.db, tenantId)).toBeNull()
   })
 
   it('carries a count and the asset-class shares, and no instrument', () => {
-    persistPortfolioSnapshots(ctx.db, '2026-03-31', [
+    persistPortfolioSnapshots(ctx.db, tenantId, '2026-03-31', [
       holding(),
       holding({ instrument: 'BE6295424999', symbol: null, isin: 'BE6295424999', name: 'Argenta Portfolio Defensive' }),
     ])
-    persistPortfolioMetrics(ctx.db, {
+    persistPortfolioMetrics(ctx.db, tenantId, {
       date: '2026-03-31',
       totalValueCents: 620_000,
       investedValueCents: 620_000,
@@ -261,7 +264,7 @@ describe('collectPortfolio', () => {
       terAnnualCents: null,
     })
 
-    const portfolio = collectPortfolio(ctx.db)
+    const portfolio = collectPortfolio(ctx.db, tenantId)
     expect(portfolio?.holdingCount).toBe(2)
     expect(portfolio?.metrics.totalValueCents).toBe(620_000)
     expect(portfolio?.metrics.allocation.map((s) => s.key)).toEqual(['EQUITY', 'FIXED_INCOME'])
@@ -272,13 +275,13 @@ describe('collectPortfolio', () => {
   })
 
   it('takes the latest snapshot when there are several', () => {
-    persistPortfolioSnapshots(ctx.db, '2026-02-28', [holding({ date: '2026-02-28' })])
-    persistPortfolioSnapshots(ctx.db, '2026-03-31', [
+    persistPortfolioSnapshots(ctx.db, tenantId, '2026-02-28', [holding({ date: '2026-02-28' })])
+    persistPortfolioSnapshots(ctx.db, tenantId, '2026-03-31', [
       holding(),
       holding({ instrument: 'BE6295424999' }),
     ])
     for (const date of ['2026-02-28', '2026-03-31']) {
-      persistPortfolioMetrics(ctx.db, {
+      persistPortfolioMetrics(ctx.db, tenantId, {
         date,
         totalValueCents: 1,
         investedValueCents: 1,
@@ -290,7 +293,7 @@ describe('collectPortfolio', () => {
         terAnnualCents: null,
       })
     }
-    const portfolio = collectPortfolio(ctx.db)
+    const portfolio = collectPortfolio(ctx.db, tenantId)
     expect(portfolio?.metrics.date).toBe('2026-03-31')
     expect(portfolio?.holdingCount).toBe(2)
   })
@@ -302,12 +305,12 @@ describe('a collected bundle is safe to redact', () => {
     // out of fixtures, this one builds a bundle out of the database and checks the
     // real collector's output against the real boundary. A field added to any fact
     // table and passed through by the collector fails here.
-    syncAccountMap(ctx.db, [
+    syncAccountMap(ctx.db, tenantId, [
       { source: 'actual', externalId: 'acc-1', name: 'KBC Zichtrekening 0123' },
       { source: 'ghostfolio', externalId: 'gf-1', name: 'Argenta Beleggingen' },
     ])
-    seedMonth(ctx.db, '2026-02')
-    seedMonth(ctx.db, '2026-03', {
+    seedMonth(ctx.db, tenantId, '2026-02')
+    seedMonth(ctx.db, tenantId, '2026-03', {
       uncategorised: [{ month: '2026-03', txnCount: 2, amountCents: -1_500 }],
       signals: [
         {
@@ -326,7 +329,7 @@ describe('a collected bundle is safe to redact', () => {
         },
       ],
     })
-    persistNetWorth(ctx.db, {
+    persistNetWorth(ctx.db, tenantId, {
       date: '2026-03-31',
       totalCents: 0,
       liquidCents: 0,
@@ -336,8 +339,8 @@ describe('a collected bundle is safe to redact', () => {
       excluded: [],
       unresolvedGroups: [],
     })
-    persistPortfolioSnapshots(ctx.db, '2026-03-31', [holding()])
-    persistPortfolioMetrics(ctx.db, {
+    persistPortfolioSnapshots(ctx.db, tenantId, '2026-03-31', [holding()])
+    persistPortfolioMetrics(ctx.db, tenantId, {
       date: '2026-03-31',
       totalValueCents: 417_010,
       investedValueCents: 417_010,
@@ -349,7 +352,7 @@ describe('a collected bundle is safe to redact', () => {
       terAnnualCents: null,
     })
 
-    const bundle = collectBundle(ctx.db, '2026-03')
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
     expect(bundle).not.toBeNull()
     const { payload } = redact(bundle as NonNullable<typeof bundle>)
 

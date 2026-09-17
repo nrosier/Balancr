@@ -21,6 +21,7 @@ let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let owner: string
 let viewer: string
+let tenantId: string
 
 function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
@@ -74,6 +75,7 @@ beforeEach(async () => {
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
+  tenantId = getSoleTenantId(ctx.db)
 })
 
 afterEach(async () => {
@@ -123,15 +125,15 @@ describe('PATCH /api/budget/note', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json<{ text: string }>().text).toBe('Dentist bill, about 150 euros.')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill, about 150 euros.')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('Dentist bill, about 150 euros.')
   })
 
   it('keeps each month independent', async () => {
     await patch('/api/budget/note', { month: MONTH, text: 'This month is high because of the dishwasher.' })
     await patch('/api/budget/note', { month: PREVIOUS_MONTH, text: 'Nothing unusual.' })
 
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('This month is high because of the dishwasher.')
-    expect(loadMonthNote(ctx.db, PREVIOUS_MONTH)).toBe('Nothing unusual.')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('This month is high because of the dishwasher.')
+    expect(loadMonthNote(ctx.db, tenantId, PREVIOUS_MONTH)).toBe('Nothing unusual.')
   })
 
   it('deletes the key entirely when cleared, so an empty text clears it', async () => {
@@ -139,7 +141,7 @@ describe('PATCH /api/budget/note', () => {
     const res = await patch('/api/budget/note', { month: MONTH, text: '' })
 
     expect(res.json<{ text: string }>().text).toBe('')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('')
   })
 
   it('trims the stored text', async () => {
@@ -150,7 +152,7 @@ describe('PATCH /api/budget/note', () => {
   it('refuses text over the length bound', async () => {
     const res = await patch('/api/budget/note', { month: MONTH, text: 'x'.repeat(MONTH_NOTE_MAX_CHARS + 1) })
     expect(res.statusCode).toBe(400)
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('')
   })
 
   it('refuses a malformed month', async () => {
@@ -166,7 +168,7 @@ describe('PATCH /api/budget/note', () => {
   it('is refused for a viewer', async () => {
     const res = await patch('/api/budget/note', { month: MONTH, text: 'Dentist bill in March.' }, { token: viewer })
     expect(res.statusCode).toBe(403)
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('')
   })
 
   it('records the write in the audit log', async () => {
@@ -183,7 +185,7 @@ describe('PATCH /api/budget/note', () => {
     await patch('/api/budget/note', { month: '2026', text: 'Renovated the kitchen this year.' })
     await patch('/api/budget/note', { month: MONTH, text: 'Dentist bill in March.' })
 
-    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
+    expect(loadMonthNote(ctx.db, tenantId, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('Dentist bill in March.')
   })
 })

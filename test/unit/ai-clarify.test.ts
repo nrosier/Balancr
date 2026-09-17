@@ -20,6 +20,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { categoryMeta, clarificationQueue } from '../../src/db/schema.ts'
 import { loadAuditTrail } from '../../src/domain/audit.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   answerClarification,
   choicesFor,
@@ -44,6 +45,7 @@ const MONTH = '2026-03'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let TENANT_ID: string
 
 beforeAll(async () => {
   await initI18n()
@@ -53,6 +55,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
 })
 
 /**
@@ -61,7 +64,7 @@ beforeEach(() => {
  * to think about materiality.
  */
 function seedTypicalMonth(): void {
-  seedMonth(db, MONTH, {
+  seedMonth(db, TENANT_ID, MONTH, {
     facts: [
       fact(MONTH, 'food', { categoryName: 'Groceries' }),
       fact(MONTH, 'rent', { categoryName: 'Rent', spentCents: 90_000 }),
@@ -110,7 +113,7 @@ describe('enqueueClarifications', () => {
   it('queues a material question with the guess and the run that made it', () => {
     seedTypicalMonth()
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate()],
       runId: 'run-1',
@@ -127,21 +130,21 @@ describe('enqueueClarifications', () => {
 
   it('does nothing at all when the model asked nothing', () => {
     seedTypicalMonth()
-    expect(enqueueClarifications(db, { month: MONTH, candidates: [] })).toEqual({
+    expect(enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [] })).toEqual({
       enqueued: [],
       skipped: [],
     })
   })
 
   it('skips a category too small to be worth a question', () => {
-    seedMonth(db, MONTH, {
+    seedMonth(db, TENANT_ID, MONTH, {
       facts: [
         fact(MONTH, 'food'),
         fact(MONTH, 'stamps', { spentCents: 400 }),
       ],
     })
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ categoryId: 'stamps' })],
     })
@@ -153,12 +156,12 @@ describe('enqueueClarifications', () => {
   it('skips a large share of a quiet month, because the amount is still small', () => {
     // The case a relative floor alone gets wrong: EUR 40 is 8% of a EUR 500
     // month, and still not worth a question.
-    seedMonth(db, MONTH, { facts: [fact(MONTH, 'coffee', { spentCents: 4_000 })] })
+    seedMonth(db, TENANT_ID, MONTH, { facts: [fact(MONTH, 'coffee', { spentCents: 4_000 })] })
     // Overwrites the fixture's total: seedMonth writes an ordinary month, and this
     // test needs a quiet one.
-    persistMonthTotals(db, [totals(MONTH, { spentCents: 50_000 })], [])
+    persistMonthTotals(db, TENANT_ID, [totals(MONTH, { spentCents: 50_000 })], [])
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ categoryId: 'coffee' })],
     })
@@ -171,7 +174,7 @@ describe('enqueueClarifications', () => {
 
   it('skips a category it has no metadata for', () => {
     seedTypicalMonth()
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ categoryId: 'ghost' })],
     })
@@ -180,31 +183,31 @@ describe('enqueueClarifications', () => {
 
   it('does not ask a question that is already open', () => {
     seedTypicalMonth()
-    enqueueClarifications(db, { month: MONTH, candidates: [candidate()] })
+    enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [candidate()] })
 
-    const again = enqueueClarifications(db, { month: MONTH, candidates: [candidate()] })
+    const again = enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [candidate()] })
 
     expect(again.skipped[0]?.reason).toBe('already_open')
-    expect(openQuestionCount(db)).toBe(1)
+    expect(openQuestionCount(db, TENANT_ID)).toBe(1)
   })
 
   it('does not re-ask a question whose answer happens to equal the column default', () => {
     // The load-bearing one. `monthly` is both a legitimate answer and the default,
     // so only the queue's own history can tell that this was asked and answered.
     seedTypicalMonth()
-    enqueueClarifications(db, {
+    enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ code: 'frequency_unknown', guess: 'monthly' })],
     })
-    answerClarification(db, { id: openRow().id, value: 'monthly' })
+    answerClarification(db, TENANT_ID, { id: openRow().id, value: 'monthly' })
 
-    const again = enqueueClarifications(db, {
+    const again = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ code: 'frequency_unknown', guess: 'monthly' })],
     })
 
     expect(again.skipped[0]?.reason).toBe('already_answered')
-    expect(openQuestionCount(db)).toBe(0)
+    expect(openQuestionCount(db, TENANT_ID)).toBe(0)
   })
 
   it('does not ask what the user has already told it by hand', () => {
@@ -214,7 +217,7 @@ describe('enqueueClarifications', () => {
       .where(eq(categoryMeta.categoryId, 'food'))
       .run()
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ code: 'purpose_unknown', guess: 'Groceries' })],
     })
@@ -223,7 +226,7 @@ describe('enqueueClarifications', () => {
   })
 
   it('caps the queue, keeping the questions about the biggest categories', () => {
-    seedMonth(db, MONTH, {
+    seedMonth(db, TENANT_ID, MONTH, {
       facts: [
         fact(MONTH, 'small', { spentCents: 12_000 }),
         fact(MONTH, 'medium', { spentCents: 40_000 }),
@@ -231,7 +234,7 @@ describe('enqueueClarifications', () => {
       ],
     })
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [
         candidate({ categoryId: 'small' }),
@@ -249,13 +252,13 @@ describe('enqueueClarifications', () => {
 
   it('counts the questions already open against the cap', () => {
     seedTypicalMonth()
-    enqueueClarifications(db, {
+    enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate()],
       policy: { ...DEFAULT_CLARIFY_POLICY, maxOpen: 1 },
     })
 
-    const result = enqueueClarifications(db, {
+    const result = enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ categoryId: 'rent' })],
       policy: { ...DEFAULT_CLARIFY_POLICY, maxOpen: 1 },
@@ -268,7 +271,7 @@ describe('enqueueClarifications', () => {
 describe('openQuestions', () => {
   beforeEach(() => {
     seedTypicalMonth()
-    enqueueClarifications(db, {
+    enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [
         candidate({ categoryId: 'rent', code: 'purpose_unknown', guess: 'The flat' }),
@@ -278,7 +281,7 @@ describe('openQuestions', () => {
   })
 
   it('asks about the real category name, in the reader language', () => {
-    const cards = openQuestions(db, 'nl')
+    const cards = openQuestions(db, TENANT_ID, 'nl')
     const food = cards.find((card) => card.categoryId === 'food')
 
     expect(food?.categoryName).toBe('Groceries')
@@ -287,7 +290,7 @@ describe('openQuestions', () => {
   })
 
   it('offers the choices for an enumerated answer, and the guess as a label', () => {
-    const food = openQuestions(db, 'en').find((card) => card.categoryId === 'food')
+    const food = openQuestions(db, TENANT_ID, 'en').find((card) => card.categoryId === 'food')
 
     expect(food?.choices?.map((choice) => choice.value)).toEqual([
       'fixed',
@@ -300,7 +303,7 @@ describe('openQuestions', () => {
   })
 
   it('leaves a free-text question without choices or a label', () => {
-    const rent = openQuestions(db, 'en').find((card) => card.categoryId === 'rent')
+    const rent = openQuestions(db, TENANT_ID, 'en').find((card) => card.categoryId === 'rent')
 
     expect(rent?.choices).toBeNull()
     expect(rent?.guess).toBe('The flat')
@@ -308,7 +311,7 @@ describe('openQuestions', () => {
   })
 
   it('puts the biggest category first', () => {
-    expect(openQuestions(db, 'en').map((card) => card.categoryId)).toEqual(['rent', 'food'])
+    expect(openQuestions(db, TENANT_ID, 'en').map((card) => card.categoryId)).toEqual(['rent', 'food'])
   })
 
   it('drops a row whose question code no longer exists', () => {
@@ -318,11 +321,11 @@ describe('openQuestions', () => {
       .prepare('update clarification_queue set question_code = ? where category_id = ?')
       .run('gone_unknown', 'food')
 
-    expect(openQuestions(db, 'en').map((card) => card.categoryId)).toEqual(['rent'])
+    expect(openQuestions(db, TENANT_ID, 'en').map((card) => card.categoryId)).toEqual(['rent'])
   })
 
   it('counts what is waiting without rendering it', () => {
-    expect(openQuestionCount(db)).toBe(2)
+    expect(openQuestionCount(db, TENANT_ID)).toBe(2)
   })
 })
 
@@ -378,11 +381,11 @@ describe('parseAnswer', () => {
 describe('answerClarification', () => {
   beforeEach(() => {
     seedTypicalMonth()
-    enqueueClarifications(db, { month: MONTH, candidates: [candidate()], runId: 'run-1' })
+    enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [candidate()], runId: 'run-1' })
   })
 
   it('stores the answer, closes the question and raises the confidence', () => {
-    const result = answerClarification(db, { id: openRow().id, value: 'fixed', userId: 'u1' })
+    const result = answerClarification(db, TENANT_ID, { id: openRow().id, value: 'fixed', userId: 'u1' })
 
     expect(result).toMatchObject({
       categoryId: 'food',
@@ -397,7 +400,7 @@ describe('answerClarification', () => {
   })
 
   it('records who changed what, and which run suggested it', () => {
-    const { auditId } = answerClarification(db, {
+    const { auditId } = answerClarification(db, TENANT_ID, {
       id: openRow().id,
       value: 'variable',
       userId: 'u1',
@@ -412,11 +415,11 @@ describe('answerClarification', () => {
   })
 
   it('stores a description the way it will be read back', () => {
-    enqueueClarifications(db, {
+    enqueueClarifications(db, TENANT_ID, {
       month: MONTH,
       candidates: [candidate({ categoryId: 'rent', code: 'purpose_unknown' })],
     })
-    answerClarification(db, {
+    answerClarification(db, TENANT_ID, {
       id: openRow('rent').id,
       value: '  The   flat in Ghent  ',
     })
@@ -430,24 +433,24 @@ describe('answerClarification', () => {
       .where(eq(categoryMeta.categoryId, 'food'))
       .run()
 
-    expect(answerClarification(db, { id: openRow().id, value: 'fixed' }).confidence).toBe(100)
+    expect(answerClarification(db, TENANT_ID, { id: openRow().id, value: 'fixed' }).confidence).toBe(100)
   })
 
   it('refuses to answer the same question twice', () => {
     const id = openRow().id
-    answerClarification(db, { id, value: 'fixed' })
+    answerClarification(db, TENANT_ID, { id, value: 'fixed' })
 
-    expect(() => answerClarification(db, { id, value: 'variable' })).toThrow(/already answered/)
+    expect(() => answerClarification(db, TENANT_ID, { id, value: 'variable' })).toThrow(/already answered/)
   })
 
   it('refuses a question that does not exist', () => {
-    expect(() => answerClarification(db, { id: 'nope', value: 'fixed' })).toThrow(/does not exist/)
+    expect(() => answerClarification(db, TENANT_ID, { id: 'nope', value: 'fixed' })).toThrow(/does not exist/)
   })
 
   it('leaves the question open when the answer is rejected', () => {
     // The transaction property: a closed question with no stored answer would
     // never be asked again.
-    expect(() => answerClarification(db, { id: openRow().id, value: 'maybe' })).toThrow(
+    expect(() => answerClarification(db, TENANT_ID, { id: openRow().id, value: 'maybe' })).toThrow(
       ClarifyError,
     )
     expect(openRow().status).toBe('open')
@@ -459,14 +462,14 @@ describe('answerClarification', () => {
 describe('dismissClarification', () => {
   beforeEach(() => {
     seedTypicalMonth()
-    enqueueClarifications(db, { month: MONTH, candidates: [candidate()], runId: 'run-1' })
+    enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [candidate()], runId: 'run-1' })
   })
 
   it('closes the question for good, and records the decision', () => {
-    dismissClarification(db, { id: openRow().id, userId: 'u1' })
+    dismissClarification(db, TENANT_ID, { id: openRow().id, userId: 'u1' })
 
     expect(openRow().status).toBe('dismissed')
-    expect(openQuestionCount(db)).toBe(0)
+    expect(openQuestionCount(db, TENANT_ID)).toBe(0)
     const row = loadAuditTrail(db)[0]
     expect(row?.action).toBe('clarification.dismiss')
     expect(row?.beforeJson).toBeNull()
@@ -474,14 +477,14 @@ describe('dismissClarification', () => {
   })
 
   it('is not asked again on the next run', () => {
-    dismissClarification(db, { id: openRow().id })
+    dismissClarification(db, TENANT_ID, { id: openRow().id })
 
-    const result = enqueueClarifications(db, { month: MONTH, candidates: [candidate()] })
+    const result = enqueueClarifications(db, TENANT_ID, { month: MONTH, candidates: [candidate()] })
     expect(result.skipped[0]?.reason).toBe('already_answered')
   })
 
   it('refuses a question that is not open', () => {
-    dismissClarification(db, { id: openRow().id })
-    expect(() => dismissClarification(db, { id: openRow().id })).toThrow(/is not open/)
+    dismissClarification(db, TENANT_ID, { id: openRow().id })
+    expect(() => dismissClarification(db, TENANT_ID, { id: openRow().id })).toThrow(/is not open/)
   })
 })

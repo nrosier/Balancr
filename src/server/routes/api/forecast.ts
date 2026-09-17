@@ -11,9 +11,9 @@ import { projectCashflow } from '../../../domain/aggregate/forecast.ts'
 import { freshness } from './freshness.ts'
 import { forecastSchema, type Forecast } from './schemas.ts'
 
-export function buildForecast(db: Db): Forecast {
+export function buildForecast(db: Db, tenantId: string): Forecast {
   return forecastSchema.parse({
     freshness: freshness(db),
-    forecast: projectCashflow(db),
+    forecast: projectCashflow(db, tenantId),
   })
 }

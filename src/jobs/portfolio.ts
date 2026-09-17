@@ -38,8 +38,8 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   }
 
   const metrics = computePortfolioMetrics(date, holdings, performance)
-  const stored = persistPortfolioSnapshots(db, date, holdings)
-  persistPortfolioMetrics(db, metrics)
+  const stored = persistPortfolioSnapshots(db, tenantId, date, holdings)
+  persistPortfolioMetrics(db, tenantId, metrics)
 
   return {
     date,

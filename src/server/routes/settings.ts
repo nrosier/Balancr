@@ -560,8 +560,8 @@ function promptSetting(db: Db, key: PromptKey, locale: string): PromptSetting {
  * would make every consumer repeat the preset lookup — and the browser cannot do that
  * lookup, because `PROFILE_PRESETS` lives on this side.
  */
-function riskProfileSetting(db: Db): Settings['advice'] {
-  const profile = loadProfile(db)
+function riskProfileSetting(db: Db, tenantId: string): Settings['advice'] {
+  const profile = loadProfile(db, tenantId)
   return {
     profile: profile.profile,
     isPreset: isPreset(profile),
@@ -579,14 +579,14 @@ function riskProfileSetting(db: Db): Settings['advice'] {
  * page is opened by one person, and a cached copy would keep the panel showing a
  * transcription warning somebody had already answered by editing the file.
  */
-function benchmarkSetting(db: Db): Settings['benchmark'] {
+function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
   // The *file's* benchmark, not the overridden one: the panel shows what an override is
   // replacing beside the override itself, so a mistyped correction can be spotted against
   // the figure it corrected (#290). Everything that draws a comparison reads
   // `benchmarkContext`, which applies the override.
   const benchmark = benchmarkOrNull()
-  const household = loadHousehold(db)
-  const override = loadReferenceOverride(db)
+  const household = loadHousehold(db, tenantId)
+  const override = loadReferenceOverride(db, tenantId)
 
   return {
     file:
@@ -653,7 +653,7 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
             savedOn: override.savedOn,
           },
     outsideCode: '00',
-    categories: loadMapping(db, latestStoredMonth(db)),
+    categories: loadMapping(db, latestStoredMonth(db, tenantId)),
   }
 }
 
@@ -691,7 +691,7 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
-  const accounts = loadAccountMap(db)
+  const accounts = loadAccountMap(db, user.tenantId)
   const exclusionReasons = netWorthExclusionReasons(accounts)
   const budget = budgetState(db, user.tenantId)
 
@@ -699,8 +699,8 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     build: { version: APP_VERSION, revision: APP_REVISION },
     history: {
       months: config.JOBS_HISTORY_MONTHS,
-      earliest: earliestStoredMonth(db),
-      latest: latestStoredMonth(db),
+      earliest: earliestStoredMonth(db, user.tenantId),
+      latest: latestStoredMonth(db, user.tenantId),
     },
     profile: {
       email: user.email,
@@ -709,11 +709,11 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       role: user.role,
     },
     locales: { supported: config.SUPPORTED_LOCALES, default: config.DEFAULT_LOCALE },
-    params: loadParams(db),
+    params: loadParams(db, user.tenantId),
     paramDefaults: DEFAULT_PARAMS,
-    advice: riskProfileSetting(db),
-    benchmark: benchmarkSetting(db),
-    property: loadProperties(db),
+    advice: riskProfileSetting(db, user.tenantId),
+    benchmark: benchmarkSetting(db, user.tenantId),
+    property: loadProperties(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
     // Scoped through the requester's own session, not `getSoleTenantId` — one of
     // the few paths in this file already correct for a second tenant (#373).
@@ -733,7 +733,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       ),
     ]),
     accounts: accounts.map((row) => toAccountSetting(row, exclusionReasons.get(row.id) ?? null)),
-    dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db)).map((candidate) => ({
+    dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db, user.tenantId)).map((candidate) => ({
       ghostfolioId: candidate.ghostfolio.id,
       actualId: candidate.actual.id,
       signals: candidate.signals,
@@ -827,10 +827,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       )
     }
 
-    const before = loadParams(db)
+    const before = loadParams(db, user.tenantId)
     let after
     try {
-      after = saveParams(db, patch)
+      after = saveParams(db, user.tenantId, patch)
     } catch (error) {
       // The cross-field rules — `winsorLowerPct < winsorUpperPct`,
       // `baselineWarnBp <= baselineAlertBp` — can only be checked against the
@@ -872,10 +872,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(advicePatchRequest, request.body)
 
-    const before = loadProfile(db)
+    const before = loadProfile(db, user.tenantId)
     let after
     try {
-      after = saveProfile(db, patch)
+      after = saveProfile(db, user.tenantId, patch)
     } catch (error) {
       if (error instanceof z.ZodError) {
         throw invalidBody('The request body was not valid.', fieldIssues(error))
@@ -910,10 +910,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(householdPatchRequest, request.body)
 
-    const before = loadHousehold(db)
+    const before = loadHousehold(db, user.tenantId)
     let after
     try {
-      after = saveHousehold(db, patch)
+      after = saveHousehold(db, user.tenantId, patch)
     } catch (error) {
       // The member cap and the custody range can only be checked against the parsed
       // roster, so they fail here rather than in `parseBody` — same division as the
@@ -954,11 +954,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const { reference } = parseBody(referencePatchRequest, request.body)
 
-    const before = loadReferenceOverride(db)
+    const before = loadReferenceOverride(db, user.tenantId)
     let after: typeof before = null
     if (reference !== null) {
       try {
-        after = saveReferenceOverride(db, reference)
+        after = saveReferenceOverride(db, user.tenantId, reference)
       } catch (error) {
         // The bounds — a positive total, a household of at least one on the scale, a
         // citation long enough to name something — are checked against the parsed object
@@ -969,7 +969,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         throw error
       }
     } else {
-      clearReferenceOverride(db)
+      clearReferenceOverride(db, user.tenantId)
     }
 
     recordAudit(db, {
@@ -997,10 +997,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(propertyPatchRequest, request.body)
 
-    const before = loadProperties(db)
+    const before = loadProperties(db, user.tenantId)
     let after
     try {
-      after = saveProperties(db, patch)
+      after = saveProperties(db, user.tenantId, patch)
     } catch (error) {
       // The rate/term bounds can only be checked once parsed, so they fail here rather
       // than in `parseBody` — same division as the household roster.
@@ -1453,12 +1453,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const id = (request.params as { id: string }).id
     const patch = parseBody(accountPatchRequest, request.body)
 
-    const before = loadAccountMap(db).find((row) => row.id === id)
+    const before = loadAccountMap(db, user.tenantId).find((row) => row.id === id)
     if (before === undefined) throw notFound('No such account.')
 
     // Spread rather than passed through: with `exactOptionalPropertyTypes`, a
     // parsed body's absent field is `undefined` and the domain patch's is absent.
-    const after = updateAccountMap(db, id, {
+    const after = updateAccountMap(db, user.tenantId, id, {
       ...(patch.kind === undefined ? {} : { kind: patch.kind }),
       ...(patch.includeInNetWorth === undefined
         ? {}
@@ -1490,10 +1490,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const id = (request.params as { id: string }).id
 
-    const before = loadAccountMap(db).find((row) => row.id === id)
+    const before = loadAccountMap(db, user.tenantId).find((row) => row.id === id)
     if (before === undefined) throw notFound('No such account.')
 
-    const after = setSourceOfTruth(db, id)
+    const after = setSourceOfTruth(db, user.tenantId, id)
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {
@@ -1513,12 +1513,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const { accountMapIds, sourceOfTruthId } = parseBody(accountGroupRequest, request.body)
 
-    const rows = loadAccountMap(db)
+    const rows = loadAccountMap(db, user.tenantId)
     const known = new Set(rows.map((row) => row.id))
     const missing = accountMapIds.filter((id) => !known.has(id))
     if (missing.length > 0) throw notFound('No such account.')
 
-    const group = groupAccounts(db, accountMapIds, sourceOfTruthId)
+    const group = groupAccounts(db, user.tenantId, accountMapIds, sourceOfTruthId)
 
     for (const id of accountMapIds) {
       const before = rows.find((row) => row.id === id)
@@ -1550,11 +1550,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const id = (request.params as { id: string }).id
 
-    const rows = loadAccountMap(db)
+    const rows = loadAccountMap(db, user.tenantId)
     const before = rows.find((row) => row.id === id)
     if (before === undefined) throw notFound('No such account.')
 
-    const after = unlinkGroup(db, id)
+    const after = unlinkGroup(db, user.tenantId, id)
     if (after.length === 0) throw notFound('No such account.')
 
     for (const row of after) {
@@ -1588,13 +1588,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const id = (request.params as { id: string }).id
 
-    const before = loadAccountMap(db).find((row) => row.id === id)
+    const before = loadAccountMap(db, user.tenantId).find((row) => row.id === id)
     if (before === undefined) throw notFound('No such account.')
     if (before.dedupeGroup !== null) {
       throw conflict('That account is in a group. Ungroup it instead.')
     }
 
-    const after = dismissMirror(db, id)
+    const after = dismissMirror(db, user.tenantId, id)
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {

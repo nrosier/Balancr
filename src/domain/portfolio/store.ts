@@ -9,7 +9,6 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { portfolioMetrics, portfolioSnapshots } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import type { ValuePoint } from './history.ts'
 import type { AllocationSlice, PortfolioMetricsResult } from './metrics.ts'
 import type { HoldingSnapshot } from './snapshot.ts'
@@ -21,10 +20,10 @@ export interface SnapshotPersistResult {
 
 export function persistPortfolioSnapshots(
   db: Db,
+  tenantId: string,
   date: string,
   holdings: readonly HoldingSnapshot[],
 ): SnapshotPersistResult {
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: SnapshotPersistResult = { written: 0, removed: 0 }
 
@@ -73,10 +72,11 @@ export function persistPortfolioSnapshots(
     const where =
       keep.length > 0
         ? and(
+            eq(portfolioSnapshots.tenantId, tenantId),
             eq(portfolioSnapshots.date, date),
             notInArray(portfolioSnapshots.instrument, keep),
           )
-        : eq(portfolioSnapshots.date, date)
+        : and(eq(portfolioSnapshots.tenantId, tenantId), eq(portfolioSnapshots.date, date))
     out.removed = tx.delete(portfolioSnapshots).where(where).run().changes
   })
 
@@ -87,8 +87,7 @@ export function persistPortfolioSnapshots(
  * Allocation is stored as JSON because its shape belongs to this module, not to
  * the schema — a new slice field must not be a migration.
  */
-export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult): void {
-  const tenantId = getSoleTenantId(db)
+export function persistPortfolioMetrics(db: Db, tenantId: string, result: PortfolioMetricsResult): void {
   const computedAt = new Date()
   db.insert(portfolioMetrics)
     .values({
@@ -129,9 +128,14 @@ export function persistPortfolioMetrics(db: Db, result: PortfolioMetricsResult):
  * that talks to Actual once per month per account, and a backfill that re-derived
  * twenty-four settled month-ends every night would be indistinguishable from a bug.
  */
-export function metricsDates(db: Db): Set<string> {
+export function metricsDates(db: Db, tenantId: string): Set<string> {
   return new Set(
-    db.select({ date: portfolioMetrics.date }).from(portfolioMetrics).all().map((row) => row.date),
+    db
+      .select({ date: portfolioMetrics.date })
+      .from(portfolioMetrics)
+      .where(eq(portfolioMetrics.tenantId, tenantId))
+      .all()
+      .map((row) => row.date),
   )
 }
 
@@ -167,9 +171,9 @@ export interface BackfillResult {
  */
 export function backfillPortfolioValues(
   db: Db,
+  tenantId: string,
   points: readonly ValuePoint[],
 ): BackfillResult {
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const out: BackfillResult = { written: 0, kept: 0 }
 
@@ -211,10 +215,11 @@ export function backfillPortfolioValues(
  * date for a price, so the age of the last successful pass is the only honest
  * signal available.
  */
-export function latestSnapshotDate(db: Db): string | null {
+export function latestSnapshotDate(db: Db, tenantId: string): string | null {
   const row = db
     .select({ date: sql<string | null>`max(${portfolioSnapshots.date})` })
     .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.tenantId, tenantId))
     .get()
   return row?.date ?? null
 }
@@ -246,8 +251,16 @@ function toAllocation(json: string | null): AllocationSlice[] {
  * cannot tell whether the figures were just calculated or read back — which is
  * what lets the AI pass work entirely off SQLite.
  */
-export function loadPortfolioMetrics(db: Db, date: string): PortfolioMetricsResult | null {
-  const row = db.select().from(portfolioMetrics).where(eq(portfolioMetrics.date, date)).get()
+export function loadPortfolioMetrics(
+  db: Db,
+  tenantId: string,
+  date: string,
+): PortfolioMetricsResult | null {
+  const row = db
+    .select()
+    .from(portfolioMetrics)
+    .where(and(eq(portfolioMetrics.tenantId, tenantId), eq(portfolioMetrics.date, date)))
+    .get()
   if (row === undefined) return null
 
   return {
@@ -271,30 +284,38 @@ export function loadPortfolioMetrics(db: Db, date: string): PortfolioMetricsResu
 }
 
 /** How many holdings a date's snapshot has. A count, never the instruments. */
-export function countSnapshotHoldings(db: Db, date: string): number {
+export function countSnapshotHoldings(db: Db, tenantId: string, date: string): number {
   const row = db
     .select({ count: sql<number>`count(*)` })
     .from(portfolioSnapshots)
-    .where(eq(portfolioSnapshots.date, date))
+    .where(and(eq(portfolioSnapshots.tenantId, tenantId), eq(portfolioSnapshots.date, date)))
     .get()
   return row?.count ?? 0
 }
 
 /** Holdings for one date, ordered as `toHoldingSnapshots` produced them. */
-export function loadSnapshot(db: Db, date: string): (typeof portfolioSnapshots.$inferSelect)[] {
+export function loadSnapshot(
+  db: Db,
+  tenantId: string,
+  date: string,
+): (typeof portfolioSnapshots.$inferSelect)[] {
   return db
     .select()
     .from(portfolioSnapshots)
-    .where(eq(portfolioSnapshots.date, date))
+    .where(and(eq(portfolioSnapshots.tenantId, tenantId), eq(portfolioSnapshots.date, date)))
     .orderBy(portfolioSnapshots.instrument)
     .all()
 }
 
 /** Total portfolio value per date, ascending — the portfolio value series. */
-export function loadPortfolioValueHistory(db: Db): { date: string; totalCents: number }[] {
+export function loadPortfolioValueHistory(
+  db: Db,
+  tenantId: string,
+): { date: string; totalCents: number }[] {
   return db
     .select({ date: portfolioMetrics.date, totalCents: portfolioMetrics.totalValueCents })
     .from(portfolioMetrics)
+    .where(eq(portfolioMetrics.tenantId, tenantId))
     .orderBy(portfolioMetrics.date)
     .all()
 }
@@ -313,11 +334,12 @@ export function loadPortfolioValueHistory(db: Db): { date: string; totalCents: n
  * not a month in which nothing drifted, it is a month nobody looked at, and treating the
  * two alike is how a run of three becomes a run of three with a hole in it.
  */
-export function monthEndMetrics(db: Db, months: number): PortfolioMetricsResult[] {
+export function monthEndMetrics(db: Db, tenantId: string, months: number): PortfolioMetricsResult[] {
   if (months <= 0) return []
   const dates = db
     .select({ date: sql<string>`max(${portfolioMetrics.date})` })
     .from(portfolioMetrics)
+    .where(eq(portfolioMetrics.tenantId, tenantId))
     .groupBy(sql`substr(${portfolioMetrics.date}, 1, 7)`)
     .orderBy(sql`substr(${portfolioMetrics.date}, 1, 7) desc`)
     .limit(months)
@@ -326,7 +348,7 @@ export function monthEndMetrics(db: Db, months: number): PortfolioMetricsResult[
   const loaded: PortfolioMetricsResult[] = []
   // Ascending, oldest first, like every other history in this codebase.
   for (const row of [...dates].reverse()) {
-    const metrics = loadPortfolioMetrics(db, row.date)
+    const metrics = loadPortfolioMetrics(db, tenantId, row.date)
     if (metrics !== null) loaded.push(metrics)
   }
   return loaded
