@@ -86,7 +86,7 @@ describe('a healthy upstream', () => {
     const detail = await run()
 
     expect(detail).toEqual({ status: 'ok', checks: 2, warnings: 1 })
-    const stored = loadProbe(ctx.db, 'ghostfolio')
+    const stored = loadProbe(ctx.db, TENANT_ID, 'ghostfolio')
     expect(stored?.status).toBe('ok')
     expect(stored?.checkedAt).toEqual(AT)
     expect(stored?.report?.checks.map((check) => check.path)).toEqual([
@@ -102,8 +102,8 @@ describe('a healthy upstream', () => {
     gave.report = report({ at: later })
     await run()
 
-    expect(loadProbes(ctx.db)).toHaveLength(1)
-    expect(loadProbe(ctx.db, 'ghostfolio')?.checkedAt).toEqual(later)
+    expect(loadProbes(ctx.db, TENANT_ID)).toHaveLength(1)
+    expect(loadProbe(ctx.db, TENANT_ID, 'ghostfolio')?.checkedAt).toEqual(later)
     expect(gave.calls).toBe(2)
   })
 })
@@ -127,7 +127,7 @@ describe('a broken upstream', () => {
 
     await expect(run()).rejects.toThrow(/shape-mismatch/)
 
-    const stored = loadProbe(ctx.db, 'ghostfolio')
+    const stored = loadProbe(ctx.db, TENANT_ID, 'ghostfolio')
     expect(stored?.status).toBe('shape-mismatch')
     const failed = stored?.report?.checks.find((check) => check.status !== 'ok')
     expect(failed?.path).toBe('/api/v1/portfolio/holdings')
@@ -151,7 +151,7 @@ describe('a broken upstream', () => {
     gave.throws = new Error('Invalid URL')
 
     await expect(run()).rejects.toThrow('Invalid URL')
-    expect(loadProbes(ctx.db)).toEqual([])
+    expect(loadProbes(ctx.db, TENANT_ID)).toEqual([])
   })
 })
 
@@ -178,7 +178,7 @@ describe('the stored vocabulary', () => {
     await run()
     ctx.db.update(upstreamProbes).set({ reportJson: '{"checks":"nope"}' }).run()
 
-    const stored = loadProbe(ctx.db, 'ghostfolio')
+    const stored = loadProbe(ctx.db, TENANT_ID, 'ghostfolio')
     expect(stored?.status).toBe('ok')
     expect(stored?.report).toBeNull()
   })

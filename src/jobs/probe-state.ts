@@ -86,11 +86,16 @@ export function saveProbe(
  * reported a shape mismatch, details unavailable" than fail to answer at all — the
  * failure this avoids is a readiness endpoint that 500s because of a schema change in
  * its own diagnostics.
+ *
+ * Scoped to `tenantId`: the table holds one row per tenant per source, and an
+ * unfiltered read handed tenant A's status panel tenant B's Ghostfolio health —
+ * hostnames, error text and all — the moment a second tenant existed (#380).
  */
-export function loadProbes(db: Db): ProbeState[] {
+export function loadProbes(db: Db, tenantId: string): ProbeState[] {
   return db
     .select()
     .from(upstreamProbes)
+    .where(eq(upstreamProbes.tenantId, tenantId))
     .orderBy(upstreamProbes.source)
     .all()
     .map((row) => {
@@ -104,8 +109,8 @@ export function loadProbes(db: Db): ProbeState[] {
     })
 }
 
-export function loadProbe(db: Db, source: ProbeSource): ProbeState | null {
-  return loadProbes(db).find((state) => state.source === source) ?? null
+export function loadProbe(db: Db, tenantId: string, source: ProbeSource): ProbeState | null {
+  return loadProbes(db, tenantId).find((state) => state.source === source) ?? null
 }
 
 /** Deletes the row for `source`. For a test, and for a source this build dropped. */
