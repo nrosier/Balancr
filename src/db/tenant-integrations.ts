@@ -10,7 +10,7 @@
 import { eq } from 'drizzle-orm'
 import type { Db } from './index.ts'
 import { config } from '../config.ts'
-import { encryptField } from './field-crypto.ts'
+import { decryptField, encryptField } from './field-crypto.ts'
 import { getSoleTenantId } from './tenant.ts'
 import { tenantIntegrations } from './schema.ts'
 
@@ -62,6 +62,46 @@ export function integrationAvailability(db: Db): IntegrationAvailability {
       row.geminiProvider === 'aistudio'
         ? row.geminiApiKeyEnc !== null
         : row.googleCloudProject !== null,
+  }
+}
+
+/**
+ * The tenant's connection details, decrypted and ready to use (#371).
+ *
+ * Every adapter builds its client from this, never from `config.*` — that's
+ * the whole point of #371: `.env` only ever seeds tenant 1's row once, via
+ * `importEnvIntegrationsOnce` below.
+ *
+ * Gemini's `provider`/`apiKey`/`project` join this shape once #371's Gemini
+ * slice lands; Ghostfolio and Actual need it first, so it starts with just
+ * those two.
+ */
+export interface ResolvedIntegrations {
+  readonly actual: {
+    readonly serverUrl: string
+    readonly password: string
+    readonly syncId: string
+    readonly e2ePassword: string | null
+  }
+  readonly ghostfolio: {
+    readonly url: string
+    readonly token: string
+  }
+}
+
+export function resolvedIntegrations(db: Db): ResolvedIntegrations {
+  const row = integrationsRow(db)
+  return {
+    actual: {
+      serverUrl: row.actualServerUrl,
+      password: decryptField(row.actualPasswordEnc),
+      syncId: row.actualSyncId,
+      e2ePassword: row.actualE2ePasswordEnc === null ? null : decryptField(row.actualE2ePasswordEnc),
+    },
+    ghostfolio: {
+      url: row.ghostfolioUrl,
+      token: decryptField(row.ghostfolioSecurityTokenEnc),
+    },
   }
 }
 

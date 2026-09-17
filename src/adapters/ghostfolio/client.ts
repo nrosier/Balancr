@@ -22,7 +22,9 @@
  * `test/unit/ghostfolio-guard.test.ts` is the tripwire under both halves.
  */
 import { z } from 'zod'
-import { config } from '../../config.ts'
+import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import {
   accountsSchema,
@@ -43,8 +45,12 @@ const REQUEST_TIMEOUT_MS = 20_000
 /**
  * Ghostfolio's JWT lifetime is not documented, so it is not assumed: the token
  * is cached, and a 401 triggers exactly one re-authentication and retry.
+ *
+ * Keyed by tenant (#371) — each tenant talks to its own Ghostfolio instance
+ * with its own security token, so one tenant's cached JWT must never answer
+ * for another's.
  */
-let cachedToken: string | null = null
+const tokens = new Map<string, string>()
 
 export class GhostfolioError extends Error {
   constructor(
@@ -57,8 +63,8 @@ export class GhostfolioError extends Error {
   }
 }
 
-function url(path: string): string {
-  return `${config.GHOSTFOLIO_URL.replace(/\/+$/, '')}${path}`
+function url(db: Db, path: string): string {
+  return `${resolvedIntegrations(db).ghostfolio.url.replace(/\/+$/, '')}${path}`
 }
 
 /**
@@ -113,11 +119,11 @@ async function decode(path: string, response: Response): Promise<unknown> {
  * There is no `method` here and no way to pass one: `fetch` defaults to GET, and the
  * default is the only thing this function can issue.
  */
-async function request(path: string, options: ReadOptions = {}): Promise<unknown> {
+async function request(db: Db, path: string, options: ReadOptions = {}): Promise<unknown> {
   const authenticated = options.authenticated ?? true
 
   const get = async (bearer: string | null): Promise<Response> =>
-    fetch(url(path), {
+    fetch(url(db, path), {
       headers: {
         accept: 'application/json',
         ...(bearer === null ? {} : { authorization: `Bearer ${bearer}` }),
@@ -127,19 +133,19 @@ async function request(path: string, options: ReadOptions = {}): Promise<unknown
 
   let response: Response
   try {
-    response = await get(authenticated ? await token() : null)
+    response = await get(authenticated ? await token(db) : null)
   } catch (error) {
     throw networkError(path, error)
   }
 
   if (response.status === 401 && authenticated) {
     log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
-    cachedToken = null
+    tokens.delete(getSoleTenantId(db))
     // Wrapped too: the retry can fail the same way the first attempt can, and an
     // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
     // jobs could not tell apart from a bug in themselves.
     try {
-      response = await get(await token())
+      response = await get(await token(db))
     } catch (error) {
       throw networkError(path, error)
     }
@@ -165,26 +171,28 @@ function parse<T>(path: string, schema: z.ZodType<T>, raw: unknown): T {
  * The one POST this adapter issues, written out here rather than routed through
  * `request`.
  *
- * Authentication is not a mutation — it exchanges the security token from `.env` for a
+ * Authentication is not a mutation — it exchanges the tenant's own security token for a
  * JWT and changes nothing on the instance — but it is the only call that needs a method
  * and a body, so it is the only place either appears. Two things fall out of that.
  * `request` no longer has to accept them from anybody, which is the guarantee; and the
  * reentrancy is gone, where `request` called `token`, which called `request` again with
  * `authenticated: false` so as not to recurse for ever.
  *
- * It takes no arguments, so there is nothing here for a future caller to point at a
- * different path or fill with a different body.
+ * It takes no path/body argument, so there is nothing here for a future caller to point
+ * at a different path or fill with a different body.
  */
-async function token(): Promise<string> {
-  if (cachedToken !== null) return cachedToken
+async function token(db: Db): Promise<string> {
+  const tenantId = getSoleTenantId(db)
+  const cached = tokens.get(tenantId)
+  if (cached !== undefined) return cached
 
   const path = '/api/v1/auth/anonymous'
   let response: Response
   try {
-    response = await fetch(url(path), {
+    response = await fetch(url(db, path), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ accessToken: config.GHOSTFOLIO_SECURITY_TOKEN }),
+      body: JSON.stringify({ accessToken: resolvedIntegrations(db).ghostfolio.token }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch (error) {
@@ -193,13 +201,24 @@ async function token(): Promise<string> {
 
   // `authSchema` requires a non-empty string, so the cache can never hold a token that
   // would go out as a bare `Bearer`.
-  cachedToken = parse(path, authSchema, await decode(path, response)).authToken
-  return cachedToken
+  const authToken = parse(path, authSchema, await decode(path, response)).authToken
+  tokens.set(tenantId, authToken)
+  return authToken
 }
 
-/** Drops the cached JWT. Used by the probe and by tests. */
-export function resetGhostfolioToken(): void {
-  cachedToken = null
+/**
+ * Drops the cached JWT. Used by the probe and by tests.
+ *
+ * Bare (no `tenantId`) clears every tenant's cached token — the behavior every existing
+ * call site (the probe, both adapter test files) already relies on. Pass a `tenantId` to
+ * clear just that one tenant's entry instead.
+ */
+export function resetGhostfolioToken(tenantId?: string): void {
+  if (tenantId === undefined) {
+    tokens.clear()
+    return
+  }
+  tokens.delete(tenantId)
 }
 
 // ---------------------------------------------------------------------------
@@ -207,15 +226,15 @@ export function resetGhostfolioToken(): void {
 // ---------------------------------------------------------------------------
 
 /** Unauthenticated liveness check. The only endpoint safe to call before auth. */
-export async function fetchHealth(): Promise<void> {
+export async function fetchHealth(db: Db): Promise<void> {
   const path = '/api/v1/health'
-  parse(path, healthSchema, await request(path, { authenticated: false }))
+  parse(path, healthSchema, await request(db, path, { authenticated: false }))
 }
 
 /** Holdings and summary. The backbone of the portfolio view. */
-export async function fetchPortfolioDetails(): Promise<PortfolioDetails> {
+export async function fetchPortfolioDetails(db: Db): Promise<PortfolioDetails> {
   const path = '/api/v1/portfolio/details'
-  return parse(path, portfolioDetailsSchema, await request(path))
+  return parse(path, portfolioDetailsSchema, await request(db, path))
 }
 
 /**
@@ -251,6 +270,7 @@ export async function fetchPortfolioDetails(): Promise<PortfolioDetails> {
  * splitting a portfolio total across several, which would be inventing figures.
  */
 export async function fetchPortfolioPerformance(
+  db: Db,
   range = 'max',
   accountId?: string,
 ): Promise<PortfolioPerformance> {
@@ -261,7 +281,7 @@ export async function fetchPortfolioPerformance(
   for (const [index, path] of paths.entries()) {
     const last = index === paths.length - 1
     try {
-      const raw = await request(path)
+      const raw = await request(db, path)
       // Logged once per pass and at debug, because the answer is stable for the
       // life of an instance — but the next time this moves, the log says where it
       // was last found.
@@ -284,7 +304,7 @@ export async function fetchPortfolioPerformance(
  * Ghostfolio, and `account_map.is_source_of_truth` decides which one counts.
  * Without this list there is nothing to map against.
  */
-export async function fetchAccounts(): Promise<GhostfolioAccounts> {
+export async function fetchAccounts(db: Db): Promise<GhostfolioAccounts> {
   const path = '/api/v1/account'
-  return parse(path, accountsSchema, await request(path))
+  return parse(path, accountsSchema, await request(db, path))
 }

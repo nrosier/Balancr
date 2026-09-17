@@ -14,11 +14,11 @@
  * authenticates against, holding somebody's actual accounts — and this is the file
  * anyone thinking "while I'm in here, let me just record that transaction" would open.
  *
- * The one exception is authentication, which exchanges the security token for a JWT and
- * changes nothing on the instance. It stays an exception rather than becoming a
- * parameter: `token()` takes no arguments and hardcodes both its method and its path,
- * so it is not the old permissive `request()` under a new name. The last test here is
- * what says so.
+ * The one exception is authentication, which exchanges the tenant's own security token
+ * for a JWT and changes nothing on the instance. It stays an exception rather than
+ * becoming a parameter: `token()` takes only the tenant's `db` and hardcodes both its
+ * method and its path, so it is not the old permissive `request()` under a new name.
+ * The last test here is what says so.
  */
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +29,9 @@ import {
   fetchPortfolioPerformance,
   resetGhostfolioToken,
 } from '../../src/adapters/ghostfolio/client.ts'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { createTestDb, type Db } from '../../src/db/index.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 
 const AUTH = '/api/v1/auth/anonymous'
 
@@ -61,6 +64,7 @@ interface Call {
 }
 
 let calls: Call[]
+let db: Db
 
 /** Answers every read with a shape its schema accepts, and records the method. */
 function stubFetch(): void {
@@ -92,6 +96,11 @@ function stubFetch(): void {
 }
 
 beforeEach(() => {
+  const fresh = createTestDb().db
+  applyMigrations(fresh as never)
+  importEnvIntegrationsOnce(fresh)
+  db = fresh
+
   calls = []
   resetGhostfolioToken()
   stubFetch()
@@ -107,10 +116,10 @@ describe('what the adapter actually sends', () => {
     // All four reads in one test on purpose: the assertion is about the set of requests
     // this adapter is capable of making, and a per-endpoint test would pass while a
     // fifth endpoint added tomorrow went unchecked.
-    await fetchHealth()
-    await fetchPortfolioDetails()
-    await fetchPortfolioPerformance()
-    await fetchAccounts()
+    await fetchHealth(db)
+    await fetchPortfolioDetails(db)
+    await fetchPortfolioPerformance(db)
+    await fetchAccounts(db)
 
     const writes = calls.filter(
       (call) => call.method !== undefined && call.method.toUpperCase() !== 'GET',
@@ -119,8 +128,8 @@ describe('what the adapter actually sends', () => {
   })
 
   it('sends the token call once and then reads on the cached JWT', async () => {
-    await fetchPortfolioDetails()
-    await fetchAccounts()
+    await fetchPortfolioDetails(db)
+    await fetchAccounts(db)
 
     // Not a performance assertion. A token call per read would mean the POST is on the
     // ordinary request path rather than behind the cache, which is the shape this file
@@ -129,7 +138,7 @@ describe('what the adapter actually sends', () => {
   })
 
   it('asks for the liveness check without a token at all', async () => {
-    await fetchHealth()
+    await fetchHealth(db)
     // The one read that must work before authentication, and therefore the one read
     // whose `authenticated: false` is load-bearing rather than incidental.
     expect(calls).toEqual([{ path: '/api/v1/health', method: undefined }])
@@ -187,9 +196,10 @@ describe('the read-only boundary', () => {
 
   it('keeps the token call unparameterised, so it cannot become a general POST', () => {
     const code = client()
-    // `token()` — no arguments. A `token(path: string)` would be the old permissive
-    // `request()` wearing a different name, and every guarantee above would still pass.
-    expect(code).toContain('async function token(): Promise<string>')
+    // `token(db)` — no path or method argument. A `token(db, path: string)` would be
+    // the old permissive `request()` wearing a different name, and every guarantee
+    // above would still pass.
+    expect(code).toContain('async function token(db: Db): Promise<string>')
     expect(code).toContain("const path = '/api/v1/auth/anonymous'")
   })
 })
