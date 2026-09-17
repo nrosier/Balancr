@@ -139,6 +139,7 @@ const NIGHT = new Date('2026-03-15T02:00:00Z')
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let TENANT_ID: string
 
 /**
  * One Actual current account and one Ghostfolio account, both mapped and counted,
@@ -149,6 +150,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
 
   syncAccountMap(db, [
     { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
@@ -182,7 +184,8 @@ beforeEach(() => {
 })
 
 const run = async (now = NIGHT): Promise<JobDetail> =>
-  ((await backfillJob.run({ db, now, log: logger, step: noopStep })) ?? {}) as JobDetail
+  ((await backfillJob.run({ db, tenantId: TENANT_ID, now, log: logger, step: noopStep })) ??
+    {}) as JobDetail
 
 /** Month-end dates the backfill wrote a net-worth snapshot for. */
 const snapshots = (): Record<string, number> =>
@@ -514,6 +517,7 @@ describe('an install whose budget is younger than the window', () => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
     db = ctx.db
+    TENANT_ID = getSoleTenantId(db)
     syncAccountMap(db, [
       { source: 'actual', externalId: 'a1', name: 'Zichtrekening' },
       { source: 'ghostfolio', externalId: 'g1', name: 'Bolero' },
@@ -532,6 +536,7 @@ describe('an install whose budget is younger than the window', () => {
     ctx = createTestDb()
     applyMigrations(ctx.db as never)
     db = ctx.db
+    TENANT_ID = getSoleTenantId(db)
     syncAccountMap(db, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
 
     const detail = await run()

@@ -123,7 +123,7 @@ describe('expand', () => {
 describe('startRefresh', () => {
   it('runs the expanded set, in order, and says which was asked for', async () => {
     const ran: string[] = []
-    const outcome = startRefresh(ctx.db, fakes(ran), ['portfolio'])
+    const outcome = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['portfolio'])
 
     expect(outcome).toMatchObject({
       accepted: ['portfolio', 'networth', 'signals'],
@@ -137,7 +137,7 @@ describe('startRefresh', () => {
     // The whole point of the 202: awaiting `downloadBudget` against an Actual with no
     // timeout guarantee would tie a user-facing request to it.
     const ran: string[] = []
-    startRefresh(ctx.db, fakes(ran), ['sync'])
+    startRefresh(ctx.db, fakes(ran), TENANT_ID, ['sync'])
     expect(ran).toEqual([])
   })
 
@@ -147,9 +147,9 @@ describe('startRefresh', () => {
       open = resolve
     })
     const ran: string[] = []
-    startRefresh(ctx.db, fakes(ran, gate), ['sync'])
+    startRefresh(ctx.db, fakes(ran, gate), TENANT_ID, ['sync'])
 
-    const second = startRefresh(ctx.db, fakes(ran), ['portfolio'])
+    const second = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['portfolio'])
     expect(second).toEqual({ busy: ['sync', 'networth', 'signals'] })
 
     open()
@@ -160,8 +160,8 @@ describe('startRefresh', () => {
     // Nothing is awaited between these two calls, which is the case a check against
     // the database could not refuse: neither request has written a row yet.
     const ran: string[] = []
-    const first = startRefresh(ctx.db, fakes(ran), ['probe'])
-    const second = startRefresh(ctx.db, fakes(ran), ['probe'])
+    const first = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['probe'])
+    const second = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['probe'])
     expect(first).not.toHaveProperty('busy')
     expect(second).toHaveProperty('busy')
   })
@@ -176,7 +176,7 @@ describe('startRefresh', () => {
       .run()
 
     const ran: string[] = []
-    const outcome = startRefresh(ctx.db, fakes(ran), ['sync'])
+    const outcome = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['sync'])
     expect(outcome).not.toHaveProperty('busy')
     await settle()
     expect(ran).toContain('sync')
@@ -194,11 +194,11 @@ describe('startRefresh', () => {
         },
       },
     ]
-    startRefresh(ctx.db, failing, ['sync'])
+    startRefresh(ctx.db, failing, TENANT_ID, ['sync'])
     await settle()
 
     expect(jobsInFlight()).toEqual([])
-    expect(startRefresh(ctx.db, failing, ['sync'])).not.toHaveProperty('busy')
+    expect(startRefresh(ctx.db, failing, TENANT_ID, ['sync'])).not.toHaveProperty('busy')
     await settle()
   })
 
@@ -207,7 +207,7 @@ describe('startRefresh', () => {
     // three after it.
     const ran: string[] = []
     const partial = [fake('networth', ran), fake('signals', ran)]
-    const outcome = startRefresh(ctx.db, partial, ['sync'])
+    const outcome = startRefresh(ctx.db, partial, TENANT_ID, ['sync'])
 
     expect(outcome).toMatchObject({ accepted: ['sync', 'networth', 'signals'] })
     await settle()
@@ -216,21 +216,21 @@ describe('startRefresh', () => {
 
   it('records the attempt in the jobs table, so the freshness block moves', async () => {
     const ran: string[] = []
-    startRefresh(ctx.db, fakes(ran), ['probe'])
+    startRefresh(ctx.db, fakes(ran), TENANT_ID, ['probe'])
     await settle()
 
-    const row = loadJobRows(ctx.db).find((candidate) => candidate.name === 'probe')
+    const row = loadJobRows(ctx.db, TENANT_ID).find((candidate) => candidate.name === 'probe')
     expect(row).toMatchObject({ status: 'ok' })
     expect(row?.lastSuccessAt).not.toBeNull()
   })
 
   it('reports the instant the caller can compare a job row against', async () => {
     const ran: string[] = []
-    const outcome = startRefresh(ctx.db, fakes(ran), ['probe'])
+    const outcome = startRefresh(ctx.db, fakes(ran), TENANT_ID, ['probe'])
     if ('busy' in outcome) throw new Error('the refresh was refused')
     await settle()
 
-    const row = loadJobRows(ctx.db).find((candidate) => candidate.name === 'probe')
+    const row = loadJobRows(ctx.db, TENANT_ID).find((candidate) => candidate.name === 'probe')
     // The client stops polling when `lastRunAt >= startedAt`. Millisecond precision on
     // both sides is what makes that comparison mean "my refresh", not "some refresh".
     expect(row?.lastRunAt?.getTime()).toBeGreaterThanOrEqual(outcome.startedAt.getTime())

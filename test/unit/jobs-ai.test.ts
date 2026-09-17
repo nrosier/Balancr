@@ -139,7 +139,7 @@ const response = (
 ): string => JSON.stringify({ findings, clarifications })
 
 /** The pass, through the runner, so the `jobs` row is asserted too. */
-const night = (now = NIGHT) => runJob(db, aiJob, now)
+const night = (now = NIGHT) => runJob(db, aiJob, TENANT_ID, now)
 
 const runsOf = (kind: 'findings' | 'narrative') =>
   db.select().from(aiRuns).all().filter((row) => row.kind === kind)
@@ -254,7 +254,7 @@ describe('the nightly pass', () => {
     const recorded = fakeGemini(response())
 
     await night()
-    await runJob(db, aiJob, new Date('2026-03-13T02:00:00Z'), { force: true })
+    await runJob(db, aiJob, TENANT_ID, new Date('2026-03-13T02:00:00Z'), { force: true })
 
     // Without force this would be the reused/cached pass above: {analysis: 1, narrative: 1}.
     expect(recorded).toEqual({ analysis: 2, narrative: 2 })
@@ -423,7 +423,13 @@ describe('with the model unavailable', () => {
       }
       const job = Object.keys(env).length > 0 ? await freshJob(env) : aiJob
 
-      const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
+      const detail = (await job.run({
+        db,
+        tenantId: TENANT_ID,
+        now: NIGHT,
+        log: logger,
+        step: noopStep,
+      })) as JobDetail
 
       expect(detail).toMatchObject({ enabled: false, reason, months: 0 })
       // Not a `capped` row every 24 hours: none of the three is an incident.
@@ -448,7 +454,13 @@ describe('with the model unavailable', () => {
       })
       .run()
 
-    const detail = (await aiJob.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
+    const detail = (await aiJob.run({
+      db,
+      tenantId: TENANT_ID,
+      now: NIGHT,
+      log: logger,
+      step: noopStep,
+    })) as JobDetail
 
     expect(detail['expired']).toBe(1)
   })

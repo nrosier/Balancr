@@ -10,6 +10,7 @@
  * name is a client bug, not a job with no history yet.
  */
 import type { Db } from '../../../db/index.ts'
+import { getSoleTenantId } from '../../../db/tenant.ts'
 import { findJob, loadJobRuns, type JobRunRow, type JobStep } from '../../../jobs/index.ts'
 import { badRequest } from '../../errors.ts'
 import { jobHistorySchema, type JobHistory } from './schemas.ts'
@@ -59,7 +60,7 @@ export function buildJobHistory(db: Db, jobParam: unknown, limitParam: unknown):
   }
   const limit = resolveLimit(limitParam)
 
-  const runs = loadJobRuns(db, jobParam, limit)
+  const runs = loadJobRuns(db, getSoleTenantId(db), jobParam, limit)
 
   return jobHistorySchema.parse({
     jobName: jobParam,
