@@ -622,7 +622,7 @@ describe('transaction_category.set', () => {
 
     const result = await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
 
-    expect(updateTransactionCategory).toHaveBeenCalledWith('txn1', 'food')
+    expect(updateTransactionCategory).toHaveBeenCalledWith(db, TENANT_ID, 'txn1', 'food')
     expect(result.fields).toEqual([{ field: 'category', before: 'Rent', after: 'Groceries' }])
     expect(loadProposal(db, row.id)?.status).toBe('applied')
     expect(loadAuditTrail(db, { entityRef: 'txn1' })[0]?.action).toBe('proposal.apply')
@@ -704,7 +704,7 @@ describe('budget_amount.set', () => {
 
     const result = await applyProposal(db, { id: row.id, userId: 'u1', now: NOW })
 
-    expect(setCategoryBudgetAmount).toHaveBeenCalledWith(MONTH, 'food', 15_000)
+    expect(setCategoryBudgetAmount).toHaveBeenCalledWith(db, TENANT_ID, MONTH, 'food', 15_000)
     expect(result.fields).toEqual([
       { field: 'amount', before: formatMoney(12_000), after: formatMoney(15_000) },
     ])
