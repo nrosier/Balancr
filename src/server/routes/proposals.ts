@@ -42,8 +42,8 @@ import {
  * ordinary case answers with the right status rather than every refusal
  * collapsing to a 409 from `ProposalError`'s message.
  */
-function requirePending(db: Db, id: string): ProposalRow {
-  const row = loadProposal(db, id)
+function requirePending(db: Db, tenantId: string, id: string): ProposalRow {
+  const row = loadProposal(db, tenantId, id)
   if (row === null) throw notFound('No such proposal.')
   if (row.status !== 'pending') throw conflict(`This proposal is already ${row.status}.`)
   if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
@@ -59,9 +59,9 @@ const applyBatchRequest = z.strictObject({ ids: z.array(z.string().min(1)).min(1
  * the point of the endpoint is that one already-expired card in a ten-item
  * "apply selected" does not stop the other nine.
  */
-async function applyOne(db: Db, id: string, userId: string): Promise<ApplyResult> {
-  requirePending(db, id)
-  return applyProposal(db, { id, userId })
+async function applyOne(db: Db, tenantId: string, id: string, userId: string): Promise<ApplyResult> {
+  requirePending(db, tenantId, id)
+  return applyProposal(db, tenantId, { id, userId })
 }
 
 export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
@@ -70,7 +70,7 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
     const { id } = request.params as { id: string }
 
     try {
-      const result = await applyOne(db, id, user.id)
+      const result = await applyOne(db, user.tenantId, id, user.id)
       return proposalDecisionSchema.parse({ id: result.id, status: 'applied' })
     } catch (error) {
       // Reached only if the row's state moved between `requirePending`'s read
@@ -84,13 +84,13 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const { id } = request.params as { id: string }
     const { amountCents } = parseBody(proposalAdjustRequest, request.body)
-    const row = requirePending(db, id)
+    const row = requirePending(db, user.tenantId, id)
     if (row.type !== 'budget_amount.set') {
       throw badRequest('Only a budget amount proposal has an amount to adjust.')
     }
 
     try {
-      const result = await adjustProposal(db, { id, amountCents, userId: user.id })
+      const result = await adjustProposal(db, user.tenantId, { id, amountCents, userId: user.id })
       return proposalAdjustSchema.parse(result)
     } catch (error) {
       if (error instanceof ProposalError) throw conflict(error.message)
@@ -101,10 +101,10 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
   app.post('/api/proposals/:id/reject', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const { id } = request.params as { id: string }
-    requirePending(db, id)
+    requirePending(db, user.tenantId, id)
 
     try {
-      const row = rejectProposal(db, { id, userId: user.id })
+      const row = rejectProposal(db, user.tenantId, { id, userId: user.id })
       return proposalDecisionSchema.parse({ id: row.id, status: 'rejected' })
     } catch (error) {
       if (error instanceof ProposalError) throw conflict(error.message)
@@ -126,7 +126,7 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
     const results: { id: string; ok: boolean; reason: string | null }[] = []
     for (const id of ids) {
       try {
-        await applyOne(db, id, user.id)
+        await applyOne(db, user.tenantId, id, user.id)
         results.push({ id, ok: true, reason: null })
       } catch (error) {
         results.push({

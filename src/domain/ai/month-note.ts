@@ -26,7 +26,6 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 import { assertMonth, isYear } from '../../util/month.ts'
 
@@ -42,8 +41,7 @@ const monthNotesSchema = z.record(z.string(), monthNoteTextSchema).prefault({})
 
 type MonthNotes = z.infer<typeof monthNotesSchema>
 
-function loadAll(db: Db): MonthNotes {
-  const tenantId = getSoleTenantId(db)
+function loadAll(db: Db, tenantId: string): MonthNotes {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -76,17 +74,16 @@ function assertPeriod(month: string): string {
   return isYear(month) ? month : assertMonth(month)
 }
 
-export function loadMonthNote(db: Db, month: string): string {
+export function loadMonthNote(db: Db, tenantId: string, month: string): string {
   assertPeriod(month)
-  return loadAll(db)[month] ?? ''
+  return loadAll(db, tenantId)[month] ?? ''
 }
 
-export function saveMonthNote(db: Db, month: string, text: string): string {
+export function saveMonthNote(db: Db, tenantId: string, month: string, text: string): string {
   assertPeriod(month)
-  const tenantId = getSoleTenantId(db)
   const trimmed = monthNoteTextSchema.parse(text.trim())
 
-  const all = loadAll(db)
+  const all = loadAll(db, tenantId)
   if (trimmed === '') delete all[month]
   else all[month] = trimmed
 

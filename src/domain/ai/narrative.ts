@@ -36,7 +36,6 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiNarratives } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
@@ -156,12 +155,23 @@ const translationInstruction = (from: string, to: string): string =>
 //  Store
 // ---------------------------------------------------------------------------
 
-export function loadNarrative(db: Db, period: string, locale: string): NarrativeRow | null {
+export function loadNarrative(
+  db: Db,
+  tenantId: string,
+  period: string,
+  locale: string,
+): NarrativeRow | null {
   return (
     db
       .select()
       .from(aiNarratives)
-      .where(and(eq(aiNarratives.period, period), eq(aiNarratives.locale, locale)))
+      .where(
+        and(
+          eq(aiNarratives.period, period),
+          eq(aiNarratives.locale, locale),
+          eq(aiNarratives.tenantId, tenantId),
+        ),
+      )
       .get() ?? null
   )
 }
@@ -185,7 +195,7 @@ export function loadNarrative(db: Db, period: string, locale: string): Narrative
  * so there is nothing to compare and "we cannot tell" must not read as "it is wrong". Those
  * reviews are already offered the plain rewrite control.
  */
-export function noteChangedSince(db: Db, narrative: NarrativeRow): boolean {
+export function noteChangedSince(db: Db, tenantId: string, narrative: NarrativeRow): boolean {
   const payload = loadRunPayload(db, narrative.runId)
   if (payload === null || typeof payload !== 'object') return false
   if (!('note' in payload)) return false
@@ -193,7 +203,7 @@ export function noteChangedSince(db: Db, narrative: NarrativeRow): boolean {
   const written = (payload as { note: unknown }).note
   if (written !== null && typeof written !== 'string') return false
 
-  const current = loadMonthNote(db, narrative.period).trim()
+  const current = loadMonthNote(db, tenantId, narrative.period).trim()
   return (current === '' ? null : current) !== written
 }
 
@@ -204,11 +214,11 @@ export function noteChangedSince(db: Db, narrative: NarrativeRow): boolean {
  * month that already has a Dutch version would charge for a click that changes
  * nothing.
  */
-export function narrativeLocales(db: Db, period: string): string[] {
+export function narrativeLocales(db: Db, tenantId: string, period: string): string[] {
   return db
     .select({ locale: aiNarratives.locale })
     .from(aiNarratives)
-    .where(eq(aiNarratives.period, period))
+    .where(and(eq(aiNarratives.period, period), eq(aiNarratives.tenantId, tenantId)))
     .all()
     .map((row) => row.locale)
     .sort()
@@ -223,12 +233,12 @@ export function narrativeLocales(db: Db, period: string): string[] {
  * that silently answered about a different month would make the banner optional,
  * and the banner is the honest part.
  */
-export function latestNarrative(db: Db, locale: string): NarrativeRow | null {
+export function latestNarrative(db: Db, tenantId: string, locale: string): NarrativeRow | null {
   return (
     db
       .select()
       .from(aiNarratives)
-      .where(eq(aiNarratives.locale, locale))
+      .where(and(eq(aiNarratives.locale, locale), eq(aiNarratives.tenantId, tenantId)))
       .orderBy(desc(aiNarratives.period))
       .limit(1)
       .get() ?? null
@@ -244,9 +254,9 @@ export function latestNarrative(db: Db, locale: string): NarrativeRow | null {
  */
 export function storeNarrative(
   db: Db,
+  tenantId: string,
   input: { runId: string; period: string; locale: string; bodyMd: string },
 ): NarrativeRow {
-  const tenantId = getSoleTenantId(db)
   const rows = db
     .insert(aiNarratives)
     .values({
@@ -311,8 +321,8 @@ export function substituteLabels(
  * alternative, storing the substituted version, would put a sensitive category's
  * name into a row that is then sent back to Google by the translate action.
  */
-export function renderNarrative(db: Db, row: NarrativeRow): string {
-  const prepared = prepareMonth(db, row.period, row.locale)
+export function renderNarrative(db: Db, tenantId: string, row: NarrativeRow): string {
+  const prepared = prepareMonth(db, tenantId, row.period, row.locale)
   const names = prepared?.nameForLabel ?? new Map<string, string>()
   return renderMarkdown(substituteLabels(row.bodyMd, names, row.locale))
 }
@@ -383,14 +393,19 @@ const failed = (
   costMicroEur,
 })
 
-const fromRow = (row: NarrativeRow, db: Db, status: NarrativeStatus): NarrativeOutcome => ({
+const fromRow = (
+  row: NarrativeRow,
+  db: Db,
+  tenantId: string,
+  status: NarrativeStatus,
+): NarrativeOutcome => ({
   status,
   reason: status === 'ok' ? 'ok' : 'cached',
   runId: row.runId,
   period: row.period,
   locale: row.locale,
   bodyMd: row.bodyMd,
-  html: renderNarrative(db, row),
+  html: renderNarrative(db, tenantId, row),
   createdAt: row.createdAt,
   degraded: false,
   costMicroEur: 0,
@@ -455,9 +470,9 @@ export function estimateNarrative(
   })
 
   if (!monthHasEnded(options.period, now)) return refused('month_not_ended')
-  if (loadNarrative(db, options.period, locale) !== null) return refused('cached')
+  if (loadNarrative(db, tenantId, options.period, locale) !== null) return refused('cached')
 
-  const prepared = prepareMonth(db, options.period, locale)
+  const prepared = prepareMonth(db, tenantId, options.period, locale)
   if (prepared === null) return refused('no_facts')
 
   const payloadChars = JSON.stringify(prepared.narrativePayload).length
@@ -525,11 +540,11 @@ export async function runNarrative(
   const period = options.period
 
   if (options.force !== true) {
-    const cached = loadNarrative(db, period, locale)
-    if (cached !== null) return fromRow(cached, db, 'cached')
+    const cached = loadNarrative(db, tenantId, period, locale)
+    if (cached !== null) return fromRow(cached, db, tenantId, 'cached')
   }
 
-  const prepared = prepareMonth(db, period, locale)
+  const prepared = prepareMonth(db, tenantId, period, locale)
   if (prepared === null) {
     log.info({ period }, 'no facts for the month; narrative skipped')
     return failed(period, locale, 'skipped', 'no_facts')
@@ -541,7 +556,7 @@ export async function runNarrative(
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model,
       locale,
@@ -570,7 +585,7 @@ export async function runNarrative(
     })
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model,
       locale,
@@ -593,7 +608,7 @@ export async function runNarrative(
   if (truncated) {
     // Cut off even after retrying at a higher ceiling — not a narrative, but the
     // tokens were still spent, so the run is still billed for them.
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model: result.model,
       locale,
@@ -614,7 +629,7 @@ export async function runNarrative(
   if (isBlankMarkdown(bodyMd)) {
     // Text that renders to nothing is not a narrative. Recorded as an error with
     // its tokens, because they were spent and the guard has to see them.
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model: result.model,
       locale,
@@ -632,7 +647,7 @@ export async function runNarrative(
     return failed(period, locale, 'error', 'empty_response', runId, cost)
   }
 
-  const runId = recordRun(db, {
+  const runId = recordRun(db, tenantId, {
     kind: 'narrative',
     model: result.model,
     locale,
@@ -645,7 +660,7 @@ export async function runNarrative(
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
-  const row = storeNarrative(db, { runId, period, locale, bodyMd })
+  const row = storeNarrative(db, tenantId, { runId, period, locale, bodyMd })
 
   return {
     status: 'ok',
@@ -696,15 +711,15 @@ export async function translateNarrative(
 
   if (from === to) return failed(period, to, 'skipped', 'same_locale')
 
-  const source = loadNarrative(db, period, from)
+  const source = loadNarrative(db, tenantId, period, from)
   if (source === null) {
     log.info({ period, from }, 'nothing to translate')
     return failed(period, to, 'skipped', 'no_source')
   }
 
   if (options.force !== true) {
-    const existing = loadNarrative(db, period, to)
-    if (existing !== null) return fromRow(existing, db, 'cached')
+    const existing = loadNarrative(db, tenantId, period, to)
+    if (existing !== null) return fromRow(existing, db, tenantId, 'cached')
   }
 
   const payload = { period, from, to, bodyMd: source.bodyMd }
@@ -712,7 +727,7 @@ export async function translateNarrative(
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model,
       locale: to,
@@ -739,7 +754,7 @@ export async function translateNarrative(
     })
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model,
       locale: to,
@@ -759,7 +774,7 @@ export async function translateNarrative(
   const bodyMd = result.text.trim()
 
   if (truncated) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model: result.model,
       locale: to,
@@ -777,7 +792,7 @@ export async function translateNarrative(
   }
 
   if (isBlankMarkdown(bodyMd)) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'narrative',
       model: result.model,
       locale: to,
@@ -793,7 +808,7 @@ export async function translateNarrative(
     return failed(period, to, 'error', 'empty_response', runId, cost)
   }
 
-  const runId = recordRun(db, {
+  const runId = recordRun(db, tenantId, {
     kind: 'narrative',
     model: result.model,
     locale: to,
@@ -805,7 +820,7 @@ export async function translateNarrative(
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
-  const row = storeNarrative(db, { runId, period, locale: to, bodyMd })
+  const row = storeNarrative(db, tenantId, { runId, period, locale: to, bodyMd })
 
-  return { ...fromRow(row, db, 'ok'), costMicroEur: cost }
+  return { ...fromRow(row, db, tenantId, 'ok'), costMicroEur: cost }
 }

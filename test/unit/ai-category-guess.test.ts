@@ -101,7 +101,7 @@ function candidate(overrides: Partial<CategoryGuessCandidate> = {}): CategoryGue
 
 /** Each call replaces the whole month's cache, so multiple candidates go in one call. */
 function seedCandidates(...overrides: Partial<CategoryGuessCandidate>[]): void {
-  persistCategoryGuessCandidates(db, MONTH, overrides.map((override) => candidate(override)))
+  persistCategoryGuessCandidates(db, tenantId, MONTH, overrides.map((override) => candidate(override)))
 }
 
 function seedCandidate(overrides: Partial<CategoryGuessCandidate> = {}): void {
@@ -131,7 +131,7 @@ describe('estimateCategoryGuess', () => {
 
   it('is refused once the month budget is already exceeded', async () => {
     seedCandidate()
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'category_guess',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -167,7 +167,7 @@ describe('runCategoryGuess', () => {
 
   it('records a capped run, telling a cached id apart from one never cached at all', async () => {
     seedCandidate()
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'category_guess',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -228,7 +228,7 @@ describe('runCategoryGuess', () => {
     expect(outcome.degraded).toBe(false)
     expect(outcome.results).toEqual([{ id: 'txn-1', ok: true, reason: null }])
     expect(outcome.dropped).toEqual([])
-    const pending = pendingProposals(db)
+    const pending = pendingProposals(db, tenantId)
     expect(pending).toHaveLength(1)
     expect(pending[0]?.type).toBe('transaction_category.set')
     expect(pending[0]?.targetRef).toBe('txn-1')
@@ -251,7 +251,7 @@ describe('runCategoryGuess', () => {
     expect(outcome.status).toBe('ok')
     expect(outcome.dropped).toEqual([{ clientId: 't1', categoryLabel: 'c9', reason: 'not_offered' }])
     expect(outcome.results).toEqual([{ id: 'txn-1', ok: false, reason: 'not_confident' }])
-    expect(pendingProposals(db)).toHaveLength(0)
+    expect(pendingProposals(db, tenantId)).toHaveLength(0)
   })
 
   it('leaves a candidate the model omitted as not_confident', async () => {
@@ -285,8 +285,8 @@ describe('runCategoryGuess', () => {
     expect(byId.get('txn-1')?.ok).toBe(false)
     expect(byId.get('txn-1')?.reason).toContain('would change nothing')
     expect(byId.get('txn-2')).toEqual({ id: 'txn-2', ok: true, reason: null })
-    expect(pendingProposals(db)).toHaveLength(1)
-    expect(pendingProposals(db)[0]?.targetRef).toBe('txn-2')
+    expect(pendingProposals(db, tenantId)).toHaveLength(1)
+    expect(pendingProposals(db, tenantId)[0]?.targetRef).toBe('txn-2')
   })
 
   it('never sends the payee name or the transaction id to the model', async () => {

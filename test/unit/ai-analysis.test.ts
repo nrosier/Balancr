@@ -117,8 +117,8 @@ const backlog = (count: number): Signal => ({
 function seedTypicalMonth(
   signals: readonly Signal[] = [overspend('food', 8_000, 'Groceries')],
 ): void {
-  syncAccountMap(db, [{ source: 'actual', externalId: 'acc-1', name: 'KBC Zichtrekening 0123' }])
-  seedMonth(db, MONTH, {
+  syncAccountMap(db, tenantId, [{ source: 'actual', externalId: 'acc-1', name: 'KBC Zichtrekening 0123' }])
+  seedMonth(db, tenantId, MONTH, {
     facts: [
       fact(MONTH, 'food', { categoryName: 'Groceries' }),
       fact(MONTH, 'rent', { categoryName: 'Rent' }),
@@ -129,7 +129,7 @@ function seedTypicalMonth(
 
 /** The label the payload gave one category, which is what the model answers with. */
 function labelOf(categoryId: string): string {
-  const prepared = prepareMonth(db, MONTH, 'en')
+  const prepared = prepareMonth(db, tenantId, MONTH, 'en')
   if (prepared === null) throw new Error('no month')
   for (const [label, name] of prepared.nameForLabel) {
     if (name === (prepared.nameFor.get(categoryId) ?? '')) return label
@@ -154,7 +154,7 @@ describe('analysisInstruction', () => {
 describe('prepareMonth', () => {
   it('maps every label back to a name that never left the machine', () => {
     seedTypicalMonth()
-    const prepared = prepareMonth(db, MONTH, 'en')
+    const prepared = prepareMonth(db, tenantId, MONTH, 'en')
 
     expect([...(prepared?.nameForLabel.values() ?? [])]).toContain('Groceries')
     // The mapping is local: the payload holds labels, and the account name is not
@@ -167,7 +167,7 @@ describe('prepareMonth', () => {
     // with a null label, and null is the household sentinel — so a category's
     // numbers would arrive as a household finding.
     seedTypicalMonth([overspend('food', 8_000), overspend('ghost-category', 5_000)])
-    const prepared = prepareMonth(db, MONTH, 'en')
+    const prepared = prepareMonth(db, tenantId, MONTH, 'en')
 
     expect(prepared?.ranked).toHaveLength(2)
     expect(prepared?.sendable).toHaveLength(1)
@@ -185,8 +185,8 @@ describe('prepareMonth', () => {
       // would contradict the prompt it arrived in. Withholding is the only version of
       // "left open" that does not quietly answer the question.
       seedTypicalMonth()
-      saveMonthNote(db, MONTH, NOTE)
-      const prepared = prepareMonth(db, MONTH, 'en')
+      saveMonthNote(db, tenantId, MONTH, NOTE)
+      const prepared = prepareMonth(db, tenantId, MONTH, 'en')
 
       expect(prepared?.narrativePayload.note).toBe(NOTE)
       expect(prepared?.payload.note).toBeNull()
@@ -199,8 +199,8 @@ describe('prepareMonth', () => {
       // field overwritten, and this pins that — including for a field added later, which
       // is the case the assertion is really for.
       seedTypicalMonth()
-      saveMonthNote(db, MONTH, NOTE)
-      const prepared = prepareMonth(db, MONTH, 'en')
+      saveMonthNote(db, tenantId, MONTH, NOTE)
+      const prepared = prepareMonth(db, tenantId, MONTH, 'en')
       if (prepared === undefined || prepared === null) throw new Error('no month')
 
       expect({ ...prepared.payload, note: NOTE }).toEqual(prepared.narrativePayload)
@@ -208,7 +208,7 @@ describe('prepareMonth', () => {
 
     it('sends null on both when nobody wrote a note, which is the ordinary month', () => {
       seedTypicalMonth()
-      const prepared = prepareMonth(db, MONTH, 'en')
+      const prepared = prepareMonth(db, tenantId, MONTH, 'en')
 
       expect(prepared?.narrativePayload.note).toBeNull()
       expect(prepared?.payload.note).toBeNull()
@@ -219,8 +219,8 @@ describe('prepareMonth', () => {
       // string in the payload would tell the narrative a note exists and says nothing,
       // which rule 9 has no answer for.
       seedTypicalMonth()
-      saveMonthNote(db, MONTH, '   \n  ')
-      const prepared = prepareMonth(db, MONTH, 'en')
+      saveMonthNote(db, tenantId, MONTH, '   \n  ')
+      const prepared = prepareMonth(db, tenantId, MONTH, 'en')
 
       expect(prepared?.narrativePayload.note).toBeNull()
     })
@@ -375,7 +375,7 @@ describe('runAnalysis', () => {
 describe('runAnalysis when it cannot ask the model', () => {
   it('degrades to the deterministic list when the month’s budget is gone', async () => {
     seedTypicalMonth([overspend('food', 8_000), backlog(4)])
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -515,7 +515,7 @@ describe('runAnalysis reuse (#160)', () => {
     const first = await runAnalysis(db, tenantId, { month: MONTH })
     expect(first.status).toBe('ok')
 
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -544,7 +544,7 @@ describe('estimateAnalysis reuse (#160)', () => {
     fakeGemini(response([{ code: 'over_available', label: food, severity: 'alert', confidence: 70 }]))
     await runAnalysis(db, tenantId, { month: MONTH })
 
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',

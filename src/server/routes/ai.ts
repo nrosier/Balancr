@@ -188,8 +188,8 @@ const narrativeRequest = z.strictObject({
  * deployment is not ready, and answering it with this month's empty payload would
  * price a run against nothing.
  */
-function monthToRun(db: Db, asked: unknown): string {
-  const month = resolveMonth(db, asked)
+function monthToRun(db: Db, tenantId: string, asked: unknown): string {
+  const month = resolveMonth(db, tenantId, asked)
   if (month === null) throw conflict('There is no aggregated month to run against yet.')
   return month
 }
@@ -279,7 +279,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     // be started is what puts a priced button on a page that has no model behind it.
     requireAiAvailable(tenantAiAvailability(db, user.tenantId))
     const query = request.query as { month?: string; kind?: string } | undefined
-    const month = monthToRun(db, query?.month)
+    const month = monthToRun(db, user.tenantId, query?.month)
     // Two priced buttons, two prices, one endpoint. An unknown `kind` is a 400 rather
     // than a fall-through to the cheaper of the two: quoting the analysis price for a
     // deep-model run would understate it by more than tenfold (#158).
@@ -315,7 +315,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     requireAiAvailable(tenantAiAvailability(db, user.tenantId))
     const body = parseBody(dryRunRequest, request.body)
     const locale = body.locale ?? user.locale
-    const month = monthToRun(db, body.month)
+    const month = monthToRun(db, user.tenantId, body.month)
     const prompt = dryRunPrompt(db, locale, body.promptId)
 
     const outcome = await runAnalysis(db, user.tenantId, {
@@ -516,7 +516,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       requireAiAvailable(tenantAiAvailability(db, user.tenantId))
       const body = parseBody(budgetNudgeRequest, request.body ?? {})
       const locale = body.locale ?? user.locale
-      const month = monthToRun(db, body.month)
+      const month = monthToRun(db, user.tenantId, body.month)
 
       const outcome = await runBudgetNudge(db, user.tenantId, { month, locale, userId: user.id })
 

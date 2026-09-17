@@ -31,6 +31,7 @@ let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let owner: string
 let viewer: string
+let tenantId: string
 
 function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
@@ -74,7 +75,7 @@ function postBody(url: string, body: object, token = owner) {
 
 /** A pending `category_meta.set` proposal against a real category from the fixture. */
 async function pendingProposal(categoryId = 'cat-groceries'): Promise<ProposalRow> {
-  return createProposal(ctx.db, {
+  return createProposal(ctx.db, tenantId, {
     type: 'category_meta.set',
     targetRef: categoryId,
     payload: { custodyShared: true },
@@ -83,7 +84,7 @@ async function pendingProposal(categoryId = 'cat-groceries'): Promise<ProposalRo
 
 /** A pending `budget_amount.set` proposal against a real category/month from the fixture. */
 async function pendingBudgetProposal(amountCents = 80_000): Promise<ProposalRow> {
-  return createProposal(ctx.db, {
+  return createProposal(ctx.db, tenantId, {
     type: 'budget_amount.set',
     targetRef: encodeBudgetTarget('cat-groceries', MONTH),
     payload: { amountCents },
@@ -96,6 +97,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   ctx = apiFixture()
+  tenantId = getSoleTenantId(ctx.db)
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
@@ -114,7 +116,7 @@ describe('POST /api/proposals/:id/apply', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json<ProposalDecision>()).toEqual({ id: row.id, status: 'applied' })
 
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('applied')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('applied')
     const meta = ctx.db
       .select()
       .from(categoryMeta)
@@ -144,7 +146,7 @@ describe('POST /api/proposals/:id/apply', () => {
     const row = await pendingProposal()
     const res = await post(`/api/proposals/${row.id}/apply`, viewer)
     expect(res.statusCode).toBe(403)
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('pending')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('pending')
   })
 })
 
@@ -158,8 +160,8 @@ describe('POST /api/proposals/:id/adjust', () => {
     const body = res.json<ProposalAdjustResult>()
     expect(body.status).toBe('pending')
     expect(body.id).not.toBe(row.id)
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('expired')
-    expect(loadProposal(ctx.db, body.id)?.status).toBe('pending')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('expired')
+    expect(loadProposal(ctx.db, tenantId, body.id)?.status).toBe('pending')
   })
 
   it('rejects the original instead of erroring when the adjustment matches what is already budgeted', async () => {
@@ -168,7 +170,7 @@ describe('POST /api/proposals/:id/adjust', () => {
     const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 73_000 })
     expect(res.statusCode).toBe(200)
     expect(res.json<ProposalAdjustResult>()).toEqual({ id: row.id, status: 'rejected' })
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('rejected')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('rejected')
   })
 
   it('400s a proposal type with no amount to adjust', async () => {
@@ -201,7 +203,7 @@ describe('POST /api/proposals/:id/adjust', () => {
     const row = await pendingBudgetProposal(80_000)
     const res = await postBody(`/api/proposals/${row.id}/adjust`, { amountCents: 90_000 }, viewer)
     expect(res.statusCode).toBe(403)
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('pending')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('pending')
   })
 })
 
@@ -213,7 +215,7 @@ describe('POST /api/proposals/:id/reject', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json<ProposalDecision>()).toEqual({ id: row.id, status: 'rejected' })
 
-    expect(loadProposal(ctx.db, row.id)?.status).toBe('rejected')
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('rejected')
     const meta = ctx.db
       .select()
       .from(categoryMeta)
@@ -260,8 +262,8 @@ describe('POST /api/proposals/apply-batch', () => {
     expect(staleResult?.ok).toBe(false)
     expect(staleResult?.reason).toBeTruthy()
 
-    expect(loadProposal(ctx.db, ok.id)?.status).toBe('applied')
-    expect(loadProposal(ctx.db, stale.id)?.status).toBe('rejected')
+    expect(loadProposal(ctx.db, tenantId, ok.id)?.status).toBe('applied')
+    expect(loadProposal(ctx.db, tenantId, stale.id)?.status).toBe('rejected')
   })
 
   it('rejects an empty list as a bad request', async () => {
