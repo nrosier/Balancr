@@ -18,6 +18,7 @@
  *
  * Nothing here logs an amount. A probe report is a shape report.
  */
+import type { Db } from '../../db/index.ts'
 import { logger } from '../../logger.ts'
 import {
   GhostfolioError,
@@ -84,7 +85,7 @@ async function check(
  * Never throws: the caller decides what a failure means. `assertUsable` is the
  * throwing wrapper for contexts that need one.
  */
-export async function probeGhostfolio(): Promise<ProbeReport> {
+export async function probeGhostfolio(db: Db): Promise<ProbeReport> {
   // Start from a clean token so an expired cached JWT is diagnosed as an auth
   // problem now rather than surfacing during the first real job.
   resetGhostfolioToken()
@@ -94,7 +95,7 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
   const checks: ProbeCheck[] = []
 
   checks.push(await check('/api/v1/health', async () => {
-    await fetchHealth()
+    await fetchHealth(db)
     return 'reachable'
   }))
 
@@ -102,7 +103,7 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
   // fails, so there is no value in probing further once health is unreachable.
   if (checks[0]?.status === 'ok') {
     checks.push(await check('/api/v1/portfolio/details', async () => {
-      const details = await fetchPortfolioDetails()
+      const details = await fetchPortfolioDetails(db)
       const holdings = details.holdings
 
       if (holdings.length === 0) {
@@ -126,7 +127,7 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
     // Not `/api/v1/…`: the client tries v2 first and falls back, so naming one
     // version here would report a path that may not be the one that answered.
     checks.push(await check('portfolio/performance', async () => {
-      const performance = await fetchPortfolioPerformance()
+      const performance = await fetchPortfolioPerformance(db)
       if (performance.chart.length === 0) {
         warnings.push('portfolio/performance returned an empty chart')
       }
@@ -138,7 +139,7 @@ export async function probeGhostfolio(): Promise<ProbeReport> {
     }))
 
     checks.push(await check('/api/v1/account', async () => {
-      const { accounts } = await fetchAccounts()
+      const { accounts } = await fetchAccounts(db)
       if (accounts.length === 0) {
         warnings.push('account returned no accounts — net-worth mapping has nothing to map')
       }
@@ -202,8 +203,8 @@ export function describeProbeFailure(report: ProbeReport): string | null {
  * For jobs that are about to persist portfolio figures — the point of the whole
  * exercise is that we would rather have no snapshot than a wrong one.
  */
-export async function assertGhostfolioUsable(): Promise<ProbeReport> {
-  const report = await probeGhostfolio()
+export async function assertGhostfolioUsable(db: Db): Promise<ProbeReport> {
+  const report = await probeGhostfolio(db)
   const failure = describeProbeFailure(report)
   if (failure === null) return report
   throw new Error(failure)

@@ -139,7 +139,7 @@ async function syncAccounts(
 
   const evidence: GhostfolioAccountEvidence[] = []
   try {
-    for (const account of (await fetchGhostfolioAccounts()).accounts) {
+    for (const account of (await fetchGhostfolioAccounts(db)).accounts) {
       const seen: GhostfolioAccountEvidence = {
         externalId: account.id,
         name: account.name,
