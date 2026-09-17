@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { loadHygiene, persistSignals } from '../../src/domain/aggregate/signals-store.ts'
@@ -33,11 +34,13 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
 
 let ctx: ReturnType<typeof createTestDb>
 let db: Db
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  TENANT_ID = getSoleTenantId(db)
 })
 
 function totals(month: string, overrides: Partial<MonthTotals> = {}): MonthTotals {
@@ -88,7 +91,8 @@ function seed(month: string, hash: string, facts: MonthlyFact[] = [fact(month)])
 }
 
 const run = async (now: Date): Promise<JobDetail> =>
-  ((await signalsJob.run({ db, now, log: logger, step: noopStep })) ?? {}) as JobDetail
+  ((await signalsJob.run({ db, tenantId: TENANT_ID, now, log: logger, step: noopStep })) ??
+    {}) as JobDetail
 
 describe('which months get judged (#162)', () => {
   it('leaves an old month alone once judged, and rejudges it once its facts change', async () => {

@@ -23,6 +23,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import pino from 'pino'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { ProbeReport, ProbeStatus } from '../../src/adapters/ghostfolio/probe.ts'
 import { loadProbe, loadProbes, probeStatuses } from '../../src/jobs/probe-state.ts'
 import { probeJob } from '../../src/jobs/probe.ts'
@@ -65,16 +66,18 @@ const report = (over: Partial<ProbeReport> = {}): ProbeReport => ({
 })
 
 let ctx: ReturnType<typeof createTestDb>
+let TENANT_ID: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
+  TENANT_ID = getSoleTenantId(ctx.db)
   gave.report = report()
   gave.throws = null
   gave.calls = 0
 })
 
-const run = () => probeJob.run({ db: ctx.db, now: AT, log, step: noopStep })
+const run = () => probeJob.run({ db: ctx.db, tenantId: TENANT_ID, now: AT, log, step: noopStep })
 
 describe('a healthy upstream', () => {
   it('stores the report and reports the counts', async () => {

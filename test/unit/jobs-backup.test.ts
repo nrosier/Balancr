@@ -54,7 +54,7 @@ afterEach(() => {
   vi.resetModules()
 })
 
-const context = (now: Date): JobContext => ({ db, log, now, step: noopStep })
+const context = (now: Date): JobContext => ({ db, tenantId: TENANT_ID, log, now, step: noopStep })
 
 /**
  * The job as an instance configured this way would have it.

@@ -8,11 +8,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { asc, eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { jobRuns as jobRunsTable, jobs as jobsTable } from '../../src/db/schema.ts'
+import { jobRuns as jobRunsTable, jobs as jobsTable, tenants } from '../../src/db/schema.ts'
 import {
   clearStaleRunning,
   deriveRunStatus,
+  jobsInFlight,
   loadJobRows,
+  loadJobRuns,
   pruneJobRuns,
   runDueJobs,
   runJob,
@@ -42,7 +44,7 @@ function job(
   return { name, schedule, run }
 }
 
-const row = (name: string) => loadJobRows(ctx.db).find((r) => r.name === name)
+const row = (name: string) => loadJobRows(ctx.db, TENANT_ID).find((r) => r.name === name)
 
 const jobRuns = (name: string) =>
   ctx.db
@@ -58,6 +60,7 @@ describe('runJob', () => {
     const result = await runJob(
       ctx.db,
       job('sync', async () => ({ facts: 42 })),
+      TENANT_ID,
       now,
     )
 
@@ -69,11 +72,11 @@ describe('runJob', () => {
   })
 
   it('accepts a job that reports nothing', async () => {
-    const result = await runJob(ctx.db, job('quiet', async () => {}))
+    const result = await runJob(ctx.db, job('quiet', async () => {}), TENANT_ID)
     expect(result).toMatchObject({ status: 'ok', detail: {} })
   })
 
-  it('passes the database and the tick instant to the job', async () => {
+  it('passes the database, the tenant, and the tick instant to the job', async () => {
     // The job takes its `db` from the context rather than the module singleton,
     // which is the only reason a test like this one can exist.
     const now = new Date('2026-01-15T10:00:00Z')
@@ -81,11 +84,16 @@ describe('runJob', () => {
     await runJob(
       ctx.db,
       job('probe', async (jobCtx) => {
-        seen = { rows: loadJobRows(jobCtx.db).length, now: jobCtx.now.toISOString() }
+        seen = {
+          rows: loadJobRows(jobCtx.db, jobCtx.tenantId).length,
+          now: jobCtx.now.toISOString(),
+          tenantId: jobCtx.tenantId,
+        }
       }),
+      TENANT_ID,
       now,
     )
-    expect(seen).toEqual({ rows: 1, now: '2026-01-15T10:00:00.000Z' })
+    expect(seen).toEqual({ rows: 1, now: '2026-01-15T10:00:00.000Z', tenantId: TENANT_ID })
   })
 
   it('defaults force to false, and passes it through when a caller sets it (#160)', async () => {
@@ -95,6 +103,7 @@ describe('runJob', () => {
       job('probe', async (jobCtx) => {
         seenDefault = jobCtx.force
       }),
+      TENANT_ID,
     )
     expect(seenDefault).toBe(false)
 
@@ -104,6 +113,7 @@ describe('runJob', () => {
       job('probe', async (jobCtx) => {
         seenForced = jobCtx.force
       }),
+      TENANT_ID,
       new Date(),
       { force: true },
     )
@@ -118,6 +128,7 @@ describe('runJob', () => {
       job('sync', async () => {
         throw new Error('Ghostfolio /api/v1/account returned HTTP 502')
       }),
+      TENANT_ID,
     )
 
     expect(result.status).toBe('error')
@@ -127,7 +138,7 @@ describe('runJob', () => {
   })
 
   it('leaves lastSuccessAt alone when an attempt fails', async () => {
-    await runJob(ctx.db, job('sync', async () => {}))
+    await runJob(ctx.db, job('sync', async () => {}), TENANT_ID)
     const succeededAt = row('sync')!.lastSuccessAt
 
     await runJob(
@@ -135,6 +146,7 @@ describe('runJob', () => {
       job('sync', async () => {
         throw new Error('nope')
       }),
+      TENANT_ID,
     )
 
     expect(row('sync')!.lastSuccessAt).toEqual(succeededAt)
@@ -147,8 +159,9 @@ describe('runJob', () => {
       job('sync', async () => {
         throw new Error('nope')
       }),
+      TENANT_ID,
     )
-    await runJob(ctx.db, job('sync', async () => {}))
+    await runJob(ctx.db, job('sync', async () => {}), TENANT_ID)
 
     expect(row('sync')).toMatchObject({ status: 'ok', error: null })
   })
@@ -161,6 +174,7 @@ describe('runJob', () => {
       job('sync', async () => {
         throw new Error('x'.repeat(10_000))
       }),
+      TENANT_ID,
     )
     expect(row('sync')!.error).toHaveLength(2_000)
   })
@@ -171,6 +185,7 @@ describe('runJob', () => {
       job('sync', async () => {
         throw 'a bare string'
       }),
+      TENANT_ID,
     )
     expect(row('sync')!.error).toBe('a bare string')
   })
@@ -188,7 +203,7 @@ describe('runJob', () => {
       order.push('quick')
     })
 
-    await Promise.all([runJob(ctx.db, slow), runJob(ctx.db, quick)])
+    await Promise.all([runJob(ctx.db, slow, TENANT_ID), runJob(ctx.db, quick, TENANT_ID)])
 
     expect(order).toEqual(['slow:start', 'slow:end', 'quick'])
   })
@@ -198,11 +213,72 @@ describe('runJob', () => {
       throw new Error('nope')
     })
     const [, second] = await Promise.all([
-      runJob(ctx.db, failing),
-      runJob(ctx.db, job('after', async () => ({ ran: true }))),
+      runJob(ctx.db, failing, TENANT_ID),
+      runJob(ctx.db, job('after', async () => ({ ran: true })), TENANT_ID),
     ])
 
     expect(second).toMatchObject({ status: 'ok', detail: { ran: true } })
+  })
+})
+
+describe('jobsInFlight', () => {
+  it('never blocks a tenant on another tenant\'s same-named job', async () => {
+    // `jobsInFlight` scoping is what's under test here, not concurrent execution —
+    // every job still runs through the one shared queue (see its header comment),
+    // so tenant B's claim is checked before tenant A's blocking run is released.
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+
+    let releaseA: () => void = () => {}
+    const blockedA = new Promise<void>((resolve) => {
+      releaseA = resolve
+    })
+
+    const runA = runJob(
+      ctx.db,
+      job('sync', async () => {
+        await blockedA
+      }),
+      TENANT_ID,
+    )
+
+    // Tenant A's "sync" is claimed, but tenant B's own "sync" must not read as busy.
+    expect(jobsInFlight(TENANT_ID)).toEqual(['sync'])
+    expect(jobsInFlight(other.id)).toEqual([])
+
+    const runB = runJob(ctx.db, job('sync', async () => ({ ran: true })), other.id)
+    expect(jobsInFlight(other.id)).toEqual(['sync'])
+
+    releaseA()
+    const [, resultB] = await Promise.all([runA, runB])
+    expect(resultB).toMatchObject({ status: 'ok', detail: { ran: true } })
+  })
+
+  it('bare (no tenantId) reports every tenant\'s claims, deduplicated by name', async () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    let release: () => void = () => {}
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    const runA = runJob(
+      ctx.db,
+      job('sync', async () => {
+        await blocked
+      }),
+      TENANT_ID,
+    )
+    const runB = runJob(
+      ctx.db,
+      job('sync', async () => {
+        await blocked
+      }),
+      other.id,
+    )
+
+    expect(jobsInFlight()).toEqual(['sync'])
+
+    release()
+    await Promise.all([runA, runB])
   })
 })
 
@@ -260,6 +336,31 @@ describe('runDueJobs', () => {
       ['networth', 'ok'],
     ])
   })
+
+  it('runs the whole registry for every tenant, tenant-outer and sequentially', async () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    const seen: Array<{ tenantId: string; name: string }> = []
+
+    const registry = [
+      job('a', async (jobCtx) => {
+        seen.push({ tenantId: jobCtx.tenantId, name: 'a' })
+      }),
+      job('b', async (jobCtx) => {
+        seen.push({ tenantId: jobCtx.tenantId, name: 'b' })
+      }),
+    ]
+
+    await runDueJobs(ctx.db, registry, new Date('2026-01-15T10:00:00Z'))
+
+    // Tenant-outer: tenant A's whole registry pass finishes before tenant B's starts,
+    // ordered by tenant creation — the seeded tenant, then the freshly-inserted one.
+    expect(seen).toEqual([
+      { tenantId: TENANT_ID, name: 'a' },
+      { tenantId: TENANT_ID, name: 'b' },
+      { tenantId: other.id, name: 'a' },
+      { tenantId: other.id, name: 'b' },
+    ])
+  })
 })
 
 describe('clearStaleRunning', () => {
@@ -274,7 +375,7 @@ describe('clearStaleRunning', () => {
   })
 
   it('leaves finished rows alone', async () => {
-    await runJob(ctx.db, job('sync', async () => {}))
+    await runJob(ctx.db, job('sync', async () => {}), TENANT_ID)
     expect(clearStaleRunning(ctx.db)).toBe(0)
     expect(row('sync')!.status).toBe('ok')
   })
@@ -306,6 +407,7 @@ describe('ctx.step', () => {
         await step('connect', async () => {})
         await step('fetch', async () => 'data')
       }),
+      TENANT_ID,
     )
 
     const steps = JSON.parse(jobRuns('sync')[0]!.stepsJson) as JobStep[]
@@ -325,6 +427,7 @@ describe('ctx.step', () => {
         })
         return {}
       }),
+      TENANT_ID,
     )
 
     expect(result.status).toBe('error')
@@ -334,7 +437,7 @@ describe('ctx.step', () => {
   })
 
   it('a job that never calls step reports no steps, same as before this existed', async () => {
-    await runJob(ctx.db, job('sync', async () => ({})))
+    await runJob(ctx.db, job('sync', async () => ({})), TENANT_ID)
     expect(jobRuns('sync')[0]!.stepsJson).toBe('[]')
   })
 })
@@ -369,7 +472,12 @@ describe('deriveRunStatus', () => {
 
 describe('job_runs', () => {
   it('writes a running row up front, then closes it out on success', async () => {
-    await runJob(ctx.db, job('sync', async () => ({ facts: 1 })), new Date('2026-01-15T10:00:00Z'))
+    await runJob(
+      ctx.db,
+      job('sync', async () => ({ facts: 1 })),
+      TENANT_ID,
+      new Date('2026-01-15T10:00:00Z'),
+    )
 
     expect(jobRuns('sync')).toMatchObject([
       { status: 'ok', startedAt: new Date('2026-01-15T10:00:00Z'), error: null },
@@ -384,6 +492,7 @@ describe('job_runs', () => {
       job('sync', async () => {
         throw new Error('Ghostfolio unreachable')
       }),
+      TENANT_ID,
     )
 
     expect(jobRuns('sync')).toMatchObject([{ status: 'error' }])
@@ -391,9 +500,29 @@ describe('job_runs', () => {
   })
 
   it('keeps one row per attempt', async () => {
-    await runJob(ctx.db, job('sync', async () => ({})))
-    await runJob(ctx.db, job('sync', async () => ({})))
+    await runJob(ctx.db, job('sync', async () => ({})), TENANT_ID)
+    await runJob(ctx.db, job('sync', async () => ({})), TENANT_ID)
     expect(jobRuns('sync')).toHaveLength(2)
+  })
+})
+
+describe('loadJobRows / loadJobRuns tenant isolation', () => {
+  it('loadJobRows never returns another tenant\'s rows', async () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    await runJob(ctx.db, job('sync', async () => ({})), TENANT_ID)
+    await runJob(ctx.db, job('portfolio', async () => ({})), other.id)
+
+    expect(loadJobRows(ctx.db, TENANT_ID).map((r) => r.name)).toEqual(['sync'])
+    expect(loadJobRows(ctx.db, other.id).map((r) => r.name)).toEqual(['portfolio'])
+  })
+
+  it('loadJobRuns never returns another tenant\'s runs for the same job name', async () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    await runJob(ctx.db, job('sync', async () => ({})), TENANT_ID)
+    await runJob(ctx.db, job('sync', async () => ({})), other.id)
+
+    expect(loadJobRuns(ctx.db, TENANT_ID, 'sync', 10)).toHaveLength(1)
+    expect(loadJobRuns(ctx.db, other.id, 'sync', 10)).toHaveLength(1)
   })
 })
 
@@ -411,7 +540,7 @@ describe('pruneJobRuns', () => {
         })
         .run()
     }
-    pruneJobRuns(ctx.db, 'sync', 5)
+    pruneJobRuns(ctx.db, TENANT_ID, 'sync', 5)
     expect(jobRuns('sync')).toHaveLength(3)
   })
 
@@ -439,9 +568,42 @@ describe('pruneJobRuns', () => {
       })
       .run()
 
-    pruneJobRuns(ctx.db, 'sync', 2)
+    pruneJobRuns(ctx.db, TENANT_ID, 'sync', 2)
 
     expect(jobRuns('sync').map((r) => r.id)).toEqual(['r3', 'r4'])
     expect(jobRuns('probe')).toHaveLength(1)
+  })
+
+  it('never prunes another tenant\'s rows for the same job name', () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+    for (let i = 0; i < 5; i++) {
+      ctx.db
+        .insert(jobRunsTable)
+        .values({
+          tenantId: TENANT_ID,
+          id: `mine-${i}`,
+          jobName: 'sync',
+          status: 'ok',
+          startedAt: new Date(2026, 0, i + 1),
+        })
+        .run()
+    }
+    ctx.db
+      .insert(jobRunsTable)
+      .values({
+        tenantId: other.id,
+        id: 'theirs',
+        jobName: 'sync',
+        status: 'ok',
+        startedAt: new Date(2026, 0, 1),
+      })
+      .run()
+
+    pruneJobRuns(ctx.db, TENANT_ID, 'sync', 2)
+
+    expect(jobRuns('sync').map((r) => r.id)).toEqual(
+      expect.arrayContaining(['mine-3', 'mine-4', 'theirs']),
+    )
+    expect(jobRuns('sync')).toHaveLength(3)
   })
 })

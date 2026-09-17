@@ -58,6 +58,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
 import { estimateAnalysis, runAnalysis } from '../../domain/ai/analysis.ts'
 import { estimateBudgetNudge, runBudgetNudge } from '../../domain/ai/budget-nudge.ts'
 import { estimateCategoryGuess, runCategoryGuess } from '../../domain/ai/category-guess.ts'
@@ -439,7 +440,9 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       requireAiAvailable(tenantAiAvailability(db))
       const body = parseBody(aiRefreshRequest, request.body ?? {})
 
-      const outcome = startRefresh(db, registry, ['ai'], new Date(), { force: body.force ?? false })
+      const outcome = startRefresh(db, registry, getSoleTenantId(db), ['ai'], new Date(), {
+        force: body.force ?? false,
+      })
       if ('busy' in outcome) throw busyError(outcome.busy)
 
       auditRefresh(db, user.id, outcome)

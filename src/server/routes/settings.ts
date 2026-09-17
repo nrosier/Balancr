@@ -1222,7 +1222,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       requireOwner(request)
       const candidate = parseBody(actualIntegrationTestRequest, request.body)
 
-      const busy = jobsInFlight()
+      const busy = jobsInFlight(getSoleTenantId(db))
       if (busy.length > 0) throw busyError(busy)
 
       const result = await withTestHost(candidate.serverUrl, () => testActualConnection(candidate))

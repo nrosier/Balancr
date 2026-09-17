@@ -209,11 +209,12 @@ export interface RefreshBusy {
 export function startRefresh(
   db: Db,
   registry: readonly Job[],
+  tenantId: string,
   asked: readonly Refreshable[],
   now = new Date(),
   options: { force?: boolean } = {},
 ): RefreshStarted | RefreshBusy {
-  const busy = jobsInFlight()
+  const busy = jobsInFlight(tenantId)
   if (busy.length > 0) return { busy }
 
   const accepted = expand(asked)
@@ -226,7 +227,7 @@ export function startRefresh(
     return job === undefined ? [] : [job]
   })
 
-  void Promise.all(running.map((job) => runJob(db, job, now, options))).catch((error: unknown) => {
+  void Promise.all(running.map((job) => runJob(db, job, tenantId, now, options))).catch((error: unknown) => {
     log.error({ err: error }, 'the refresh chain failed outside a job')
   })
 
