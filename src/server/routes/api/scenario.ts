@@ -13,7 +13,7 @@ import { scenarioSchema, type Scenario } from './schemas.ts'
 
 export function buildScenario(db: Db, tenantId: string): Scenario {
   return scenarioSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     scenario: scenarioBaseline(db, tenantId),
   })
 }

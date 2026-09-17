@@ -106,8 +106,14 @@ export function recordRun(db: Db, tenantId: string, run: RecordRun): string {
   return id
 }
 
-export function loadRun(db: Db, id: string): AiRunRow | null {
-  return db.select().from(aiRuns).where(eq(aiRuns.id, id)).get() ?? null
+export function loadRun(db: Db, tenantId: string, id: string): AiRunRow | null {
+  return (
+    db
+      .select()
+      .from(aiRuns)
+      .where(and(eq(aiRuns.id, id), eq(aiRuns.tenantId, tenantId)))
+      .get() ?? null
+  )
 }
 
 /**
@@ -116,12 +122,12 @@ export function loadRun(db: Db, id: string): AiRunRow | null {
  * `status = 'ok'` only: an errored run has no usable output, and serving a capped
  * run's empty payload as the cached answer would show a blank month.
  */
-export function latestSuccessfulRun(db: Db, kind: RunKind): AiRunRow | null {
+export function latestSuccessfulRun(db: Db, tenantId: string, kind: RunKind): AiRunRow | null {
   return (
     db
       .select()
       .from(aiRuns)
-      .where(and(eq(aiRuns.kind, kind), eq(aiRuns.status, 'ok')))
+      .where(and(eq(aiRuns.tenantId, tenantId), eq(aiRuns.kind, kind), eq(aiRuns.status, 'ok')))
       .orderBy(desc(aiRuns.createdAt))
       .limit(1)
       .get() ?? null
@@ -196,18 +202,24 @@ export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunR
  */
 export function recentRuns(
   db: Db,
+  tenantId: string,
   limit = 50,
   period?: string | { kind: 'month' | 'year'; value: string },
 ): AiRunRow[] {
-  const query = db.select().from(aiRuns)
-  const match =
+  const periodMatch =
     period === undefined
       ? undefined
       : typeof period === 'string' || period.kind === 'month'
         ? eq(aiRuns.period, typeof period === 'string' ? period : period.value)
         : like(aiRuns.period, `${period.value}-%`)
-  const scoped = match === undefined ? query : query.where(or(match, isNull(aiRuns.period)))
-  return scoped
+  const match =
+    periodMatch === undefined
+      ? eq(aiRuns.tenantId, tenantId)
+      : and(eq(aiRuns.tenantId, tenantId), or(periodMatch, isNull(aiRuns.period)))
+  return db
+    .select()
+    .from(aiRuns)
+    .where(match)
     .orderBy(desc(aiRuns.createdAt), desc(sql`rowid`))
     .limit(limit)
     .all()
@@ -219,8 +231,8 @@ export function recentRuns(
  * Returns `null` rather than throwing on unparseable JSON: this is the audit
  * view, and a row whose payload cannot be read is itself the finding.
  */
-export function loadRunPayload(db: Db, id: string): unknown | null {
-  const row = loadRun(db, id)
+export function loadRunPayload(db: Db, tenantId: string, id: string): unknown | null {
+  const row = loadRun(db, tenantId, id)
   if (row === null) return null
   try {
     return JSON.parse(row.payloadJson)

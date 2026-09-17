@@ -97,7 +97,7 @@ export function buildOverview(db: Db, tenantId: string): Overview {
   const integrations = integrationAvailability(db, tenantId)
 
   return overviewSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     netWorth:
       netWorth === null
         ? null

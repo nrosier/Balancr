@@ -273,9 +273,9 @@ describe("the month's note reaches this pass and no other (#298)", () => {
     fakeGemini('A month with an explanation.')
 
     return runNarrative(db, tenantId, { period: MONTH, locale: 'en' }).then(() => {
-      const run = recentRuns(db, 10).find((r) => r.kind === 'narrative')
+      const run = recentRuns(db, tenantId, 10).find((r) => r.kind === 'narrative')
       expect(run).toBeDefined()
-      expect(JSON.stringify(loadRunPayload(db, run!.id))).toContain(NOTE)
+      expect(JSON.stringify(loadRunPayload(db, tenantId, run!.id))).toContain(NOTE)
     })
   })
 })
@@ -426,7 +426,7 @@ describe('runNarrative', () => {
 
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_facts')
-    expect(recentRuns(db)).toHaveLength(0)
+    expect(recentRuns(db, tenantId)).toHaveLength(0)
   })
 
   it('records a capped run and returns nothing to render', async () => {
@@ -451,7 +451,7 @@ describe('runNarrative', () => {
     expect(outcome.reason).toBe('month_budget_exceeded')
     expect(outcome.html).toBeNull()
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db)[0]?.status).toBe('capped')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('capped')
     expect(loadNarrative(db, tenantId, MONTH, 'en')).toBeNull()
   })
 
@@ -463,7 +463,7 @@ describe('runNarrative', () => {
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
-    expect(recentRuns(db)[0]?.error).toContain('socket hang up')
+    expect(recentRuns(db, tenantId)[0]?.error).toContain('socket hang up')
   })
 
   it('refuses to store text that renders to nothing', async () => {
@@ -476,7 +476,7 @@ describe('runNarrative', () => {
 
     expect(outcome.reason).toBe('empty_response')
     expect(loadNarrative(db, tenantId, MONTH, config.DEFAULT_LOCALE)).toBeNull()
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('error')
     // The tokens were spent, so they are billed.
     expect(row?.outputTokens).toBe(600)
@@ -502,7 +502,7 @@ describe('runNarrative', () => {
       'Spending ran high this month, but stayed under budget.',
     )
     // Both calls were billed, not just the one that was kept.
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('ok')
     expect(row?.outputTokens).toBe(1_200)
   })
@@ -521,7 +521,7 @@ describe('runNarrative', () => {
     expect(outcome.reason).toBe('truncated')
     expect(outcome.degraded).toBe(true)
     expect(loadNarrative(db, tenantId, MONTH, 'en')).toBeNull()
-    const row = recentRuns(db)[0]
+    const row = recentRuns(db, tenantId)[0]
     expect(row?.status).toBe('error')
     // Both attempts spent tokens, and both are billed even though nothing was kept.
     expect(row?.outputTokens).toBe(1_200)
@@ -570,7 +570,7 @@ describe('translateNarrative', () => {
     expect(outcome.status).toBe('skipped')
     expect(outcome.reason).toBe('no_source')
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db)).toHaveLength(0)
+    expect(recentRuns(db, tenantId)).toHaveLength(0)
   })
 
   it('refuses to translate a month into its own language', async () => {
@@ -655,6 +655,6 @@ describe('translateNarrative', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('truncated')
     expect(loadNarrative(db, tenantId, MONTH, 'nl')).toBeNull()
-    expect(recentRuns(db)[0]?.status).toBe('error')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('error')
   })
 })

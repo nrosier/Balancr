@@ -175,7 +175,7 @@ describe('runBudgetNudge', () => {
     expect(outcome.degraded).toBe(true)
     expect(outcome.adjusted).toBe(0)
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db).filter((row) => row.kind === 'budget_nudge')).toHaveLength(0)
+    expect(recentRuns(db, tenantId).filter((row) => row.kind === 'budget_nudge')).toHaveLength(0)
   })
 
   it('skips with no aiRuns row when the note is set but nothing is pending', async () => {
@@ -188,7 +188,7 @@ describe('runBudgetNudge', () => {
     expect(outcome.reason).toBe('no_candidates')
     expect(outcome.runId).toBeNull()
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db).filter((row) => row.kind === 'budget_nudge')).toHaveLength(0)
+    expect(recentRuns(db, tenantId).filter((row) => row.kind === 'budget_nudge')).toHaveLength(0)
   })
 
   it('records a capped run and makes no call', async () => {
@@ -210,7 +210,7 @@ describe('runBudgetNudge', () => {
     expect(outcome.status).toBe('capped')
     expect(outcome.reason).toBe('month_budget_exceeded')
     expect(recorded.prompts).toHaveLength(0)
-    const rows = recentRuns(db)
+    const rows = recentRuns(db, tenantId)
     expect(rows[0]?.status).toBe('capped')
     expect(rows[0]?.kind).toBe('budget_nudge')
     expect(rows[0]?.period).toBe(MONTH)
@@ -226,8 +226,8 @@ describe('runBudgetNudge', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('call_failed')
     expect(outcome.adjusted).toBe(0)
-    expect(recentRuns(db)[0]?.status).toBe('error')
-    expect(recentRuns(db)[0]?.error).toContain('socket hang up')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('error')
+    expect(recentRuns(db, tenantId)[0]?.error).toContain('socket hang up')
   })
 
   it('records a bad response without throwing', async () => {
@@ -239,7 +239,7 @@ describe('runBudgetNudge', () => {
 
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('bad_response')
-    expect(recentRuns(db)[0]?.status).toBe('error')
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('error')
   })
 
   it('turns a grounded adjustment into a real, superseding proposal', async () => {
@@ -256,9 +256,9 @@ describe('runBudgetNudge', () => {
     const pending = pendingBudgetProposals(db, tenantId, MONTH)
     expect(pending).toHaveLength(1)
     expect(JSON.parse(pending[0]?.payloadJson ?? '{}')).toEqual({ amountCents: 18_000 })
-    expect(recentRuns(db)[0]?.status).toBe('ok')
-    expect(recentRuns(db)[0]?.kind).toBe('budget_nudge')
-    expect(recentRuns(db)[0]?.period).toBe(MONTH)
+    expect(recentRuns(db, tenantId)[0]?.status).toBe('ok')
+    expect(recentRuns(db, tenantId)[0]?.kind).toBe('budget_nudge')
+    expect(recentRuns(db, tenantId)[0]?.period).toBe(MONTH)
   })
 
   it('drops an adjustment outside the magnitude bound, rather than clamping it', async () => {

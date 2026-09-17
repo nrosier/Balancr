@@ -137,7 +137,7 @@ export function buildBudget(
       : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m))))
 
   return budgetSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     owner,
     month: resolved,
     // Every stored month, not the window `history` covers: the picker has to keep

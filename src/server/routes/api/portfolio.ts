@@ -60,7 +60,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   const properties = loadProperties(db, tenantId).properties
 
   return portfolioSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     date,
     totalValueCents: metrics?.totalValueCents ?? null,
     // `loadPortfolioMetrics` reads an absent split back as zero, which is the honest

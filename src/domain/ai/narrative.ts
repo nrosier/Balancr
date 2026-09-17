@@ -196,7 +196,7 @@ export function loadNarrative(
  * reviews are already offered the plain rewrite control.
  */
 export function noteChangedSince(db: Db, tenantId: string, narrative: NarrativeRow): boolean {
-  const payload = loadRunPayload(db, narrative.runId)
+  const payload = loadRunPayload(db, tenantId, narrative.runId)
   if (payload === null || typeof payload !== 'object') return false
   if (!('note' in payload)) return false
 

@@ -117,7 +117,7 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     month === null ? null : loadMonthTotals(db, tenantId, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
-    freshness: freshness(db),
+    freshness: freshness(db, tenantId),
     ai: tenantAiAvailability(db, tenantId),
     owner: options.owner ?? false,
     month,
@@ -142,7 +142,7 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
             // Rendered, not stored: `bodyMd` still has the model's labels in it.
             html: renderNarrative(db, tenantId, narrative),
             generatedAt: narrative.createdAt.toISOString(),
-            model: loadRun(db, narrative.runId)?.model ?? null,
+            model: loadRun(db, tenantId, narrative.runId)?.model ?? null,
             noteChanged: noteChangedSince(db, tenantId, narrative),
           },
     questions: openQuestions(db, tenantId, locale).map((card) => ({
@@ -188,9 +188,10 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     // about no month at all — a chat turn, or a call that failed before it knew. See
     // `recentRuns`: those rows belong under whatever is on screen rather than under nothing.
     runs: (month === null
-      ? recentRuns(db, 20)
+      ? recentRuns(db, tenantId, 20)
       : recentRuns(
           db,
+          tenantId,
           20,
           runsPeriod === 'year' ? { kind: 'year', value: month.slice(0, 4) } : month,
         )
@@ -265,7 +266,10 @@ function wireRun(row: AiRunRow): AiRun {
 }
 
 /**
- * One run with its payload, or null for an id that is not in the ledger.
+ * One run with its payload, or null for an id that is not in the ledger — which is
+ * also what a run belonging to another tenant returns (#377): scoped by `tenantId`
+ * the same way `loadRun` is, so a guessed id 404s rather than leaking another
+ * tenant's payload.
  *
  * The row comes back alongside the payload rather than being looked up separately
  * by the client. Which model, which language and how much it cost are what a payload
@@ -273,14 +277,14 @@ function wireRun(row: AiRunRow): AiRun {
  * facts — and a client stitching the two together from the list it already has would
  * be guessing that the list has not changed since it loaded.
  */
-export function buildRunPayload(db: Db, id: string): AiRunPayload | null {
-  const row = loadRun(db, id)
+export function buildRunPayload(db: Db, tenantId: string, id: string): AiRunPayload | null {
+  const row = loadRun(db, tenantId, id)
   if (row === null) return null
 
   return aiRunPayloadSchema.parse({
     ...wireRun(row),
     // `null` for a row whose JSON will not parse. That is the audit view's own
     // finding to report, not a 500: the row exists and the rest of it is readable.
-    payload: loadRunPayload(db, id),
+    payload: loadRunPayload(db, tenantId, id),
   })
 }
