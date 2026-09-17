@@ -327,11 +327,17 @@ const PAYLOAD: Payload = {
       e2ePasswordConfigured: false,
     },
     ghostfolio: { url: 'https://ghostfolio.example.com', tokenConfigured: true },
-    gemini: { provider: 'aistudio', apiKeyConfigured: true, googleCloudProject: null },
+    gemini: {
+      provider: 'aistudio',
+      apiKeyConfigured: true,
+      googleCloudProject: null,
+      modelFast: 'gemini-3.7-flash',
+      modelDeep: 'gemini-3.1-pro-preview',
+      budgetEurMicro: 15_000_000,
+    },
   },
   ai: {
     availability: { enabled: true, reason: null },
-    models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
     month: '2026-09',
     spentMicroEur: 2_500_000,
     budgetMicroEur: 15_000_000,
@@ -2225,7 +2231,13 @@ describe('integrations', () => {
         {
           path: '/api/settings/integrations/gemini',
           method: 'PATCH',
-          body: { provider: 'vertex', googleCloudProject: null },
+          body: {
+            provider: 'vertex',
+            googleCloudProject: null,
+            modelFast: 'gemini-3.7-flash',
+            modelDeep: 'gemini-3.1-pro-preview',
+            budgetEur: 15,
+          },
         },
       ])
     })

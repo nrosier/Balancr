@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { encryptField } from '../../src/db/field-crypto.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { tenantIntegrations } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -20,16 +21,21 @@ function freshDb(): Db {
   return db
 }
 
+/**
+ * `tenantAiAvailability` reads through `resolvedIntegrations`, which decrypts
+ * every secret field unconditionally — so even the fields this suite doesn't
+ * care about need real (if empty) ciphertext, not a raw `''`.
+ */
 function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferInsert>): void {
   const tenantId = getSoleTenantId(db)
   db.insert(tenantIntegrations)
     .values({
       tenantId,
       actualServerUrl: '',
-      actualPasswordEnc: '',
+      actualPasswordEnc: encryptField(''),
       actualSyncId: '',
       ghostfolioUrl: '',
-      ghostfolioSecurityTokenEnc: '',
+      ghostfolioSecurityTokenEnc: encryptField(''),
       geminiProvider: 'aistudio',
       geminiApiKeyEnc: null,
       googleCloudProject: null,
@@ -38,7 +44,7 @@ function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferIn
     .run()
 }
 
-const on = { AI_ENABLED: true, GEMINI_MONTHLY_BUDGET_EUR: 15 }
+const on = { AI_ENABLED: true }
 
 describe('tenantAiAvailability', () => {
   it('names notConfigured for a tenant with no gemini key, regardless of the cfg passed in', () => {
@@ -52,13 +58,13 @@ describe('tenantAiAvailability', () => {
 
   it('is enabled for a tenant with a gemini key when the switch and budget allow it', () => {
     const db = freshDb()
-    insertRow(db, { geminiApiKeyEnc: 'irrelevant-ciphertext' })
+    insertRow(db, { geminiApiKeyEnc: encryptField('irrelevant-key') })
     expect(tenantAiAvailability(db, on)).toEqual({ enabled: true, reason: null })
   })
 
   it('still names switchedOff for a credentialed tenant when AI_ENABLED is false', () => {
     const db = freshDb()
-    insertRow(db, { geminiApiKeyEnc: 'irrelevant-ciphertext' })
+    insertRow(db, { geminiApiKeyEnc: encryptField('irrelevant-key') })
     expect(tenantAiAvailability(db, { ...on, AI_ENABLED: false }).reason).toBe('switchedOff')
   })
 

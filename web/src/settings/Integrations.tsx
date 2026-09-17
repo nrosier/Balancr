@@ -318,12 +318,18 @@ interface GeminiDraft {
   provider: 'aistudio' | 'vertex'
   apiKey: string
   googleCloudProject: string
+  modelFast: string
+  modelDeep: string
+  budgetEur: string
 }
 
 const geminiDraftOf = (gemini: IntegrationsSetting['gemini']): GeminiDraft => ({
   provider: gemini.provider,
   apiKey: '',
   googleCloudProject: gemini.googleCloudProject ?? '',
+  modelFast: gemini.modelFast,
+  modelDeep: gemini.modelDeep,
+  budgetEur: String(gemini.budgetEurMicro / 1_000_000),
 })
 
 function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
@@ -350,6 +356,9 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         provider: current.provider,
         googleCloudProject: googleCloudProject === '' ? null : googleCloudProject,
         ...(apiKey === '' ? {} : { apiKey }),
+        modelFast: current.modelFast.trim(),
+        modelDeep: current.modelDeep.trim(),
+        budgetEur: Number(current.budgetEur),
       },
       () => setDraft(null),
     )
@@ -414,6 +423,52 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
             value={current.googleCloudProject}
             disabled={locked}
             onChange={(event) => edit({ googleCloudProject: event.target.value })}
+          />
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="integrations-gemini-model-fast">
+            {t('settings:ai.model.fast')}
+          </label>
+          <input
+            id="integrations-gemini-model-fast"
+            className="field__input"
+            type="text"
+            autoComplete="off"
+            value={current.modelFast}
+            disabled={locked}
+            onChange={(event) => edit({ modelFast: event.target.value })}
+          />
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="integrations-gemini-model-deep">
+            {t('settings:ai.model.deep')}
+          </label>
+          <input
+            id="integrations-gemini-model-deep"
+            className="field__input"
+            type="text"
+            autoComplete="off"
+            value={current.modelDeep}
+            disabled={locked}
+            onChange={(event) => edit({ modelDeep: event.target.value })}
+          />
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="integrations-gemini-budget">
+            {t('settings:ai.budget')}
+          </label>
+          <input
+            id="integrations-gemini-budget"
+            className="field__input num"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            value={current.budgetEur}
+            disabled={locked}
+            onChange={(event) => edit({ budgetEur: event.target.value })}
           />
         </div>
 

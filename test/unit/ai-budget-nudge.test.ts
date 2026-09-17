@@ -29,6 +29,7 @@ import {
 } from '../../src/domain/ai/proposals.ts'
 import { recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
 import { saveMonthNote } from '../../src/domain/ai/month-note.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { fact, seedMonth } from '../fixtures/month.ts'
 
@@ -53,6 +54,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  importEnvIntegrationsOnce(db)
   runId = recordRun(db, {
     kind: 'findings',
     model: 'gemini-3.7-flash',

@@ -1546,6 +1546,9 @@ export const integrationsSettingSchema = z.object({
     provider: z.enum(['aistudio', 'vertex']),
     apiKeyConfigured: z.boolean(),
     googleCloudProject: z.string().nullable(),
+    modelFast: z.string(),
+    modelDeep: z.string(),
+    budgetEurMicro: microEur(),
   }),
 })
 
@@ -1642,8 +1645,6 @@ export const settingsSchema = z.object({
      * which one to draw is exactly the bug one shared answer prevents.
      */
     availability: aiAvailabilitySchema,
-    /** From `.env`, not editable here: a model is a deployment decision. */
-    models: z.object({ fast: z.string(), deep: z.string() }),
     month: monthKey(),
     spentMicroEur: microEur(),
     budgetMicroEur: microEur(),

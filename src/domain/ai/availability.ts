@@ -31,9 +31,10 @@
  * guard, which serves the cached answer with a banner — the layer is available, and
  * `insights.spend.exceeded` is what says the month has run out.
  */
+import { microEurToEur } from '../../adapters/gemini/pricing.ts'
 import { config, type Config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
-import { integrationAvailability } from '../../db/tenant-integrations.ts'
+import { integrationAvailability, resolvedIntegrations } from '../../db/tenant-integrations.ts'
 
 export const AI_OFF_REASONS = ['notConfigured', 'switchedOff', 'budgetZero'] as const
 
@@ -72,7 +73,17 @@ export function aiAvailability(cfg: AiConfig = config): AiAvailability {
  * not `aiAvailability` directly — that one stays pure and untouched so
  * `test/unit/ai-availability.test.ts` can keep posing all four states with
  * plain literals.
+ *
+ * `GEMINI_MONTHLY_BUDGET_EUR` is excluded from `cfg` the same way
+ * `aiCredentialed` is: both are tenant-sourced (#371), never deployment-wide.
  */
-export function tenantAiAvailability(db: Db, cfg: Omit<AiConfig, 'aiCredentialed'> = config): AiAvailability {
-  return aiAvailability({ ...cfg, aiCredentialed: integrationAvailability(db).ai })
+export function tenantAiAvailability(
+  db: Db,
+  cfg: Omit<AiConfig, 'aiCredentialed' | 'GEMINI_MONTHLY_BUDGET_EUR'> = config,
+): AiAvailability {
+  return aiAvailability({
+    ...cfg,
+    aiCredentialed: integrationAvailability(db).ai,
+    GEMINI_MONTHLY_BUDGET_EUR: microEurToEur(resolvedIntegrations(db).gemini.budgetEurMicro),
+  })
 }

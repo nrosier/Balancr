@@ -49,20 +49,21 @@ export class EgressDeniedError extends Error {
   }
 }
 
+const AI_STUDIO_HOST = 'generativelanguage.googleapis.com'
+
 /**
- * Google's endpoints, which are the one part of the list that is not in `.env`.
+ * Vertex's hosts, which are the one part of the list that is not in `.env`.
  *
- * AI Studio is one host. Vertex is regional and the SDK builds the hostname from the
- * location, so the location's host is derived rather than guessed — and the global
- * endpoint is included because the SDK falls back to it for some operations.
+ * Vertex is regional and the SDK builds the hostname from the location, so the
+ * location's host is derived rather than guessed — and the global endpoint is
+ * included because the SDK falls back to it for some operations.
  *
  * `oauth2.googleapis.com` and the two metadata hosts are how a service account or a
  * workload identity obtains a token. They travel through `google-auth-library`, which
  * does not use global fetch today, so listing them is about not having to debug this
  * file on the day it changes its transport.
  */
-function geminiHosts(): string[] {
-  if (config.GEMINI_PROVIDER === 'aistudio') return ['generativelanguage.googleapis.com']
+function vertexHosts(): string[] {
   const location = config.GOOGLE_CLOUD_LOCATION
   return [
     `${location}-aiplatform.googleapis.com`,
@@ -72,6 +73,32 @@ function geminiHosts(): string[] {
     'metadata.google.internal',
     'metadata.googleapis.com',
   ]
+}
+
+/**
+ * The Gemini hosts this deployment needs, static or tenant-aware.
+ *
+ * Without `db`, this is still the single, deployment-wide `.env` provider —
+ * unchanged behavior for the many call sites that only ever check the static
+ * list. With `db`, a provider is no longer one global value (#371): each
+ * tenant picked its own, so the allowlist has to union both host sets when a
+ * mixed deployment has at least one tenant on each provider.
+ */
+function geminiHosts(db?: Db): string[] {
+  if (db === undefined) {
+    return config.GEMINI_PROVIDER === 'aistudio' ? [AI_STUDIO_HOST] : vertexHosts()
+  }
+  const providers = new Set(
+    db
+      .select({ geminiProvider: tenantIntegrations.geminiProvider })
+      .from(tenantIntegrations)
+      .all()
+      .map((row) => row.geminiProvider),
+  )
+  const hosts: string[] = []
+  if (providers.has('aistudio')) hosts.push(AI_STUDIO_HOST)
+  if (providers.has('vertex')) hosts.push(...vertexHosts())
+  return hosts
 }
 
 /** The host part of a configured URL, or nothing if it is not a URL. */
@@ -103,7 +130,7 @@ export function allowedHosts(db?: Db): ReadonlySet<string> {
     ...hostOf(config.ACTUAL_SERVER_URL),
     ...hostOf(config.GHOSTFOLIO_URL),
     ...hostOf(config.AUTH_OIDC_ISSUER),
-    ...geminiHosts(),
+    ...geminiHosts(db),
     ...config.EGRESS_EXTRA_HOSTS.map((host) => host.toLowerCase()),
   ]
   if (db !== undefined) {
