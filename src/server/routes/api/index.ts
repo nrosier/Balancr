@@ -112,7 +112,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
    */
   app.get('/api/insights/runs/:id/payload', (request: FastifyRequest) => {
     const { id } = request.params as { id: string }
-    const payload = buildRunPayload(db, id)
+    const payload = buildRunPayload(db, requireUser(request).tenantId, id)
     // The ledger is pruned, and a run that has aged out is exactly the case a page
     // holding a stale list will ask for.
     if (payload === null) throw notFound('No such AI run.')
