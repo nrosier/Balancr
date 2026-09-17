@@ -45,6 +45,14 @@ export const CSRF_COOKIE = named('balancr_csrf')
 export const LOGIN_FLOW_COOKIE = named('balancr_login')
 
 /**
+ * The pending-identity token (#373): set on an OIDC callback for a `sub` with
+ * no `users` row, cleared once onboarding completes. `httpOnly` like the
+ * session cookie — this is bearer-equivalent, since holding it is enough to
+ * complete onboarding as the identity it names.
+ */
+export const ONBOARDING_COOKIE = named('balancr_onboarding')
+
+/**
  * The UI language, so the shell and the bundle start in the right one.
  *
  * Not a credential and not secret — the language is visible in the rendered page —

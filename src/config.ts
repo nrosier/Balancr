@@ -140,6 +140,19 @@ const EnvSchema = z.object({
   AUTH_LOCAL_ENABLED: bool('false'),
   AUTH_LOCAL_ALLOWED_CIDRS: csv('127.0.0.1/32'),
   /**
+   * Whether onboarding (#373) may create a *second* (or later) tenant, rather
+   * than only redeem an invite into one that already exists.
+   *
+   * Off by default: roughly forty call sites still call `getSoleTenantId(db)`
+   * two-plus layers deep (`src/domain/ai/*`, the Ghostfolio/Gemini adapters,
+   * `src/db/tenant-integrations.ts`), and that function throws on "tenant
+   * count ≠ 1" with no notion of which tenant asked — so the moment a second
+   * tenant exists, it throws for *every* tenant's requests, not just the new
+   * one. Redeeming an invite into the existing tenant is unaffected by this
+   * flag: it never changes the tenant count.
+   */
+  MULTI_TENANT_ONBOARDING_ENABLED: bool('false'),
+  /**
    * How long a session stays valid, counted from its last renewal.
    *
    * A week rather than a day because Authentik is the thing being trusted to
@@ -543,6 +556,7 @@ export function configSummary(): Record<string, unknown> {
     AUTH_OIDC_CLIENT_ID: config.AUTH_OIDC_CLIENT_ID ?? 'unset',
     AUTH_LOCAL_ENABLED: config.AUTH_LOCAL_ENABLED,
     AUTH_LOCAL_ALLOWED_CIDRS: config.AUTH_LOCAL_ALLOWED_CIDRS,
+    MULTI_TENANT_ONBOARDING_ENABLED: config.MULTI_TENANT_ONBOARDING_ENABLED,
     SESSION_TTL_HOURS: config.SESSION_TTL_HOURS,
     CONFIG_ENCRYPTION_KEY: `set (${config.CONFIG_ENCRYPTION_KEY.length} bytes)`,
     RATE_LIMIT_API_PER_MINUTE: config.RATE_LIMIT_API_PER_MINUTE,

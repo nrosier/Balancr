@@ -157,6 +157,36 @@ export const AUDIT_ACTIONS = [
   'account.map',
   'prompt.create',
   'prompt.activate',
+  /**
+   * A new household came into being (#373).
+   *
+   * The creator is unconditionally the tenant's owner — there is no other user
+   * to compare against yet — so this entry is the whole story of how the
+   * tenant started, not just a role assignment.
+   */
+  'tenant.create',
+  /**
+   * An owner issued an invite code (#373).
+   *
+   * Never carries the code itself — only `label` and who issued it — so this
+   * trail can answer "who can currently join, and since when" without being a
+   * second place the code could leak from.
+   */
+  'tenant.invite.create',
+  /**
+   * An owner revoked an invite before it was redeemed (#373).
+   *
+   * Idempotent at the domain layer, but every revocation that actually changed
+   * the row is still worth its own entry: "who closed this door, and when".
+   */
+  'tenant.invite.revoke',
+  /**
+   * Someone joined an existing tenant by redeeming an invite (#373).
+   *
+   * Always yields a viewer — see `domain/tenant/provisioning.ts` — so this
+   * entry doubles as the record of every viewer the tenant has ever gained.
+   */
+  'tenant.invite.redeem',
 ] as const
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]

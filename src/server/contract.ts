@@ -35,6 +35,13 @@ export interface SessionResponse {
   authenticated: boolean
   user: SessionUserResponse | null
   /**
+   * The identity behind an onboarding cookie, when there is one and `user` is
+   * null (#373) — an OIDC subject the callback authenticated but that has not
+   * yet created or joined a tenant. The SPA shows the onboarding screen
+   * instead of the sign-in screen when this is non-null.
+   */
+  pending: { email: string | null; displayName: string | null } | null
+  /**
    * What would work from *this* connection. `local` answers "would a password be
    * entertained from your address", which is a property of the peer and cannot be
    * decided in the browser.
@@ -44,6 +51,12 @@ export interface SessionResponse {
 
 /** `POST /auth/local/login`, on success. */
 export interface LocalLoginResponse {
+  authenticated: true
+  user: SessionUserResponse
+}
+
+/** `POST /auth/onboarding/create-tenant` and `/auth/onboarding/redeem-invite`, on success. */
+export interface OnboardingCompleteResponse {
   authenticated: true
   user: SessionUserResponse
 }

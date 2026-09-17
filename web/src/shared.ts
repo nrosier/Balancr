@@ -100,6 +100,8 @@ export type {
   Insights,
   IntegrationsSetting,
   IntegrationTest,
+  InviteCreated,
+  InviteSetting,
   JobHistory,
   JobRun,
   JobStatus,
@@ -213,6 +215,7 @@ export type { AiVisibility, SavingsNatureChoice } from '../../src/domain/benchma
 export type {
   BootstrapResponse,
   LocalLoginResponse,
+  OnboardingCompleteResponse,
   SessionResponse,
   SessionUserResponse,
 } from '../../src/server/contract.ts'

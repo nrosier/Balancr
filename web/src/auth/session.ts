@@ -6,9 +6,14 @@
  * description of the contract.
  */
 import { apiGet, apiSend, type CsrfConfig } from '../api/client.ts'
-import type { LocalLoginResponse, SessionResponse, SessionUserResponse } from '../shared.ts'
+import type {
+  LocalLoginResponse,
+  OnboardingCompleteResponse,
+  SessionResponse,
+  SessionUserResponse,
+} from '../shared.ts'
 
-export type { LocalLoginResponse, SessionResponse, SessionUserResponse }
+export type { LocalLoginResponse, OnboardingCompleteResponse, SessionResponse, SessionUserResponse }
 
 /**
  * Who is signed in, and what would work from here.
@@ -41,6 +46,31 @@ export function localSignIn(
  */
 export async function signOut(csrf: CsrfConfig): Promise<void> {
   await apiSend<null>('POST', '/auth/logout', undefined, csrf)
+}
+
+/**
+ * Creates a new household for the pending identity and signs it in as owner (#373).
+ * 404s once the onboarding cookie is missing or expired; 409 while
+ * `MULTI_TENANT_ONBOARDING_ENABLED` is off and a tenant already exists.
+ */
+export function createTenant(
+  label: string,
+  csrf: CsrfConfig,
+): Promise<OnboardingCompleteResponse> {
+  return apiSend<OnboardingCompleteResponse>('POST', '/auth/onboarding/create-tenant', { label }, csrf)
+}
+
+/**
+ * Redeems an invite code for the pending identity and signs it in as a viewer
+ * of whichever tenant issued it (#373). A wrong, expired, revoked or
+ * already-used code all answer with the same generic failure — see
+ * `routes/onboarding.ts` — so there is nothing to distinguish here.
+ */
+export function redeemInvite(
+  code: string,
+  csrf: CsrfConfig,
+): Promise<OnboardingCompleteResponse> {
+  return apiSend<OnboardingCompleteResponse>('POST', '/auth/onboarding/redeem-invite', { code }, csrf)
 }
 
 /**

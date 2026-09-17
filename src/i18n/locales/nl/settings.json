@@ -253,11 +253,30 @@
     "nl": "Nederlands",
     "title": "Taal"
   },
+  "members": {
+    "createButton": "Uitnodiging aanmaken",
+    "createLabel": "Label",
+    "createPlaceholder": "bv. Voor Jo",
+    "createdReads": "Aangemaakt {{when}}",
+    "codeShownOnce": "Deel deze code met die persoon. Ze wordt niet opnieuw getoond.",
+    "empty": "Nog geen uitnodigingen.",
+    "hint": "Uitnodigingscodes laten iemand anders toe tot dit huishouden, als meelezer. Geef een code door zoals je wil — niets hier verstuurt ze voor jou.",
+    "revoke": "Intrekken",
+    "status": {
+      "expired": "Verlopen",
+      "pending": "In behandeling",
+      "redeemed": "Verzilverd",
+      "revoked": "Ingetrokken"
+    },
+    "title": "Leden",
+    "unlabeled": "Zonder label"
+  },
   "nav": {
     "accounts": "Rekeningen",
     "benchmark": "Vergelijking",
     "general": "Algemeen",
     "integrations": "Integraties",
+    "members": "Leden",
     "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",

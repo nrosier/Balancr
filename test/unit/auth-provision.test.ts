@@ -23,7 +23,7 @@ import { eq } from 'drizzle-orm'
 import { Secret, TOTP } from 'otpauth'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { localCredentials, users } from '../../src/db/schema.ts'
+import { localCredentials, tenants, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { TOTP_PERIOD_SECONDS, verifyLocalLogin } from '../../src/server/auth/local.ts'
 import { provisionLocalCredential } from '../../src/server/auth/provision.ts'
@@ -156,6 +156,28 @@ describe('provisioning a local credential', () => {
       const result = await provisionLocalCredential(db, { email: EMAIL, password: PASSWORD })
       // Setting a password is not a promotion.
       expect(result.role).toBe('viewer')
+    } finally {
+      sqlite.close()
+    }
+  }, 30_000)
+
+  it('is owner in a second tenant, even though the first tenant already has users', async () => {
+    const { db, sqlite } = freshDb()
+    try {
+      await provisionLocalCredential(db, { email: EMAIL, password: PASSWORD })
+
+      const secondTenant = db.insert(tenants).values({ label: 'Second' }).returning().all()[0]
+      if (secondTenant === undefined) throw new Error('no tenant')
+
+      const result = await provisionLocalCredential(db, {
+        email: 'jo@example.test',
+        password: PASSWORD,
+        tenantId: secondTenant.id,
+      })
+
+      expect(result.role).toBe('owner')
+      const row = db.select().from(users).where(eq(users.id, result.userId)).all()[0]
+      expect(row?.tenantId).toBe(secondTenant.id)
     } finally {
       sqlite.close()
     }

@@ -102,6 +102,25 @@ export const loginRateLimit = (): { config: { rateLimit: typeof LOGIN_RATE_LIMIT
 })
 
 /**
+ * The bucket in front of invite-code redemption (#373).
+ *
+ * Same shape as `LOGIN_RATE_LIMIT`, for the same reason: guessing a short invite
+ * code is the same threat shape as guessing a password, and there is no
+ * deployment that wants this looser.
+ */
+export const INVITE_REDEEM_RATE_LIMIT = {
+  max: 10,
+  timeWindow: '15 minutes',
+} as const
+
+/** Spreadable route options for the invite-redemption route. See `INVITE_REDEEM_RATE_LIMIT`. */
+export const inviteRedeemRateLimit = (): {
+  config: { rateLimit: typeof INVITE_REDEEM_RATE_LIMIT }
+} => ({
+  config: { rateLimit: INVITE_REDEEM_RATE_LIMIT },
+})
+
+/**
  * The bucket in front of "test connection" on the integrations settings panel (#369).
  *
  * Fixed rather than configurable, for the same reason `LOGIN_RATE_LIMIT` and

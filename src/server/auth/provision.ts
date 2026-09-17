@@ -31,6 +31,9 @@ export interface ProvisionInput {
   email: string
   password: string
   displayName?: string | undefined
+  /** Defaults to the sole tenant — pass explicitly for a break-glass account
+   * in a second tenant (`--tenant` on `scripts/local-user.ts`). */
+  tenantId?: string | undefined
 }
 
 export interface ProvisionResult {
@@ -49,18 +52,20 @@ export interface ProvisionResult {
  * Inserts the user a local credential is being created for.
  *
  * The role follows the same rule as the OIDC path in `users.ts`: the first account
- * in an empty database owns it, anything after that has to be promoted by hand. A
- * break-glass account should not be a way to mint an owner.
+ * *in that tenant* owns it, anything after that has to be promoted by hand. A
+ * break-glass account should not be a way to mint an owner — including a break-glass
+ * account for a brand-new second tenant, which is why the count is scoped to
+ * `tenantId` rather than global.
  */
 function createUser(db: Db, input: ProvisionInput): string {
-  const empty = (db.select({ n: count() }).from(users).all()[0]?.n ?? 0) === 0
+  const tenantId = input.tenantId ?? getSoleTenantId(db)
+  const empty =
+    (db.select({ n: count() }).from(users).where(eq(users.tenantId, tenantId)).all()[0]?.n ?? 0) === 0
 
-  // Real tenant membership is #373's job; every account created today belongs
-  // to the sole tenant.
   const created = db
     .insert(users)
     .values({
-      tenantId: getSoleTenantId(db),
+      tenantId,
       email: input.email,
       displayName: input.displayName ?? null,
       role: empty ? 'owner' : 'viewer',
