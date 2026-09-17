@@ -1253,10 +1253,9 @@ export const settings = sqliteTable(
  * `db/field-crypto.ts`; everything else here is the non-secret half of the
  * same credential (a URL, a sync id, a provider name) — see that module and
  * `db/tenant-integrations.ts` for the encrypt/decrypt and first-boot-import
- * call sites. Deliberately does NOT include `GEMINI_MODEL_*`,
- * `GEMINI_MONTHLY_BUDGET_EUR`, `GOOGLE_CLOUD_LOCATION` or `ACTUAL_DATA_DIR` —
- * those stay deployment-wide in `config.ts` until #371/#372 decide how a
- * per-tenant equivalent should actually work.
+ * call sites. Deliberately does NOT include `GOOGLE_CLOUD_LOCATION` or
+ * `ACTUAL_DATA_DIR` — those stay deployment-wide in `config.ts` until #372
+ * decides how a per-tenant equivalent should actually work.
  */
 export const tenantIntegrations = sqliteTable('tenant_integrations', {
   tenantId: text('tenant_id')
@@ -1271,6 +1270,9 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
   geminiProvider: text('gemini_provider', { enum: ['aistudio', 'vertex'] }).notNull(),
   geminiApiKeyEnc: text('gemini_api_key_enc'),
   googleCloudProject: text('google_cloud_project'),
+  geminiModelFast: text('gemini_model_fast').notNull().default('gemini-3.7-flash'),
+  geminiModelDeep: text('gemini_model_deep').notNull().default('gemini-3.1-pro-preview'),
+  geminiMonthlyBudgetEurMicro: integer('gemini_monthly_budget_eur_micro').notNull().default(15_000_000),
   updatedAt: createdAt(),
 })
 

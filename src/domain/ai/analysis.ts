@@ -38,6 +38,7 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiFindings } from '../../db/schema.ts'
 import { getSoleTenantId } from '../../db/tenant.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import type { Signal } from '../aggregate/overspend.ts'
 import { checkBudget } from './budget.ts'
@@ -433,7 +434,7 @@ export function estimateAnalysis(
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const prepared = prepareMonth(db, options.month, locale)
 
   if (prepared === null) {
@@ -502,7 +503,7 @@ function resolvePromptFor(db: Db, locale: string, promptId: string | undefined):
 
 export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<AnalysisOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const now = options.now ?? new Date()
   const month = options.month
   const persist = options.persist !== false
@@ -599,7 +600,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
 
   let result
   try {
-    result = await callGemini({
+    result = await callGemini(db, {
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: analysisInstruction(payload),

@@ -382,9 +382,11 @@ describe('with the model unavailable', () => {
     // Credential comes from the tenant's own row (#370), not `.env` — so
     // `notConfigured` is exercised by clearing that row's key rather than by
     // stubbing `GEMINI_API_KEY`, which the job no longer reads for this check.
-    { reason: 'notConfigured', env: {}, clearKey: true },
-    { reason: 'switchedOff', env: { AI_ENABLED: 'false' }, clearKey: false },
-    { reason: 'budgetZero', env: { GEMINI_MONTHLY_BUDGET_EUR: '0' }, clearKey: false },
+    { reason: 'notConfigured', env: {}, clearKey: true, zeroBudget: false },
+    { reason: 'switchedOff', env: { AI_ENABLED: 'false' }, clearKey: false, zeroBudget: false },
+    // The budget cap is per-tenant DB state too (#371), not `.env` — set the
+    // row directly rather than stubbing `GEMINI_MONTHLY_BUDGET_EUR`.
+    { reason: 'budgetZero', env: {}, clearKey: false, zeroBudget: true },
   ] as const
 
   /**
@@ -404,7 +406,7 @@ describe('with the model unavailable', () => {
     vi.resetModules()
   })
 
-  for (const { reason, env, clearKey } of off) {
+  for (const { reason, env, clearKey, zeroBudget } of off) {
     it(`reports ${reason} without calling the model or logging a capped run`, async () => {
       seedTwoMonths()
       if (clearKey) {
@@ -413,7 +415,13 @@ describe('with the model unavailable', () => {
           .where(eq(tenantIntegrations.tenantId, TENANT_ID))
           .run()
       }
-      const job = await freshJob(env)
+      if (zeroBudget) {
+        db.update(tenantIntegrations)
+          .set({ geminiMonthlyBudgetEurMicro: 0 })
+          .where(eq(tenantIntegrations.tenantId, TENANT_ID))
+          .run()
+      }
+      const job = Object.keys(env).length > 0 ? await freshJob(env) : aiJob
 
       const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
 
@@ -425,6 +433,10 @@ describe('with the model unavailable', () => {
 
   it('still does the local housekeeping', async () => {
     seedTwoMonths()
+    db.update(tenantIntegrations)
+      .set({ geminiMonthlyBudgetEurMicro: 0 })
+      .where(eq(tenantIntegrations.tenantId, TENANT_ID))
+      .run()
     db.insert(proposals)
       .values({
         tenantId: TENANT_ID,
@@ -435,9 +447,8 @@ describe('with the model unavailable', () => {
         expiresAt: new Date('2026-02-01T00:00:00Z'),
       })
       .run()
-    const job = await freshJob({ GEMINI_MONTHLY_BUDGET_EUR: '0' })
 
-    const detail = (await job.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
+    const detail = (await aiJob.run({ db, now: NIGHT, log: logger, step: noopStep })) as JobDetail
 
     expect(detail['expired']).toBe(1)
   })

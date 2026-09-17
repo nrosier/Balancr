@@ -30,6 +30,7 @@ import {
 import { fetchCategories } from '../../adapters/actual/queries.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { loadCategoryMeta } from '../aggregate/facts.ts'
 import {
@@ -197,7 +198,7 @@ export async function estimateCategoryGuess(
   options: { ids: readonly string[]; locale?: string; model?: string; now?: Date },
 ): Promise<CategoryGuessEstimate> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const prepared = await prepareGuessBatch(db, options.ids, locale)
 
   if (prepared === null) {
@@ -241,7 +242,7 @@ export async function runCategoryGuess(
   options: CategoryGuessOptions,
 ): Promise<CategoryGuessOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const now = options.now ?? new Date()
 
   const prepared = await prepareGuessBatch(db, options.ids, locale)
@@ -299,7 +300,7 @@ export async function runCategoryGuess(
 
   let result
   try {
-    result = await callGemini({
+    result = await callGemini(db, {
       model,
       systemPrompt: composeSystemPrompt(CATEGORY_GUESS_SYSTEM, locale),
       instruction: categoryGuessInstruction(payload),

@@ -23,6 +23,7 @@ import {
   persistCategoryGuessCandidates,
   type CategoryGuessCandidate,
 } from '../../src/domain/aggregate/signals-store.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 
 vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
@@ -54,6 +55,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  importEnvIntegrationsOnce(db)
 })
 
 interface Recorded {

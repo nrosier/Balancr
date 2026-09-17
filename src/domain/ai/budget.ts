@@ -17,10 +17,10 @@
  * is the only place cost is stored, so there is nothing to reconcile.
  */
 import { eq } from 'drizzle-orm'
-import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiSpendMonthly } from '../../db/schema.ts'
-import { eurToMicroEur, microEurToEur } from '../../adapters/gemini/pricing.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
+import { microEurToEur } from '../../adapters/gemini/pricing.ts'
 
 /**
  * The month key the view groups by: a **UTC** month.
@@ -103,7 +103,7 @@ export interface BudgetState {
 export function budgetState(db: Db, now: Date = new Date()): BudgetState {
   const month = spendMonthOf(now)
   const spentMicroEur = loadSpendMonth(db, month).costMicroEur
-  const budgetMicroEur = eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR)
+  const budgetMicroEur = resolvedIntegrations(db).gemini.budgetEurMicro
 
   return {
     month,

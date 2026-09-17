@@ -157,7 +157,14 @@ describe('GET /api/settings', () => {
         e2ePasswordConfigured: false,
       },
       ghostfolio: { url: 'http://ghostfolio.test:3333', tokenConfigured: true },
-      gemini: { provider: 'aistudio', apiKeyConfigured: true, googleCloudProject: null },
+      gemini: {
+        provider: 'aistudio',
+        apiKeyConfigured: true,
+        googleCloudProject: null,
+        modelFast: 'gemini-3.7-flash',
+        modelDeep: 'gemini-3.1-pro-preview',
+        budgetEurMicro: 15_000_000,
+      },
     } satisfies IntegrationsSetting)
   })
 
@@ -295,11 +302,14 @@ describe('PATCH /api/settings/integrations/ghostfolio', () => {
 })
 
 describe('PATCH /api/settings/integrations/gemini', () => {
+  const modelFields = { modelFast: 'gemini-3.7-flash', modelDeep: 'gemini-3.1-pro-preview', budgetEur: 15 }
+
   it('replaces the stored API key only when one is typed', async () => {
     const res = await patch('/api/settings/integrations/gemini', {
       provider: 'aistudio',
       googleCloudProject: null,
       apiKey: 'new-key',
+      ...modelFields,
     })
 
     expect(res.statusCode).toBe(200)
@@ -307,7 +317,11 @@ describe('PATCH /api/settings/integrations/gemini', () => {
   })
 
   it('leaves the stored API key untouched when omitted', async () => {
-    await patch('/api/settings/integrations/gemini', { provider: 'aistudio', googleCloudProject: null })
+    await patch('/api/settings/integrations/gemini', {
+      provider: 'aistudio',
+      googleCloudProject: null,
+      ...modelFields,
+    })
     expect(decryptField(row(ctx.db).geminiApiKeyEnc as string)).toBe('test-key')
   })
 
@@ -315,10 +329,15 @@ describe('PATCH /api/settings/integrations/gemini', () => {
     await patch('/api/settings/integrations/gemini', {
       provider: 'vertex',
       googleCloudProject: 'my-project',
+      ...modelFields,
     })
     expect(row(ctx.db).googleCloudProject).toBe('my-project')
 
-    await patch('/api/settings/integrations/gemini', { provider: 'aistudio', googleCloudProject: null })
+    await patch('/api/settings/integrations/gemini', {
+      provider: 'aistudio',
+      googleCloudProject: null,
+      ...modelFields,
+    })
     expect(row(ctx.db).googleCloudProject).toBeNull()
   })
 
@@ -326,15 +345,36 @@ describe('PATCH /api/settings/integrations/gemini', () => {
     const res = await patch('/api/settings/integrations/gemini', {
       provider: 'vertex',
       googleCloudProject: '',
+      ...modelFields,
     })
     expect(res.statusCode).toBe(400)
     expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['googleCloudProject'])
   })
 
+  it('updates the model names and the monthly budget', async () => {
+    const res = await patch('/api/settings/integrations/gemini', {
+      provider: 'aistudio',
+      googleCloudProject: null,
+      modelFast: 'gemini-flash-lite',
+      modelDeep: 'gemini-pro',
+      budgetEur: 42,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.gemini).toMatchObject({
+      modelFast: 'gemini-flash-lite',
+      modelDeep: 'gemini-pro',
+      budgetEurMicro: 42_000_000,
+    })
+    expect(row(ctx.db).geminiModelFast).toBe('gemini-flash-lite')
+    expect(row(ctx.db).geminiModelDeep).toBe('gemini-pro')
+    expect(row(ctx.db).geminiMonthlyBudgetEurMicro).toBe(42_000_000)
+  })
+
   it('is refused for a viewer', async () => {
     const res = await patch(
       '/api/settings/integrations/gemini',
-      { provider: 'vertex', googleCloudProject: 'my-project' },
+      { provider: 'vertex', googleCloudProject: 'my-project', ...modelFields },
       { token: viewer },
     )
     expect(res.statusCode).toBe(403)

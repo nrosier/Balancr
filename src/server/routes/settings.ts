@@ -30,6 +30,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
+import { eurToMicroEur } from '../../adapters/gemini/pricing.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { encryptField } from '../../db/field-crypto.ts'
@@ -439,11 +440,19 @@ const ghostfolioIntegrationPatchRequest = z.strictObject({
  * The Gemini connection (#369). `googleCloudProject` is not a secret, so unlike
  * `apiKey` it is not optional — it is replaced wholesale like every other plain field
  * on this page, and `null` is how a switch to `aistudio` clears it.
+ *
+ * `modelFast`/`modelDeep`/`budgetEur` moved from `.env` to here (#371): a model
+ * choice and a monthly cap are exactly as per-tenant as the credential they run
+ * against, and unlike the credential neither is a secret — they round-trip as
+ * plain fields, the same as `googleCloudProject`.
  */
 const geminiIntegrationPatchRequest = z.strictObject({
   provider: z.enum(['aistudio', 'vertex']),
   apiKey: z.string().min(1).optional(),
   googleCloudProject: z.string().min(1).nullable(),
+  modelFast: z.string().min(1),
+  modelDeep: z.string().min(1),
+  budgetEur: z.coerce.number().nonnegative(),
 })
 
 /**
@@ -662,6 +671,9 @@ function loadIntegrations(db: Db): IntegrationsSetting {
       provider: row.geminiProvider,
       apiKeyConfigured: row.geminiApiKeyEnc !== null,
       googleCloudProject: row.googleCloudProject,
+      modelFast: row.geminiModelFast,
+      modelDeep: row.geminiModelDeep,
+      budgetEurMicro: row.geminiMonthlyBudgetEurMicro,
     },
   })
 }
@@ -715,7 +727,6 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     })),
     ai: {
       availability: tenantAiAvailability(db),
-      models: { fast: config.GEMINI_MODEL_FAST, deep: config.GEMINI_MODEL_DEEP },
       month: budget.month,
       spentMicroEur: budget.spentMicroEur,
       budgetMicroEur: budget.budgetMicroEur,
@@ -1070,6 +1081,9 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         geminiProvider: patch.provider,
         googleCloudProject: patch.googleCloudProject,
         ...(patch.apiKey === undefined ? {} : { geminiApiKeyEnc: encryptField(patch.apiKey) }),
+        geminiModelFast: patch.modelFast,
+        geminiModelDeep: patch.modelDeep,
+        geminiMonthlyBudgetEurMicro: eurToMicroEur(patch.budgetEur),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))

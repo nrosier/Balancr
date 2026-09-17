@@ -225,7 +225,13 @@ function Report({
             <ResetControl owner={owner} refresher={refresher} />
           </>
         ) : (
-          <AiUsage ai={settings.ai} state={state} owner={owner} estimate={estimate} />
+          <AiUsage
+            ai={settings.ai}
+            gemini={settings.integrations.gemini}
+            state={state}
+            owner={owner}
+            estimate={estimate}
+          />
         )}
 
         {/* Re-reads this panel's own endpoint. It starts nothing; the per-job buttons do.
@@ -703,10 +709,14 @@ const count = (value: number): string => formatDecimal(value, 0)
  */
 function AiUsage({
   ai,
+  gemini,
   state,
   owner,
   estimate,
-}: { ai: Settings['ai'] } & Pick<SettingsPanelProps, 'state' | 'owner' | 'estimate'>): ReactNode {
+}: { ai: Settings['ai']; gemini: Settings['integrations']['gemini'] } & Pick<
+  SettingsPanelProps,
+  'state' | 'owner' | 'estimate'
+>): ReactNode {
   const { t, language } = useT()
 
   return (
@@ -740,8 +750,8 @@ function AiUsage({
           rows={[
             { label: t('settings:ai.month'), value: formatMonth(ai.month, language) },
             { label: t('settings:ai.budget'), value: formatMicroEur(ai.budgetMicroEur) },
-            { label: t('settings:ai.model.fast'), value: ai.models.fast },
-            { label: t('settings:ai.model.deep'), value: ai.models.deep },
+            { label: t('settings:ai.model.fast'), value: gemini.modelFast },
+            { label: t('settings:ai.model.deep'), value: gemini.modelDeep },
           ]}
         />
       </div>

@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import { costMicroEur, eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
 import {
   budgetEur,
@@ -33,8 +34,10 @@ import {
   type ReuseKey,
   type RunStatus,
 } from '../../src/domain/ai/runs.ts'
+import { eq } from 'drizzle-orm'
 import { config } from '../../src/config.ts'
-import { prompts } from '../../src/db/schema.ts'
+import { prompts, tenantIntegrations } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 let ctx: ReturnType<typeof createTestDb>
 let db: ReturnType<typeof createTestDb>['db']
@@ -43,6 +46,7 @@ beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
   db = ctx.db
+  importEnvIntegrationsOnce(db as never)
 })
 
 const MODEL = 'gemini-3.7-flash'
@@ -498,25 +502,20 @@ describe('checkBudget', () => {
 })
 
 describe('a zero budget', () => {
-  it('means no AI spend at all, from the first call', async () => {
-    // The honest reading of GEMINI_MONTHLY_BUDGET_EUR=0. Treating it as unlimited
-    // is the one interpretation that could produce a bill nobody asked for, so it
-    // is worth a module reload to pin.
-    vi.resetModules()
-    vi.stubEnv('GEMINI_MONTHLY_BUDGET_EUR', '0')
-    try {
-      const fresh = await import('../../src/domain/ai/budget.ts')
-      const state = fresh.budgetState(db as never, new Date('2026-03-15T03:00:00Z'))
-      expect(state.budgetMicroEur).toBe(0)
-      expect(state.exceeded).toBe(true)
-      // Not NaN, which is what a naive percentage of zero would give.
-      expect(state.usedBp).toBe(10_000)
-      expect(fresh.checkBudget(db as never, 0, new Date('2026-03-15T03:00:00Z')).reason).toBe(
-        'month_budget_exceeded',
-      )
-    } finally {
-      vi.unstubAllEnvs()
-      vi.resetModules()
-    }
+  it('means no AI spend at all, from the first call', () => {
+    // The honest reading of a tenant's budget set to 0. Treating it as unlimited
+    // is the one interpretation that could produce a bill nobody asked for.
+    const tenantId = getSoleTenantId(db)
+    db.update(tenantIntegrations)
+      .set({ geminiMonthlyBudgetEurMicro: 0 })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+
+    const state = budgetState(db, new Date('2026-03-15T03:00:00Z'))
+    expect(state.budgetMicroEur).toBe(0)
+    expect(state.exceeded).toBe(true)
+    // Not NaN, which is what a naive percentage of zero would give.
+    expect(state.usedBp).toBe(10_000)
+    expect(checkBudget(db, 0, new Date('2026-03-15T03:00:00Z')).reason).toBe('month_budget_exceeded')
   })
 })
