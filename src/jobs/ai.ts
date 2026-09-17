@@ -33,7 +33,7 @@ import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
 import { latestStoredMonth } from '../domain/aggregate/month-store.ts'
 import { runAnalysis, type AnalysisOutcome } from '../domain/ai/analysis.ts'
-import { aiAvailability } from '../domain/ai/availability.ts'
+import { tenantAiAvailability } from '../domain/ai/availability.ts'
 import { spendMonthOf } from '../domain/ai/budget.ts'
 import { runNarrative, type NarrativeOutcome } from '../domain/ai/narrative.ts'
 import { expireProposals } from '../domain/ai/proposals.ts'
@@ -90,7 +90,7 @@ async function run({ db, now, log, force }: JobContext): Promise<JobDetail> {
   // variable to change rather than saying "0 findings" for the third night running.
   // `ok`, not an error: an instance with no key is correctly configured, and a red
   // job row every night would train its owner to ignore the column.
-  const availability = aiAvailability()
+  const availability = tenantAiAvailability(db)
   if (!availability.enabled) {
     log.info({ expired, reason: availability.reason }, 'the AI layer is off; nothing to run')
     return {

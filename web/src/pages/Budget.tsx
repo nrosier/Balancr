@@ -83,6 +83,7 @@ import {
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
+import { NotConfigured } from '../ui/NotConfigured.tsx'
 import { PaceBar } from '../ui/PaceBar.tsx'
 import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
@@ -167,19 +168,23 @@ export function Budget(): ReactNode {
       <PageHeader title={t('nav.budget')} lede={t('page.budget.lede')} />
       <SectionNav sections={BUDGET_SECTIONS} ariaLabel={t('nav.budget')}>
         <DataState resource={resource} isEmpty={isEmpty}>
-          {(data) => (
-            <Figures
-              data={data}
-              section={section}
-              period={period}
-              onPeriodSelect={setPeriod}
-              benchmarkPeriod={benchmarkPeriod}
-              onBenchmarkPeriodSelect={setBenchmarkPeriod}
-              custodyPeriod={custodyPeriod}
-              onCustodyPeriodSelect={setCustodyPeriod}
-              onRefreshed={resource.reload}
-            />
-          )}
+          {(data) =>
+            data.actualConfigured ? (
+              <Figures
+                data={data}
+                section={section}
+                period={period}
+                onPeriodSelect={setPeriod}
+                benchmarkPeriod={benchmarkPeriod}
+                onBenchmarkPeriodSelect={setBenchmarkPeriod}
+                custodyPeriod={custodyPeriod}
+                onCustodyPeriodSelect={setCustodyPeriod}
+                onRefreshed={resource.reload}
+              />
+            ) : (
+              <NotConfigured integration="actual" />
+            )
+          }
         </DataState>
       </SectionNav>
     </>

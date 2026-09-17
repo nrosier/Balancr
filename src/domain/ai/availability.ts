@@ -32,6 +32,8 @@
  * `insights.spend.exceeded` is what says the month has run out.
  */
 import { config, type Config } from '../../config.ts'
+import type { Db } from '../../db/index.ts'
+import { integrationAvailability } from '../../db/tenant-integrations.ts'
 
 export const AI_OFF_REASONS = ['notConfigured', 'switchedOff', 'budgetZero'] as const
 
@@ -61,4 +63,16 @@ export function aiAvailability(cfg: AiConfig = config): AiAvailability {
   if (!cfg.AI_ENABLED) return { enabled: false, reason: 'switchedOff' }
   if (cfg.GEMINI_MONTHLY_BUDGET_EUR === 0) return { enabled: false, reason: 'budgetZero' }
   return { enabled: true, reason: null }
+}
+
+/**
+ * `aiAvailability`, with the credential check against the tenant's own
+ * `tenantIntegrations` row (#370) instead of the deployment-wide `.env`
+ * value `cfg.aiCredentialed` carries. Every real call site should use this,
+ * not `aiAvailability` directly — that one stays pure and untouched so
+ * `test/unit/ai-availability.test.ts` can keep posing all four states with
+ * plain literals.
+ */
+export function tenantAiAvailability(db: Db, cfg: Omit<AiConfig, 'aiCredentialed'> = config): AiAvailability {
+  return aiAvailability({ ...cfg, aiCredentialed: integrationAvailability(db).ai })
 }

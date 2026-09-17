@@ -247,6 +247,15 @@ export const overviewSchema = z.object({
    */
   emergencyFundCentimonths: z.int().nullable(),
   hygiene: hygieneSchema.nullable(),
+  /**
+   * Whether Actual/Ghostfolio are set up for this tenant (#370). `netWorth`
+   * blends `liquidCents`/`debtCents` (Actual) with `investedCents`
+   * (Ghostfolio), so unlike `budgetSchema`/`portfolioSchema` this page checks
+   * both — a page showing half the figure with no notice would look correct
+   * when it is not.
+   */
+  actualConfigured: z.boolean(),
+  ghostfolioConfigured: z.boolean(),
 })
 
 // ---------------------------------------------------------------------------
@@ -526,6 +535,8 @@ export const budgetSchema = z.object({
   uncategorised: z
     .object({ txnCount: z.int().nonnegative(), amountCents: cents() })
     .nullable(),
+  /** Whether Actual is set up for this tenant (#370). */
+  actualConfigured: z.boolean(),
 })
 
 // ---------------------------------------------------------------------------
@@ -858,6 +869,8 @@ export const portfolioSchema = z.object({
    * `netWorth.liquidOffBudgetCents` on `overviewSchema` for the liquid slice of this.
    */
   offBudgetAccounts: z.array(offBudgetAccountSchema),
+  /** Whether Ghostfolio is set up for this tenant (#370). */
+  ghostfolioConfigured: z.boolean(),
 })
 
 // ---------------------------------------------------------------------------

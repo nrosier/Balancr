@@ -28,7 +28,14 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
-import { accountMap, categoryMeta, clarificationQueue, proposals, users } from '../../src/db/schema.ts'
+import {
+  accountMap,
+  categoryMeta,
+  clarificationQueue,
+  proposals,
+  tenantIntegrations,
+  users,
+} from '../../src/db/schema.ts'
 import type { Db } from '../../src/db/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -85,6 +92,23 @@ function signIn(db: Db, locale = 'en'): string {
 /** A GET as the signed-in user. */
 const get = (url: string, token = session) =>
   app.inject({ method: 'GET', url, cookies: { [SESSION_COOKIE]: token } })
+
+/**
+ * Clears one integration's fields on the fixture's already-imported row, so a test
+ * can see the `*Configured` flags (#370) go false. `apiFixture` always runs
+ * `importEnvIntegrationsOnce`, which configures every integration at once — there is
+ * no app flow yet that leaves just one unset, so this edits the row directly.
+ */
+function unconfigure(db: Db, integration: 'actual' | 'ghostfolio'): void {
+  db.update(tenantIntegrations)
+    .set(
+      integration === 'actual'
+        ? { actualServerUrl: '', actualSyncId: '', actualPasswordEnc: '' }
+        : { ghostfolioUrl: '', ghostfolioSecurityTokenEnc: '' },
+    )
+    .where(eq(tenantIntegrations.tenantId, getSoleTenantId(db)))
+    .run()
+}
 
 async function open(options: Parameters<typeof apiFixture>[0] = {}): Promise<void> {
   ctx = apiFixture(options)
@@ -212,6 +236,26 @@ describe('GET /api/overview', () => {
     const body = (await get('/api/overview')).json()
     expect(body.months).toContain('2020-01')
     expect(body.flows.map((entry: { month: string }) => entry.month)).toContain('2020-01')
+  })
+
+  it('reports both integrations configured on the fixture, since netWorth blends both (#370)', async () => {
+    const body = (await get('/api/overview')).json()
+    expect(body.actualConfigured).toBe(true)
+    expect(body.ghostfolioConfigured).toBe(true)
+  })
+
+  it('reports actualConfigured false without touching ghostfolioConfigured (#370)', async () => {
+    unconfigure(ctx.db, 'actual')
+    const body = (await get('/api/overview')).json()
+    expect(body.actualConfigured).toBe(false)
+    expect(body.ghostfolioConfigured).toBe(true)
+  })
+
+  it('reports ghostfolioConfigured false without touching actualConfigured (#370)', async () => {
+    unconfigure(ctx.db, 'ghostfolio')
+    const body = (await get('/api/overview')).json()
+    expect(body.actualConfigured).toBe(true)
+    expect(body.ghostfolioConfigured).toBe(false)
   })
 })
 
@@ -418,6 +462,13 @@ describe('GET /api/budget', () => {
     expect(res.statusCode).toBe(400)
     expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')
   })
+
+  it('reports actualConfigured true on the fixture, false once Actual is cleared (#370)', async () => {
+    expect((await get('/api/budget')).json().actualConfigured).toBe(true)
+
+    unconfigure(ctx.db, 'actual')
+    expect((await get('/api/budget')).json().actualConfigured).toBe(false)
+  })
 })
 
 describe('GET /api/portfolio', () => {
@@ -493,6 +544,13 @@ describe('GET /api/portfolio', () => {
     expect(body.totalValueCents).toBe(382_143)
     expect(body.investedValueCents).toBeNull()
     expect(body.cashValueCents).toBeNull()
+  })
+
+  it('reports ghostfolioConfigured true on the fixture, false once Ghostfolio is cleared (#370)', async () => {
+    expect((await get('/api/portfolio')).json().ghostfolioConfigured).toBe(true)
+
+    unconfigure(ctx.db, 'ghostfolio')
+    expect((await get('/api/portfolio')).json().ghostfolioConfigured).toBe(false)
   })
 })
 

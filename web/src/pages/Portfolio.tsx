@@ -45,6 +45,7 @@ import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
+import { NotConfigured } from '../ui/NotConfigured.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
 import { PageHeader } from './PageHeader.tsx'
@@ -91,7 +92,13 @@ export function Portfolio(): ReactNode {
       <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
       <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')}>
         <DataState resource={resource} isEmpty={isEmpty}>
-          {(data) => <Figures data={data} section={section} onRefreshed={resource.reload} />}
+          {(data) =>
+            data.ghostfolioConfigured ? (
+              <Figures data={data} section={section} onRefreshed={resource.reload} />
+            ) : (
+              <NotConfigured integration="ghostfolio" />
+            )
+          }
         </DataState>
       </SectionNav>
     </>

@@ -106,6 +106,7 @@ const FULL: PortfolioPayload = {
   properties: [],
   totalPropertyEquityCents: null,
   offBudgetAccounts: [],
+  ghostfolioConfigured: true,
 }
 
 /** Nothing has ever been snapshotted. */
@@ -123,6 +124,7 @@ const EMPTY: PortfolioPayload = {
   properties: [],
   totalPropertyEquityCents: null,
   offBudgetAccounts: [],
+  ghostfolioConfigured: true,
 }
 
 /**
@@ -1001,6 +1003,21 @@ describe('a weight with no total to be a share of', () => {
     await screen.findByRole('table')
 
     expect(row('BTC')[5]).toBe('Not known yet')
+  })
+})
+
+describe('a tenant with no Ghostfolio connection (#370)', () => {
+  it('shows the not-configured notice, linking to Settings, instead of any figures', async () => {
+    serve(json({ ...FULL, ghostfolioConfigured: false }))
+    renderApp(<Portfolio />)
+
+    expect(await screen.findByText("Ghostfolio isn't connected")).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Go to Settings → Integrations' }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/settings/integrations')
+
+    expect(screen.queryByText('No data yet')).toBeNull()
+    expect(screen.queryAllByRole('img')).toHaveLength(0)
+    expect(screen.queryByRole('table')).toBeNull()
   })
 })
 

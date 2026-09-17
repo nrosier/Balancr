@@ -63,7 +63,7 @@ import { estimateBudgetNudge, runBudgetNudge } from '../../domain/ai/budget-nudg
 import { estimateCategoryGuess, runCategoryGuess } from '../../domain/ai/category-guess.ts'
 import { estimateNarrative, monthHasEnded, runNarrative } from '../../domain/ai/narrative.ts'
 import {
-  aiAvailability,
+  tenantAiAvailability,
   type AiAvailability,
   type AiOffReason,
 } from '../../domain/ai/availability.ts'
@@ -277,7 +277,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     // Refused before it is priced. The estimate would compute happily — it is local
     // arithmetic over the payload — and answering with a number for a run that cannot
     // be started is what puts a priced button on a page that has no model behind it.
-    requireAiAvailable(aiAvailability())
+    requireAiAvailable(tenantAiAvailability(db))
     const query = request.query as { month?: string; kind?: string } | undefined
     const month = monthToRun(db, query?.month)
     // Two priced buttons, two prices, one endpoint. An unknown `kind` is a 400 rather
@@ -312,7 +312,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    */
   app.post('/api/ai/dry-run', { ...aiRateLimit() }, async (request: FastifyRequest) => {
     const user = requireOwner(request)
-    requireAiAvailable(aiAvailability())
+    requireAiAvailable(tenantAiAvailability(db))
     const body = parseBody(dryRunRequest, request.body)
     const locale = body.locale ?? user.locale
     const month = monthToRun(db, body.month)
@@ -382,7 +382,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    */
   app.post('/api/ai/narrative', { ...aiRateLimit() }, async (request: FastifyRequest) => {
     const user = requireOwner(request)
-    requireAiAvailable(aiAvailability())
+    requireAiAvailable(tenantAiAvailability(db))
     const body = parseBody(narrativeRequest, request.body)
     const locale = body.locale ?? user.locale
 
@@ -436,7 +436,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     (request: FastifyRequest, reply: FastifyReply): RefreshAccepted => {
       const user = requireOwner(request)
       requireJobsEnabled(config.JOBS_ENABLED)
-      requireAiAvailable(aiAvailability())
+      requireAiAvailable(tenantAiAvailability(db))
       const body = parseBody(aiRefreshRequest, request.body ?? {})
 
       const outcome = startRefresh(db, registry, ['ai'], new Date(), { force: body.force ?? false })
@@ -464,7 +464,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     { ...aiRateLimit() },
     async (request: FastifyRequest): Promise<CategoryGuessEstimateWire> => {
       const user = requireOwner(request)
-      requireAiAvailable(aiAvailability())
+      requireAiAvailable(tenantAiAvailability(db))
       const body = parseBody(categoryGuessRequest, request.body)
 
       const estimate = await estimateCategoryGuess(db, { ids: body.ids, locale: user.locale })
@@ -485,7 +485,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     { ...aiRateLimit() },
     async (request: FastifyRequest): Promise<CategoryGuessRunWire> => {
       const user = requireOwner(request)
-      requireAiAvailable(aiAvailability())
+      requireAiAvailable(tenantAiAvailability(db))
       const body = parseBody(categoryGuessRequest, request.body)
 
       const outcome = await runCategoryGuess(db, { ids: body.ids, locale: user.locale, userId: user.id })
@@ -507,7 +507,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     { ...aiRateLimit() },
     async (request: FastifyRequest): Promise<AiBudgetNudgeRun> => {
       const user = requireOwner(request)
-      requireAiAvailable(aiAvailability())
+      requireAiAvailable(tenantAiAvailability(db))
       const body = parseBody(budgetNudgeRequest, request.body ?? {})
       const locale = body.locale ?? user.locale
       const month = monthToRun(db, body.month)

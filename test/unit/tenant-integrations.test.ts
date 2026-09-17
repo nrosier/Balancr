@@ -8,10 +8,13 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
-import { decryptField } from '../../src/db/field-crypto.ts'
+import { decryptField, encryptField } from '../../src/db/field-crypto.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { tenantIntegrations } from '../../src/db/schema.ts'
-import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
+import {
+  importEnvIntegrationsOnce,
+  integrationAvailability,
+} from '../../src/db/tenant-integrations.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 function freshDb(): Db {
@@ -63,5 +66,94 @@ describe('importEnvIntegrationsOnce', () => {
     // than becoming ciphertext of an empty string that would decrypt "successfully"
     // to something meaningless.
     expect(row.actualE2ePasswordEnc).toBeNull()
+  })
+})
+
+/**
+ * `integrationAvailability` (#370) against rows this test inserts directly.
+ *
+ * Not against `importEnvIntegrationsOnce`: that import is all-or-nothing, so a row
+ * with Actual configured and Ghostfolio not — the very state this function exists to
+ * tell apart — cannot be produced through any app flow until #371/#372/#373 give each
+ * tenant independent provisioning. Until then, this is the only way to exercise it.
+ */
+describe('integrationAvailability', () => {
+  function insertRow(db: Db, overrides: Partial<typeof tenantIntegrations.$inferInsert>): void {
+    const tenantId = getSoleTenantId(db)
+    db.insert(tenantIntegrations)
+      .values({
+        tenantId,
+        actualServerUrl: '',
+        actualPasswordEnc: '',
+        actualSyncId: '',
+        ghostfolioUrl: '',
+        ghostfolioSecurityTokenEnc: '',
+        geminiProvider: 'aistudio',
+        geminiApiKeyEnc: null,
+        googleCloudProject: null,
+        ...overrides,
+      })
+      .run()
+  }
+
+  it('reports actual and ghostfolio unavailable on an all-empty row', () => {
+    const db = freshDb()
+    insertRow(db, {})
+    expect(integrationAvailability(db)).toEqual({ actual: false, ghostfolio: false, ai: false })
+  })
+
+  it('reports actual available once its three fields are all set, independent of ghostfolio', () => {
+    const db = freshDb()
+    insertRow(db, {
+      actualServerUrl: 'http://actual.test:5006',
+      actualSyncId: 'sync-id',
+      actualPasswordEnc: encryptField('password'),
+    })
+    const availability = integrationAvailability(db)
+    expect(availability.actual).toBe(true)
+    expect(availability.ghostfolio).toBe(false)
+  })
+
+  it('reports ghostfolio available once its two fields are set, independent of actual', () => {
+    const db = freshDb()
+    insertRow(db, {
+      ghostfolioUrl: 'http://ghostfolio.test:3333',
+      ghostfolioSecurityTokenEnc: encryptField('token'),
+    })
+    const availability = integrationAvailability(db)
+    expect(availability.ghostfolio).toBe(true)
+    expect(availability.actual).toBe(false)
+  })
+
+  it('reports ai unavailable for an aistudio row with no key, available once one is set', () => {
+    const db = freshDb()
+    insertRow(db, { geminiProvider: 'aistudio', geminiApiKeyEnc: null })
+    expect(integrationAvailability(db).ai).toBe(false)
+
+    const db2 = freshDb()
+    insertRow(db2, { geminiProvider: 'aistudio', geminiApiKeyEnc: encryptField('key') })
+    expect(integrationAvailability(db2).ai).toBe(true)
+  })
+
+  it('reports ai unavailable for a vertex row with no project, available once one is set', () => {
+    const db = freshDb()
+    insertRow(db, { geminiProvider: 'vertex', googleCloudProject: null })
+    expect(integrationAvailability(db).ai).toBe(false)
+
+    const db2 = freshDb()
+    insertRow(db2, { geminiProvider: 'vertex', googleCloudProject: 'my-gcp-project' })
+    expect(integrationAvailability(db2).ai).toBe(true)
+  })
+
+  it('ignores googleCloudProject for an aistudio row and geminiApiKeyEnc for a vertex row', () => {
+    const db = freshDb()
+    // An aistudio row with a leftover project value but no key: still unavailable.
+    insertRow(db, { geminiProvider: 'aistudio', geminiApiKeyEnc: null, googleCloudProject: 'stale-project' })
+    expect(integrationAvailability(db).ai).toBe(false)
+
+    const db2 = freshDb()
+    // A vertex row with a leftover key but no project: still unavailable.
+    insertRow(db2, { geminiProvider: 'vertex', googleCloudProject: null, geminiApiKeyEnc: encryptField('stale-key') })
+    expect(integrationAvailability(db2).ai).toBe(false)
   })
 })

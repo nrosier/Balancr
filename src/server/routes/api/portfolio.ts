@@ -30,6 +30,7 @@
  * on a page whose whole point is where things stand right now.
  */
 import type { Db } from '../../../db/index.ts'
+import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
 import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
 import { knownSplit } from '../../../domain/portfolio/metrics.ts'
@@ -119,5 +120,6 @@ export function buildPortfolio(db: Db): Portfolio {
       balanceCents: account.balanceCents,
       currency: account.currency,
     })),
+    ghostfolioConfigured: integrationAvailability(db).ghostfolio,
   })
 }
