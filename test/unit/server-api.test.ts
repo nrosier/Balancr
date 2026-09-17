@@ -214,6 +214,7 @@ describe('GET /api/overview', () => {
   it("reaches every stored month, not a twelve-month trailing window, so the period picker's availability set is never a promise flows can't back up (#345)", async () => {
     persistMonthTotals(
       ctx.db,
+      TENANT_ID,
       [
         {
           month: '2020-01',
@@ -378,7 +379,7 @@ describe('GET /api/budget', () => {
       .set({ custodyShared: true })
       .where(sql`category_id = 'cat-groceries'`)
       .run()
-    saveHousehold(ctx.db, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+    saveHousehold(ctx.db, TENANT_ID, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
 
     const body = (await get('/api/budget')).json()
     expect(body.custody.kind).toBe('ok')
@@ -445,7 +446,7 @@ describe('GET /api/budget', () => {
       .set({ custodyShared: true })
       .where(sql`category_id = 'cat-groceries'`)
       .run()
-    saveHousehold(ctx.db, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
+    saveHousehold(ctx.db, TENANT_ID, { members: [{ birthYear: 2013, custodyBp: 5_000 }] })
 
     // € 600 in July plus € 720 in August, both on file for 2026 — a plain `?month=`
     // request only ever sees the second.
@@ -623,7 +624,7 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
   }
 
   it("nets a property's equity into the overview total and reports the two halves", async () => {
-    saveProperties(ctx.db, { properties: [HOME, RENTAL] })
+    saveProperties(ctx.db, TENANT_ID, { properties: [HOME, RENTAL] })
     const body = (await get('/api/overview')).json()
 
     // 4 820 000 already in the fixture, plus (40M - 18M) + (25M - 0) of equity.
@@ -633,14 +634,14 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
   })
 
   it('leaves the net-worth history untouched — no retroactive equity', async () => {
-    saveProperties(ctx.db, { properties: [HOME] })
+    saveProperties(ctx.db, TENANT_ID, { properties: [HOME] })
     const body = (await get('/api/overview')).json()
 
     expect(body.history).toEqual([{ date: SNAPSHOT_DATE, totalCents: 4_820_000 }])
   })
 
   it('adds a priced-as-of-today row per property, alongside (never inside) the allocation', async () => {
-    saveProperties(ctx.db, { properties: [HOME, RENTAL] })
+    saveProperties(ctx.db, TENANT_ID, { properties: [HOME, RENTAL] })
     const body = (await get('/api/portfolio')).json()
 
     expect(body.properties).toEqual([
@@ -697,11 +698,11 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
    * into the "directly available" split, which only ever means liquid money.
    */
   function addOffBudgetAccounts(): { mortgageId: string; savingsId: string } {
-    syncAccountMap(ctx.db, [
+    syncAccountMap(ctx.db, TENANT_ID, [
       { source: 'actual', externalId: 'acct-mortgage', name: 'KBC Hypotheek', offBudget: true },
       { source: 'actual', externalId: 'acct-savings-offbudget', name: 'Spaarpot', offBudget: true },
     ])
-    const byExternalId = new Map(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
+    const byExternalId = new Map(loadAccountMap(ctx.db, TENANT_ID).map((row) => [row.externalId, row.id]))
     const mapId = (externalId: string): string => {
       const id = byExternalId.get(externalId)
       if (id === undefined) throw new Error(`the fixture failed to map ${externalId}`)
@@ -722,6 +723,7 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
 
     persistNetWorth(
       ctx.db,
+      TENANT_ID,
       computeNetWorth(SNAPSHOT_DATE, [
         {
           accountMapId: mapId('acct-checking'),
@@ -1003,7 +1005,7 @@ describe('GET /api/insights', () => {
   })
 
   it('filters the ledger to the month, plus the calls about no month at all (#158)', async () => {
-    const augustRun = recordRun(ctx.db, {
+    const augustRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -1012,7 +1014,7 @@ describe('GET /api/insights', () => {
       status: 'ok',
       period: MONTH,
     })
-    const julyRun = recordRun(ctx.db, {
+    const julyRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -1021,7 +1023,7 @@ describe('GET /api/insights', () => {
       status: 'ok',
       period: PREVIOUS_MONTH,
     })
-    const chatRun = recordRun(ctx.db, {
+    const chatRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'clarify',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -1108,8 +1110,8 @@ describe('GET /api/insights', () => {
     // The bug this pins: `bodyMd` addresses the month as `c1`, `c2`, because that is
     // what the model was given, and only the server can resolve those. Sending it raw
     // produced a paragraph no client could render into anything readable.
-    storeNarrative(ctx.db, {
-      runId: recordRun(ctx.db, {
+    storeNarrative(ctx.db, TENANT_ID, {
+      runId: recordRun(ctx.db, TENANT_ID, {
         kind: 'narrative',
         model: 'gemini-3.1-pro-preview',
         locale: 'en',
@@ -1145,8 +1147,8 @@ describe('GET /api/insights', () => {
   it('flags a narrative written before the month\u2019s note was edited (#298)', async () => {
     // The wire half of the fix. The page cannot work out that the review predates the note
     // on its own — it has neither the payload nor the note — so the server answers it.
-    storeNarrative(ctx.db, {
-      runId: recordRun(ctx.db, {
+    storeNarrative(ctx.db, TENANT_ID, {
+      runId: recordRun(ctx.db, TENANT_ID, {
         kind: 'narrative',
         model: 'gemini-3.1-pro-preview',
         locale: 'en',
@@ -1161,7 +1163,7 @@ describe('GET /api/insights', () => {
 
     expect((await get('/api/insights')).json().narrative.noteChanged).toBe(true)
 
-    saveMonthNote(ctx.db, MONTH, 'The boiler was replaced.')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, 'The boiler was replaced.')
     expect((await get('/api/insights')).json().narrative.noteChanged).toBe(false)
   })
 })
@@ -1169,7 +1171,7 @@ describe('GET /api/insights', () => {
 describe('the AI ledger', () => {
   /** One run of each shape worth showing: a call that worked, and one refused. */
   function ledger(): { ok: string; capped: string } {
-    const ok = recordRun(ctx.db, {
+    const ok = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
       model: 'gemini-3.7-flash',
       locale: 'en',
@@ -1179,7 +1181,7 @@ describe('the AI ledger', () => {
       usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0 },
       durationMs: 1_400,
     })
-    const capped = recordRun(ctx.db, {
+    const capped = recordRun(ctx.db, TENANT_ID, {
       kind: 'narrative',
       model: 'gemini-3.1-pro-preview',
       locale: 'nl',

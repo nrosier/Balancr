@@ -43,6 +43,7 @@ import { buildAdvice, type Advice, type HeldPosition } from './suggest.ts'
  */
 export function adviceFor(
   db: Db,
+  tenantId: string,
   metrics: PortfolioMetricsResult | null,
   investedValueCents: number | null,
   holdings: readonly HeldPosition[],
@@ -55,7 +56,7 @@ export function adviceFor(
       shareBp: slice.shareBp,
     })),
     investedValueCents,
-    profile: loadProfile(db),
+    profile: loadProfile(db, tenantId),
     universe: universeOrEmpty(),
     rules: taxRulesOrNull(),
     holdings,
@@ -63,11 +64,17 @@ export function adviceFor(
 }
 
 /** Today's advice for the newest snapshot, exactly as `GET /api/portfolio` reports it. */
-export function latestAdvice(db: Db): Advice | null {
-  const date = latestSnapshotDate(db)
+export function latestAdvice(db: Db, tenantId: string): Advice | null {
+  const date = latestSnapshotDate(db, tenantId)
   if (date === null) return null
-  const metrics = loadPortfolioMetrics(db, date)
-  return adviceFor(db, metrics, knownSplit(metrics).investedValueCents, loadSnapshot(db, date))
+  const metrics = loadPortfolioMetrics(db, tenantId, date)
+  return adviceFor(
+    db,
+    tenantId,
+    metrics,
+    knownSplit(metrics).investedValueCents,
+    loadSnapshot(db, tenantId, date),
+  )
 }
 
 /**
@@ -83,12 +90,16 @@ export function latestAdvice(db: Db): Advice | null {
  * the same row `latestAdvice` reads — so the count and the figures beside it are one
  * reading of one snapshot rather than two of the same one.
  */
-export function latestDriftPersistence(db: Db, months: number): DriftPersistence | null {
-  const advice = latestAdvice(db)
+export function latestDriftPersistence(
+  db: Db,
+  tenantId: string,
+  months: number,
+): DriftPersistence | null {
+  const advice = latestAdvice(db, tenantId)
   if (advice === null) return null
 
-  const profile = loadProfile(db)
-  const history: AllocationMonth[] = monthEndMetrics(db, months).map((metrics) => ({
+  const profile = loadProfile(db, tenantId)
+  const history: AllocationMonth[] = monthEndMetrics(db, tenantId, months).map((metrics) => ({
     month: metrics.date.slice(0, 7),
     allocation: metrics.allocation.map((slice) => ({
       key: slice.key,

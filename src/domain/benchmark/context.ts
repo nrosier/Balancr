@@ -35,9 +35,9 @@ export interface BenchmarkContext {
   readonly coicop: ReadonlyMap<string, string | null>
 }
 
-export function benchmarkContext(db: Db): BenchmarkContext {
+export function benchmarkContext(db: Db, tenantId: string): BenchmarkContext {
   const coicop = new Map<string, string | null>()
-  for (const [categoryId, meta] of loadCategoryMeta(db)) {
+  for (const [categoryId, meta] of loadCategoryMeta(db, tenantId)) {
     coicop.set(categoryId, meta.coicopCode)
   }
   // The override is applied here rather than at either caller, because this is the one
@@ -45,8 +45,8 @@ export function benchmarkContext(db: Db): BenchmarkContext {
   // once at either end instead, the two could disagree about which average household they
   // were comparing to, and the stored signals would be about a different reference from the
   // card explaining them (#290).
-  const benchmark = applyReferenceOverride(benchmarkOrNull(), loadReferenceOverride(db))
-  return { benchmark, household: loadHousehold(db), coicop }
+  const benchmark = applyReferenceOverride(benchmarkOrNull(), loadReferenceOverride(db, tenantId))
+  return { benchmark, household: loadHousehold(db, tenantId), coicop }
 }
 
 /**
