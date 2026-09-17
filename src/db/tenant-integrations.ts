@@ -9,6 +9,7 @@
  */
 import { eq } from 'drizzle-orm'
 import type { Db } from './index.ts'
+import { eurToMicroEur } from '../adapters/gemini/pricing.ts'
 import { config } from '../config.ts'
 import { decryptField, encryptField } from './field-crypto.ts'
 import { getSoleTenantId } from './tenant.ts'
@@ -72,9 +73,9 @@ export function integrationAvailability(db: Db): IntegrationAvailability {
  * the whole point of #371: `.env` only ever seeds tenant 1's row once, via
  * `importEnvIntegrationsOnce` below.
  *
- * Gemini's `provider`/`apiKey`/`project` join this shape once #371's Gemini
- * slice lands; Ghostfolio and Actual need it first, so it starts with just
- * those two.
+ * `GEMINI_MODEL_FAST`/`GEMINI_MODEL_DEEP`/`GEMINI_MONTHLY_BUDGET_EUR` are
+ * tenant columns too (#371) — the budget is stored as a micro-EUR integer,
+ * matching every other money column in this schema.
  */
 export interface ResolvedIntegrations {
   readonly actual: {
@@ -86,6 +87,14 @@ export interface ResolvedIntegrations {
   readonly ghostfolio: {
     readonly url: string
     readonly token: string
+  }
+  readonly gemini: {
+    readonly provider: 'aistudio' | 'vertex'
+    readonly apiKey: string | null
+    readonly project: string | null
+    readonly modelFast: string
+    readonly modelDeep: string
+    readonly budgetEurMicro: number
   }
 }
 
@@ -101,6 +110,14 @@ export function resolvedIntegrations(db: Db): ResolvedIntegrations {
     ghostfolio: {
       url: row.ghostfolioUrl,
       token: decryptField(row.ghostfolioSecurityTokenEnc),
+    },
+    gemini: {
+      provider: row.geminiProvider,
+      apiKey: row.geminiApiKeyEnc === null ? null : decryptField(row.geminiApiKeyEnc),
+      project: row.googleCloudProject,
+      modelFast: row.geminiModelFast,
+      modelDeep: row.geminiModelDeep,
+      budgetEurMicro: row.geminiMonthlyBudgetEurMicro,
     },
   }
 }
@@ -127,6 +144,9 @@ export function importEnvIntegrationsOnce(db: Db): boolean {
       geminiProvider: config.GEMINI_PROVIDER,
       geminiApiKeyEnc: config.GEMINI_API_KEY ? encryptField(config.GEMINI_API_KEY) : null,
       googleCloudProject: config.GOOGLE_CLOUD_PROJECT ?? null,
+      geminiModelFast: config.GEMINI_MODEL_FAST,
+      geminiModelDeep: config.GEMINI_MODEL_DEEP,
+      geminiMonthlyBudgetEurMicro: eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR),
     })
     .run()
   return true

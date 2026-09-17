@@ -25,6 +25,9 @@
 import { createHash } from 'node:crypto'
 import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
 import { config } from '../../config.ts'
+import type { Db } from '../../db/index.ts'
+import { getSoleTenantId } from '../../db/tenant.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { ZERO_USAGE, type TokenUsage } from './pricing.ts'
 
@@ -112,29 +115,64 @@ export class GeminiError extends Error {
  * promise that. Worth being able to assert in a test rather than trusting a
  * constructor call nobody reads.
  */
-export function clientOptions(): GoogleGenAIOptions {
-  if (config.GEMINI_PROVIDER === 'vertex') {
+export function clientOptions(db: Db): GoogleGenAIOptions {
+  const gemini = resolvedIntegrations(db).gemini
+  if (gemini.provider === 'vertex') {
     return {
       vertexai: true,
-      // Both are guaranteed present for `vertex` by config.ts' cross-field check.
-      project: config.GOOGLE_CLOUD_PROJECT as string,
+      // Both are guaranteed present for `vertex` by the settings route's cross-field check.
+      project: gemini.project as string,
       location: config.GOOGLE_CLOUD_LOCATION,
     }
   }
-  return { apiKey: config.GEMINI_API_KEY as string }
+  return { apiKey: gemini.apiKey as string }
 }
 
-let client: GoogleGenAI | null = null
-
-function genai(): GoogleGenAI {
-  client ??= new GoogleGenAI(clientOptions())
-  return client
+interface TenantGeminiState {
+  client: GoogleGenAI
+  /** Cache resource name per (model, system instruction), keyed by content hash. */
+  cacheNames: Map<string, string>
 }
 
-/** Test seam: swap the SDK client, or drop it so config changes take effect. */
+const tenants = new Map<string, TenantGeminiState>()
+
+/**
+ * Set by `setGeminiClient`, installed into whichever tenant the next
+ * `tenantState` call resolves. Only one override is ever pending at a time —
+ * every test that stubs a client calls `callGemini`/`clientOptions` for a
+ * single tenant immediately after, so there is never a second tenant waiting
+ * for the same override.
+ */
+let pendingClientOverride: GoogleGenAI | undefined
+
+function tenantState(db: Db): TenantGeminiState {
+  const tenantId = getSoleTenantId(db)
+  if (pendingClientOverride !== undefined) {
+    const state: TenantGeminiState = { client: pendingClientOverride, cacheNames: new Map() }
+    tenants.set(tenantId, state)
+    pendingClientOverride = undefined
+    return state
+  }
+  let state = tenants.get(tenantId)
+  if (state === undefined) {
+    state = { client: new GoogleGenAI(clientOptions(db)), cacheNames: new Map() }
+    tenants.set(tenantId, state)
+  }
+  return state
+}
+
+function genai(db: Db): GoogleGenAI {
+  return tenantState(db).client
+}
+
+/** Test seam: swap the SDK client, or drop every tenant's so config changes take effect. */
 export function setGeminiClient(next: GoogleGenAI | null): void {
-  client = next
-  cacheNames.clear()
+  if (next === null) {
+    tenants.clear()
+    pendingClientOverride = undefined
+    return
+  }
+  pendingClientOverride = next
 }
 
 export interface GeminiCall {
@@ -217,9 +255,6 @@ export function readUsage(usageMetadata: RawUsage | undefined): TokenUsage {
   }
 }
 
-/** Cache resource name per (model, system instruction), keyed by content hash. */
-const cacheNames = new Map<string, string>()
-
 const cacheKey = (model: string, instruction: string): string =>
   `${model} ${createHash('sha256').update(instruction).digest('hex')}`
 
@@ -244,9 +279,10 @@ const cacheKey = (model: string, instruction: string): string =>
  * the reason caching was built, and it is what will push the system prompt past
  * the floor — at which point this check stops firing and nothing else changes.
  */
-async function cacheFor(model: string, instruction: string): Promise<string | null> {
+async function cacheFor(db: Db, model: string, instruction: string): Promise<string | null> {
+  const state = tenantState(db)
   const key = cacheKey(model, instruction)
-  const held = cacheNames.get(key)
+  const held = state.cacheNames.get(key)
   if (held !== undefined) return held === '' ? null : held
 
   const estimated = estimateTokens(instruction)
@@ -257,12 +293,12 @@ async function cacheFor(model: string, instruction: string): Promise<string | nu
       { model, estimated, minimum: config.GEMINI_CACHE_MIN_TOKENS },
       'context caching does not apply at this prompt size; sending it inline',
     )
-    cacheNames.set(key, '')
+    state.cacheNames.set(key, '')
     return null
   }
 
   try {
-    const cache = await genai().caches.create({
+    const cache = await state.client.caches.create({
       model,
       config: {
         systemInstruction: instruction,
@@ -271,10 +307,10 @@ async function cacheFor(model: string, instruction: string): Promise<string | nu
       },
     })
     if (cache.name === undefined || cache.name === '') {
-      cacheNames.set(key, '')
+      state.cacheNames.set(key, '')
       return null
     }
-    cacheNames.set(key, cache.name)
+    state.cacheNames.set(key, cache.name)
     log.debug({ model, cache: cache.name }, 'cached system prompt')
     return cache.name
   } catch (error) {
@@ -284,7 +320,7 @@ async function cacheFor(model: string, instruction: string): Promise<string | nu
       { model, err: error instanceof Error ? error.message : String(error) },
       'context caching unavailable; sending the system prompt inline',
     )
-    cacheNames.set(key, '')
+    state.cacheNames.set(key, '')
     return null
   }
 }
@@ -296,14 +332,14 @@ async function cacheFor(model: string, instruction: string): Promise<string | nu
  * attempt and `domain/ai/budget.ts` decides whether it may happen — an adapter
  * that wrote its own ledger row would be a second place where cost is counted.
  */
-export async function callGemini(call: GeminiCall): Promise<GeminiResult> {
+export async function callGemini(db: Db, call: GeminiCall): Promise<GeminiResult> {
   const instruction = systemInstruction(call.systemPrompt)
   const prompt = `${call.instruction.trim()}\n\n${fenceData(call.payload)}`
-  const cache = await cacheFor(call.model, instruction)
+  const cache = await cacheFor(db, call.model, instruction)
 
   const started = Date.now()
   try {
-    const response = await genai().models.generateContent({
+    const response = await genai(db).models.generateContent({
       model: call.model,
       contents: prompt,
       config: {

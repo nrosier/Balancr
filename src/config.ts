@@ -524,6 +524,9 @@ export function configSummary(): Record<string, unknown> {
     GEMINI_PROVIDER: config.GEMINI_PROVIDER,
     GOOGLE_CLOUD_PROJECT: config.GOOGLE_CLOUD_PROJECT ?? 'unset',
     GEMINI_API_KEY: secret(config.GEMINI_API_KEY),
+    // These three, like the Actual/Ghostfolio values above, only ever seed tenant
+    // 1's row once (#371) — after that, the live values live in `tenantIntegrations`
+    // and are read through `resolvedIntegrations(db)`, never from here again.
     GEMINI_MODEL_FAST: config.GEMINI_MODEL_FAST,
     GEMINI_MODEL_DEEP: config.GEMINI_MODEL_DEEP,
     GEMINI_MONTHLY_BUDGET_EUR: config.GEMINI_MONTHLY_BUDGET_EUR,

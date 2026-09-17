@@ -37,6 +37,7 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiNarratives } from '../../db/schema.ts'
 import { getSoleTenantId } from '../../db/tenant.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
@@ -441,7 +442,7 @@ export function estimateNarrative(
   options: { period: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_DEEP
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelDeep
   const now = options.now ?? new Date()
   const refused = (reason: string): AnalysisEstimate => ({
     month: options.period,
@@ -484,13 +485,16 @@ interface NarrativeCall {
  * out of room. Both attempts are billed, so the returned `usage` is their sum, not
  * just the one that's kept.
  */
-async function callNarrativeModel(call: Omit<GeminiCall, 'maxOutputTokens'>): Promise<NarrativeCall> {
-  const first = await callGemini({ ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
+async function callNarrativeModel(
+  db: Db,
+  call: Omit<GeminiCall, 'maxOutputTokens'>,
+): Promise<NarrativeCall> {
+  const first = await callGemini(db, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
   if (first.finishReason !== 'MAX_TOKENS') {
     return { result: first, usage: first.usage, truncated: false }
   }
   log.warn({ model: call.model }, 'narrative call hit MAX_TOKENS; retrying once at a higher ceiling')
-  const retry = await callGemini({ ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
+  const retry = await callGemini(db, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
   return {
     result: retry,
     usage: addUsage(first.usage, retry.usage),
@@ -510,7 +514,7 @@ async function callNarrativeModel(call: Omit<GeminiCall, 'maxOutputTokens'>): Pr
  */
 export async function runNarrative(db: Db, options: NarrativeOptions): Promise<NarrativeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_DEEP
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelDeep
   const now = options.now ?? new Date()
   const period = options.period
 
@@ -550,7 +554,7 @@ export async function runNarrative(db: Db, options: NarrativeOptions): Promise<N
 
   let call: NarrativeCall
   try {
-    call = await callNarrativeModel({
+    call = await callNarrativeModel(db, {
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: narrativeInstruction(payload),
@@ -680,7 +684,7 @@ export async function translateNarrative(
   options: TranslateOptions,
 ): Promise<NarrativeOutcome> {
   const { period, from, to } = options
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const now = options.now ?? new Date()
 
   if (from === to) return failed(period, to, 'skipped', 'same_locale')
@@ -718,7 +722,7 @@ export async function translateNarrative(
 
   let call: NarrativeCall
   try {
-    call = await callNarrativeModel({
+    call = await callNarrativeModel(db, {
       model,
       systemPrompt: composeSystemPrompt(TRANSLATION_SYSTEM, to),
       instruction: translationInstruction(from, to),

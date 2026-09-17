@@ -36,6 +36,7 @@ import {
 } from '../../adapters/gemini/schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import { loadCategoryMeta, loadFacts } from '../aggregate/facts.ts'
 import { checkBudget } from './budget.ts'
@@ -227,7 +228,7 @@ export function estimateBudgetNudge(
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): BudgetNudgeEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const refused = (reason: string): BudgetNudgeEstimate => ({
     month: options.month,
     model,
@@ -267,7 +268,7 @@ export function estimateBudgetNudge(
  */
 export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promise<BudgetNudgeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? config.GEMINI_MODEL_FAST
+  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
   const now = options.now ?? new Date()
   const month = options.month
 
@@ -335,7 +336,7 @@ export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promi
 
   let result
   try {
-    result = await callGemini({
+    result = await callGemini(db, {
       model,
       systemPrompt: composeSystemPrompt(BUDGET_NUDGE_SYSTEM, locale),
       instruction: budgetNudgeInstruction(payload),
