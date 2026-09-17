@@ -446,7 +446,7 @@ describe('the context, read off the database', () => {
       })
       .run()
 
-    const context = custodyContext(ctx.db)
+    const context = custodyContext(ctx.db, TENANT_ID)
     expect([...context.shared]).toEqual(['school'])
 
     const result = ok(splitMonth(context, MONTH, [fact('school', 50_000), fact('rent', 100_000)]))
@@ -459,7 +459,7 @@ describe('the context, read off the database', () => {
   })
 
   it('falls back to one person with no flags on an empty database', () => {
-    const context = custodyContext(ctx.db)
+    const context = custodyContext(ctx.db, TENANT_ID)
     expect(context.shared.size).toBe(0)
     expect(context.household).toEqual(DEFAULT_HOUSEHOLD)
     expect(splitMonth(context, MONTH, [fact('rent', 100_000)])).toEqual({

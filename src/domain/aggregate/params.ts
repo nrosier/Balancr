@@ -13,7 +13,6 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { logger } from '../../logger.ts'
 
 const log = logger.child({ module: 'aggregate/params' })
@@ -173,8 +172,7 @@ export const DEFAULT_PARAMS: AggregateParams = aggregateParamsSchema.parse({})
  * nightly job going dark because someone saved a bad threshold would be a worse
  * failure than analysing with the default one, and the log says which key broke.
  */
-export function loadParams(db: Db): AggregateParams {
-  const tenantId = getSoleTenantId(db)
+export function loadParams(db: Db, tenantId: string): AggregateParams {
   const row = db
     .select({ valueJson: settings.valueJson })
     .from(settings)
@@ -210,9 +208,8 @@ export function loadParams(db: Db): AggregateParams {
  * never showed. Throws on invalid input — unlike reading, a bad *write* should
  * be reported to whoever is trying to save it.
  */
-export function saveParams(db: Db, patch: AggregateParamsPatch): AggregateParams {
-  const tenantId = getSoleTenantId(db)
-  const current = loadParams(db) as Record<string, Record<string, unknown>>
+export function saveParams(db: Db, tenantId: string, patch: AggregateParamsPatch): AggregateParams {
+  const current = loadParams(db, tenantId) as Record<string, Record<string, unknown>>
   const incoming = (patch ?? {}) as Record<string, Record<string, unknown>>
 
   const merged: Record<string, unknown> = { ...current }

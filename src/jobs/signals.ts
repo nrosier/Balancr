@@ -142,15 +142,16 @@ interface Shared {
  */
 export async function judgeMonth(
   db: Db,
+  tenantId: string,
   month: string,
   monthElapsed: number,
   shared: Shared,
 ): Promise<{ signals: number; scoreBp: number } | null> {
-  const totalsHistory = loadTrailingTotals(db, month, config.JOBS_HISTORY_MONTHS)
+  const totalsHistory = loadTrailingTotals(db, tenantId, month, config.JOBS_HISTORY_MONTHS)
   if (totalsHistory.length === 0) return null
 
   const window = totalsHistory.map((totals) => totals.month)
-  const facts = loadFacts(db, month)
+  const facts = loadFacts(db, tenantId, month)
   const result = computeSignals({
     month,
     today: shared.today,
@@ -159,11 +160,11 @@ export async function judgeMonth(
     totalsHistory,
     netWorth: shared.netWorth,
     netWorthHistory: shared.netWorthHistory,
-    uncategorised: loadUncategorised(db, window),
+    uncategorised: loadUncategorised(db, tenantId, window),
     // Per month, unlike the backlog: a `recompute_mismatch` names the category and
     // the month whose sum disagrees, and showing twenty-four months of them on one
     // page would bury the one that appeared last night.
-    mismatches: loadMismatches(db, [month]),
+    mismatches: loadMismatches(db, tenantId, [month]),
     accounts: shared.accounts,
     latestPortfolioSnapshot: shared.latestPortfolioSnapshot,
     // 'month' rather than the default whole month: this job and `GET /api/budget` cannot
@@ -179,25 +180,25 @@ export async function judgeMonth(
   // The fingerprint that was true for this exact run (#162), so a later pass
   // can tell whether the month needs rejudging without recomputing anything.
   const factsHash = totalsHistory.find((totals) => totals.month === month)?.factsHash ?? null
-  const stored = persistSignals(db, month, result.signals, result.hygiene, factsHash)
+  const stored = persistSignals(db, tenantId, month, result.signals, result.hygiene, factsHash)
 
   // Deterministic proposal generation (#45) — no AI call, so this runs on every
   // pass rather than being gated behind a budget. `createProposal` supersedes
   // any pending proposal for the same target, so a re-judged month naturally
   // keeps one live suggestion per transaction/category instead of piling up.
-  await generateCategoryProposals(db, month)
+  await generateCategoryProposals(db, tenantId, month)
   // Budget-amount proposals only ever target the current month (#251): `judgeMonth`
   // also rejudges last month (and any stale one) for its *signals*, but a proposal
   // to change a closed month's budget has nothing left to act on.
   if (month === shared.latest) {
-    await generateBudgetProposals(db, month, result.signals, facts)
+    await generateBudgetProposals(db, tenantId, month, result.signals, facts)
   }
 
   return { signals: stored.signals, scoreBp: result.hygiene.scoreBp }
 }
 
 async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
-  const latest = latestStoredMonth(db)
+  const latest = latestStoredMonth(db, tenantId)
   if (latest === null) {
     // Before the first sync there is nothing to judge, which is a state to report
     // rather than fail on: the ops table should say "ok, 0 months", not "error".
@@ -205,20 +206,20 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
     return { months: 0, signals: 0 }
   }
 
-  const params = loadParams(db)
-  const latestSnapshot = latestSnapshotDate(db)
+  const params = loadParams(db, tenantId)
+  const latestSnapshot = latestSnapshotDate(db, tenantId)
   const shared: Shared = {
     today: dateIn(now, config.TZ),
     latest,
     accounts: await collectReconciliations(db, tenantId, config.TZ),
-    netWorth: loadLatestNetWorth(db),
-    netWorthHistory: loadNetWorthHistory(db),
+    netWorth: loadLatestNetWorth(db, tenantId),
+    netWorthHistory: loadNetWorthHistory(db, tenantId),
     latestPortfolioSnapshot: latestSnapshot,
     params,
-    benchmark: benchmarkContext(db),
-    custody: custodyContext(db),
-    savings: savingsContext(db),
-    drift: latestDriftPersistence(db, params.drift.persistentMonths),
+    benchmark: benchmarkContext(db, tenantId),
+    custody: custodyContext(db, tenantId),
+    savings: savingsContext(db, tenantId),
+    drift: latestDriftPersistence(db, tenantId, params.drift.persistentMonths),
     // The snapshot's own month, not the newest month of budget facts: see `Shared`.
     driftMonth: latestSnapshot === null ? null : latestSnapshot.slice(0, 7),
   }
@@ -228,7 +229,9 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   // outside the floor, and nothing else would ever revisit it.
   const floor: string[] = []
   for (let back = MONTHS_JUDGED - 1; back >= 0; back -= 1) floor.push(addMonths(latest, -back))
-  const judgedMonths = [...new Set([...floor, ...staleMonths(db, storedMonths(db))])].sort()
+  const judgedMonths = [
+    ...new Set([...floor, ...staleMonths(db, tenantId, storedMonths(db, tenantId))]),
+  ].sort()
 
   let months = 0
   let signals = 0
@@ -236,7 +239,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   // Ascending, so `scoreBp` in the detail ends up being the latest month's — the
   // one an operator reading the ops table is asking about.
   for (const month of judgedMonths) {
-    const judged = await judgeMonth(db, month, monthProgress(month, now, config.TZ), shared)
+    const judged = await judgeMonth(db, tenantId, month, monthProgress(month, now, config.TZ), shared)
     if (judged === null) continue
     months += 1
     signals += judged.signals

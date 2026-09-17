@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
@@ -21,12 +22,14 @@ const ANCHOR = '2026-08'
 
 let ctx: ReturnType<typeof createTestDb>
 let ids: Record<string, string>
+let tenantId: string
 
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
-  syncAccountMap(ctx.db, [{ source: 'ghostfolio', externalId: 'broker', name: 'Broker' }])
-  ids = Object.fromEntries(loadAccountMap(ctx.db).map((row) => [row.externalId, row.id]))
+  tenantId = getSoleTenantId(ctx.db)
+  syncAccountMap(ctx.db, tenantId, [{ source: 'ghostfolio', externalId: 'broker', name: 'Broker' }])
+  ids = Object.fromEntries(loadAccountMap(ctx.db, tenantId).map((row) => [row.externalId, row.id]))
 })
 
 function fact(month: string, id: string, overrides: Partial<MonthlyFact> = {}): MonthlyFact {
@@ -60,6 +63,7 @@ function classify(id: string, nature: Nature | null): void {
 function seedMonth(overrides: Partial<MonthTotals> = {}): void {
   persistMonthTotals(
     ctx.db,
+    tenantId,
     [
       {
         month: ANCHOR,
@@ -84,6 +88,7 @@ function seedMonth(overrides: Partial<MonthTotals> = {}): void {
 function seedNetWorth(investedCents: number): void {
   persistNetWorth(
     ctx.db,
+    tenantId,
     computeNetWorth(`${ANCHOR}-28`, [
       {
         accountMapId: ids.broker as string,
@@ -102,7 +107,7 @@ function seedNetWorth(investedCents: number): void {
 
 describe('scenarioBaseline', () => {
   it('is entirely null before the first aggregation pass', () => {
-    expect(scenarioBaseline(ctx.db)).toEqual({
+    expect(scenarioBaseline(ctx.db, tenantId)).toEqual({
       month: null,
       baselineCents: null,
       snapshotDate: null,
@@ -121,13 +126,13 @@ describe('scenarioBaseline', () => {
     const groceries = fact(ANCHOR, 'groceries', {
       baseline: { baselineCents: 60_000, currentCents: 60_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
-    syncCategoryMeta(ctx.db, [brokerDeposit, pension, groceries])
-    persistFacts(ctx.db, [brokerDeposit, pension, groceries], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [brokerDeposit, pension, groceries])
+    persistFacts(ctx.db, tenantId, [brokerDeposit, pension, groceries], [ANCHOR])
     classify('broker-deposit', 'investments')
     classify('pension', 'investments')
     classify('groceries', 'variable')
 
-    const result = scenarioBaseline(ctx.db)
+    const result = scenarioBaseline(ctx.db, tenantId)
     expect(result.month).toBe(ANCHOR)
     expect(result.baselineCents).toBe(25_000)
   })
@@ -140,45 +145,45 @@ describe('scenarioBaseline', () => {
     const emergencyFund = fact(ANCHOR, 'emergency-fund', {
       baseline: { baselineCents: 15_000, currentCents: 15_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
     })
-    syncCategoryMeta(ctx.db, [brokerDeposit, emergencyFund])
-    persistFacts(ctx.db, [brokerDeposit, emergencyFund], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [brokerDeposit, emergencyFund])
+    persistFacts(ctx.db, tenantId, [brokerDeposit, emergencyFund], [ANCHOR])
     classify('broker-deposit', 'investments')
     classify('emergency-fund', 'savings')
 
-    expect(scenarioBaseline(ctx.db).baselineCents).toBe(20_000)
+    expect(scenarioBaseline(ctx.db, tenantId).baselineCents).toBe(20_000)
   })
 
   it('is null with a stored month but no investments-tagged category', () => {
     seedMonth()
     const groceries = fact(ANCHOR, 'groceries', { spentCents: 60_000 })
-    syncCategoryMeta(ctx.db, [groceries])
-    persistFacts(ctx.db, [groceries], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [groceries])
+    persistFacts(ctx.db, tenantId, [groceries], [ANCHOR])
     classify('groceries', 'variable')
 
-    expect(scenarioBaseline(ctx.db).baselineCents).toBeNull()
+    expect(scenarioBaseline(ctx.db, tenantId).baselineCents).toBeNull()
   })
 
   it('is null when the only investments-tagged category has no baseline yet', () => {
     seedMonth()
     const brokerDeposit = fact(ANCHOR, 'broker-deposit', { spentCents: 20_000 })
-    syncCategoryMeta(ctx.db, [brokerDeposit])
-    persistFacts(ctx.db, [brokerDeposit], [ANCHOR])
+    syncCategoryMeta(ctx.db, tenantId, [brokerDeposit])
+    persistFacts(ctx.db, tenantId, [brokerDeposit], [ANCHOR])
     classify('broker-deposit', 'investments')
 
-    expect(scenarioBaseline(ctx.db).baselineCents).toBeNull()
+    expect(scenarioBaseline(ctx.db, tenantId).baselineCents).toBeNull()
   })
 
   it('reads the starting value from the latest net-worth snapshot', () => {
     seedNetWorth(3_700_000)
-    const result = scenarioBaseline(ctx.db)
+    const result = scenarioBaseline(ctx.db, tenantId)
     expect(result.snapshotDate).toBe(`${ANCHOR}-28`)
     expect(result.startingValueCents).toBe(3_700_000)
   })
 
   it('is null with no net-worth snapshot yet', () => {
     seedMonth()
-    expect(scenarioBaseline(ctx.db).startingValueCents).toBeNull()
-    expect(scenarioBaseline(ctx.db).snapshotDate).toBeNull()
+    expect(scenarioBaseline(ctx.db, tenantId).startingValueCents).toBeNull()
+    expect(scenarioBaseline(ctx.db, tenantId).snapshotDate).toBeNull()
   })
 })
 

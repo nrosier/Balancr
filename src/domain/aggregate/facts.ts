@@ -18,7 +18,6 @@
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { monthsBefore } from '../../util/month.ts'
 import type { ExpectedFrequency } from './baseline.ts'
 import type { MonthlyFact } from './spend.ts'
@@ -46,12 +45,12 @@ export interface PersistResult {
  */
 export function persistFacts(
   db: Db,
+  tenantId: string,
   facts: readonly MonthlyFact[],
   months: readonly string[],
 ): PersistResult {
   const computedAt = new Date()
   const result: PersistResult = { written: 0, removed: 0 }
-  const tenantId = getSoleTenantId(db)
 
   db.transaction((tx) => {
     for (let start = 0; start < facts.length; start += CHUNK) {
@@ -124,10 +123,11 @@ export function persistFacts(
       const where =
         keep.length > 0
           ? and(
+              eq(monthlyCategoryFacts.tenantId, tenantId),
               eq(monthlyCategoryFacts.month, month),
               notInArray(monthlyCategoryFacts.categoryId, keep),
             )
-          : eq(monthlyCategoryFacts.month, month)
+          : and(eq(monthlyCategoryFacts.tenantId, tenantId), eq(monthlyCategoryFacts.month, month))
 
       result.removed += tx.delete(monthlyCategoryFacts).where(where).run().changes
     }
@@ -145,7 +145,11 @@ export function persistFacts(
  * not reset a description someone typed, and re-running the nightly job must not
  * either.
  */
-export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number {
+export function syncCategoryMeta(
+  db: Db,
+  tenantId: string,
+  facts: readonly MonthlyFact[],
+): number {
   // Facts arrive one row per (month, category); the latest month wins, which is
   // the same "latest name" rule `aggregateSpend` applies.
   const latest = new Map<string, MonthlyFact>()
@@ -154,7 +158,6 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
   }
   if (latest.size === 0) return 0
 
-  const tenantId = getSoleTenantId(db)
   const rows = [...latest.values()].map((fact) => ({
     tenantId,
     categoryId: fact.categoryId,
@@ -194,13 +197,14 @@ export function syncCategoryMeta(db: Db, facts: readonly MonthlyFact[]): number 
  * monthly — which is why the first pass of a fresh install still produces
  * baselines rather than nothing.
  */
-export function loadFrequencies(db: Db): Map<string, ExpectedFrequency> {
+export function loadFrequencies(db: Db, tenantId: string): Map<string, ExpectedFrequency> {
   const rows = db
     .select({
       categoryId: categoryMeta.categoryId,
       expectedFrequency: categoryMeta.expectedFrequency,
     })
     .from(categoryMeta)
+    .where(eq(categoryMeta.tenantId, tenantId))
     .all()
 
   return new Map(rows.map((row) => [row.categoryId, row.expectedFrequency]))
@@ -218,7 +222,7 @@ export function loadFrequencies(db: Db): Map<string, ExpectedFrequency> {
  * `syncCategoryMeta` runs first in the same pass. If one ever did, it would be a
  * fact with no name, and dropping it is better than inventing one.
  */
-export function loadFacts(db: Db, month: string): MonthlyFact[] {
+export function loadFacts(db: Db, tenantId: string, month: string): MonthlyFact[] {
   const rows = db
     .select({
       fact: monthlyCategoryFacts,
@@ -227,8 +231,14 @@ export function loadFacts(db: Db, month: string): MonthlyFact[] {
       hidden: categoryMeta.hidden,
     })
     .from(monthlyCategoryFacts)
-    .innerJoin(categoryMeta, eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId))
-    .where(eq(monthlyCategoryFacts.month, month))
+    .innerJoin(
+      categoryMeta,
+      and(
+        eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId),
+        eq(categoryMeta.tenantId, monthlyCategoryFacts.tenantId),
+      ),
+    )
+    .where(and(eq(monthlyCategoryFacts.tenantId, tenantId), eq(monthlyCategoryFacts.month, month)))
     .orderBy(monthlyCategoryFacts.categoryId)
     .all()
 
@@ -297,7 +307,12 @@ export interface CategoryTrends {
  * newest envelope the shortest x axis and make its line look steeper than its
  * neighbour's.
  */
-export function loadCategoryTrends(db: Db, month: string, count: number): CategoryTrends {
+export function loadCategoryTrends(
+  db: Db,
+  tenantId: string,
+  month: string,
+  count: number,
+): CategoryTrends {
   if (count <= 0) return { months: [], byCategory: new Map() }
 
   const months = [...monthsBefore(month, count - 1), month]
@@ -310,7 +325,7 @@ export function loadCategoryTrends(db: Db, month: string, count: number): Catego
       spentCents: monthlyCategoryFacts.spentCents,
     })
     .from(monthlyCategoryFacts)
-    .where(inArray(monthlyCategoryFacts.month, months))
+    .where(and(eq(monthlyCategoryFacts.tenantId, tenantId), inArray(monthlyCategoryFacts.month, months)))
     .all()
 
   const byCategory = new Map<string, number[]>()
@@ -329,6 +344,16 @@ export function loadCategoryTrends(db: Db, month: string, count: number): Catego
 }
 
 /** Every category with a stored meta row, keyed by id. */
-export function loadCategoryMeta(db: Db): Map<string, typeof categoryMeta.$inferSelect> {
-  return new Map(db.select().from(categoryMeta).all().map((row) => [row.categoryId, row]))
+export function loadCategoryMeta(
+  db: Db,
+  tenantId: string,
+): Map<string, typeof categoryMeta.$inferSelect> {
+  return new Map(
+    db
+      .select()
+      .from(categoryMeta)
+      .where(eq(categoryMeta.tenantId, tenantId))
+      .all()
+      .map((row) => [row.categoryId, row]),
+  )
 }

@@ -78,13 +78,18 @@ export interface SeedMonthOptions {
 }
 
 /** A month with facts, totals and a hygiene row — the minimum for a bundle. */
-export function seedMonth(db: Db, month: string, opts: SeedMonthOptions = {}): void {
+export function seedMonth(
+  db: Db,
+  tenantId: string,
+  month: string,
+  opts: SeedMonthOptions = {},
+): void {
   const facts = opts.facts ?? [fact(month, 'food'), fact(month, 'rent')]
-  persistMonthTotals(db, [totals(month)], opts.uncategorised ?? [])
-  syncCategoryMeta(db, facts)
-  persistFacts(db, facts, [month])
-  persistMismatches(db, opts.mismatches ?? [], [month])
+  persistMonthTotals(db, tenantId, [totals(month)], opts.uncategorised ?? [])
+  syncCategoryMeta(db, tenantId, facts)
+  persistFacts(db, tenantId, facts, [month])
+  persistMismatches(db, tenantId, opts.mismatches ?? [], [month])
   if (opts.judged !== false) {
-    persistSignals(db, month, opts.signals ?? [], opts.hygiene ?? clean)
+    persistSignals(db, tenantId, month, opts.signals ?? [], opts.hygiene ?? clean)
   }
 }

@@ -112,16 +112,16 @@ function emptyMonth(month: string): ForecastMonth {
  * null on a fresh deployment — a forecast of €0 forever is a number someone
  * could act on, and it would be a lie.
  */
-export function projectCashflow(db: Db): Forecast | null {
-  const anchor = latestStoredMonth(db)
+export function projectCashflow(db: Db, tenantId: string): Forecast | null {
+  const anchor = latestStoredMonth(db, tenantId)
   if (anchor === null) return null
 
-  const netWorth = loadLatestNetWorth(db)
+  const netWorth = loadLatestNetWorth(db, tenantId)
   if (netWorth === null) return null
 
-  const meta = loadCategoryMeta(db)
+  const meta = loadCategoryMeta(db, tenantId)
   const baselineByCategory = new Map(
-    loadFacts(db, anchor).map((fact) => [fact.categoryId, fact.baseline]),
+    loadFacts(db, tenantId, anchor).map((fact) => [fact.categoryId, fact.baseline]),
   )
 
   const horizon = Array.from({ length: FORECAST_HORIZON_MONTHS }, (_, index) =>
@@ -151,7 +151,7 @@ export function projectCashflow(db: Db): Forecast | null {
   }
 
   if (nonMonthly.length > 0) {
-    const trends = loadCategoryTrends(db, anchor, DETECTION_WINDOW_MONTHS)
+    const trends = loadCategoryTrends(db, tenantId, anchor, DETECTION_WINDOW_MONTHS)
     for (const categoryId of nonMonthly) {
       const row = meta.get(categoryId)
       const series = trends.byCategory.get(categoryId)
@@ -185,13 +185,13 @@ export function projectCashflow(db: Db): Forecast | null {
     }
   }
 
-  const totalsHistory = loadTrailingTotals(db, anchor, config.JOBS_HISTORY_MONTHS)
+  const totalsHistory = loadTrailingTotals(db, tenantId, anchor, config.JOBS_HISTORY_MONTHS)
   const typicalSpendCents =
     totalsHistory.length > 0
       ? Math.round(
           ewma(
             totalsHistory.map((entry) => entry.spentCents),
-            loadParams(db).baseline.halfLifeMonths,
+            loadParams(db, tenantId).baseline.halfLifeMonths,
           ),
         )
       : 0

@@ -13,10 +13,9 @@
  * rows and rewriting all of them for a one-cent change is real write
  * amplification; a month here is one row and at most a handful of drift rows.
  */
-import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { monthlyTotals, recomputeMismatches } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { addMonths, monthsBefore } from '../../util/month.ts'
 import type { MonthTotals, RecomputeMismatch, UncategorisedBucket } from './spend.ts'
 
@@ -49,13 +48,13 @@ export interface StoredMonthTotals extends MonthTotals {
  */
 export function persistMonthTotals(
   db: Db,
+  tenantId: string,
   totals: readonly MonthTotals[],
   uncategorised: readonly UncategorisedBucket[],
   fingerprints: ReadonlyMap<string, string> = new Map(),
 ): number {
   if (totals.length === 0) return 0
 
-  const tenantId = getSoleTenantId(db)
   const buckets = new Map(uncategorised.map((bucket) => [bucket.month, bucket]))
   const computedAt = new Date()
   const months = totals.map((month) => month.month)
@@ -68,7 +67,7 @@ export function persistMonthTotals(
         factsChangedAt: monthlyTotals.factsChangedAt,
       })
       .from(monthlyTotals)
-      .where(inArray(monthlyTotals.month, months))
+      .where(and(eq(monthlyTotals.tenantId, tenantId), inArray(monthlyTotals.month, months)))
       .all()
       .map((row) => [row.month, row] as const),
   )
@@ -104,7 +103,12 @@ export function persistMonthTotals(
 
   db.transaction((tx) => {
     tx.delete(monthlyTotals)
-      .where(inArray(monthlyTotals.month, rows.map((row) => row.month)))
+      .where(
+        and(
+          eq(monthlyTotals.tenantId, tenantId),
+          inArray(monthlyTotals.month, rows.map((row) => row.month)),
+        ),
+      )
       .run()
     tx.insert(monthlyTotals).values(rows).run()
   })
@@ -121,22 +125,27 @@ export function persistMonthTotals(
  * ahead of its real history. A zero that means "there was nothing" and a zero that
  * means "we did not look" render identically on a chart, and only one of them is true.
  */
-export function earliestStoredMonth(db: Db): string | null {
+export function earliestStoredMonth(db: Db, tenantId: string): string | null {
   const row = db
     .select({ month: sql<string | null>`min(${monthlyTotals.month})` })
     .from(monthlyTotals)
+    .where(eq(monthlyTotals.tenantId, tenantId))
     .get()
   return row?.month ?? null
 }
 
 /** The stored months, ascending, skipping any that has never been computed. */
-export function loadMonthTotals(db: Db, months: readonly string[]): StoredMonthTotals[] {
+export function loadMonthTotals(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+): StoredMonthTotals[] {
   if (months.length === 0) return []
 
   return db
     .select()
     .from(monthlyTotals)
-    .where(inArray(monthlyTotals.month, [...months]))
+    .where(and(eq(monthlyTotals.tenantId, tenantId), inArray(monthlyTotals.month, [...months])))
     .orderBy(monthlyTotals.month)
     .all()
     .map((row) => ({
@@ -172,12 +181,13 @@ export function loadMonthTotals(db: Db, months: readonly string[]): StoredMonthT
  */
 export function loadTrailingTotals(
   db: Db,
+  tenantId: string,
   month: string,
   count: number,
 ): StoredMonthTotals[] {
   if (count <= 0) return []
 
-  const stored = loadMonthTotals(db, [...monthsBefore(month, count - 1), month])
+  const stored = loadMonthTotals(db, tenantId, [...monthsBefore(month, count - 1), month])
   let start = stored.length - 1
   if (start < 0 || stored[start]?.month !== month) return []
   while (start > 0 && stored[start - 1]?.month === addMonths(stored[start]?.month as string, -1)) {
@@ -187,7 +197,11 @@ export function loadTrailingTotals(
 }
 
 /** One bucket per stored month, ascending. A zero month is still a bucket. */
-export function loadUncategorised(db: Db, months: readonly string[]): UncategorisedBucket[] {
+export function loadUncategorised(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+): UncategorisedBucket[] {
   if (months.length === 0) return []
 
   return db
@@ -197,7 +211,7 @@ export function loadUncategorised(db: Db, months: readonly string[]): Uncategori
       amountCents: monthlyTotals.uncategorisedCents,
     })
     .from(monthlyTotals)
-    .where(inArray(monthlyTotals.month, [...months]))
+    .where(and(eq(monthlyTotals.tenantId, tenantId), inArray(monthlyTotals.month, [...months])))
     .orderBy(monthlyTotals.month)
     .all()
 }
@@ -212,12 +226,12 @@ export function loadUncategorised(db: Db, months: readonly string[]): Uncategori
  */
 export function persistMismatches(
   db: Db,
+  tenantId: string,
   mismatches: readonly RecomputeMismatch[],
   months: readonly string[],
 ): MonthPersistResult {
   if (months.length === 0) return { months: 0, mismatches: 0 }
 
-  const tenantId = getSoleTenantId(db)
   const computedAt = new Date()
   const rows = mismatches
     .filter((mismatch) => months.includes(mismatch.month))
@@ -234,7 +248,9 @@ export function persistMismatches(
 
   db.transaction((tx) => {
     tx.delete(recomputeMismatches)
-      .where(inArray(recomputeMismatches.month, [...months]))
+      .where(
+        and(eq(recomputeMismatches.tenantId, tenantId), inArray(recomputeMismatches.month, [...months])),
+      )
       .run()
     if (rows.length > 0) tx.insert(recomputeMismatches).values(rows).run()
   })
@@ -242,7 +258,11 @@ export function persistMismatches(
   return { months: months.length, mismatches: rows.length }
 }
 
-export function loadMismatches(db: Db, months: readonly string[]): RecomputeMismatch[] {
+export function loadMismatches(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+): RecomputeMismatch[] {
   if (months.length === 0) return []
 
   return db
@@ -255,7 +275,9 @@ export function loadMismatches(db: Db, months: readonly string[]): RecomputeMism
       differenceCents: recomputeMismatches.differenceCents,
     })
     .from(recomputeMismatches)
-    .where(inArray(recomputeMismatches.month, [...months]))
+    .where(
+      and(eq(recomputeMismatches.tenantId, tenantId), inArray(recomputeMismatches.month, [...months])),
+    )
     .orderBy(recomputeMismatches.month, recomputeMismatches.categoryId)
     .all()
 }
@@ -269,20 +291,22 @@ export function loadMismatches(db: Db, months: readonly string[]): RecomputeMism
  * way forward again. It is also the answer for a month that was never computed — a
  * stale bookmark should still be able to navigate somewhere real.
  */
-export function storedMonths(db: Db): string[] {
+export function storedMonths(db: Db, tenantId: string): string[] {
   return db
     .select({ month: monthlyTotals.month })
     .from(monthlyTotals)
+    .where(eq(monthlyTotals.tenantId, tenantId))
     .orderBy(desc(monthlyTotals.month))
     .all()
     .map((row) => row.month)
 }
 
 /** The most recent stored month, or null before the first sync. */
-export function latestStoredMonth(db: Db): string | null {
+export function latestStoredMonth(db: Db, tenantId: string): string | null {
   const row = db
     .select({ month: monthlyTotals.month })
     .from(monthlyTotals)
+    .where(eq(monthlyTotals.tenantId, tenantId))
     .orderBy(desc(monthlyTotals.month))
     .limit(1)
     .get()
@@ -290,9 +314,13 @@ export function latestStoredMonth(db: Db): string | null {
 }
 
 /** Drops a month entirely. Used by tests and by a manual recompute. */
-export function forgetMonth(db: Db, month: string): void {
+export function forgetMonth(db: Db, tenantId: string, month: string): void {
   db.transaction((tx) => {
-    tx.delete(monthlyTotals).where(eq(monthlyTotals.month, month)).run()
-    tx.delete(recomputeMismatches).where(eq(recomputeMismatches.month, month)).run()
+    tx.delete(monthlyTotals)
+      .where(and(eq(monthlyTotals.tenantId, tenantId), eq(monthlyTotals.month, month)))
+      .run()
+    tx.delete(recomputeMismatches)
+      .where(and(eq(recomputeMismatches.tenantId, tenantId), eq(recomputeMismatches.month, month)))
+      .run()
   })
 }

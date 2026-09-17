@@ -73,7 +73,7 @@ describe('the context, read off the database', () => {
     meta('brokerage', 'investments')
     meta('rent', null)
 
-    const context = savingsContext(ctx.db)
+    const context = savingsContext(ctx.db, TENANT_ID)
     expect([...context.savings]).toEqual(['emergency-fund'])
     expect([...context.investments]).toEqual(['brokerage'])
 
@@ -93,14 +93,14 @@ describe('the context, read off the database', () => {
 
   it('has no baseline when neither tagged envelope has one yet', () => {
     meta('emergency-fund', 'savings')
-    const context = savingsContext(ctx.db)
+    const context = savingsContext(ctx.db, TENANT_ID)
     const aggregate = splitSavingsMonth(context, [fact('emergency-fund', 20_000)])
     expect(aggregate.baselineCents).toBeNull()
     expect(aggregate.spentCents).toBe(20_000)
   })
 
   it('falls back to no tags at all on an empty database', () => {
-    const context = savingsContext(ctx.db)
+    const context = savingsContext(ctx.db, TENANT_ID)
     expect(context.savings.size).toBe(0)
     expect(context.investments.size).toBe(0)
     expect(splitSavingsMonth(context, [fact('rent', 100_000)])).toEqual({

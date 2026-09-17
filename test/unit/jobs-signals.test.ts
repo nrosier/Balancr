@@ -85,9 +85,9 @@ function fact(month: string, overrides: Partial<MonthlyFact> = {}): MonthlyFact 
 
 /** A month with facts and a fingerprint, exactly as a sync pass would leave it. */
 function seed(month: string, hash: string, facts: MonthlyFact[] = [fact(month)]): void {
-  persistMonthTotals(db, [totals(month)], [], new Map([[month, hash]]))
-  syncCategoryMeta(db, facts)
-  persistFacts(db, facts, [month])
+  persistMonthTotals(db, TENANT_ID, [totals(month)], [], new Map([[month, hash]]))
+  syncCategoryMeta(db, TENANT_ID, facts)
+  persistFacts(db, TENANT_ID, facts, [month])
 }
 
 const run = async (now: Date): Promise<JobDetail> =>
@@ -99,7 +99,7 @@ describe('which months get judged (#162)', () => {
     // 2026-01 is well outside the two-month floor once the latest month is
     // 2026-03. Judged now with the hash the sync pass wrote for it.
     seed('2026-01', 'hash-a')
-    persistSignals(db, '2026-01', [], { scoreBp: 10_000, deductions: [] }, 'hash-a')
+    persistSignals(db, TENANT_ID, '2026-01', [], { scoreBp: 10_000, deductions: [] }, 'hash-a')
     seed('2026-02', 'hash-x')
     seed('2026-03', 'hash-y')
 
@@ -109,7 +109,7 @@ describe('which months get judged (#162)', () => {
     // the floor, so this run must not touch it.
     const first = await run(now)
     expect(first.months).toBe(2)
-    expect(loadHygiene(db, '2026-01')).toEqual({ scoreBp: 10_000, deductions: [] })
+    expect(loadHygiene(db, TENANT_ID, '2026-01')).toEqual({ scoreBp: 10_000, deductions: [] })
 
     // An edit lands in January. The next sync would write a new hash; simulated
     // here directly, the way `sync.ts` does it.
@@ -121,7 +121,7 @@ describe('which months get judged (#162)', () => {
 
   it('never rejudges a month whose fingerprint has not moved', async () => {
     seed('2026-01', 'hash-a')
-    persistSignals(db, '2026-01', [], { scoreBp: 10_000, deductions: [] }, 'hash-a')
+    persistSignals(db, TENANT_ID, '2026-01', [], { scoreBp: 10_000, deductions: [] }, 'hash-a')
     seed('2026-02', 'hash-x')
     seed('2026-03', 'hash-y')
 
@@ -161,7 +161,7 @@ describe('budget-amount proposals only ever target the current month (#251)', ()
 
     await run(new Date('2026-03-15T02:00:00Z'))
 
-    const targets = pendingProposals(db)
+    const targets = pendingProposals(db, TENANT_ID)
       .filter((row) => row.type === 'budget_amount.set')
       .map((row) => decodeBudgetTarget(row.targetRef).month)
 
