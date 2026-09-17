@@ -82,7 +82,7 @@ export function narrativePeriod(now: Date): string {
   return addMonths(spendMonthOf(now), -1)
 }
 
-async function run({ db, now, log, force }: JobContext): Promise<JobDetail> {
+async function run({ db, tenantId, now, log, force }: JobContext): Promise<JobDetail> {
   // First, because it is free and correct even on a night with no network.
   const expired = expireProposals(db, now)
 
@@ -90,7 +90,7 @@ async function run({ db, now, log, force }: JobContext): Promise<JobDetail> {
   // variable to change rather than saying "0 findings" for the third night running.
   // `ok`, not an error: an instance with no key is correctly configured, and a red
   // job row every night would train its owner to ignore the column.
-  const availability = tenantAiAvailability(db)
+  const availability = tenantAiAvailability(db, tenantId)
   if (!availability.enabled) {
     log.info({ expired, reason: availability.reason }, 'the AI layer is off; nothing to run')
     return {
@@ -113,13 +113,13 @@ async function run({ db, now, log, force }: JobContext): Promise<JobDetail> {
 
   const analyses: AnalysisOutcome[] = []
   for (const month of monthsToAnalyse(latest, now, config.TZ)) {
-    analyses.push(await runAnalysis(db, { month, now, userId: null, force: force ?? false }))
+    analyses.push(await runAnalysis(db, tenantId, { month, now, userId: null, force: force ?? false }))
   }
 
   // The narrative comes after the analysis on purpose: it reads the same month's
   // facts, and if the budget only stretches to one call tonight, the ranked
   // findings are worth more than the prose.
-  const narrative: NarrativeOutcome = await runNarrative(db, {
+  const narrative: NarrativeOutcome = await runNarrative(db, tenantId, {
     period: narrativePeriod(now),
     now,
     userId: null,

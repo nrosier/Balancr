@@ -665,8 +665,8 @@ function benchmarkSetting(db: Db): Settings['benchmark'] {
  * this screen even once would make the settings response the second place it could
  * leak from, on top of the database column.
  */
-function loadIntegrations(db: Db): IntegrationsSetting {
-  const row = integrationsRow(db)
+function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
+  const row = integrationsRow(db, tenantId)
   return integrationsSettingSchema.parse({
     actual: {
       serverUrl: row.actualServerUrl,
@@ -694,7 +694,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
   const accounts = loadAccountMap(db)
   const exclusionReasons = netWorthExclusionReasons(accounts)
-  const budget = budgetState(db)
+  const budget = budgetState(db, user.tenantId)
 
   return settingsSchema.parse({
     build: { version: APP_VERSION, revision: APP_REVISION },
@@ -715,7 +715,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     advice: riskProfileSetting(db),
     benchmark: benchmarkSetting(db),
     property: loadProperties(db),
-    integrations: loadIntegrations(db),
+    integrations: loadIntegrations(db, user.tenantId),
     // Scoped through the requester's own session, not `getSoleTenantId` — one of
     // the few paths in this file already correct for a second tenant (#373).
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
@@ -740,7 +740,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       signals: candidate.signals,
     })),
     ai: {
-      availability: tenantAiAvailability(db),
+      availability: tenantAiAvailability(db, user.tenantId),
       month: budget.month,
       spentMicroEur: budget.spentMicroEur,
       budgetMicroEur: budget.budgetMicroEur,
@@ -1034,7 +1034,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(actualIntegrationPatchRequest, request.body)
     const tenantId = getSoleTenantId(db)
-    const before = loadIntegrations(db)
+    const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
       .set({
@@ -1049,7 +1049,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 
-    const after = loadIntegrations(db)
+    const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
       action: 'settings.integrations',
       entity: 'tenant_integrations',
@@ -1067,7 +1067,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
     const tenantId = getSoleTenantId(db)
-    const before = loadIntegrations(db)
+    const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
       .set({
@@ -1080,7 +1080,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 
-    const after = loadIntegrations(db)
+    const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
       action: 'settings.integrations',
       entity: 'tenant_integrations',
@@ -1098,7 +1098,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(geminiIntegrationPatchRequest, request.body)
     const tenantId = getSoleTenantId(db)
-    const before = loadIntegrations(db)
+    const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
       .set({
@@ -1113,7 +1113,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 
-    const after = loadIntegrations(db)
+    const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
       action: 'settings.integrations',
       entity: 'tenant_integrations',

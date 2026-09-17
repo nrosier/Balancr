@@ -116,6 +116,7 @@ type InvestmentHalf =
  */
 async function investmentHalf(
   db: Db,
+  tenantId: string,
   contributions: readonly AccountValue[],
   months: readonly string[],
   log: Logger,
@@ -127,7 +128,7 @@ async function investmentHalf(
   for (const target of rows) {
     let performance: PortfolioPerformance
     try {
-      performance = await fetchPortfolioPerformance(db, 'max', target.externalId)
+      performance = await fetchPortfolioPerformance(db, tenantId, 'max', target.externalId)
     } catch (error) {
       log.warn({ err: error, account: target.name }, 'Ghostfolio account series unavailable')
       return { kind: 'unavailable', why: `no performance series for ${target.name}` }
@@ -192,7 +193,7 @@ async function backfillNetWorth(
   // month-ends below, and it means the historical dates are classified by exactly the
   // function that classifies the live one.
   const today = computeNetWorth(dateIn(now, config.TZ), values)
-  const half = await investmentHalf(db, today.contributions, months, log)
+  const half = await investmentHalf(db, tenantId, today.contributions, months, log)
 
   if (half.kind === 'unavailable') {
     log.warn(
@@ -255,7 +256,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
 
   let performance: PortfolioPerformance | null = null
   try {
-    performance = await fetchPortfolioPerformance(db)
+    performance = await fetchPortfolioPerformance(db, tenantId)
   } catch (error) {
     log.warn(
       { err: error },

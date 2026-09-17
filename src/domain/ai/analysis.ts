@@ -431,10 +431,11 @@ export interface AnalysisEstimate {
  */
 export function estimateAnalysis(
   db: Db,
+  tenantId: string,
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const prepared = prepareMonth(db, options.month, locale)
 
   if (prepared === null) {
@@ -463,7 +464,7 @@ export function estimateAnalysis(
   }
 
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimateMicroEur, options.now ?? new Date())
+  const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
     month: options.month,
@@ -501,9 +502,13 @@ function resolvePromptFor(db: Db, locale: string, promptId: string | undefined):
   }
 }
 
-export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<AnalysisOutcome> {
+export async function runAnalysis(
+  db: Db,
+  tenantId: string,
+  options: AnalysisOptions,
+): Promise<AnalysisOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const now = options.now ?? new Date()
   const month = options.month
   const persist = options.persist !== false
@@ -571,7 +576,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
   }
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimate, now)
+  const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     // Recorded at zero cost: nothing was sent. The payload is stored anyway, so
     // the audit view shows what *would* have gone out.
@@ -600,7 +605,7 @@ export async function runAnalysis(db: Db, options: AnalysisOptions): Promise<Ana
 
   let result
   try {
-    result = await callGemini(db, {
+    result = await callGemini(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: analysisInstruction(payload),

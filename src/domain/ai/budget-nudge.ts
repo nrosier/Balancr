@@ -225,10 +225,11 @@ function decodeBudgetTargetCategoryId(targetRef: string): string {
  */
 export function estimateBudgetNudge(
   db: Db,
+  tenantId: string,
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): BudgetNudgeEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const refused = (reason: string): BudgetNudgeEstimate => ({
     month: options.month,
     model,
@@ -245,7 +246,7 @@ export function estimateBudgetNudge(
 
   const payloadChars = JSON.stringify(redaction.payload).length
   const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimateMicroEur, options.now ?? new Date())
+  const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
     month: options.month,
@@ -266,9 +267,13 @@ export function estimateBudgetNudge(
  * candidate does not fail the batch — `createProposal`'s `ProposalError` is
  * caught per item, exactly as `runCategoryGuess` catches it.
  */
-export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promise<BudgetNudgeOutcome> {
+export async function runBudgetNudge(
+  db: Db,
+  tenantId: string,
+  options: BudgetNudgeOptions,
+): Promise<BudgetNudgeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db).gemini.modelFast
+  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
   const now = options.now ?? new Date()
   const month = options.month
 
@@ -307,7 +312,7 @@ export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promi
   const payloadHash = hashPayload(payload)
 
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
-  const decision = checkBudget(db, estimate, now)
+  const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, {
       kind: 'budget_nudge',
@@ -336,7 +341,7 @@ export async function runBudgetNudge(db: Db, options: BudgetNudgeOptions): Promi
 
   let result
   try {
-    result = await callGemini(db, {
+    result = await callGemini(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(BUDGET_NUDGE_SYSTEM, locale),
       instruction: budgetNudgeInstruction(payload),

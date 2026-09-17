@@ -23,7 +23,6 @@
  */
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
 import {
@@ -63,8 +62,8 @@ export class GhostfolioError extends Error {
   }
 }
 
-function url(db: Db, path: string): string {
-  return `${resolvedIntegrations(db).ghostfolio.url.replace(/\/+$/, '')}${path}`
+function url(db: Db, tenantId: string, path: string): string {
+  return `${resolvedIntegrations(db, tenantId).ghostfolio.url.replace(/\/+$/, '')}${path}`
 }
 
 /**
@@ -119,11 +118,16 @@ async function decode(path: string, response: Response): Promise<unknown> {
  * There is no `method` here and no way to pass one: `fetch` defaults to GET, and the
  * default is the only thing this function can issue.
  */
-async function request(db: Db, path: string, options: ReadOptions = {}): Promise<unknown> {
+async function request(
+  db: Db,
+  tenantId: string,
+  path: string,
+  options: ReadOptions = {},
+): Promise<unknown> {
   const authenticated = options.authenticated ?? true
 
   const get = async (bearer: string | null): Promise<Response> =>
-    fetch(url(db, path), {
+    fetch(url(db, tenantId, path), {
       headers: {
         accept: 'application/json',
         ...(bearer === null ? {} : { authorization: `Bearer ${bearer}` }),
@@ -133,19 +137,19 @@ async function request(db: Db, path: string, options: ReadOptions = {}): Promise
 
   let response: Response
   try {
-    response = await get(authenticated ? await token(db) : null)
+    response = await get(authenticated ? await token(db, tenantId) : null)
   } catch (error) {
     throw networkError(path, error)
   }
 
   if (response.status === 401 && authenticated) {
     log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
-    tokens.delete(getSoleTenantId(db))
+    tokens.delete(tenantId)
     // Wrapped too: the retry can fail the same way the first attempt can, and an
     // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
     // jobs could not tell apart from a bug in themselves.
     try {
-      response = await get(await token(db))
+      response = await get(await token(db, tenantId))
     } catch (error) {
       throw networkError(path, error)
     }
@@ -181,18 +185,17 @@ function parse<T>(path: string, schema: z.ZodType<T>, raw: unknown): T {
  * It takes no path/body argument, so there is nothing here for a future caller to point
  * at a different path or fill with a different body.
  */
-async function token(db: Db): Promise<string> {
-  const tenantId = getSoleTenantId(db)
+async function token(db: Db, tenantId: string): Promise<string> {
   const cached = tokens.get(tenantId)
   if (cached !== undefined) return cached
 
   const path = '/api/v1/auth/anonymous'
   let response: Response
   try {
-    response = await fetch(url(db, path), {
+    response = await fetch(url(db, tenantId, path), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ accessToken: resolvedIntegrations(db).ghostfolio.token }),
+      body: JSON.stringify({ accessToken: resolvedIntegrations(db, tenantId).ghostfolio.token }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch (error) {
@@ -226,15 +229,15 @@ export function resetGhostfolioToken(tenantId?: string): void {
 // ---------------------------------------------------------------------------
 
 /** Unauthenticated liveness check. The only endpoint safe to call before auth. */
-export async function fetchHealth(db: Db): Promise<void> {
+export async function fetchHealth(db: Db, tenantId: string): Promise<void> {
   const path = '/api/v1/health'
-  parse(path, healthSchema, await request(db, path, { authenticated: false }))
+  parse(path, healthSchema, await request(db, tenantId, path, { authenticated: false }))
 }
 
 /** Holdings and summary. The backbone of the portfolio view. */
-export async function fetchPortfolioDetails(db: Db): Promise<PortfolioDetails> {
+export async function fetchPortfolioDetails(db: Db, tenantId: string): Promise<PortfolioDetails> {
   const path = '/api/v1/portfolio/details'
-  return parse(path, portfolioDetailsSchema, await request(db, path))
+  return parse(path, portfolioDetailsSchema, await request(db, tenantId, path))
 }
 
 /**
@@ -271,6 +274,7 @@ export async function fetchPortfolioDetails(db: Db): Promise<PortfolioDetails> {
  */
 export async function fetchPortfolioPerformance(
   db: Db,
+  tenantId: string,
   range = 'max',
   accountId?: string,
 ): Promise<PortfolioPerformance> {
@@ -281,7 +285,7 @@ export async function fetchPortfolioPerformance(
   for (const [index, path] of paths.entries()) {
     const last = index === paths.length - 1
     try {
-      const raw = await request(db, path)
+      const raw = await request(db, tenantId, path)
       // Logged once per pass and at debug, because the answer is stable for the
       // life of an instance — but the next time this moves, the log says where it
       // was last found.
@@ -304,7 +308,7 @@ export async function fetchPortfolioPerformance(
  * Ghostfolio, and `account_map.is_source_of_truth` decides which one counts.
  * Without this list there is nothing to map against.
  */
-export async function fetchAccounts(db: Db): Promise<GhostfolioAccounts> {
+export async function fetchAccounts(db: Db, tenantId: string): Promise<GhostfolioAccounts> {
   const path = '/api/v1/account'
-  return parse(path, accountsSchema, await request(db, path))
+  return parse(path, accountsSchema, await request(db, tenantId, path))
 }
