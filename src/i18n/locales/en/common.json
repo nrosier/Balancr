@@ -34,6 +34,17 @@
     "localDisabled": "Local sign-in is not available from this network.",
     "lockedUntil": "Too many attempts. Locked until {{when}}.",
     "noMethods": "No sign-in method is available from this network.",
+    "onboarding": {
+      "createTab": "Create a new household",
+      "householdLabel": "Household name",
+      "codeLabel": "Invite code",
+      "lede": "You've signed in, but there's no household waiting for you yet.",
+      "ledeNamed": "Welcome, {{who}}. There's no household waiting for you yet.",
+      "modeLabel": "How would you like to join",
+      "redeemTab": "Redeem an invite code",
+      "submit": "Continue",
+      "submitting": "Submitting…"
+    },
     "or": "or",
     "password": "Password",
     "signIn": "Sign in",

@@ -137,6 +137,7 @@ const EMPTY_READS: Record<string, unknown> = {
     prompts: [],
     accounts: [],
     dedupe: [],
+    invites: [],
     ai: {
       models: { fast: 'gemini-3.7-flash', deep: 'gemini-3.1-pro-preview' },
       month: '2026-09',
@@ -400,6 +401,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     prompts: [],
     accounts: [],
     dedupe: [],
+    invites: [],
     ai: {
       availability,
       month: '2026-09',

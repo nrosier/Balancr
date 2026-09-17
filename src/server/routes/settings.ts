@@ -111,6 +111,7 @@ import {
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { recordAudit } from '../../domain/audit.ts'
+import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
@@ -124,6 +125,8 @@ import {
   accountSettingSchema,
   integrationsSettingSchema,
   integrationTestSchema,
+  inviteCreatedSchema,
+  inviteSettingSchema,
   promptBodySchema,
   promptDiffSchema,
   promptSchema,
@@ -131,6 +134,8 @@ import {
   type AccountSetting,
   type IntegrationsSetting,
   type IntegrationTest,
+  type InviteCreated,
+  type InviteSetting,
   type PromptBody,
   type PromptDiff,
   type PromptSetting,
@@ -386,6 +391,12 @@ const accountGroupRequest = z
     message: 'sourceOfTruthId must be one of accountMapIds',
     path: ['sourceOfTruthId'],
   })
+
+/** #373: what an owner fills in to hand out an invite. The label is theirs alone
+ * — free text for "for Jo" — never shown to whoever redeems the code. */
+const inviteCreateRequest = z.strictObject({
+  label: z.string().min(1).max(120).optional(),
+})
 
 /**
  * A prompt body: not empty once trimmed, and not so long the diff refuses it.
@@ -705,6 +716,9 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     benchmark: benchmarkSetting(db),
     property: loadProperties(db),
     integrations: loadIntegrations(db),
+    // Scoped through the requester's own session, not `getSoleTenantId` — one of
+    // the few paths in this file already correct for a second tenant (#373).
+    invites: listInvites(db, user.tenantId).map(toInviteSetting),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -779,6 +793,16 @@ const accountJudgement = (row: AccountMapRow): Record<string, unknown> => ({
   // Without this field that audit entry would read as before === after, which is to
   // say it would record a decision as a no-op.
   decidedFields: [...decidedFields(row)].sort(),
+})
+
+/** `TenantInvite` as the wire shape — never the code, only ever `codeHash`'s absence. */
+const toInviteSetting = (invite: TenantInvite): InviteSetting => ({
+  id: invite.id,
+  label: invite.label,
+  createdAt: invite.createdAt.toISOString(),
+  expiresAt: invite.expiresAt.toISOString(),
+  redeemedAt: invite.redeemedAt === null ? null : invite.redeemedAt.toISOString(),
+  revokedAt: invite.revokedAt === null ? null : invite.revokedAt.toISOString(),
 })
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
@@ -1736,6 +1760,36 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       // language stopped having an answer of its own, not that it gained one.
       after: null,
     })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Mints an invite (#373). The one response that carries the plaintext code —
+   * `buildSettings`/the invite list never do, since only `codeHash` is stored.
+   */
+  app.post('/api/settings/invites', (request: FastifyRequest): InviteCreated => {
+    const user = requireOwner(request)
+    const { label } = parseBody(inviteCreateRequest, request.body)
+
+    const { invite, code } = createInvite(db, {
+      tenantId: user.tenantId,
+      createdBy: user.id,
+      label: label ?? null,
+    })
+
+    return inviteCreatedSchema.parse({ invite: toInviteSetting(invite), code })
+  })
+
+  /** Closes an invite early. Idempotent, like the domain function it calls. */
+  app.post('/api/settings/invites/:id/revoke', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const existing = listInvites(db, user.tenantId).find((invite) => invite.id === id)
+    if (existing === undefined) throw notFound('No such invite.')
+
+    revokeInvite(db, { tenantId: user.tenantId, inviteId: id, actorId: user.id })
 
     return buildSettings(db, request)
   })

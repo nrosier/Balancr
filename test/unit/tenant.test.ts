@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { tenants, users } from '../../src/db/schema.ts'
-import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { allTenantIds, getSoleTenantId } from '../../src/db/tenant.ts'
 
 interface JournalEntry {
   tag: string
@@ -103,5 +103,22 @@ describe('getSoleTenantId', () => {
   it('throws when more than one tenant exists', () => {
     ctx.db.insert(tenants).values({ id: 'second-tenant', label: 'Second' }).run()
     expect(() => getSoleTenantId(ctx.db)).toThrow(/expected exactly one tenant, found 2/)
+  })
+})
+
+describe('allTenantIds', () => {
+  it('returns every tenant once a second one exists (#373 onboarding)', () => {
+    const { db, sqlite } = createTestDb()
+    applyMigrations(db as never)
+    try {
+      const [bootstrap] = db.select().from(tenants).all()
+      const second = db.insert(tenants).values({ label: 'Second' }).returning().all()[0]
+
+      const ids = allTenantIds(db)
+      expect(ids).toHaveLength(2)
+      expect(ids).toEqual(expect.arrayContaining([bootstrap?.id, second?.id]))
+    } finally {
+      sqlite.close()
+    }
   })
 })

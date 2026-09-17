@@ -23,6 +23,7 @@ import type { FastifyInstance } from 'fastify'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { users } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { requireUser } from '../../src/server/auth/guard.ts'
 import { createOidcClient, OIDC_SCOPE } from '../../src/server/auth/oidc.ts'
 import { hashSessionToken, readSession } from '../../src/server/auth/sessions.ts'
@@ -57,6 +58,22 @@ beforeEach(async () => {
   applyMigrations(ctx.db as never)
   issuer = await createFakeIssuer(REDIRECT_URI)
   app = await buildApp({ db: ctx.db, oidc: createOidcClient(issuer.settings), web: null })
+
+  // Since #373, an unknown `sub` goes to onboarding rather than being
+  // auto-provisioned — see auth-users.test.ts and routes-onboarding.test.ts for
+  // that path. This file is about the OIDC round trip itself, so the fake
+  // issuer's default identity is seeded as an existing account up front, the
+  // same way `test/unit/auth-provision.test.ts` seeds a break-glass account.
+  ctx.db
+    .insert(users)
+    .values({
+      tenantId: getSoleTenantId(ctx.db),
+      oidcSub: 'ak-subject-1',
+      email: 'nick@example.test',
+      displayName: 'Nick',
+      role: 'owner',
+    })
+    .run()
 
   // No `auth` in the config: this is the deny-by-default case, and it is here
   // rather than in a fixture so the omission is visible.
@@ -233,7 +250,7 @@ describe('the redirect out', () => {
 })
 
 describe('the callback', () => {
-  it('establishes a session and creates the user', async () => {
+  it('establishes a session for the existing user', async () => {
     const res = await login('/budget')
     expect(res.statusCode).toBe(303)
     expect(res.headers.location).toBe('/budget')
@@ -279,7 +296,8 @@ describe('the callback', () => {
 
     expect(res.statusCode).toBe(400)
     expect(cookieValue(res, SESSION_COOKIE)).toBeUndefined()
-    expect(ctx.db.select().from(users).all()).toHaveLength(0)
+    // Just the one seeded in `beforeEach` — this failed attempt created nobody.
+    expect(ctx.db.select().from(users).all()).toHaveLength(1)
   })
 
   it('refuses a flow cookie that matches no flow', async () => {
@@ -309,7 +327,8 @@ describe('the callback', () => {
     // token issued for the wrong client must not be a login here.
     const res = await login(undefined, { audience: 'some-other-client' })
     expect(res.statusCode).toBe(400)
-    expect(ctx.db.select().from(users).all()).toHaveLength(0)
+    // Just the one seeded in `beforeEach` — this failed attempt created nobody.
+    expect(ctx.db.select().from(users).all()).toHaveLength(1)
   })
 
   it('trusts the ID token because of the channel, not its signature', async () => {

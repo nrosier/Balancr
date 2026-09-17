@@ -1563,6 +1563,30 @@ export const integrationTestSchema = z.object({
   message: z.string().nullable(),
 })
 
+/**
+ * One invite an owner has issued (#373), as `/api/settings` lists it. The code
+ * itself never appears here — only `inviteCreatedSchema` carries it, and only
+ * once, on the response to the create call that minted it.
+ */
+export const inviteSettingSchema = z.object({
+  id: z.string(),
+  label: z.string().nullable(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  redeemedAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+})
+
+/**
+ * `POST /api/settings/invites`, on success — the one place the plaintext code
+ * appears. Not part of `settingsSchema`: showing it once, on the response to
+ * the call that minted it, is the whole point of hashing it at rest.
+ */
+export const inviteCreatedSchema = z.object({
+  invite: inviteSettingSchema,
+  code: z.string(),
+})
+
 export const settingsSchema = z.object({
   /**
    * Which build is answering.
@@ -1605,6 +1629,8 @@ export const settingsSchema = z.object({
   property: propertiesSettingSchema,
   /** The Actual/Ghostfolio/Gemini connection this tenant uses (#369). */
   integrations: integrationsSettingSchema,
+  /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
+  invites: z.array(inviteSettingSchema),
   prompts: z.array(promptSchema),
   accounts: z.array(accountSettingSchema),
   /**
@@ -2019,6 +2045,8 @@ export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
 export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
+export type InviteSetting = z.infer<typeof inviteSettingSchema>
+export type InviteCreated = z.infer<typeof inviteCreatedSchema>
 export type IntegrationTest = z.infer<typeof integrationTestSchema>
 export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>
 export type BenchmarkGroupLine = z.infer<typeof benchmarkGroupSchema>
