@@ -127,7 +127,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // Expanded on demand from a row in the panel above; see `status-history.ts`.
   app.get('/api/status/history', (request: FastifyRequest) => {
     const query = request.query as { job?: unknown; limit?: unknown } | undefined
-    return buildJobHistory(db, query?.job, query?.limit)
+    return buildJobHistory(db, requireUser(request).tenantId, query?.job, query?.limit)
   })
 
   // The version number in the header opens a dialog on this. See `changelog.ts` for
