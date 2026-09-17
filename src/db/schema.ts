@@ -36,10 +36,10 @@ const createdAt = () =>
 /**
  * A tenant: the boundary every user, config value and computed fact lives inside.
  *
- * A second row can exist since #373 (see `domain/tenant/provisioning.ts`), but
- * most of the domain layer still resolves the tenant via `getSoleTenantId` in
- * `db/tenant.ts`, which throws once a second row does — that threading is a
- * separate, larger effort #373 deliberately deferred. The default-tenant
+ * A second row can exist since #373 (see `domain/tenant/provisioning.ts`), and
+ * #376 threaded a real tenantId through every request-path call site so a
+ * second row no longer makes `getSoleTenantId` in `db/tenant.ts` throw for
+ * everyone — that function is now CLI/break-glass only. The default-tenant
  * migration (`0024_seed_default_tenant.sql`) creates the one row every
  * pre-existing deployment's data is backfilled onto.
  */

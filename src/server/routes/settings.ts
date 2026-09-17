@@ -715,8 +715,6 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     benchmark: benchmarkSetting(db, user.tenantId),
     property: loadProperties(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
-    // Scoped through the requester's own session, not `getSoleTenantId` — one of
-    // the few paths in this file already correct for a second tenant (#373).
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
