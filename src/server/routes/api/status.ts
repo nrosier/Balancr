@@ -160,7 +160,7 @@ export function buildStatus(db: Db, tenantId: string): Status {
 
   const rows = loadJobRows(db, tenantId)
   const byName = new Map(rows.map((row) => [row.name, row]))
-  const probes = loadProbes(db)
+  const probes = loadProbes(db, tenantId)
 
   const actual = actualCheck(byName.get('sync'))
 
