@@ -122,7 +122,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // The detailed half of readiness. `/readyz` serves the same computation stripped of
   // every message, because it answers without a session; this one is behind the guard
   // and may quote what an upstream said. See `status.ts`.
-  app.get('/api/status', () => buildStatus(db))
+  app.get('/api/status', (request: FastifyRequest) => buildStatus(db, requireUser(request).tenantId))
 
   // Expanded on demand from a row in the panel above; see `status-history.ts`.
   app.get('/api/status/history', (request: FastifyRequest) => {

@@ -43,7 +43,6 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { getSoleTenantId } from '../../../db/tenant.ts'
 import {
   describeSchedule,
   jobsInFlight,
@@ -73,7 +72,7 @@ function scheduleOf(name: string): string | null {
  * failure it catches is the real one — a volume that did not mount, a file whose
  * permissions changed under a non-root container, a disk with nothing left.
  */
-function databaseReadable(db: Db): boolean {
+export function databaseReadable(db: Db): boolean {
   try {
     db.$client.prepare('select 1').get()
     return true
@@ -135,7 +134,7 @@ export function jobsCheck(rows: readonly JobRow[], enabled: boolean): CheckVerdi
   return { status: 'ok', reason: null }
 }
 
-export function buildStatus(db: Db): Status {
+export function buildStatus(db: Db, tenantId: string): Status {
   // First, and on its own: everything below reads the database, so a database that
   // cannot be read has to be reported rather than thrown. A readiness endpoint that
   // answers 500 has told the orchestrator nothing it can act on.
@@ -159,7 +158,6 @@ export function buildStatus(db: Db): Status {
     })
   }
 
-  const tenantId = getSoleTenantId(db)
   const rows = loadJobRows(db, tenantId)
   const byName = new Map(rows.map((row) => [row.name, row]))
   const probes = loadProbes(db)
