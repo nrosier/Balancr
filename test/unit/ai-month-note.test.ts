@@ -28,27 +28,27 @@ describe('the stored month notes', () => {
   }
 
   it('is empty until somebody writes one', () => {
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('')
   })
 
   it('round-trips the note, trimmed', () => {
-    saveMonthNote(ctx.db, MONTH, '  Dentist bill in March.  ')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, '  Dentist bill in March.  ')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('Dentist bill in March.')
   })
 
   it('keeps a second month untouched', () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
-    expect(loadMonthNote(ctx.db, OTHER_MONTH)).toBe('')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, 'Dentist bill in March.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, OTHER_MONTH)).toBe('')
 
-    saveMonthNote(ctx.db, OTHER_MONTH, 'Car insurance renews.')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
-    expect(loadMonthNote(ctx.db, OTHER_MONTH)).toBe('Car insurance renews.')
+    saveMonthNote(ctx.db, TENANT_ID, OTHER_MONTH, 'Car insurance renews.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('Dentist bill in March.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, OTHER_MONTH)).toBe('Car insurance renews.')
   })
 
   it("clearing a month's note deletes its key", () => {
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
-    saveMonthNote(ctx.db, MONTH, '')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, 'Dentist bill in March.')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, '')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('')
 
     const row = ctx.db.select({ valueJson: settings.valueJson }).from(settings).get()
     expect(row).toBeDefined()
@@ -57,30 +57,30 @@ describe('the stored month notes', () => {
 
   it('degrades to empty rather than throwing, for either kind of damage', () => {
     write('{ not json')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('')
 
     ctx.db.delete(settings).run()
     write(JSON.stringify({ [MONTH]: 12 }))
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('')
   })
 
   it('refuses to store more than MONTH_NOTE_MAX_CHARS', () => {
-    expect(() => saveMonthNote(ctx.db, MONTH, 'x'.repeat(MONTH_NOTE_MAX_CHARS + 1))).toThrow()
-    expect(() => saveMonthNote(ctx.db, MONTH, 'x'.repeat(MONTH_NOTE_MAX_CHARS))).not.toThrow()
+    expect(() => saveMonthNote(ctx.db, TENANT_ID, MONTH, 'x'.repeat(MONTH_NOTE_MAX_CHARS + 1))).toThrow()
+    expect(() => saveMonthNote(ctx.db, TENANT_ID, MONTH, 'x'.repeat(MONTH_NOTE_MAX_CHARS))).not.toThrow()
   })
 
   it('refuses an invalid month', () => {
-    expect(() => saveMonthNote(ctx.db, 'not-a-month', 'fine')).toThrow()
-    expect(() => loadMonthNote(ctx.db, 'not-a-month')).toThrow()
+    expect(() => saveMonthNote(ctx.db, TENANT_ID, 'not-a-month', 'fine')).toThrow()
+    expect(() => loadMonthNote(ctx.db, TENANT_ID, 'not-a-month')).toThrow()
   })
 
   it('round-trips a whole-year note, independently of any month in that year (#345)', () => {
-    saveMonthNote(ctx.db, '2026', 'Renovated the kitchen this year.')
-    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('')
+    saveMonthNote(ctx.db, TENANT_ID, '2026', 'Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('')
 
-    saveMonthNote(ctx.db, MONTH, 'Dentist bill in March.')
-    expect(loadMonthNote(ctx.db, '2026')).toBe('Renovated the kitchen this year.')
-    expect(loadMonthNote(ctx.db, MONTH)).toBe('Dentist bill in March.')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, 'Dentist bill in March.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, '2026')).toBe('Renovated the kitchen this year.')
+    expect(loadMonthNote(ctx.db, TENANT_ID, MONTH)).toBe('Dentist bill in March.')
   })
 })

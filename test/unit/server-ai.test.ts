@@ -89,7 +89,7 @@ function fakeGemini(reply: string | Error): { calls: number } {
 
 /** The opaque label the payload gave a category — what the model answers with. */
 function labelFor(categoryId: string): string {
-  const prepared = prepareMonth(ctx.db, MONTH, 'en')
+  const prepared = prepareMonth(ctx.db, getSoleTenantId(ctx.db), MONTH, 'en')
   if (prepared === null) throw new Error('the fixture month has no facts')
   const name = prepared.nameFor.get(categoryId) ?? ''
   for (const [label, candidate] of prepared.nameForLabel) {

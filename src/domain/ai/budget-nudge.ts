@@ -165,8 +165,13 @@ export interface BudgetNudgeOptions {
  * are all already mirrored into SQLite, unlike `category-guess.ts`'s
  * `prepareGuessBatch`, which reaches Actual for category names.
  */
-function prepareNudgeBatch(db: Db, month: string, locale: string): NudgeRedaction | null {
-  const pending = pendingBudgetProposals(db, month)
+function prepareNudgeBatch(
+  db: Db,
+  tenantId: string,
+  month: string,
+  locale: string,
+): NudgeRedaction | null {
+  const pending = pendingBudgetProposals(db, tenantId, month)
   if (pending.length === 0) return null
 
   const budgetedAmountFor = new Map<string, number>()
@@ -186,9 +191,9 @@ function prepareNudgeBatch(db: Db, month: string, locale: string): NudgeRedactio
   }
   if (budgetedAmountFor.size === 0) return null
 
-  const facts = loadFacts(db, month)
+  const facts = loadFacts(db, tenantId, month)
   const factByCategoryId = new Map(facts.map((fact) => [fact.categoryId, fact]))
-  const categoryMetaById = loadCategoryMeta(db)
+  const categoryMetaById = loadCategoryMeta(db, tenantId)
 
   const inputs: NudgeCandidateInput[] = []
   for (const [categoryId, suggestedCents] of budgetedAmountFor) {
@@ -203,7 +208,7 @@ function prepareNudgeBatch(db: Db, month: string, locale: string): NudgeRedactio
   }
   if (inputs.length === 0) return null
 
-  const note = loadMonthNote(db, month)
+  const note = loadMonthNote(db, tenantId, month)
   const redaction = redactBudgetNudgeBatch(inputs, categoryMetaById, month, locale, note)
   // Every pending candidate may be `aiExcluded` (#278), leaving nothing to adjust. Same
   // answer as an empty pending list above: no call, and the deterministic amounts stand.
@@ -239,9 +244,9 @@ export function estimateBudgetNudge(
     reason,
   })
 
-  if (loadMonthNote(db, options.month).trim() === '') return refused('no_note')
+  if (loadMonthNote(db, tenantId, options.month).trim() === '') return refused('no_note')
 
-  const redaction = prepareNudgeBatch(db, options.month, locale)
+  const redaction = prepareNudgeBatch(db, tenantId, options.month, locale)
   if (redaction === null) return refused('no_candidates')
 
   const payloadChars = JSON.stringify(redaction.payload).length
@@ -277,7 +282,7 @@ export async function runBudgetNudge(
   const now = options.now ?? new Date()
   const month = options.month
 
-  if (loadMonthNote(db, month).trim() === '') {
+  if (loadMonthNote(db, tenantId, month).trim() === '') {
     log.info({ month }, 'no month note; budget nudge skipped')
     return {
       status: 'skipped',
@@ -292,7 +297,7 @@ export async function runBudgetNudge(
     }
   }
 
-  const redaction = prepareNudgeBatch(db, month, locale)
+  const redaction = prepareNudgeBatch(db, tenantId, month, locale)
   if (redaction === null) {
     log.info({ month }, 'no pending budget-amount proposals for the month; budget nudge skipped')
     return {
@@ -314,7 +319,7 @@ export async function runBudgetNudge(
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
       model,
       locale,
@@ -351,7 +356,7 @@ export async function runBudgetNudge(
     })
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
       model,
       locale,
@@ -383,7 +388,7 @@ export async function runBudgetNudge(
     grounded = groundNudgeResponse(parseNudgeResponse(result.text), payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
       model: result.model,
       locale,
@@ -410,7 +415,7 @@ export async function runBudgetNudge(
     }
   }
 
-  const runId = recordRun(db, {
+  const runId = recordRun(db, tenantId, {
     kind: 'budget_nudge',
     model: result.model,
     locale,
@@ -433,7 +438,7 @@ export async function runBudgetNudge(
     if (categoryId === undefined) continue
 
     try {
-      await createProposal(db, {
+      await createProposal(db, tenantId, {
         type: 'budget_amount.set',
         targetRef: encodeBudgetTarget(categoryId, month),
         payload: { amountCents: adjustment.amountCents },

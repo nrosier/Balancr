@@ -77,7 +77,7 @@ const overspend = (categoryId: string, cents: number, name = categoryId): Signal
 /** Two months of facts, the later one overspent, so both passes have something. */
 function seedTwoMonths(): void {
   for (const month of [LAST, MONTH]) {
-    seedMonth(db, month, {
+    seedMonth(db, TENANT_ID, month, {
       facts: [
         fact(month, 'food', { categoryName: 'Groceries' }),
         fact(month, 'rent', { categoryName: 'Rent' }),
@@ -89,7 +89,7 @@ function seedTwoMonths(): void {
 
 /** The label the payload gave a category, which is what the model answers with. */
 function labelOf(month: string, categoryId: string): string {
-  const prepared = prepareMonth(db, month, 'en')
+  const prepared = prepareMonth(db, TENANT_ID, month, 'en')
   if (prepared === null) throw new Error(`no month ${month}`)
   const name = prepared.nameFor.get(categoryId) ?? ''
   for (const [label, mapped] of prepared.nameForLabel) if (mapped === name) return label
@@ -212,7 +212,7 @@ describe('the nightly pass', () => {
       narrativeStatus: 'ok',
     })
     expect(db.select().from(aiFindings).all()).toHaveLength(1)
-    expect(loadNarrative(db, LAST, 'en')).not.toBeNull()
+    expect(loadNarrative(db, TENANT_ID, LAST, 'en')).not.toBeNull()
     expect(recorded).toEqual({ analysis: 1, narrative: 1 })
     expect(run.detail['costMicroEur']).toBeGreaterThan(0)
   })
@@ -226,7 +226,7 @@ describe('the nightly pass', () => {
     const run = await night()
 
     expect(run.detail['queued']).toBe(1)
-    expect(openQuestionCount(db)).toBe(1)
+    expect(openQuestionCount(db, TENANT_ID)).toBe(1)
   })
 
   it('pays for the narrative once, and the analysis once, however many nights run', async () => {

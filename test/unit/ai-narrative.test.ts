@@ -117,7 +117,7 @@ const overspend = (categoryId: string, name: string): Signal => ({
 })
 
 function seedTypicalMonth(): void {
-  seedMonth(db, MONTH, {
+  seedMonth(db, tenantId, MONTH, {
     facts: [
       fact(MONTH, 'food', { categoryName: 'Groceries' }),
       fact(MONTH, 'therapy', { categoryName: 'Therapy' }),
@@ -128,7 +128,7 @@ function seedTypicalMonth(): void {
 
 /** The payload label for a category, which is all the model ever sees of it. */
 function labelOf(name: string): string {
-  const prepared = prepareMonth(db, MONTH, 'en')
+  const prepared = prepareMonth(db, tenantId, MONTH, 'en')
   for (const [label, mapped] of prepared?.nameForLabel ?? []) {
     if (mapped === name) return label
   }
@@ -137,7 +137,7 @@ function labelOf(name: string): string {
 
 /** A run row to hang a stored narrative off, for the tests that skip the call. */
 const someRun = (): string =>
-  recordRun(db, {
+  recordRun(db, tenantId, {
     kind: 'narrative',
     model: config.GEMINI_MODEL_DEEP,
     locale: 'en',
@@ -192,29 +192,29 @@ describe('substituteLabels', () => {
 describe('the store', () => {
   it('keeps one narrative per period and locale', () => {
     const first = someRun()
-    storeNarrative(db, { runId: first, period: MONTH, locale: 'en', bodyMd: 'first' })
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'second' })
+    storeNarrative(db, tenantId, { runId: first, period: MONTH, locale: 'en', bodyMd: 'first' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'second' })
 
-    expect(loadNarrative(db, MONTH, 'en')?.bodyMd).toBe('second')
-    expect(narrativeLocales(db, MONTH)).toEqual(['en'])
+    expect(loadNarrative(db, tenantId, MONTH, 'en')?.bodyMd).toBe('second')
+    expect(narrativeLocales(db, tenantId, MONTH)).toEqual(['en'])
   })
 
   it('keeps the two languages of one month apart', () => {
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'nl', bodyMd: 'nederlands' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'nl', bodyMd: 'nederlands' })
 
-    expect(narrativeLocales(db, MONTH)).toEqual(['en', 'nl'])
-    expect(loadNarrative(db, MONTH, 'nl')?.bodyMd).toBe('nederlands')
+    expect(narrativeLocales(db, tenantId, MONTH)).toEqual(['en', 'nl'])
+    expect(loadNarrative(db, tenantId, MONTH, 'nl')?.bodyMd).toBe('nederlands')
   })
 
   it('finds the newest month in one language, for the degraded view', () => {
-    storeNarrative(db, { runId: someRun(), period: '2026-01', locale: 'en', bodyMd: 'january' })
-    storeNarrative(db, { runId: someRun(), period: '2026-03', locale: 'en', bodyMd: 'march' })
-    storeNarrative(db, { runId: someRun(), period: '2026-04', locale: 'nl', bodyMd: 'april' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: '2026-01', locale: 'en', bodyMd: 'january' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: '2026-03', locale: 'en', bodyMd: 'march' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: '2026-04', locale: 'nl', bodyMd: 'april' })
 
-    expect(latestNarrative(db, 'en')?.bodyMd).toBe('march')
-    expect(latestNarrative(db, 'nl')?.bodyMd).toBe('april')
-    expect(latestNarrative(db, 'fr')).toBeNull()
+    expect(latestNarrative(db, tenantId, 'en')?.bodyMd).toBe('march')
+    expect(latestNarrative(db, tenantId, 'nl')?.bodyMd).toBe('april')
+    expect(latestNarrative(db, tenantId, 'fr')).toBeNull()
   })
 })
 
@@ -222,30 +222,30 @@ describe('renderNarrative', () => {
   it('substitutes before rendering, so a hostile name is escaped', () => {
     // Order is the whole safety argument: substituting into finished HTML would
     // inject the name unescaped.
-    seedMonth(db, MONTH, {
+    seedMonth(db, tenantId, MONTH, {
       facts: [fact(MONTH, 'x', { categoryName: '<script>alert(1)</script>' })],
     })
     const label = labelOf('<script>alert(1)</script>')
-    const row = storeNarrative(db, {
+    const row = storeNarrative(db, tenantId, {
       runId: someRun(),
       period: MONTH,
       locale: 'en',
       bodyMd: `Spending in ${label} rose.`,
     })
 
-    const html = renderNarrative(db, row)
+    const html = renderNarrative(db, tenantId, row)
     expect(html).toContain('&lt;script&gt;')
     expect(html).not.toContain('<script>')
   })
 
   it('renders a narrative whose month has been dropped since', () => {
-    const row = storeNarrative(db, {
+    const row = storeNarrative(db, tenantId, {
       runId: someRun(),
       period: '2025-12',
       locale: 'en',
       bodyMd: 'c1 was the largest category.',
     })
-    expect(renderNarrative(db, row)).toBe('<p>an unnamed category was the largest category.</p>')
+    expect(renderNarrative(db, tenantId, row)).toBe('<p>an unnamed category was the largest category.</p>')
   })
 })
 
@@ -254,7 +254,7 @@ describe("the month's note reaches this pass and no other (#298)", () => {
 
   it('sends the note to the model, in the payload the run is billed for', async () => {
     seedTypicalMonth()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
     const recorded = fakeGemini('A month with an explanation.')
 
     await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
@@ -269,7 +269,7 @@ describe("the month's note reaches this pass and no other (#298)", () => {
     // The README says Insights → Ledger prints the exact payload and that a claim about
     // what crosses is checkable there. That is only true if the note is in the stored row.
     seedTypicalMonth()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
     fakeGemini('A month with an explanation.')
 
     return runNarrative(db, tenantId, { period: MONTH, locale: 'en' }).then(() => {
@@ -291,30 +291,30 @@ describe('noteChangedSince (#298)', () => {
 
   it('is false when the note has not moved since the review was written', async () => {
     seedTypicalMonth()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
     await review()
 
-    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(false)
+    expect(noteChangedSince(db, tenantId, loadNarrative(db, tenantId, MONTH, 'en')!)).toBe(false)
   })
 
   it('is true for a note written after the review, which is the reported bug', async () => {
     seedTypicalMonth()
     await review()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
 
-    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+    expect(noteChangedSince(db, tenantId, loadNarrative(db, tenantId, MONTH, 'en')!)).toBe(true)
   })
 
   it('is true when the note is edited, and false again once rewritten', async () => {
     seedTypicalMonth()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
     await review()
-    saveMonthNote(db, MONTH, 'The boiler was replaced, and so was the dishwasher.')
-    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+    saveMonthNote(db, tenantId, MONTH, 'The boiler was replaced, and so was the dishwasher.')
+    expect(noteChangedSince(db, tenantId, loadNarrative(db, tenantId, MONTH, 'en')!)).toBe(true)
 
     fakeGemini('A month with two appliances in it.')
     await runNarrative(db, tenantId, { period: MONTH, locale: 'en', force: true })
-    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(false)
+    expect(noteChangedSince(db, tenantId, loadNarrative(db, tenantId, MONTH, 'en')!)).toBe(false)
   })
 
   it('is true when the note is deleted, because the review still leans on it', async () => {
@@ -322,11 +322,11 @@ describe('noteChangedSince (#298)', () => {
     // month — and a review that attributed a movement to it is now saying something its
     // author has withdrawn. That is more worth flagging than an addition, not less.
     seedTypicalMonth()
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
     await review()
-    saveMonthNote(db, MONTH, '')
+    saveMonthNote(db, tenantId, MONTH, '')
 
-    expect(noteChangedSince(db, loadNarrative(db, MONTH, 'en')!)).toBe(true)
+    expect(noteChangedSince(db, tenantId, loadNarrative(db, tenantId, MONTH, 'en')!)).toBe(true)
   })
 
   it('says nothing about a review written before the note ever crossed', async () => {
@@ -335,8 +335,8 @@ describe('noteChangedSince (#298)', () => {
     // claiming a note had changed when none was ever compared.
     seedTypicalMonth()
     await review()
-    const narrative = loadNarrative(db, MONTH, 'en')!
-    const rewritten = { ...narrative, runId: recordRun(db, {
+    const narrative = loadNarrative(db, tenantId, MONTH, 'en')!
+    const rewritten = { ...narrative, runId: recordRun(db, tenantId, {
       kind: 'narrative',
       model: 'gemini-test',
       locale: 'en',
@@ -346,9 +346,9 @@ describe('noteChangedSince (#298)', () => {
       status: 'ok',
       userId: null,
     }) }
-    saveMonthNote(db, MONTH, NOTE)
+    saveMonthNote(db, tenantId, MONTH, NOTE)
 
-    expect(noteChangedSince(db, rewritten)).toBe(false)
+    expect(noteChangedSince(db, tenantId, rewritten)).toBe(false)
   })
 })
 
@@ -365,7 +365,7 @@ describe('runNarrative', () => {
     // Stored as written: a name in this row would be a name the translate action
     // then sends back to Google.
     expect(outcome.bodyMd).toContain(label)
-    expect(loadNarrative(db, MONTH, 'en')?.bodyMd).toContain(label)
+    expect(loadNarrative(db, tenantId, MONTH, 'en')?.bodyMd).toContain(label)
     // Rendered with the name, and the heading flattened to h3 by the renderer.
     expect(outcome.html).toContain('Groceries')
     expect(outcome.html).toContain('<h3>March</h3>')
@@ -406,9 +406,9 @@ describe('runNarrative', () => {
 
     expect(recorded.prompts).toHaveLength(1)
     expect(forced.status).toBe('ok')
-    expect(loadNarrative(db, MONTH, 'en')?.bodyMd).toBe('Second take.')
+    expect(loadNarrative(db, tenantId, MONTH, 'en')?.bodyMd).toBe('Second take.')
     // Still one row: regenerating replaces, it does not accumulate.
-    expect(narrativeLocales(db, MONTH)).toEqual(['en'])
+    expect(narrativeLocales(db, tenantId, MONTH)).toEqual(['en'])
   })
 
   it('asks separately for each language, and keeps both', async () => {
@@ -418,7 +418,7 @@ describe('runNarrative', () => {
     fakeGemini('Een Nederlandse maand.')
     await runNarrative(db, tenantId, { period: MONTH, locale: 'nl' })
 
-    expect(narrativeLocales(db, MONTH)).toEqual(['en', 'nl'])
+    expect(narrativeLocales(db, tenantId, MONTH)).toEqual(['en', 'nl'])
   })
 
   it('records nothing for a month with no facts', async () => {
@@ -434,7 +434,7 @@ describe('runNarrative', () => {
     // `latestNarrative` with a banner, so a stale month can never be mistaken for
     // this one.
     seedTypicalMonth()
-    recordRun(db, {
+    recordRun(db, tenantId, {
       kind: 'narrative',
       model: config.GEMINI_MODEL_DEEP,
       locale: 'en',
@@ -452,7 +452,7 @@ describe('runNarrative', () => {
     expect(outcome.html).toBeNull()
     expect(recorded.prompts).toHaveLength(0)
     expect(recentRuns(db)[0]?.status).toBe('capped')
-    expect(loadNarrative(db, MONTH, 'en')).toBeNull()
+    expect(loadNarrative(db, tenantId, MONTH, 'en')).toBeNull()
   })
 
   it('records a failed call without throwing', async () => {
@@ -475,7 +475,7 @@ describe('runNarrative', () => {
     const outcome = await runNarrative(db, tenantId, { period: MONTH })
 
     expect(outcome.reason).toBe('empty_response')
-    expect(loadNarrative(db, MONTH, config.DEFAULT_LOCALE)).toBeNull()
+    expect(loadNarrative(db, tenantId, MONTH, config.DEFAULT_LOCALE)).toBeNull()
     const row = recentRuns(db)[0]
     expect(row?.status).toBe('error')
     // The tokens were spent, so they are billed.
@@ -498,7 +498,7 @@ describe('runNarrative', () => {
     expect(Number(second?.['maxOutputTokens'])).toBeGreaterThan(Number(first?.['maxOutputTokens']))
     expect(outcome.status).toBe('ok')
     expect(outcome.bodyMd).toBe('Spending ran high this month, but stayed under budget.')
-    expect(loadNarrative(db, MONTH, 'en')?.bodyMd).toBe(
+    expect(loadNarrative(db, tenantId, MONTH, 'en')?.bodyMd).toBe(
       'Spending ran high this month, but stayed under budget.',
     )
     // Both calls were billed, not just the one that was kept.
@@ -520,7 +520,7 @@ describe('runNarrative', () => {
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('truncated')
     expect(outcome.degraded).toBe(true)
-    expect(loadNarrative(db, MONTH, 'en')).toBeNull()
+    expect(loadNarrative(db, tenantId, MONTH, 'en')).toBeNull()
     const row = recentRuns(db)[0]
     expect(row?.status).toBe('error')
     // Both attempts spent tokens, and both are billed even though nothing was kept.
@@ -531,7 +531,7 @@ describe('runNarrative', () => {
 describe('translateNarrative', () => {
   it('sends the stored text and stores the translation under the new language', async () => {
     seedTypicalMonth()
-    storeNarrative(db, {
+    storeNarrative(db, tenantId, {
       runId: someRun(),
       period: MONTH,
       locale: 'en',
@@ -543,7 +543,7 @@ describe('translateNarrative', () => {
 
     expect(outcome.status).toBe('ok')
     expect(outcome.locale).toBe('nl')
-    expect(loadNarrative(db, MONTH, 'nl')?.bodyMd).toBe('Uitgaven in c1 liepen over.')
+    expect(loadNarrative(db, tenantId, MONTH, 'nl')?.bodyMd).toBe('Uitgaven in c1 liepen over.')
     // The label form is what goes out: the English row holds no name, so the
     // translation cannot leak one either.
     expect(recorded.prompts[0]).toContain('Spending in c1 ran over.')
@@ -556,7 +556,7 @@ describe('translateNarrative', () => {
   it('renders the translation with the local names', async () => {
     seedTypicalMonth()
     const label = labelOf('Groceries')
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: `In ${label}.` })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: `In ${label}.` })
     fakeGemini(`In ${label}.`)
 
     const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
@@ -574,7 +574,7 @@ describe('translateNarrative', () => {
   })
 
   it('refuses to translate a month into its own language', async () => {
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'text' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'text' })
     const recorded = fakeGemini('never called')
 
     const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'en' })
@@ -585,8 +585,8 @@ describe('translateNarrative', () => {
 
   it('serves an existing translation rather than paying again', async () => {
     seedTypicalMonth()
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'nl', bodyMd: 'nederlands' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'nl', bodyMd: 'nederlands' })
     const recorded = fakeGemini('never called')
 
     const outcome = await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
@@ -597,8 +597,8 @@ describe('translateNarrative', () => {
   })
 
   it('is capped by the same budget as an analysis', async () => {
-    storeNarrative(db, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
-    recordRun(db, {
+    storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
+    recordRun(db, tenantId, {
       kind: 'narrative',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
@@ -613,11 +613,11 @@ describe('translateNarrative', () => {
 
     expect(outcome.status).toBe('capped')
     expect(recorded.prompts).toHaveLength(0)
-    expect(loadNarrative(db, MONTH, 'nl')).toBeNull()
+    expect(loadNarrative(db, tenantId, MONTH, 'nl')).toBeNull()
   })
 
   it('retries a truncated translation once and stores the complete retry (#221)', async () => {
-    storeNarrative(db, {
+    storeNarrative(db, tenantId, {
       runId: someRun(),
       period: MONTH,
       locale: 'en',
@@ -632,13 +632,13 @@ describe('translateNarrative', () => {
 
     expect(recorded.prompts).toHaveLength(2)
     expect(outcome.status).toBe('ok')
-    expect(loadNarrative(db, MONTH, 'nl')?.bodyMd).toBe(
+    expect(loadNarrative(db, tenantId, MONTH, 'nl')?.bodyMd).toBe(
       'De uitgaven waren hoog deze maand, maar bleven binnen budget.',
     )
   })
 
   it('gives up after a second truncated translation attempt, storing nothing', async () => {
-    storeNarrative(db, {
+    storeNarrative(db, tenantId, {
       runId: someRun(),
       period: MONTH,
       locale: 'en',
@@ -654,7 +654,7 @@ describe('translateNarrative', () => {
     expect(recorded.prompts).toHaveLength(2)
     expect(outcome.status).toBe('error')
     expect(outcome.reason).toBe('truncated')
-    expect(loadNarrative(db, MONTH, 'nl')).toBeNull()
+    expect(loadNarrative(db, tenantId, MONTH, 'nl')).toBeNull()
     expect(recentRuns(db)[0]?.status).toBe('error')
   })
 })

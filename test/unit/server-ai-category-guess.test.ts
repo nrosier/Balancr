@@ -47,6 +47,7 @@ let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
 let owner: string
 let viewer: string
+let tenantId: string
 
 function signIn(db: Db, role: 'owner' | 'viewer'): string {
   const row = db
@@ -112,7 +113,7 @@ const runRows = (db: Db) => db.select().from(aiRuns).all()
 
 /** One cached candidate, seeded straight into the table `generateCategoryProposals` writes. */
 function seedCandidate(): void {
-  persistCategoryGuessCandidates(ctx.db, MONTH, [
+  persistCategoryGuessCandidates(ctx.db, tenantId, MONTH, [
     {
       transactionId: 'txn-guess-1',
       payeeId: 'payee-1',
@@ -142,6 +143,7 @@ beforeEach(async () => {
   })
 
   ctx = apiFixture()
+  tenantId = getSoleTenantId(ctx.db)
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
@@ -227,7 +229,7 @@ describe('POST /api/ai/category-guess', () => {
   it('tells apart a cached id and one that was never a candidate at all', async () => {
     seedCandidate()
     fakeGemini('never called')
-    recordRun(ctx.db, {
+    recordRun(ctx.db, tenantId, {
       kind: 'category_guess',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',

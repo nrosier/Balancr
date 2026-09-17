@@ -165,10 +165,10 @@ async function prepareGuessBatch(
   ids: readonly string[],
   locale: string,
 ): Promise<PreparedGuessBatch | null> {
-  const candidates = loadCategoryGuessCandidatesByIds(db, ids)
+  const candidates = loadCategoryGuessCandidatesByIds(db, tenantId, ids)
   if (candidates.length === 0) return null
 
-  const categoryMetaById = loadCategoryMeta(db)
+  const categoryMetaById = loadCategoryMeta(db, tenantId)
   const categories = await fetchCategories(db, tenantId)
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]))
 
@@ -278,7 +278,7 @@ export async function runCategoryGuess(
   const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
       model,
       locale,
@@ -313,7 +313,7 @@ export async function runCategoryGuess(
     })
   } catch (error) {
     const message = error instanceof GeminiError ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
       model,
       locale,
@@ -343,7 +343,7 @@ export async function runCategoryGuess(
     grounded = groundGuessResponse(parseGuessResponse(result.text), payload)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const runId = recordRun(db, {
+    const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
       model: result.model,
       locale,
@@ -368,7 +368,7 @@ export async function runCategoryGuess(
     }
   }
 
-  const runId = recordRun(db, {
+  const runId = recordRun(db, tenantId, {
     kind: 'category_guess',
     model: result.model,
     locale,
@@ -393,7 +393,7 @@ export async function runCategoryGuess(
     if (transactionId === undefined || categoryId === undefined) continue
 
     try {
-      await createProposal(db, {
+      await createProposal(db, tenantId, {
         type: 'transaction_category.set',
         targetRef: transactionId,
         payload: { categoryId, payeeName: payeeNameFor.get(transactionId) ?? null },

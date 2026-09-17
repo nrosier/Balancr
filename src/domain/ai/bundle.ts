@@ -64,15 +64,15 @@ function worthSending(fact: MonthlyFact): boolean {
 }
 
 /** The latest stored portfolio, or null when there has never been a snapshot. */
-export function collectPortfolio(db: Db): BundlePortfolio | null {
-  const date = latestSnapshotDate(db)
+export function collectPortfolio(db: Db, tenantId: string): BundlePortfolio | null {
+  const date = latestSnapshotDate(db, tenantId)
   if (date === null) return null
-  const metrics = loadPortfolioMetrics(db, date)
+  const metrics = loadPortfolioMetrics(db, tenantId, date)
   // A snapshot without metrics means the portfolio job wrote holdings and then
   // failed. Reporting the holdings count on its own would put a portfolio with no
   // value in front of the model.
   if (metrics === null) return null
-  return { metrics, holdingCount: countSnapshotHoldings(db, date) }
+  return { metrics, holdingCount: countSnapshotHoldings(db, tenantId, date) }
 }
 
 /**
@@ -86,15 +86,15 @@ export function collectPortfolio(db: Db): BundlePortfolio | null {
  * and the position a sale would come out of, and the guarantee worth having is that none
  * of that is ever in the bundle — see `BundleDrift`.
  */
-export function collectDrift(db: Db): BundleDrift | null {
-  const params = loadParams(db)
-  const persistence = latestDriftPersistence(db, params.drift.persistentMonths)
+export function collectDrift(db: Db, tenantId: string): BundleDrift | null {
+  const params = loadParams(db, tenantId)
+  const persistence = latestDriftPersistence(db, tenantId, params.drift.persistentMonths)
   if (persistence === null) return null
 
   // `latestDriftPersistence` already computed this, but returning it would put four
   // fund names and an ISIN into the bundle to reach two integers. Two reads of the same
   // three settings rows is the cheaper mistake.
-  const advice = latestAdvice(db)
+  const advice = latestAdvice(db, tenantId)
   if (advice === null) return null
 
   return {
@@ -117,25 +117,26 @@ export function collectDrift(db: Db): BundleDrift | null {
  */
 export function collectBundle(
   db: Db,
+  tenantId: string,
   month: string,
   locale: string = config.DEFAULT_LOCALE,
 ): AnalysisBundle | null {
-  const hygiene = loadHygiene(db, month)
+  const hygiene = loadHygiene(db, tenantId, month)
   // Present exactly when the signals pass has run for this month: `persistSignals`
   // always writes the row, even for a month with nothing to report.
   if (hygiene === null) return null
 
-  const history = loadTrailingTotals(db, month, config.JOBS_HISTORY_MONTHS)
+  const history = loadTrailingTotals(db, tenantId, month, config.JOBS_HISTORY_MONTHS)
   const totals = history[history.length - 1]
   if (totals === undefined) return null
 
-  const meta = loadCategoryMeta(db)
-  const categories: BundleCategory[] = loadFacts(db, month)
+  const meta = loadCategoryMeta(db, tenantId)
+  const categories: BundleCategory[] = loadFacts(db, tenantId, month)
     .filter(worthSending)
     .map((fact) => ({ fact, meta: meta.get(fact.categoryId) ?? null }))
 
   const window = history.map((entry) => entry.month)
-  const uncategorised = loadUncategorised(db, window)
+  const uncategorised = loadUncategorised(db, tenantId, window)
 
   return {
     month,
@@ -146,7 +147,7 @@ export function collectBundle(
     // The month itself is `totals`; repeating it in the history would have the
     // model read the latest point twice when it looks for a trend.
     totalsHistory: history.slice(0, -1),
-    netWorth: loadLatestNetWorth(db),
+    netWorth: loadLatestNetWorth(db, tenantId),
     hygiene: {
       scoreBp: hygiene.scoreBp,
       uncategorisedCount: uncategorised.reduce((sum, bucket) => sum + bucket.txnCount, 0),
@@ -156,21 +157,21 @@ export function collectBundle(
         (sum, bucket) => sum + Math.abs(bucket.amountCents),
         0,
       ),
-      mismatchCount: loadMismatches(db, [month]).length,
+      mismatchCount: loadMismatches(db, tenantId, [month]).length,
     },
-    portfolio: collectPortfolio(db),
-    drift: collectDrift(db),
-    accounts: loadAccountMap(db),
-    signals: loadSignals(db, month),
+    portfolio: collectPortfolio(db, tenantId),
+    drift: collectDrift(db, tenantId),
+    accounts: loadAccountMap(db, tenantId),
+    signals: loadSignals(db, tenantId, month),
     // The owner's own explanation of the month (#298). `loadMonthNote` reports "none" as
     // `''` because that is what the panel saves; the bundle keeps null for it, so nothing
     // downstream has to decide whether an empty string is a note.
-    note: monthNote(db, month),
+    note: monthNote(db, tenantId, month),
   }
 }
 
 /** The month's note, or null. Reading degrades to "none" and never throws — see `month-note.ts`. */
-function monthNote(db: Db, month: string): string | null {
-  const text = loadMonthNote(db, month).trim()
+function monthNote(db: Db, tenantId: string, month: string): string | null {
+  const text = loadMonthNote(db, tenantId, month).trim()
   return text === '' ? null : text
 }

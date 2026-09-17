@@ -42,7 +42,6 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts, proposals } from '../../db/schema.ts'
-import { getSoleTenantId } from '../../db/tenant.ts'
 import { formatMoney, formatMonth } from '../../i18n/format.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
@@ -160,17 +159,29 @@ interface ProposalHandler {
    */
   readonly diff: (
     writer: AuditWriter,
+    tenantId: string,
     targetRef: string,
     payload: unknown,
   ) => DiffField[] | Promise<DiffField[]>
   /** Local bookkeeping only, inside the transaction. No-op for a handler with no local mirror to update. */
-  readonly apply: (writer: AuditWriter, targetRef: string, payload: unknown, now: Date) => void
+  readonly apply: (
+    writer: AuditWriter,
+    tenantId: string,
+    targetRef: string,
+    payload: unknown,
+    now: Date,
+  ) => void
   /**
    * A human-readable name for the target, for the review card. `payload` is
    * passed for handlers (`transaction_category.set`) that snapshot a display
    * name at generation time rather than have this call Actual.
    */
-  readonly targetName: (writer: AuditWriter, targetRef: string, payload?: unknown) => string | null
+  readonly targetName: (
+    writer: AuditWriter,
+    tenantId: string,
+    targetRef: string,
+    payload?: unknown,
+  ) => string | null
   /**
    * The write to Actual, if this type makes one. Runs *outside and before*
    * any local `db.transaction` — see `applyProposal`. Must be idempotent:
@@ -179,14 +190,19 @@ interface ProposalHandler {
    * to re-apply by hand after a crash between this call succeeding and the
    * local commit that follows it.
    */
-  readonly applyRemote?: (db: Db, targetRef: string, payload: unknown) => Promise<void>
+  readonly applyRemote?: (db: Db, tenantId: string, targetRef: string, payload: unknown) => Promise<void>
 }
 
 const loadMeta = (
   writer: AuditWriter,
+  tenantId: string,
   categoryId: string,
 ): typeof categoryMeta.$inferSelect | undefined =>
-  (writer as Db).select().from(categoryMeta).where(eq(categoryMeta.categoryId, categoryId)).get()
+  (writer as Db)
+    .select()
+    .from(categoryMeta)
+    .where(and(eq(categoryMeta.categoryId, categoryId), eq(categoryMeta.tenantId, tenantId)))
+    .get()
 
 const categoryMetaSetHandler: ProposalHandler = {
   type: 'category_meta.set',
@@ -211,9 +227,9 @@ const categoryMetaSetHandler: ProposalHandler = {
     return clean
   },
 
-  diff: (writer, targetRef, payload) => {
+  diff: (writer, tenantId, targetRef, payload) => {
     const clean = categoryMetaSetHandler.parse(payload) as CategoryMetaSet
-    const meta = loadMeta(writer, targetRef)
+    const meta = loadMeta(writer, tenantId, targetRef)
     if (meta === undefined) throw new ProposalError(`category ${targetRef} has no metadata row`)
 
     const fields: DiffField[] = []
@@ -236,9 +252,9 @@ const categoryMetaSetHandler: ProposalHandler = {
     return fields
   },
 
-  apply: (writer, targetRef, payload, now) => {
+  apply: (writer, tenantId, targetRef, payload, now) => {
     const clean = categoryMetaSetHandler.parse(payload) as CategoryMetaSet
-    const meta = loadMeta(writer, targetRef)
+    const meta = loadMeta(writer, tenantId, targetRef)
     if (meta === undefined) throw new ProposalError(`category ${targetRef} has no metadata row`)
 
     // Only the fields the payload names, so applying a description proposal does
@@ -251,11 +267,11 @@ const categoryMetaSetHandler: ProposalHandler = {
     ;(writer as Db)
       .update(categoryMeta)
       .set({ ...clean, updatedAt: now })
-      .where(eq(categoryMeta.categoryId, targetRef))
+      .where(and(eq(categoryMeta.categoryId, targetRef), eq(categoryMeta.tenantId, tenantId)))
       .run()
   },
 
-  targetName: (writer, targetRef) => loadMeta(writer, targetRef)?.nameSnapshot ?? null,
+  targetName: (writer, tenantId, targetRef) => loadMeta(writer, tenantId, targetRef)?.nameSnapshot ?? null,
 }
 
 /**
@@ -319,9 +335,9 @@ const transactionCategorySetHandler: ProposalHandler = {
     return result.data
   },
 
-  diff: async (writer, targetRef, payload) => {
+  diff: async (writer, tenantId, targetRef, payload) => {
     const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
-    const current = await fetchTransaction(writer as Db, getSoleTenantId(writer as Db), targetRef)
+    const current = await fetchTransaction(writer as Db, tenantId, targetRef)
     if (current === null) throw new ProposalError(`transaction ${targetRef} no longer exists`)
     if (current.categoryId === clean.categoryId) return []
 
@@ -331,8 +347,8 @@ const transactionCategorySetHandler: ProposalHandler = {
     const before =
       current.categoryId === null
         ? null
-        : loadMeta(writer, current.categoryId)?.nameSnapshot ?? current.categoryId
-    const after = loadMeta(writer, clean.categoryId)?.nameSnapshot ?? clean.categoryId
+        : loadMeta(writer, tenantId, current.categoryId)?.nameSnapshot ?? current.categoryId
+    const after = loadMeta(writer, tenantId, clean.categoryId)?.nameSnapshot ?? clean.categoryId
 
     return [{ field: 'category', before, after }]
   },
@@ -342,22 +358,33 @@ const transactionCategorySetHandler: ProposalHandler = {
   // makes this durable.
   apply: () => {},
 
-  targetName: (_writer, _targetRef, payload) => {
+  targetName: (_writer, _tenantId, _targetRef, payload) => {
     const clean = transactionCategorySetSchema.safeParse(payload)
     return clean.success ? clean.data.payeeName : null
   },
 
-  applyRemote: async (db, targetRef, payload) => {
+  applyRemote: async (db, tenantId, targetRef, payload) => {
     const clean = transactionCategorySetHandler.parse(payload) as TransactionCategorySet
-    await updateTransactionCategory(db, getSoleTenantId(db), targetRef, clean.categoryId)
+    await updateTransactionCategory(db, tenantId, targetRef, clean.categoryId)
   },
 }
 
-const loadBudgetedCents = (writer: AuditWriter, categoryId: string, month: string): number | null => {
+const loadBudgetedCents = (
+  writer: AuditWriter,
+  tenantId: string,
+  categoryId: string,
+  month: string,
+): number | null => {
   const row = (writer as Db)
     .select({ budgetedCents: monthlyCategoryFacts.budgetedCents })
     .from(monthlyCategoryFacts)
-    .where(and(eq(monthlyCategoryFacts.categoryId, categoryId), eq(monthlyCategoryFacts.month, month)))
+    .where(
+      and(
+        eq(monthlyCategoryFacts.categoryId, categoryId),
+        eq(monthlyCategoryFacts.month, month),
+        eq(monthlyCategoryFacts.tenantId, tenantId),
+      ),
+    )
     .get()
   return row?.budgetedCents ?? null
 }
@@ -381,10 +408,10 @@ const budgetAmountSetHandler: ProposalHandler = {
   // locale, not a UI-language translation, so this does not create the
   // English/Dutch consistency problem the file header describes for values
   // that are shown as words.
-  diff: (writer, targetRef, payload) => {
+  diff: (writer, tenantId, targetRef, payload) => {
     const clean = budgetAmountSetHandler.parse(payload) as BudgetAmountSet
     const { categoryId, month } = decodeBudgetTarget(targetRef)
-    const currentCents = loadBudgetedCents(writer, categoryId, month)
+    const currentCents = loadBudgetedCents(writer, tenantId, categoryId, month)
     if (currentCents === null) {
       throw new ProposalError(`no budget facts for category ${categoryId} in ${month}`)
     }
@@ -406,16 +433,16 @@ const budgetAmountSetHandler: ProposalHandler = {
   // rather than something to engineer around.
   apply: () => {},
 
-  targetName: (writer, targetRef) => {
+  targetName: (writer, tenantId, targetRef) => {
     const { categoryId, month } = decodeBudgetTarget(targetRef)
-    const name = loadMeta(writer, categoryId)?.nameSnapshot ?? categoryId
+    const name = loadMeta(writer, tenantId, categoryId)?.nameSnapshot ?? categoryId
     return `${name} (${month})`
   },
 
-  applyRemote: async (db, targetRef, payload) => {
+  applyRemote: async (db, tenantId, targetRef, payload) => {
     const clean = budgetAmountSetHandler.parse(payload) as BudgetAmountSet
     const { categoryId, month } = decodeBudgetTarget(targetRef)
-    await setCategoryBudgetAmount(db, getSoleTenantId(db), month, categoryId, clean.amountCents)
+    await setCategoryBudgetAmount(db, tenantId, month, categoryId, clean.amountCents)
   },
 }
 
@@ -460,8 +487,11 @@ export interface CreateProposalOptions {
  * is computed from newer data. Superseding is not an audit event: nothing the
  * user approved changed.
  */
-export async function createProposal(db: Db, options: CreateProposalOptions): Promise<ProposalRow> {
-  const tenantId = getSoleTenantId(db)
+export async function createProposal(
+  db: Db,
+  tenantId: string,
+  options: CreateProposalOptions,
+): Promise<ProposalRow> {
   const handler = handlerFor(options.type)
   const now = options.now ?? new Date()
   const payload = handler.parse(options.payload)
@@ -470,7 +500,7 @@ export async function createProposal(db: Db, options: CreateProposalOptions): Pr
   // callback runs synchronously, and a couple of handlers need an `await` to
   // reach a value (a transaction's current category) that no local table
   // mirrors.
-  const fields = await handler.diff(db, options.targetRef, payload)
+  const fields = await handler.diff(db, tenantId, options.targetRef, payload)
   if (fields.length === 0) {
     throw new ProposalError(`proposal ${options.type} for ${options.targetRef} would change nothing`)
   }
@@ -484,6 +514,7 @@ export async function createProposal(db: Db, options: CreateProposalOptions): Pr
           eq(proposals.type, options.type),
           eq(proposals.targetRef, options.targetRef),
           eq(proposals.status, 'pending'),
+          eq(proposals.tenantId, tenantId),
         ),
       )
       .returning({ id: proposals.id })
@@ -524,16 +555,22 @@ export async function createProposal(db: Db, options: CreateProposalOptions): Pr
 //  Read
 // ---------------------------------------------------------------------------
 
-export function loadProposal(db: Db, id: string): ProposalRow | null {
-  return db.select().from(proposals).where(eq(proposals.id, id)).get() ?? null
+export function loadProposal(db: Db, tenantId: string, id: string): ProposalRow | null {
+  return (
+    db
+      .select()
+      .from(proposals)
+      .where(and(eq(proposals.id, id), eq(proposals.tenantId, tenantId)))
+      .get() ?? null
+  )
 }
 
 /** The cards awaiting a decision, oldest first: the queue is worked, not browsed. */
-export function pendingProposals(db: Db, limit = 50): ProposalRow[] {
+export function pendingProposals(db: Db, tenantId: string, limit = 50): ProposalRow[] {
   return db
     .select()
     .from(proposals)
-    .where(eq(proposals.status, 'pending'))
+    .where(and(eq(proposals.status, 'pending'), eq(proposals.tenantId, tenantId)))
     .orderBy(asc(proposals.createdAt), asc(proposals.id))
     .limit(limit)
     .all()
@@ -547,22 +584,33 @@ export function pendingProposals(db: Db, limit = 50): ProposalRow[] {
  * this set directly: adjusting one just means creating a new proposal for the same
  * `(type, targetRef)`, which cleanly expires the row this reads.
  */
-export function pendingBudgetProposals(db: Db, month: string): ProposalRow[] {
+export function pendingBudgetProposals(db: Db, tenantId: string, month: string): ProposalRow[] {
   return db
     .select()
     .from(proposals)
-    .where(and(eq(proposals.status, 'pending'), eq(proposals.type, 'budget_amount.set')))
+    .where(
+      and(
+        eq(proposals.status, 'pending'),
+        eq(proposals.type, 'budget_amount.set'),
+        eq(proposals.tenantId, tenantId),
+      ),
+    )
     .orderBy(asc(proposals.createdAt), asc(proposals.id))
     .all()
     .filter((row) => decodeBudgetTarget(row.targetRef).month === month)
 }
 
 /** Everything that happened to one target, newest first. */
-export function proposalHistory(db: Db, targetRef: string, limit = 50): ProposalRow[] {
+export function proposalHistory(
+  db: Db,
+  tenantId: string,
+  targetRef: string,
+  limit = 50,
+): ProposalRow[] {
   return db
     .select()
     .from(proposals)
-    .where(eq(proposals.targetRef, targetRef))
+    .where(and(eq(proposals.targetRef, targetRef), eq(proposals.tenantId, tenantId)))
     .orderBy(desc(proposals.createdAt), desc(proposals.id))
     .limit(limit)
     .all()
@@ -741,6 +789,7 @@ function renderValue(value: string | boolean | null, locale: string): string {
  */
 export function renderProposal(
   db: Db,
+  tenantId: string,
   row: ProposalRow,
   locale: string = config.DEFAULT_LOCALE,
 ): ProposalCard {
@@ -755,6 +804,7 @@ export function renderProposal(
   const name =
     (PROPOSAL_HANDLERS as Record<string, ProposalHandler | undefined>)[row.type]?.targetName(
       db,
+      tenantId,
       row.targetRef,
       payload,
     ) ?? null
@@ -840,10 +890,15 @@ const after = (fields: readonly DiffField[]): Record<string, unknown> =>
  * meant to be: both remote writes are idempotent (see `ProposalHandler.applyRemote`),
  * so recovering from it is a manual re-apply, not a double-apply.
  */
-export async function applyProposal(db: Db, options: DecideOptions): Promise<ApplyResult> {
+export async function applyProposal(
+  db: Db,
+  tenantId: string,
+  options: DecideOptions,
+): Promise<ApplyResult> {
   const now = options.now ?? new Date()
+  const matches = and(eq(proposals.id, options.id), eq(proposals.tenantId, tenantId))
 
-  const initial = db.select().from(proposals).where(eq(proposals.id, options.id)).get()
+  const initial = db.select().from(proposals).where(matches).get()
   if (initial === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
   if (initial.status !== 'pending') {
     throw new ProposalError(`proposal ${options.id} is already ${initial.status}`)
@@ -866,20 +921,20 @@ export async function applyProposal(db: Db, options: DecideOptions): Promise<App
     )
   }
 
-  const fields = await handler.diff(db, initial.targetRef, payload)
+  const fields = await handler.diff(db, tenantId, initial.targetRef, payload)
 
   if (handler.applyRemote !== undefined) {
-    await handler.applyRemote(db, initial.targetRef, payload)
+    await handler.applyRemote(db, tenantId, initial.targetRef, payload)
   }
 
   return db.transaction((tx) => {
-    const row = tx.select().from(proposals).where(eq(proposals.id, options.id)).get()
+    const row = tx.select().from(proposals).where(matches).get()
     if (row === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
     if (row.status !== 'pending') {
       throw new ProposalError(`proposal ${options.id} is already ${row.status}`)
     }
 
-    handler.apply(tx, row.targetRef, payload, now)
+    handler.apply(tx, tenantId, row.targetRef, payload, now)
 
     tx.update(proposals)
       .set({ status: 'applied', appliedAt: now, appliedBy: options.userId ?? null })
@@ -931,10 +986,18 @@ export interface AdjustResult {
  * suggested amount does not explain this one, and a card reading "adjusted after
  * reading your note" above a figure the owner typed themselves would be a lie.
  */
-export async function adjustProposal(db: Db, options: AdjustProposalOptions): Promise<AdjustResult> {
+export async function adjustProposal(
+  db: Db,
+  tenantId: string,
+  options: AdjustProposalOptions,
+): Promise<AdjustResult> {
   const now = options.now ?? new Date()
   const userId = options.userId ?? null
-  const original = db.select().from(proposals).where(eq(proposals.id, options.id)).get()
+  const original = db
+    .select()
+    .from(proposals)
+    .where(and(eq(proposals.id, options.id), eq(proposals.tenantId, tenantId)))
+    .get()
   if (original === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
   if (original.status !== 'pending') {
     throw new ProposalError(`proposal ${options.id} is already ${original.status}`)
@@ -944,7 +1007,7 @@ export async function adjustProposal(db: Db, options: AdjustProposalOptions): Pr
   }
 
   try {
-    const row = await createProposal(db, {
+    const row = await createProposal(db, tenantId, {
       type: 'budget_amount.set',
       targetRef: original.targetRef,
       payload: { amountCents: options.amountCents },
@@ -955,7 +1018,7 @@ export async function adjustProposal(db: Db, options: AdjustProposalOptions): Pr
     return { id: row.id, status: 'pending' }
   } catch (error) {
     if (error instanceof ProposalError && error.message.endsWith('would change nothing')) {
-      const rejected = rejectProposal(db, { id: original.id, userId, now })
+      const rejected = rejectProposal(db, tenantId, { id: original.id, userId, now })
       return { id: rejected.id, status: 'rejected' }
     }
     throw error
@@ -969,11 +1032,15 @@ export async function adjustProposal(db: Db, options: AdjustProposalOptions): Pr
  * "no" is a decision, and a rejected suggestion that reappears next month should
  * be traceable to the run that re-proposed it rather than look like a first ask.
  */
-export function rejectProposal(db: Db, options: DecideOptions): ProposalRow {
+export function rejectProposal(db: Db, tenantId: string, options: DecideOptions): ProposalRow {
   const now = options.now ?? new Date()
 
   return db.transaction((tx) => {
-    const row = tx.select().from(proposals).where(eq(proposals.id, options.id)).get()
+    const row = tx
+      .select()
+      .from(proposals)
+      .where(and(eq(proposals.id, options.id), eq(proposals.tenantId, tenantId)))
+      .get()
     if (row === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
     if (row.status !== 'pending') {
       throw new ProposalError(`proposal ${options.id} is already ${row.status}`)
@@ -1007,7 +1074,7 @@ export function rejectProposal(db: Db, options: DecideOptions): ProposalRow {
  * row, because nobody decided anything. Idempotent, so the nightly job can call
  * it unconditionally.
  */
-export function expireProposals(db: Db, now: Date = new Date()): number {
+export function expireProposals(db: Db, tenantId: string, now: Date = new Date()): number {
   return db
     .update(proposals)
     .set({ status: 'expired' })
@@ -1016,6 +1083,7 @@ export function expireProposals(db: Db, now: Date = new Date()): number {
         eq(proposals.status, 'pending'),
         isNotNull(proposals.expiresAt),
         lte(proposals.expiresAt, now),
+        eq(proposals.tenantId, tenantId),
       ),
     )
     .returning({ id: proposals.id })
