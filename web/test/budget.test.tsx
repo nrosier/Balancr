@@ -258,6 +258,7 @@ const FULL: BudgetPayload = {
   // fixture every other test spreads stays free of a table it is not about (#44).
   custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
   uncategorised: { txnCount: 3, amountCents: 12_500 },
+  actualConfigured: true,
 }
 
 /** A deployment whose jobs have never run: no months at all. */
@@ -280,6 +281,7 @@ const EMPTY: BudgetPayload = {
   // the same fix, because a tab of its own has nothing else on it either (#280).
   custody: { kind: 'unavailable', reason: 'no_month', paidCents: null },
   uncategorised: null,
+  actualConfigured: true,
 }
 
 /** A month that exists in the picker and was never aggregated. */
@@ -1513,6 +1515,21 @@ describe('a month nobody computed', () => {
 
     // Not an error, and not four empty charts either.
     expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryAllByRole('img')).toHaveLength(0)
+  })
+})
+
+describe('a tenant with no Actual connection (#370)', () => {
+  it('shows the not-configured notice, linking to Settings, instead of any figures', async () => {
+    serve(json({ ...FULL, actualConfigured: false }))
+    renderApp(<Budget />)
+
+    expect(await screen.findByText("Actual isn't connected")).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Go to Settings → Integrations' }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/settings/integrations')
+
+    // Not the ordinary "no data" empty state, and none of the real figures either.
+    expect(screen.queryByText('No data yet')).toBeNull()
     expect(screen.queryAllByRole('img')).toHaveLength(0)
   })
 })

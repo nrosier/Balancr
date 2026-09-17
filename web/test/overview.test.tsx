@@ -87,6 +87,8 @@ const FULL: OverviewPayload = {
   },
   emergencyFundCentimonths: 450,
   hygiene: { scoreBp: 8_750, deductions: [{ reason: 'uncategorised', bp: 750 }], signals: [] },
+  actualConfigured: true,
+  ghostfolioConfigured: true,
 }
 
 /** What a deployment that has never run a job answers. Every field null, no rows. */
@@ -100,6 +102,8 @@ const EMPTY: OverviewPayload = {
   totals: null,
   emergencyFundCentimonths: null,
   hygiene: null,
+  actualConfigured: true,
+  ghostfolioConfigured: true,
 }
 
 const json = (body: unknown, status = 200): Response =>
@@ -492,5 +496,39 @@ describe('the hygiene card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Recomputed totals disagree with Actual' }))
 
     expect(screen.getByText("Groceries does not reconcile: our own sum is € 50,00 away from Actual's.")).toBeTruthy()
+  })
+})
+
+describe('a tenant missing Actual and/or Ghostfolio (#370)', () => {
+  it('shows only the Actual notice when Ghostfolio is connected but Actual is not', async () => {
+    serve(json({ ...FULL, actualConfigured: false }))
+    renderApp(<Overview />)
+
+    expect(await screen.findByText("Actual isn't connected")).toBeTruthy()
+    expect(screen.queryByText("Ghostfolio isn't connected")).toBeNull()
+
+    const link = screen.getByRole('link', { name: 'Go to Settings → Integrations' }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/settings/integrations')
+    expect(screen.queryAllByRole('link', { name: 'Go to Settings → Integrations' })).toHaveLength(1)
+  })
+
+  it('shows only the Ghostfolio notice when Actual is connected but Ghostfolio is not', async () => {
+    serve(json({ ...FULL, ghostfolioConfigured: false }))
+    renderApp(<Overview />)
+
+    expect(await screen.findByText("Ghostfolio isn't connected")).toBeTruthy()
+    expect(screen.queryByText("Actual isn't connected")).toBeNull()
+  })
+
+  it('shows both notices, and no figures, when neither is connected', async () => {
+    serve(json({ ...FULL, actualConfigured: false, ghostfolioConfigured: false }))
+    renderApp(<Overview />)
+
+    expect(await screen.findByText("Actual isn't connected")).toBeTruthy()
+    expect(screen.getByText("Ghostfolio isn't connected")).toBeTruthy()
+    expect(screen.queryAllByRole('link', { name: 'Go to Settings → Integrations' })).toHaveLength(2)
+
+    expect(screen.queryByText('No data yet')).toBeNull()
+    expect(screen.queryAllByRole('img')).toHaveLength(0)
   })
 })

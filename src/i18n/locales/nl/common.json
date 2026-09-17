@@ -101,6 +101,17 @@
     "scenario": "Scenario",
     "settings": "Instellingen"
   },
+  "notConfigured": {
+    "actual": {
+      "body": "Verbind Actual in Instellingen om je budget hier te zien.",
+      "title": "Actual is niet verbonden"
+    },
+    "cta": "Ga naar Instellingen → Integraties",
+    "ghostfolio": {
+      "body": "Verbind Ghostfolio in Instellingen om je portefeuille hier te zien.",
+      "title": "Ghostfolio is niet verbonden"
+    }
+  },
   "notFound": {
     "back": "Terug naar overzicht",
     "lede": "Op dat adres staat niets.",

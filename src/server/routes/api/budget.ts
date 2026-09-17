@@ -37,6 +37,7 @@ import {
   type BenchmarkPeriodKind,
 } from '../../../domain/benchmark/compare.ts'
 import { benchmarkContext, compareMonth } from '../../../domain/benchmark/context.ts'
+import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { badRequest } from '../../errors.ts'
 import { freshness } from './freshness.ts'
 import { budgetSchema, type Budget } from './schemas.ts'
@@ -204,5 +205,6 @@ export function buildBudget(
       uncategorised === null
         ? null
         : { txnCount: uncategorised.txnCount, amountCents: uncategorised.amountCents },
+    actualConfigured: integrationAvailability(db).actual,
   })
 }
