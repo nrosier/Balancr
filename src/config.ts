@@ -143,13 +143,12 @@ const EnvSchema = z.object({
    * Whether onboarding (#373) may create a *second* (or later) tenant, rather
    * than only redeem an invite into one that already exists.
    *
-   * Off by default: roughly forty call sites still call `getSoleTenantId(db)`
-   * two-plus layers deep (`src/domain/ai/*`, the Ghostfolio/Gemini adapters,
-   * `src/db/tenant-integrations.ts`), and that function throws on "tenant
-   * count ≠ 1" with no notion of which tenant asked — so the moment a second
-   * tenant exists, it throws for *every* tenant's requests, not just the new
-   * one. Redeeming an invite into the existing tenant is unaffected by this
-   * flag: it never changes the tenant count.
+   * Off by default until #376's exit criteria are met: the `domain/ai/runs.ts`
+   * cross-tenant read-leak fixed, and the end-to-end multi-tenant onboarding
+   * test passing. Phases 1-4 (every request-path call site threading a real
+   * tenantId instead of `getSoleTenantId(db)`) are done. Redeeming an invite
+   * into the existing tenant is unaffected by this flag: it never changes the
+   * tenant count.
    */
   MULTI_TENANT_ONBOARDING_ENABLED: bool('false'),
   /**

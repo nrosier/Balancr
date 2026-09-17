@@ -2,10 +2,11 @@ import type { Db } from './index.ts'
 import { tenants } from './schema.ts'
 
 /**
- * Interim stand-in for real per-tenant context (#371/#372 will thread an
- * actual tenant id through call sites instead). Throws if more than one
- * tenant exists, since that can't happen before #373 builds provisioning —
- * a throw here means something upstream already broke that invariant.
+ * CLI and break-glass use only, now that #376 has threaded a real tenantId
+ * through every request-path call site. Still legitimate for
+ * `scripts/local-user.ts --tenant` and other one-off tooling with no session
+ * to read a tenant id from. Throws if more than one tenant exists, so a throw
+ * from a request-path caller means it should have taken a tenantId instead.
  */
 export function getSoleTenantId(db: Db): string {
   const rows = db.select({ id: tenants.id }).from(tenants).all()
