@@ -27,6 +27,7 @@
  * equity the owner may not have held throughout that window.
  */
 import type { Db } from '../../../db/index.ts'
+import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { HYGIENE_CODES } from '../../../domain/aggregate/hygiene.ts'
 import {
   loadLatestNetWorth,
@@ -92,6 +93,7 @@ export function buildOverview(db: Db): Overview {
   const properties = loadProperties(db).properties
   const propertyEquity = totalEquityCents(properties, today)
   const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db)
+  const integrations = integrationAvailability(db)
 
   return overviewSchema.parse({
     freshness: freshness(db),
@@ -149,5 +151,7 @@ export function buildOverview(db: Db): Overview {
             ...hygiene,
             signals: loadSignals(db, month).filter((signal) => HYGIENE_CODES.has(signal.code)),
           },
+    actualConfigured: integrations.actual,
+    ghostfolioConfigured: integrations.ghostfolio,
   })
 }
