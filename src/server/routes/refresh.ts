@@ -214,7 +214,7 @@ export function registerRefreshRoutes(
       const busy = jobsInFlight(tenantId)
       if (busy.length > 0) throw busyError(busy)
 
-      const wiped = resetComputedData(db)
+      const wiped = resetComputedData(db, tenantId)
 
       const outcome = startRefresh(db, registry, tenantId, RESET_REFRESH)
       if ('busy' in outcome) throw busyError(outcome.busy)
