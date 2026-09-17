@@ -25,7 +25,6 @@ import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio
 import { toCents } from '../adapters/ghostfolio/types.ts'
 import { config } from '../config.ts'
 import type { Db } from '../db/index.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
 import {
   accountMapBySource,
   applyDerivedFields,
@@ -234,8 +233,7 @@ export function classifyGhostfolio(
   return { reclassified, mirrored }
 }
 
-async function run({ db, log, now, step }: JobContext): Promise<JobDetail> {
-  const tenantId = getSoleTenantId(db)
+async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDetail> {
   await step('connect', () => syncActual(db, tenantId))
 
   const params = loadParams(db)

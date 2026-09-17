@@ -24,7 +24,6 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/index.ts'
 import { upstreamProbes } from '../db/schema.ts'
-import { getSoleTenantId } from '../db/tenant.ts'
 
 /** The sources that get a row. Actual is absent on purpose — see the table's comment. */
 export const PROBE_SOURCES = ['ghostfolio'] as const
@@ -66,12 +65,12 @@ export interface ProbeState {
 /** Replaces the row for `source`. One row per source, latest wins. */
 export function saveProbe(
   db: Db,
+  tenantId: string,
   source: ProbeSource,
   status: StoredProbeStatus,
   report: StoredReport,
   checkedAt: Date,
 ): void {
-  const tenantId = getSoleTenantId(db)
   const set = { status, checkedAt, reportJson: JSON.stringify(report) }
   db.insert(upstreamProbes)
     .values({ tenantId, source, ...set })
