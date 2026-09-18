@@ -246,9 +246,7 @@
   },
   "savings": {
     "period": {
-      "estimate": "Dit telt <money>{{amount}}</money> nog te komen mee, dus is dit een schatting tot de maand afsluit.",
       "month": "Maand",
-      "prorated": "Deze periode is {{progress}} voorbij — elke afgelopen maand telt volledig, en de lopende maand telt enkel voor haar eigen aandeel.",
       "year": "Jaar"
     },
     "periodLabel": "Periode",
