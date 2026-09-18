@@ -714,12 +714,11 @@ describe('the Belgian comparison', () => {
 })
 
 /**
- * The Month/Year toggle above the table, now a real calendar (`PeriodPicker`) rather
- * than a native `<select>`. Two things are worth locking in: the toggle still drives
- * the same `benchmarkPeriod` query param it always did, and the calendar body — which
- * has no value of its own to set, only a kind (#323, restated in `Benchmark.tsx`'s own
- * doc comment) — is a genuine no-op when a different cell is picked without changing
- * kind, rather than a control that quietly forgets the click.
+ * The Month/Year toggle above the table (`PeriodKindToggle`). Until #389 this was the
+ * same calendar-popover `PeriodPicker` the page's own "Month" toolbar uses, with every
+ * date cell wired to a no-op — clicking one looked live and quietly did nothing unless
+ * it happened to change the kind. The toggle replaced it with exactly the two states
+ * that were ever actually wired, and nothing that looks like it can do more.
  */
 describe("the benchmark card's period picker", () => {
   it('asks for the full year once the Year toggle is clicked', async () => {
@@ -730,28 +729,24 @@ describe("the benchmark card's period picker", () => {
     renderApp(<Budget />, { path: '/budget/benchmark' })
     await screen.findByText('Compared with Belgian households')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+    const toggle = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
 
     await waitFor(() => expect(paths(mock)).toContain('/api/budget?benchmarkPeriod=year'))
   })
 
-  it('fires no new request when a different calendar cell is picked in the same kind', async () => {
-    // FULL's own month is August 2026 — picking the neighbouring month in the same
-    // calendar view stays inside `benchmarkPeriod: 'month'`, so `Budget.tsx`'s query
-    // string is unchanged and nothing should follow the click.
+  it('offers only the Month/Year toggle, with no calendar to pick a specific date from (#389)', async () => {
     const mock = serve(json(FULL))
     renderApp(<Budget />, { path: '/budget/benchmark' })
     await screen.findByText('Compared with Belgian households')
 
-    const before = paths(mock).length
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Jul' }))
-
-    // Nothing to await for — the assertion is that no refetch was queued at all — so
-    // one microtask turn is given to a would-be state update before checking.
-    await Promise.resolve()
-    expect(paths(mock).length).toBe(before)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    const toggle = screen.getByRole('group', { name: 'Period' })
+    expect(within(toggle).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Month',
+      'Year',
+    ])
+    expect(paths(mock).length).toBe(1)
   })
 })
 
@@ -1040,23 +1035,24 @@ describe("the custody card's period picker", () => {
     renderApp(<Budget />, { path: '/budget/custody' })
     await screen.findByText('Costs shared with a co-parent')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+    const toggle = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
 
     await waitFor(() => expect(paths(mock)).toContain('/api/budget?custodyPeriod=year'))
   })
 
-  it('fires no new request when a different calendar cell is picked in the same kind', async () => {
+  it('offers only the Month/Year toggle, with no calendar to pick a specific date from (#389)', async () => {
     const mock = serve(json(withSplit(SPLIT)))
     renderApp(<Budget />, { path: '/budget/custody' })
     await screen.findByText('Costs shared with a co-parent')
 
-    const before = paths(mock).length
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Jul' }))
-
-    await Promise.resolve()
-    expect(paths(mock).length).toBe(before)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    const toggle = screen.getByRole('group', { name: 'Period' })
+    expect(within(toggle).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Month',
+      'Year',
+    ])
+    expect(paths(mock).length).toBe(1)
   })
 
   it('switches the lede and the share line to year wording once Year is picked', async () => {
@@ -1070,8 +1066,8 @@ describe("the custody card's period picker", () => {
     await screen.findByText(withMoney(/In August 2026 you paid € 400 on costs shared with a co-parent\./))
     expect(mock).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Period' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
+    const toggle = screen.getByRole('group', { name: 'Period' })
+    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
 
     expect(
       await screen.findByText(withMoney(/In 2026 you paid € 400 on costs shared with a co-parent\./)),
