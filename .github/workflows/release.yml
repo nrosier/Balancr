@@ -62,13 +62,21 @@ jobs:
   harbor-scan:
     name: Trigger Harbor replication + scan
     needs: image
-    # The homelab's replication policy only pulls `latest` (confirmed by hand
-    # against the Harbor API: the other tags this workflow pushes 404 there),
-    # so this only needs to run when the push actually moved `latest` — the
-    # same condition metadata-action's `enable=` above uses to decide whether
-    # to push it at all. `vars.HARBOR_URL` stays empty until Harbor is wired
-    # up, so this is a clean no-op until then rather than a red check.
-    if: vars.HARBOR_URL != '' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+    # Disabled (#395): every run 403s at the very first call, from
+    # Cloudflare's WAF on the harbor.bunbun.be zone rejecting the
+    # GitHub-hosted runner despite the x-ci-bypass header meant to let it
+    # through. That's a fight against a WAF from outside the network it
+    # protects, with no way to see from here which layer (WAF rule
+    # matching, Bot Fight Mode, Authentik forward-auth) is issuing the 403.
+    #
+    # The fix isn't a header — it's not calling in at all. Harbor's
+    # replication policies support a scheduled (cron) trigger as well as a
+    # manual/API one; switching policy 1 to scheduled lets Harbor pull from
+    # Docker Hub on its own from inside the homelab network, and a
+    # scheduled scan-all covers the vulnerability scan the same way. Once
+    # that's set up on Harbor's side, delete this job outright instead of
+    # re-enabling it.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Harbor replication
