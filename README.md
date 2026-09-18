@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -995,14 +995,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.0.0` is the current release. Every feature issue in
-the v2.0.0 Multi-tenant milestone is closed, and the two release candidates
-ran without turning up anything beyond the three fixes already shipped in
-`rc.2`. An existing single-tenant deployment upgrades in place onto tenant 1
-with no change to what it shows — see `CHANGELOG.md` for the new required
-`CONFIG_ENCRYPTION_KEY` env var this upgrade needs.
+**Where it is now** — `2.0.1` is the current release, a small fix on top of
+`2.0.0`'s multi-tenant milestone. An existing single-tenant deployment
+upgrades in place onto tenant 1 with no change to what it shows — see
+`CHANGELOG.md` for the new required `CONFIG_ENCRYPTION_KEY` env var this
+upgrade needs.
 
-`docker pull` now resolves `latest` to `2.0.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.0.1`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
