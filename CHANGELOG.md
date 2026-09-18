@@ -6,6 +6,59 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.0-rc.1] — 2026-09-18
+
+Closes the v2.0.0 Multi-tenant milestone: every feature issue in it
+([#367](https://github.com/nrosier/Balancr/issues/367)-[#373](https://github.com/nrosier/Balancr/issues/373),
+[#376](https://github.com/nrosier/Balancr/issues/376)-[#380](https://github.com/nrosier/Balancr/issues/380))
+is closed, so what remains before `2.0.0` is testing rather than building. A
+single Balancr instance can now hold more than one household's data, each
+isolated behind its own encrypted integration credentials, its own job
+schedule and its own OIDC-issued tenant membership — while an existing
+single-tenant deployment upgrades in place onto tenant 1 with no change to
+what it shows.
+
+### Added
+
+- **Per-tenant data and integrations**
+  ([#367](https://github.com/nrosier/Balancr/issues/367),
+  [#369](https://github.com/nrosier/Balancr/issues/369)). Every table now
+  carries a `tenant_id`; an in-place upgrade backfills one literal "Default"
+  tenant onto all of it, so an existing deployment's data and behavior are
+  unchanged. Actual and Ghostfolio credentials move from `.env` into the
+  database, one row per tenant, imported once from `.env` on first boot after
+  the upgrade and never read from there again.
+- **Reversible field encryption for stored credentials**
+  ([#368](https://github.com/nrosier/Balancr/issues/368)). Integration
+  credentials at rest are AES-256-GCM encrypted under a new required
+  `CONFIG_ENCRYPTION_KEY`. The app now refuses to boot without it — generate
+  one with `openssl rand -base64 32` and add it to `.env` before upgrading.
+- **Per-tenant integration clients and job scheduling**
+  ([#371](https://github.com/nrosier/Balancr/issues/371),
+  [#372](https://github.com/nrosier/Balancr/issues/372)). Actual, Ghostfolio
+  and Gemini each get their own client instance per tenant, and the nightly
+  jobs fan out over every tenant rather than assuming one.
+- **`tenantId` threaded through the request, domain and job layers**
+  ([#376](https://github.com/nrosier/Balancr/issues/376)-[#380](https://github.com/nrosier/Balancr/issues/380)).
+  Every route and background job now carries a real tenant id instead of
+  assuming the sole one; `/readyz` fans its checks out per tenant and reports
+  the worst of each. Follow-up hardening closed the cross-tenant read paths
+  this uncovered.
+- **Self-service tenant onboarding**
+  ([#373](https://github.com/nrosier/Balancr/issues/373)), behind a new
+  `MULTI_TENANT_ONBOARDING_ENABLED` flag that defaults to `false`. A new OIDC
+  identity may only redeem an invite into an existing tenant until the flag is
+  turned on; redeeming an invite is unaffected either way, since it never
+  changes the tenant count.
+
+### Upgrading from 1.x
+
+Add `CONFIG_ENCRYPTION_KEY` (32 raw bytes, base64-encoded — `openssl rand
+-base64 32`) to `.env` before starting this version; without it the app will
+not boot. No other action is required — migrations backfill the existing
+data onto tenant 1 automatically, and `MULTI_TENANT_ONBOARDING_ENABLED`
+stays off until it is explicitly turned on.
+
 ## [1.2.3] — 2026-09-16
 
 Dependency, lockfile, and base-image maintenance — no user-facing behavior change.
