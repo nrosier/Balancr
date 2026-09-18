@@ -6,6 +6,12 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.0] — 2026-09-18
+
+Blessed by the person whose money it is. Every feature issue in the v2.0.0
+Multi-tenant milestone is closed, and the two release candidates ran without
+turning up anything beyond the three fixes already shipped in `rc.2`.
+
 ## [2.0.0-rc.2] — 2026-09-18
 
 Three fixes found while shaking out rc.1.
