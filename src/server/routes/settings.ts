@@ -327,6 +327,7 @@ const propertyPatchRequest = z.strictObject({
           rateBp: z.number().int(),
           monthlyPaymentCents: z.number().int(),
           remainingTermMonths: z.number().int(),
+          originalPrincipalCents: z.number().int().nullable().optional(),
         })
         .nullable()
         .optional(),

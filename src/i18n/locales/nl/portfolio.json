@@ -106,6 +106,7 @@
     "title": "Rekeningen buiten budget"
   },
   "property": {
+    "balanceEstimate": "Geschat door vanaf het saldo dat laatst tegen een afrekening is bevestigd op {{date}} verder af te bouwen.",
     "caption_one": "Eén eigendom.",
     "caption_other": "{{value}} eigendommen.",
     "column": {
@@ -114,6 +115,7 @@
       "equity": "Overwaarde",
       "kind": "Type",
       "name": "Eigendom",
+      "paidOff": "Afgelost",
       "rent": "Huur",
       "value": "Waarde",
       "yield": "Rendement"

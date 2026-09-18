@@ -45,6 +45,7 @@ import {
   loadProperties,
   netCashFlowCents,
   outstandingBalanceCents,
+  paidOffBp,
   propertyEquityCents,
   totalEquityCents,
 } from '../../../domain/property/properties.ts'
@@ -106,6 +107,10 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
       // Priced as of the request (`today`), never as of `date` — see the file doc
       // comment (#227): a mortgage amortizes with the calendar, not with the snapshot.
       mortgageBalanceCents: outstandingBalanceCents(property.mortgage, today),
+      // The re-anchor point the estimate above amortizes forward from (#392), so the
+      // client can label it as an estimate rather than implying it's straight off a statement.
+      mortgageAnchorDate: property.mortgage?.anchorDate ?? null,
+      mortgagePaidOffBp: paidOffBp(property.mortgage, today),
       equityCents: propertyEquityCents(property, today),
       rentCents: property.rentCents,
       netCashFlowCents: netCashFlowCents(property),

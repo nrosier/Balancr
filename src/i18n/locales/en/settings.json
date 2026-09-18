@@ -378,6 +378,10 @@
     "labelPlaceholder": "e.g. Home, Antwerp flat",
     "mortgage": {
       "anchorDate": "Balance as of",
+      "originalPrincipal": "Original loan amount",
+      "originalPrincipalHint": "Optional. Lets Balancr show how much of the loan is paid off.",
+      "originalPrincipalPlaceholder": "e.g. what the loan was on day one",
+      "paidOffReads": "{{value}} of the original loan paid off.",
       "payment": "Monthly payment",
       "principal": "Outstanding balance",
       "rate": "Interest rate",

@@ -804,6 +804,15 @@ export const portfolioPropertySchema = z.object({
   label: z.string(),
   propertyValueCents: cents().nullable(),
   mortgageBalanceCents: cents(),
+  /**
+   * When `mortgageBalanceCents` was last confirmed against a statement, or null when
+   * there's no mortgage (#392) — the balance itself is priced as of the request (see the
+   * file doc comment), but it amortizes forward from this date rather than from today, so
+   * the client needs it to say the figure is an estimate and since when.
+   */
+  mortgageAnchorDate: z.string().nullable(),
+  /** Share of the original loan paid off, or null with no mortgage or no original amount on file. */
+  mortgagePaidOffBp: basisPoints().nullable(),
   equityCents: cents().nullable(),
   /** Monthly rent received. Only meaningful for a `rental`. */
   rentCents: cents().nullable(),
@@ -1504,6 +1513,8 @@ const propertyMortgageSchema = z.object({
   rateBp: basisPoints(),
   monthlyPaymentCents: cents(),
   remainingTermMonths: z.int(),
+  /** What the loan started at, or null when nobody has entered it (#392). */
+  originalPrincipalCents: cents().nullable(),
 })
 
 const propertySchema = z.object({

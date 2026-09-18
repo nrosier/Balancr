@@ -11,10 +11,16 @@
  * `grossYieldBp` already come back `null` from the server for exactly that reason.
  * The mortgage-balance column has no such gate: a property with no mortgage and one
  * paid off in full are both, honestly, a balance of zero.
+ *
+ * The balance itself is priced as of the request (see `portfolio.ts`'s own doc
+ * comment), but it's an amortization forward from `mortgageAnchorDate`, not a fresh
+ * read off a statement — the `≈` and the info tip on that cell say so, and name the
+ * date it last was one (#392).
  */
 import { useId, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
-import { formatBp, type Portfolio } from '../shared.ts'
+import { formatBp, formatDate, type Portfolio } from '../shared.ts'
+import { InfoTip } from '../ui/InfoTip.tsx'
 import { Money } from '../ui/Money.tsx'
 
 export type PropertyRow = Portfolio['properties'][number]
@@ -40,6 +46,9 @@ export function PropertyTable({ properties }: { properties: readonly PropertyRow
             </th>
             <th scope="col" className="table__cell--number">
               {t('portfolio:property.column.balance')}
+            </th>
+            <th scope="col" className="table__cell--number">
+              {t('portfolio:property.column.paidOff')}
             </th>
             <th scope="col" className="table__cell--number">
               {t('portfolio:property.column.equity')}
@@ -70,7 +79,23 @@ export function PropertyTable({ properties }: { properties: readonly PropertyRow
                 )}
               </td>
               <td className="table__cell--number">
-                <Money cents={property.mortgageBalanceCents} options={{ whole: true }} />
+                {property.mortgageAnchorDate === null ? (
+                  <Money cents={property.mortgageBalanceCents} options={{ whole: true }} />
+                ) : (
+                  <>
+                    {'≈ '}
+                    <Money cents={property.mortgageBalanceCents} options={{ whole: true }} />{' '}
+                    <InfoTip
+                      id={`property-balance-tip-${property.id}`}
+                      text={t('portfolio:property.balanceEstimate', {
+                        date: formatDate(property.mortgageAnchorDate),
+                      })}
+                    />
+                  </>
+                )}
+              </td>
+              <td className="table__cell--number">
+                {property.mortgagePaidOffBp === null ? DASH : formatBp(property.mortgagePaidOffBp)}
               </td>
               <td className="table__cell--number">
                 {property.equityCents === null ? (

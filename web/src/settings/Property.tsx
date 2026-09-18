@@ -34,6 +34,7 @@ import {
   grossYieldBp,
   MAX_PROPERTIES,
   netCashFlowCents,
+  paidOffBp,
   parseMoneyToCents,
   propertyEquityCents,
   propertyKinds,
@@ -51,6 +52,8 @@ interface MortgageDraft {
   rateBp: string
   monthlyPaymentCents: string
   remainingTermMonths: string
+  /** Empty means "not entered", not zero — see `originalPrincipalCents`'s own doc comment. */
+  originalPrincipalCents: string
 }
 
 /** One property's row while it is being typed: every box is text until it parses. */
@@ -70,6 +73,8 @@ const mortgageDraftOf = (mortgage: Mortgage): MortgageDraft => ({
   rateBp: String(mortgage.rateBp),
   monthlyPaymentCents: formatMoney(mortgage.monthlyPaymentCents),
   remainingTermMonths: String(mortgage.remainingTermMonths),
+  originalPrincipalCents:
+    mortgage.originalPrincipalCents === null ? '' : formatMoney(mortgage.originalPrincipalCents),
 })
 
 const draftOf = (property: Property): Draft => ({
@@ -113,7 +118,22 @@ function parseMortgage(draft: MortgageDraft): Mortgage | null {
   ) {
     return null
   }
-  return { principalCents, anchorDate, rateBp, monthlyPaymentCents, remainingTermMonths }
+  // Optional, unlike every other mortgage field: empty means "not entered" rather than
+  // invalid, since most mortgages already on file predate this field (#392).
+  const originalText = draft.originalPrincipalCents.trim()
+  if (originalText === '') {
+    return { principalCents, anchorDate, rateBp, monthlyPaymentCents, remainingTermMonths, originalPrincipalCents: null }
+  }
+  const originalPrincipalCents = parseMoneyToCents(originalText)
+  if (originalPrincipalCents === null) return null
+  return {
+    principalCents,
+    anchorDate,
+    rateBp,
+    monthlyPaymentCents,
+    remainingTermMonths,
+    originalPrincipalCents,
+  }
 }
 
 interface ParsedRow {
@@ -181,6 +201,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
             rateBp: '',
             monthlyPaymentCents: '',
             remainingTermMonths: '',
+            originalPrincipalCents: '',
           }
         : null,
     })
@@ -269,6 +290,10 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                 }
                 if (parsed.kind === 'rental' && yieldBp !== null) {
                   reads.push(t('settings:property.yieldReads', { value: formatBp(yieldBp) }))
+                }
+                const paidOff = paidOffBp(asProperty.mortgage, today)
+                if (paidOff !== null) {
+                  reads.push(t('settings:property.mortgage.paidOffReads', { value: formatBp(paidOff) }))
                 }
               }
 
@@ -480,6 +505,31 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                         >
                           {t('settings:property.mortgage.useStandardPayment')}
                         </button>
+                      </div>
+
+                      <div className="field">
+                        <label
+                          className="field__label"
+                          htmlFor={`mortgage-original-${row.id}`}
+                        >
+                          {t('settings:property.mortgage.originalPrincipal')}
+                        </label>
+                        <input
+                          id={`mortgage-original-${row.id}`}
+                          className="field__input num"
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          placeholder={t('settings:property.mortgage.originalPrincipalPlaceholder')}
+                          value={row.mortgage.originalPrincipalCents}
+                          disabled={locked}
+                          onChange={(event) =>
+                            editMortgage(index, { originalPrincipalCents: event.target.value })
+                          }
+                        />
+                        <p className="property__reads muted">
+                          {t('settings:property.mortgage.originalPrincipalHint')}
+                        </p>
                       </div>
                     </div>
                   )}
