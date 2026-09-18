@@ -25,7 +25,7 @@
  */
 import { mkdir } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import * as api from '@actual-app/api'
+import { api } from './api-source.ts'
 import { logger } from '../../logger.ts'
 import {
   ENVELOPE_BUDGET_TYPES,

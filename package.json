@@ -26,6 +26,8 @@
     "badges:check": "node scripts/check-badges.mjs",
     "contrast:check": "tsx scripts/check-contrast.ts",
     "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
+    "fake:ghostfolio": "tsx scripts/fake-backend/ghostfolio-server.ts",
+    "fake:seed": "tsx --env-file-if-exists=.env scripts/fake-backend/seed-benchmark-custody.ts",
     "backup:verify": "tsx --env-file-if-exists=.env scripts/backup-verify.ts",
     "backup:restore": "tsx --env-file-if-exists=.env scripts/backup-restore.ts"
   },
