@@ -243,6 +243,8 @@
     "notConfigured": "Niet ingesteld",
     "secretUnchanged": "Laat leeg om de opgeslagen waarde te behouden.",
     "test": "Verbinding testen",
+    "testNeedsFields": "Vul de velden hierboven in om te testen.",
+    "testNeedsSecret": "Vul de waarde opnieuw in om te testen, of sla er eerst een op.",
     "testOk": "Verbinding gelukt.",
     "testing": "Aan het testen…",
     "title": "Integraties"

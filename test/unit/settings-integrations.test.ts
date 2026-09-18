@@ -492,6 +492,36 @@ describe('POST /api/settings/integrations/actual/test', () => {
     expect(res.statusCode).toBe(403)
     expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
   })
+
+  it('falls back to the stored password when none is typed (#382)', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'other-sync',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(vi.mocked(testActualConnection)).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: 'http://actual2.test:5006', password: 'test-password' }),
+    )
+  })
+
+  it('refuses when neither a typed nor a stored password exists (#382)', async () => {
+    ctx.db
+      .update(tenantIntegrations)
+      .set({ actualPasswordEnc: '' })
+      .where(eq(tenantIntegrations.tenantId, getSoleTenantId(ctx.db)))
+      .run()
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+  })
 })
 
 describe('POST /api/settings/integrations/ghostfolio/test', () => {
@@ -567,6 +597,31 @@ describe('POST /api/settings/integrations/ghostfolio/test', () => {
     )
     expect(res.statusCode).toBe(403)
   })
+
+  it('falls back to the stored token when none is typed (#382)', async () => {
+    stubFetch('ok')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio2.test:3333',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+  })
+
+  it('refuses when neither a typed nor a stored token exists (#382)', async () => {
+    ctx.db
+      .update(tenantIntegrations)
+      .set({ ghostfolioSecurityTokenEnc: '' })
+      .where(eq(tenantIntegrations.tenantId, getSoleTenantId(ctx.db)))
+      .run()
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio2.test:3333',
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('POST /api/settings/integrations/gemini/test', () => {
@@ -601,9 +656,24 @@ describe('POST /api/settings/integrations/gemini/test', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('requires an API key to test an AI Studio connection', async () => {
+  it('requires an API key to test an AI Studio connection when none is stored either', async () => {
+    ctx.db
+      .update(tenantIntegrations)
+      .set({ geminiApiKeyEnc: null })
+      .where(eq(tenantIntegrations.tenantId, getSoleTenantId(ctx.db)))
+      .run()
+
     const res = await post('/api/settings/integrations/gemini/test', { provider: 'aistudio' })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('falls back to the stored API key when none is typed (#382)', async () => {
+    genai.behavior = 'ok'
+
+    const res = await post('/api/settings/integrations/gemini/test', { provider: 'aistudio' })
+
+    expect(res.statusCode).toBe(200)
+    expect(genai.calls).toContainEqual({ apiKey: 'test-key' })
   })
 
   it('builds a Vertex client from the candidate project, not the stored one', async () => {

@@ -33,7 +33,7 @@ import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { eurToMicroEur } from '../../adapters/gemini/pricing.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
-import { encryptField } from '../../db/field-crypto.ts'
+import { decryptField, encryptField } from '../../db/field-crypto.ts'
 import { tenantIntegrations } from '../../db/schema.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
 import { withTestHost } from '../../egress.ts'
@@ -468,18 +468,25 @@ const geminiIntegrationPatchRequest = z.strictObject({
 /**
  * A "test connection" body carries the *full* candidate credential, never a partial
  * patch — nothing is saved by a test, so there is no stored value to merge against.
+ *
+ * A secret key is optional here for the same reason it's optional on the PATCH
+ * request: a secret field is always blank on load, so a test of an
+ * already-configured integration can only omit it. The handler below falls back
+ * to the tenant's own stored secret when it's omitted and one exists (#382) —
+ * never the other way around, so a test never sends a stored secret for a
+ * candidate it did not ask to test.
  */
 const actualIntegrationTestRequest = z.strictObject({
   serverUrl: z.string().min(1),
   syncId: z.string().min(1),
-  password: z.string().min(1),
+  password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
 })
 
 /** See `actualIntegrationTestRequest`. */
 const ghostfolioIntegrationTestRequest = z.strictObject({
   url: z.string().min(1),
-  securityToken: z.string().min(1),
+  securityToken: z.string().min(1).optional(),
 })
 
 /** See `actualIntegrationTestRequest`. `googleCloudLocation` defaults to the deployment's own when omitted. */
@@ -1127,18 +1134,27 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * Whether a candidate Ghostfolio URL/token actually work (#369).
    *
    * Nothing is persisted here, so there is no `before`/`after` to audit and no
-   * partial-update merge to do — the body is the full candidate. Ghostfolio's client
-   * module keeps its own cached token, but that state belongs to the *saved*
-   * connection; this call never touches it, which is what makes a standalone fetch
+   * partial-update merge to do — the URL is always the candidate typed into the
+   * form, and a blank token falls back to the tenant's own stored one so testing
+   * an already-configured connection doesn't require retyping it (#382).
+   * Ghostfolio's client module keeps its own cached token, but that state belongs
+   * to the *saved* connection; this call never touches it, which is what makes a
+   * standalone fetch
    * here safe to run alongside a real request in flight.
    */
   app.post(
     '/api/settings/integrations/ghostfolio/test',
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
-      requireOwner(request)
+      const user = requireOwner(request)
       const candidate = parseBody(ghostfolioIntegrationTestRequest, request.body)
       const base = candidate.url.replace(/\/+$/, '')
+
+      const stored = integrationsRow(db, user.tenantId).ghostfolioSecurityTokenEnc
+      const securityToken = candidate.securityToken ?? (stored.length > 0 ? decryptField(stored) : undefined)
+      if (securityToken === undefined) {
+        throw badRequest('A security token is required to test this connection.')
+      }
 
       const result = await withTestHost(candidate.url, async (): Promise<IntegrationTest> => {
         try {
@@ -1153,7 +1169,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
           const auth = await fetch(`${base}/api/v1/auth/anonymous`, {
             method: 'POST',
             headers: { accept: 'application/json', 'content-type': 'application/json' },
-            body: JSON.stringify({ accessToken: candidate.securityToken }),
+            body: JSON.stringify({ accessToken: securityToken }),
             signal: AbortSignal.timeout(20_000),
           })
           if (!auth.ok) {
@@ -1187,7 +1203,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     '/api/settings/integrations/gemini/test',
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
-      requireOwner(request)
+      const user = requireOwner(request)
       const candidate = parseBody(geminiIntegrationTestRequest, request.body)
       const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
 
@@ -1201,7 +1217,8 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         options = { vertexai: true, project, location }
         testUrl = `https://${location}-aiplatform.googleapis.com`
       } else {
-        const apiKey = candidate.apiKey
+        const stored = integrationsRow(db, user.tenantId).geminiApiKeyEnc
+        const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
         if (apiKey === undefined) {
           throw badRequest('An API key is required to test an AI Studio connection.')
         }
@@ -1246,7 +1263,15 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       const busy = jobsInFlight(user.tenantId)
       if (busy.length > 0) throw busyError(busy)
 
-      const result = await withTestHost(candidate.serverUrl, () => testActualConnection(candidate))
+      const row = integrationsRow(db, user.tenantId)
+      const password = candidate.password ?? (row.actualPasswordEnc.length > 0 ? decryptField(row.actualPasswordEnc) : undefined)
+      if (password === undefined) throw badRequest('A password is required to test this connection.')
+      const e2ePassword =
+        candidate.e2ePassword ?? (row.actualE2ePasswordEnc === null ? undefined : decryptField(row.actualE2ePasswordEnc))
+
+      const result = await withTestHost(candidate.serverUrl, () =>
+        testActualConnection({ serverUrl: candidate.serverUrl, syncId: candidate.syncId, password, e2ePassword }),
+      )
 
       return integrationTestSchema.parse(result)
     },
