@@ -19,9 +19,12 @@
  * `@actual-app/api` is mocked here rather than in `actual-adapter.test.ts`,
  * which asserts the *real* package still exposes the methods this worker
  * calls — those two intentions cannot share a file, because `vi.mock`
- * applies to all of it. `aqlQuery` is deliberately left out of the mock even
- * though it is allowlisted, to exercise the "allowlisted but not a function
- * on this build of the package" branch.
+ * applies to all of it. `getBudgetMonth` is deliberately left out of the
+ * mock even though it is allowlisted, to exercise the "allowlisted but not a
+ * function on this build of the package" branch. `aqlQuery` mimics the real
+ * package's own behaviour — calling `.serialize()` on whatever it is given —
+ * so `runCall`'s re-wrapping of an already-serialized query state (#381) has
+ * something real to fail against if it regresses.
  */
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -40,6 +43,13 @@ const getServerVersion = vi.fn<() => Promise<{ version: string } | { error: stri
 const getPreferences = vi.fn<() => Promise<{ budgetType: string; defaultCurrencyCode: string }>>()
 const getAccountBalance = vi.fn<(id: string) => Promise<number>>()
 const getSchedules = vi.fn<() => Promise<unknown[]>>()
+/**
+ * Mimics the real `@actual-app/api`'s own `aqlQuery`, which unconditionally
+ * calls `.serialize()` on whatever it is given — so a test can tell the
+ * difference between "got the serialized state" and "got something with no
+ * `.serialize()` method" the same way the real package would.
+ */
+const aqlQuery = vi.fn<(query: { serialize: () => unknown }, ...rest: unknown[]) => unknown>()
 
 vi.mock('@actual-app/api', () => ({
   init: (config: Record<string, unknown>) => init(config),
@@ -51,12 +61,13 @@ vi.mock('@actual-app/api', () => ({
   getPreferences: () => getPreferences(),
   getAccountBalance: (id: string) => getAccountBalance(id),
   getSchedules: () => getSchedules(),
+  aqlQuery: (...args: [{ serialize: () => unknown }, ...unknown[]]) => aqlQuery(...args),
   // Present but `undefined`, not omitted — see the file header for why this
   // one method is deliberately not a function. Omitting the key outright
   // makes Vitest's mock proxy throw its own "no export defined" error on
   // access, which is a different failure than the one this file means to
   // exercise (`runCall`'s own `typeof fn !== 'function'` check).
-  aqlQuery: undefined,
+  getBudgetMonth: undefined,
 }))
 
 /** An error shaped the way Actual's own errors are: a message plus a `code`. */
@@ -117,6 +128,8 @@ beforeEach(() => {
   getAccountBalance.mockResolvedValue(4_200)
   getSchedules.mockReset()
   getSchedules.mockResolvedValue([])
+  aqlQuery.mockReset()
+  aqlQuery.mockImplementation((query) => ({ data: [], serialized: query.serialize() }))
 })
 
 afterEach(() => {
@@ -290,17 +303,49 @@ describe("'call': dispatching one method", () => {
   })
 
   it('reports an allowlisted method the package does not actually expose', async () => {
-    // `aqlQuery` is allowlisted but deliberately not part of the mock above.
+    // `getBudgetMonth` is allowlisted but deliberately not part of the mock above.
     const { handleRequest } = await freshWorker()
     const response = await handleRequest(
-      { id: 7, kind: 'call', method: 'aqlQuery', args: [] },
+      { id: 7, kind: 'call', method: 'getBudgetMonth', args: [] },
       () => undefined,
     )
     expect(response).toEqual({
       id: 7,
       ok: false,
-      error: { message: '@actual-app/api has no method aqlQuery' },
+      error: { message: '@actual-app/api has no method getBudgetMonth' },
     })
+  })
+})
+
+describe("'call': aqlQuery re-wraps an already-serialized query state (#381)", () => {
+  // `runAql` (`src/adapters/actual/queries.ts`) serializes the query in the
+  // main process, since a live `Query`'s methods can't survive structured
+  // cloning across the fork — only the plain `QueryState` object crosses
+  // IPC. The real `aqlQuery` unconditionally calls `.serialize()` on its
+  // argument, so without the fix below it would throw
+  // "query.serialize is not a function" on every call.
+  const state = { tableName: 'transactions', filterExpressions: [] }
+
+  it('gives aqlQuery something whose `.serialize()` returns the original state', async () => {
+    const { handleRequest } = await freshWorker()
+    const response = await handleRequest(
+      { id: 7, kind: 'call', method: 'aqlQuery', args: [state] },
+      () => undefined,
+    )
+    expect(response).toEqual({ id: 7, ok: true, result: { data: [], serialized: state } })
+    expect(aqlQuery).toHaveBeenCalledTimes(1)
+    const passed = aqlQuery.mock.calls[0]?.[0]
+    expect(typeof passed?.serialize).toBe('function')
+    expect(passed?.serialize()).toBe(state)
+  })
+
+  it('leaves any arguments after the query state alone', async () => {
+    const { handleRequest } = await freshWorker()
+    await handleRequest(
+      { id: 7, kind: 'call', method: 'aqlQuery', args: [state, { extra: true }] },
+      () => undefined,
+    )
+    expect(aqlQuery.mock.calls[0]?.[1]).toEqual({ extra: true })
   })
 })
 
