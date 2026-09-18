@@ -16,8 +16,15 @@
   margin-bottom: var(--space-5);
 }
 
+.page__section {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  font-weight: var(--weight-medium);
+}
+
 .page__title {
-  font-size: var(--type-xl);
+  font-size: var(--type-2xl);
 }
 
 .page__lede {
@@ -29,7 +36,7 @@
 
 @media (min-width: 60rem) {
   .page__title {
-    font-size: var(--type-2xl);
+    font-size: var(--type-3xl);
   }
 }
 
@@ -138,8 +145,6 @@
   font-size: var(--type-base);
   font-weight: var(--weight-semibold);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 /*

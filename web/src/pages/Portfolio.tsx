@@ -48,6 +48,7 @@ import { Money } from '../ui/Money.tsx'
 import { NotConfigured } from '../ui/NotConfigured.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
+import { labelKeyFor } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../portfolio/advice.css'
 
@@ -89,7 +90,11 @@ export function Portfolio(): ReactNode {
 
   return (
     <>
-      <PageHeader title={t('nav.portfolio')} lede={t('page.portfolio.lede')} />
+      <PageHeader
+        title={t('nav.portfolio')}
+        section={t(labelKeyFor(PORTFOLIO_SECTIONS, section))}
+        lede={t('page.portfolio.lede')}
+      />
       <SectionNav sections={PORTFOLIO_SECTIONS} ariaLabel={t('nav.portfolio')}>
         <DataState resource={resource} isEmpty={isEmpty}>
           {(data) =>

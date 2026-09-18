@@ -73,6 +73,7 @@ import { Private } from '../ui/Money.tsx'
 import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
+import { labelKeyFor } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../insights/insights.css'
 
@@ -145,7 +146,11 @@ export function Insights(): ReactNode {
 
   return (
     <>
-      <PageHeader title={t('nav.insights')} lede={t('page.insights.lede')} />
+      <PageHeader
+        title={t('nav.insights')}
+        section={t(labelKeyFor(INSIGHTS_SECTIONS, section))}
+        lede={t('page.insights.lede')}
+      />
       <SectionNav sections={INSIGHTS_SECTIONS} ariaLabel={t('nav.insights')}>
         <DataState resource={resource} isEmpty={isEmpty}>
           {(data) => (

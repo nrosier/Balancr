@@ -52,6 +52,13 @@ export function sectionFor<Id extends string>(
   return best?.id ?? fallback
 }
 
+/** The catalogue key for a section's tab label, by id — for a page header's breadcrumb. */
+export function labelKeyFor<Id extends string>(sections: readonly Section<Id>[], id: Id): string {
+  const section = sections.find((candidate) => candidate.id === id)
+  if (section === undefined) throw new Error(`no section with id ${id}`)
+  return section.labelKey
+}
+
 /**
  * The active subsection for the current path, defaulting to the first when the path
  * names the section but not a subsection (e.g. the bare `/settings/thresholds`) — and
