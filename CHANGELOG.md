@@ -6,6 +6,31 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.2] — 2026-09-18
+
+### Added
+
+- **A third property kind, `owned`** ([#390](https://github.com/nrosier/Balancr/issues/390)),
+  for a home the household owns outright but neither lives in nor rents out — bought
+  outright, inherited, held for a family member. Sits alongside `primary`/`rental` in
+  Settings → Property with no rent field and no cash-flow/yield reads, same as `primary`.
+- **Local dev without a real Actual or Ghostfolio** ([#391](https://github.com/nrosier/Balancr/issues/391)).
+  `ACTUAL_FAKE_BACKEND=true` swaps in an in-memory fake Actual with a generated budget;
+  `npm run fake:ghostfolio` stands up a fake Ghostfolio server; `npm run fake:seed` maps
+  the fake categories to COICOP divisions and a custody split so Benchmark and Custody
+  render real content too. See the README's "Local dev without real Actual/Ghostfolio".
+
+### Fixed
+
+- **Benchmark/Custody's own period toggle still looked like a second datepicker after
+  2.0.1's fix** ([#389](https://github.com/nrosier/Balancr/issues/389)). Moving the
+  control into the card wasn't enough — it was still the same calendar-popover
+  `PeriodPicker` the page's Month toolbar uses, with every date cell wired to a no-op
+  unless the click happened to change Month/Year. It's now a plain two-state toggle with
+  no popover pretending it can do more.
+- **The mortgage rate showed only one decimal digit** — a rate typed to hundredths (e.g.
+  4.41%) read back as 4.4%.
+
 ## [2.0.1] — 2026-09-18
 
 ### Fixed
