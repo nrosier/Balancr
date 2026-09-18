@@ -40,13 +40,20 @@ export function benchmarkContext(db: Db, tenantId: string): BenchmarkContext {
   for (const [categoryId, meta] of loadCategoryMeta(db, tenantId)) {
     coicop.set(categoryId, meta.coicopCode)
   }
+  // The household is loaded first because it is what decides which country's file to read
+  // (#244) — the mapping other callers keep to "load the file, then the household" would
+  // read the wrong file, or the default one, before it ever learns which one to ask for.
+  const household = loadHousehold(db, tenantId)
   // The override is applied here rather than at either caller, because this is the one
   // seam both of them pass through — the nightly signals job and `GET /api/budget`. Applied
   // once at either end instead, the two could disagree about which average household they
   // were comparing to, and the stored signals would be about a different reference from the
   // card explaining them (#290).
-  const benchmark = applyReferenceOverride(benchmarkOrNull(), loadReferenceOverride(db, tenantId))
-  return { benchmark, household: loadHousehold(db, tenantId), coicop }
+  const benchmark = applyReferenceOverride(
+    benchmarkOrNull(household.country),
+    loadReferenceOverride(db, tenantId),
+  )
+  return { benchmark, household, coicop }
 }
 
 /**
