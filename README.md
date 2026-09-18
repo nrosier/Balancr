@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.0--rc.2-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -990,19 +990,20 @@ ends.
 | `1.0.0` | Blessed by the person whose money it is | ✅ |
 | `1.1.0` | Small fixes and polish shipped after v1.0.0 | ✅ |
 | `1.2.0` | v1.1's polish batch closed; net worth's Directly available splits into on-budget and off-budget | ✅ |
-| `2.0.0-rc.N` | Multi-tenant: isolated per-tenant data, integrations and job scheduling | 🔄 shipping as `2.0.0-rc.2` |
+| `2.0.0-rc.N` | Multi-tenant: isolated per-tenant data, integrations and job scheduling | ✅ shipped as `2.0.0-rc.2` |
+| `2.0.0` | Blessed by the person whose money it is | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.0.0-rc.2` is the current release, a fix-only
-follow-up to `rc.1` for three issues found while testing it. Every feature
-issue in the v2.0.0 milestone is closed; what remains before `2.0.0` is
-testing rather than building. An existing single-tenant deployment upgrades
-in place onto tenant 1 with no change to what it shows — see `CHANGELOG.md`
-for the new required `CONFIG_ENCRYPTION_KEY` env var this upgrade needs.
+**Where it is now** — `2.0.0` is the current release. Every feature issue in
+the v2.0.0 Multi-tenant milestone is closed, and the two release candidates
+ran without turning up anything beyond the three fixes already shipped in
+`rc.2`. An existing single-tenant deployment upgrades in place onto tenant 1
+with no change to what it shows — see `CHANGELOG.md` for the new required
+`CONFIG_ENCRYPTION_KEY` env var this upgrade needs.
 
-`docker pull` now resolves `latest` to `1.2.3` until `2.0.0` itself ships; a
-release candidate is published under its own tag only, same as before.
+`docker pull` now resolves `latest` to `2.0.0`; a release candidate is
+published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and
