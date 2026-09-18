@@ -107,6 +107,7 @@ docker run -d --name "$NAME" \
   -e GHOSTFOLIO_URL=http://ghostfolio.invalid:3333 \
   -e GHOSTFOLIO_SECURITY_TOKEN=verify \
   -e SESSION_SECRET=verification-session-secret-of-sufficient-length \
+  -e CONFIG_ENCRYPTION_KEY=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc= \
   -e AUTH_LOCAL_ENABLED=true \
   -e JOBS_ENABLED=false \
   -e FUND_UNIVERSE_PATH=/app/config/fund-universe.example.yaml \
