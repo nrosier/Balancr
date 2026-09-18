@@ -40,7 +40,7 @@ import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
 import type { Equivalence } from './schema.ts'
-import { MAX_HOUSEHOLD_MEMBERS, SHARED_COST_DIRECTIONS } from './vocabulary.ts'
+import { BENCHMARK_COUNTRIES, MAX_HOUSEHOLD_MEMBERS, SHARED_COST_DIRECTIONS } from './vocabulary.ts'
 
 const log = logger.child({ module: 'benchmark/household' })
 
@@ -72,6 +72,17 @@ export type HouseholdMember = z.infer<typeof memberSchema>
 
 export const householdSchema = z
   .object({
+    /**
+     * Which country's benchmark file this household compares against (#244).
+     *
+     * `BE` by default, because that is the only survey Balancr ships a real file for and
+     * every household configured before this field existed was, in effect, comparing
+     * against it. Picking a country with no shipped file is a supported state, not a
+     * mistake — `benchmarkOrNull` returns null for it exactly as it already does for a
+     * deployment with no benchmark file at all, and the settings screen and budget card
+     * both already render that as "no comparison configured".
+     */
+    country: z.enum(BENCHMARK_COUNTRIES).default('BE'),
     /**
      * Everyone in the household besides you.
      *
