@@ -383,7 +383,9 @@ describe('PATCH /api/settings/benchmark-reference', () => {
     expect(payload.referenceOverride).toMatchObject(reference)
     // The file's own figure is still on the wire beside it — it is what reset goes back
     // to, and a correction whose starting point is invisible is one nobody can check.
-    expect(payload.file?.referenceHousehold?.status).toBe('confirmed')
+    // The shipped figure is itself an inflation-adjusted estimate (#398), so it already
+    // reads `transcribed` rather than `confirmed` before any override is applied.
+    expect(payload.file?.referenceHousehold?.status).toBe('transcribed')
     expect(payload.file?.transcribed).toContain('reference_household')
     expect(loadReferenceOverride(ctx.db, tenantId)).toMatchObject(reference)
   })
@@ -394,9 +396,12 @@ describe('PATCH /api/settings/benchmark-reference', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json<Settings>().benchmark.referenceOverride).toBeNull()
-    // Cleared rather than stored as a copy of the file: a copy would leave a permanent
-    // "not confirmed" caveat on a confirmed figure, and would ignore the next edition.
-    expect(res.json<Settings>().benchmark.file?.transcribed).not.toContain('reference_household')
+    // Cleared rather than stored as a copy of the file: a copy would freeze today's
+    // caveat in place and would ignore the next edition. The caveat itself still shows
+    // here regardless, because the shipped figure is an estimate (#398) — clearing the
+    // override goes back to *that* figure's own honest status, not to a clean bill of
+    // health.
+    expect(res.json<Settings>().benchmark.file?.transcribed).toContain('reference_household')
     expect(loadReferenceOverride(ctx.db, tenantId)).toBeNull()
   })
 

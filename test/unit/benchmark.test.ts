@@ -147,11 +147,14 @@ describe('the shipped benchmark file', () => {
     expect(SHIPPED.groupByDivision.get('12')).toBe('other')
     // Ships with the euro figures since #290, which is why `level` is the basis anybody
     // gets. Asserted literally: these two numbers are derived from a spreadsheet by hand,
-    // and a transposed digit in either is invisible on the page it prints.
+    // and a transposed digit in either is invisible on the page it prints. The mean is
+    // inflation-adjusted from the survey's 2024 prices to August 2026 (#398), which is
+    // why it no longer matches the HBS table's own figure and why the block reads
+    // `transcribed` rather than `confirmed`.
     expect(SHIPPED.referenceHousehold).toMatchObject({
-      mean_monthly_cents: 368_919,
+      mean_monthly_cents: 395_295,
       equivalent_adults_bp: 15_066,
-      status: 'confirmed',
+      status: 'transcribed',
     })
     // The reference size only means anything on the same scale the household is measured
     // on, since the comparison divides one by the other. Statbel derives its
@@ -162,14 +165,14 @@ describe('the shipped benchmark file', () => {
     expect(SHIPPED.equivalence.additional_person_bp).toBe(5_000)
     expect(SHIPPED.equivalence.child_bp).toBe(3_000)
     expect(SHIPPED.equivalence.child_age_below).toBe(14)
-    // And nothing in it is unconfirmed any more, so no comparison carries a caveat.
-    expect(transcribedBlocks(SHIPPED)).toEqual([])
+    // The euro mean is the one block nobody has read off a Statbel table directly (#398).
+    expect(transcribedBlocks(SHIPPED)).toEqual(['reference_household'])
   })
 
   it('scales the national average down to a one-and-a-bit-person household', () => {
-    // The point of shipping the euro figures at all. 368919 at 1,5066 on the scale, read
+    // The point of shipping the euro figures at all. 395295 at 1,5066 on the scale, read
     // by a household of one adult and a half-time twelve-year-old — 1,0 + 0,3 × 0,5 =
-    // 1,15 — gives 368919 × 11500 / 15066 = 281599, and housing's 30,58% of that.
+    // 1,15 — gives 395295 × 11500 / 15066 = 301732, and housing's 30,58% of that.
     const result = ok(
       compare(
         [row({ categoryId: 'rent', spentCents: 120_000 })],
@@ -181,7 +184,7 @@ describe('the shipped benchmark file', () => {
     expect(result.household.bp).toBe(11_500)
     expect(result.household.prorated).toBe(true)
     expect(result.referenceHouseholdBp).toBe(15_066)
-    expect(line(result, 'housing')?.benchmarkCents).toBe(86_113)
+    expect(line(result, 'housing')?.benchmarkCents).toBe(92_270)
   })
 })
 
