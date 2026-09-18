@@ -6,6 +6,15 @@
       "source": "the published shares"
     },
     "caption": "Your spending per group, against {{survey}} {{year}} shares",
+    "demonym": {
+      "BE": "Belgian",
+      "DE": "German",
+      "ES": "Spanish",
+      "FR": "French",
+      "IT": "Italian",
+      "NL": "Dutch",
+      "US": "American"
+    },
     "column": {
       "difference": "Difference",
       "group": "Group",
@@ -41,8 +50,8 @@
         "year": "What {{year}} has come to, against a full year of what a household of your size spent according to the {{survey}} {{surveyYear}}: your <money>{{total}}</money> of compared spending against theirs, euro for euro."
       },
       "mix": {
-        "month": "How your <money>{{total}}</money> of {{month}} spending divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do.",
-        "year": "How your <money>{{total}}</money> of {{year}} spending divides, against the shares Belgian households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
+        "month": "How your <money>{{total}}</money> of {{month}} spending divides, against the shares {{demonym}} households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do.",
+        "year": "How your <money>{{total}}</money> of {{year}} spending divides, against the shares {{demonym}} households reported in the {{survey}} {{surveyYear}}. Shares only — no euro total for the average household has been transcribed, so nothing here says whether you spend more than they do."
       }
     },
     "mapped": "{{share}} of your <money>{{consumption}}</money> of household spending is mapped to a group, and only that part is compared.",
@@ -57,7 +66,7 @@
       "inLine": "In line",
       "unmapped": "Nothing mapped"
     },
-    "title": "Compared with Belgian households",
+    "title": "Compared with {{demonym}} households",
     "transcribed": "Not yet confirmed at the source: {{blocks}}.",
     "unavailable": {
       "hint": {

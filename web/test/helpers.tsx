@@ -375,7 +375,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     },
     benchmark: {
       file: null,
-      household: { members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' },
+      household: { country: 'BE', members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' },
       referenceOverride: null,
       outsideCode: '00',
       categories: [],

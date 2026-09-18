@@ -94,7 +94,8 @@
     },
     "comparison": {
       "title": "Comparison",
-      "hint": "The average Belgian household your spending is compared against, and where that figure comes from."
+      "hint": "The average {{demonym}} household your spending is compared against, and where that figure comes from.",
+      "hintNoFile": "The average household your spending would be compared against, and where that figure comes from — once your chosen country has a file."
     },
     "household": {
       "add": "Add someone",
@@ -103,6 +104,15 @@
       "birthYear": "Year of birth",
       "blocked_one": "One person's details are not complete yet. The household is saved as one, so finish the row above or remove it.",
       "blocked_other": "{{value}} people's details are not complete yet. The household is saved as one, so finish the rows above or remove them.",
+      "country": "Country",
+      "countryHint": "Which national average your spending is compared against. Balancr ships a real file for Belgium today; every other country shows the comparison as not configured until one is added.",
+      "country_BE": "Belgium",
+      "country_DE": "Germany",
+      "country_ES": "Spain",
+      "country_FR": "France",
+      "country_IT": "Italy",
+      "country_NL": "Netherlands",
+      "country_US": "United States",
       "custody": "Time here",
       "hint": "Who lives here, which is what makes your spending comparable to a national average. A change applies to the next comparison drawn; nothing on this page recomputes.",
       "label": "Name",
@@ -172,7 +182,7 @@
       "unmapped": "Not mapped"
     },
     "noFile": "No benchmark file could be read, so no comparison is drawn anywhere.",
-    "noFileHint": "Balancr ships one at config/statbel-benchmark.yaml. Check BENCHMARK_PATH and the server log — a file that fails to parse is reported there with the reason.",
+    "noFileHint": "Balancr ships one for Belgium at config/benchmark/be.yaml. Check BENCHMARK_DIR and the server log — a file that fails to parse is reported there with the reason.",
     "provenance": {
       "mixOnly": "The average household's euro total is not filled in, so only the mix is compared: shares against shares, never euros against euros. The file says how to fill it in.",
       "scale": "{{citation}}. Last checked {{verified}}.",

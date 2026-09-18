@@ -86,7 +86,7 @@ import {
   saveNature,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
-import { SHARED_COST_DIRECTIONS } from '../../domain/benchmark/vocabulary.ts'
+import { BENCHMARK_COUNTRIES, SHARED_COST_DIRECTIONS } from '../../domain/benchmark/vocabulary.ts'
 import {
   applyReferenceOverride,
   clearReferenceOverride,
@@ -241,6 +241,14 @@ const profilePatchRequest = z.strictObject({ locale: localeRequest })
  * an editable self would allow a household of nobody.
  */
 const householdPatchRequest = z.strictObject({
+  /**
+   * Which country's benchmark file this household compares against (#244). Optional so a
+   * form that predates the field is not rejected — and, like every other field on this
+   * patch, omitting it *replaces* rather than preserves, landing the schema's own `BE`
+   * default. That default is what every household configured before this field existed
+   * was, in effect, already comparing against.
+   */
+  country: z.enum(BENCHMARK_COUNTRIES).optional(),
   members: z.array(
     z.strictObject({
       birthYear: z.number().int(),
@@ -588,12 +596,14 @@ function riskProfileSetting(db: Db, tenantId: string): Settings['advice'] {
  * transcription warning somebody had already answered by editing the file.
  */
 function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
+  // The household is loaded first because its `country` decides which file to read (#244)
+  // — the same ordering `benchmarkContext` uses, and for the same reason.
+  const household = loadHousehold(db, tenantId)
   // The *file's* benchmark, not the overridden one: the panel shows what an override is
   // replacing beside the override itself, so a mistyped correction can be spotted against
   // the figure it corrected (#290). Everything that draws a comparison reads
   // `benchmarkContext`, which applies the override.
-  const benchmark = benchmarkOrNull()
-  const household = loadHousehold(db, tenantId)
+  const benchmark = benchmarkOrNull(household.country)
   const override = loadReferenceOverride(db, tenantId)
 
   return {
@@ -601,6 +611,7 @@ function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
       benchmark === null
         ? null
         : {
+            jurisdiction: benchmark.jurisdiction,
             source: {
               survey: benchmark.source.survey,
               year: benchmark.source.year,
@@ -642,6 +653,7 @@ function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
             transcribed: [...transcribedBlocks(applyReferenceOverride(benchmark, override))],
           },
     household: {
+      country: household.country,
       members: household.members.map((member) => ({
         birthYear: member.birthYear,
         custodyBp: member.custodyBp,

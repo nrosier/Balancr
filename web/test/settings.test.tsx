@@ -122,6 +122,7 @@ const ADVICE: Payload['advice'] = {
  * feeds no reference line. `Coffee` is unmapped, and `Salary` is income.
  */
 const BENCHMARK_FILE: NonNullable<Payload['benchmark']['file']> = {
+  jurisdiction: 'BE',
   source: {
     survey: 'Household Budget Survey (HBS)',
     year: 2024,
@@ -160,6 +161,7 @@ const BENCHMARK_FILE: NonNullable<Payload['benchmark']['file']> = {
 const BENCHMARK: Payload['benchmark'] = {
   file: BENCHMARK_FILE,
   household: {
+    country: 'BE',
     members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
     // Null, so the panel prints the share it derives from the roster above rather than
     // a stated one — the default, and the state worth having in the fixture (#44).
@@ -1400,6 +1402,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             selfLabel: 'Nick',
             sharedCostBp: null,
@@ -1450,6 +1453,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: null,
             sharedCostDirection: 'whole_invoice',
@@ -1473,6 +1477,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [
               { birthYear: 2013, custodyBp: 5_000, label: 'Teenager' },
               { birthYear: 1998, custodyBp: 10_000, label: 'Lodger' },
@@ -1625,6 +1630,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             // Sent on every save, not only when it changed: the household row is written
             // wholesale, so omitting it would quietly take a stated direction back to the
@@ -1652,6 +1658,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: 6_000,
             sharedCostDirection: 'whole_invoice',
@@ -1685,6 +1692,7 @@ describe('the household', () => {
           path: '/api/settings/household',
           method: 'PATCH',
           body: {
+            country: 'BE',
             members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
             sharedCostBp: null,
             sharedCostDirection: 'whole_invoice',

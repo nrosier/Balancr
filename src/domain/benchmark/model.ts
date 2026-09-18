@@ -25,7 +25,12 @@ import {
   type Equivalence,
   type ReferenceHousehold,
 } from './schema.ts'
-import { divisionOf, type BenchmarkBlock, type BenchmarkGroup } from './vocabulary.ts'
+import {
+  divisionOf,
+  type BenchmarkBlock,
+  type BenchmarkCountry,
+  type BenchmarkGroup,
+} from './vocabulary.ts'
 
 const log = logger.child({ module: 'benchmark' })
 
@@ -43,7 +48,7 @@ export interface BenchmarkSource extends BenchmarkProvenance {
 
 export interface Benchmark {
   readonly path: string
-  readonly jurisdiction: 'BE'
+  readonly jurisdiction: BenchmarkCountry
   readonly source: BenchmarkSource
   readonly equivalence: Equivalence
   /** Present only when somebody transcribed the euro figures — see the schema. */
@@ -55,17 +60,33 @@ export interface Benchmark {
 }
 
 /**
- * Reads and validates the benchmark file.
+ * Where a country's file lives, given the directory Balancr looks in (#244).
+ *
+ * One file per country rather than one path for the whole deployment: a multi-tenant
+ * install has one household per tenant and each can pick its own country, so "the
+ * benchmark file" stopped being a single path the moment more than one country existed
+ * to compare against. The filename is the country's own code, lowercased — `be.yaml`,
+ * `nl.yaml` — so adding a country is dropping in a file, not touching code.
+ */
+export function resolveBenchmarkPath(
+  country: BenchmarkCountry,
+  dir: string = config.BENCHMARK_DIR,
+): string {
+  return `${dir.replace(/\/$/, '')}/${country.toLowerCase()}.yaml`
+}
+
+/**
+ * Reads and validates a benchmark file at an exact path.
  *
  * Throws `BenchmarkError` for every failure including a missing file, and names the path
  * in all of them. Callers that can do without a comparison use `benchmarkOrNull`.
  */
-export function loadBenchmark(path: string = config.BENCHMARK_PATH): Benchmark {
+export function loadBenchmark(path: string): Benchmark {
   const read = readYamlFile(path, benchmarkFileSchema, 'household benchmark')
   if (read.kind === 'absent') {
     throw new BenchmarkError(
       `there is no household benchmark file at ${path}; Balancr ships one at ` +
-        `config/statbel-benchmark.yaml — point BENCHMARK_PATH at it, or at your own copy`,
+        `config/benchmark/be.yaml — point BENCHMARK_DIR at its directory, or add your own copy`,
     )
   }
   if (read.kind === 'problem') throw new BenchmarkError(read.message)
@@ -88,13 +109,19 @@ export function loadBenchmark(path: string = config.BENCHMARK_PATH): Benchmark {
 }
 
 /**
- * The benchmark, or `null`.
+ * The benchmark for a country, or `null`.
  *
- * A missing file is silent: no comparison is a supported state and logging it every
- * fifteen minutes would train the reader to ignore the log. A file that exists and cannot
- * be read is logged as an error, because somebody edited it and wants to know.
+ * A missing file is silent: for six of the seven countries a household can pick, that is
+ * the shipped state rather than a misconfiguration — Balancr does not yet carry a real,
+ * citable file for them (#244) — and logging it every fifteen minutes would train the
+ * reader to ignore the log. A file that exists and cannot be read is logged as an error,
+ * because somebody edited it and wants to know.
  */
-export function benchmarkOrNull(path: string = config.BENCHMARK_PATH): Benchmark | null {
+export function benchmarkOrNull(
+  country: BenchmarkCountry = 'BE',
+  dir: string = config.BENCHMARK_DIR,
+): Benchmark | null {
+  const path = resolveBenchmarkPath(country, dir)
   try {
     return loadBenchmark(path)
   } catch (error) {

@@ -5,7 +5,7 @@
  * the average Belgian household spends per month, and how big that household is on the
  * equivalence scale. Both are derived from a 7 MB spreadsheet Statbel republishes once a
  * year, and neither is on a page anybody would think to check. So they go stale, and the
- * only way to correct them was `BENCHMARK_PATH` — a volume mount and a restart, which a
+ * only way to correct them was `BENCHMARK_DIR` — a volume mount and a restart, which a
  * container install cannot do from the settings screen it is already looking at.
  *
  * Four decisions:
@@ -26,7 +26,7 @@
  *  - **A citation is required, not generated.** Nothing here fabricates provenance prose:
  *    a sentence this module invented would be an English string printed into a Dutch page,
  *    and worse, it would look like a source. It also cannot be borrowed from the file,
- *    because the file may carry no reference block at all — a custom `BENCHMARK_PATH`, or
+ *    because the file may carry no reference block at all — a custom `BENCHMARK_DIR`, or
  *    a copy with it deleted — and that is precisely the case where an override matters
  *    most. So the owner says where the figure came from, and the form offers the file's own
  *    citation as the starting point.
