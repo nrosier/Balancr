@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.5] — 2026-09-18
+
+### Changed
+
+- **The portfolio page's mortgage balance is now labelled as an estimate**
+  ([#392](https://github.com/nrosier/Balancr/issues/392)) — it was already a live
+  amortization from the mortgage's anchor date rather than a fresh statement read,
+  but nothing on screen said so. It now shows with a `≈` and an info tip naming the
+  last-confirmed date, alongside a new "share of the original loan paid off" figure
+  on both the settings page and the portfolio page.
+
 ## [2.0.4] — 2026-09-18
 
 ### Fixed
