@@ -10,6 +10,14 @@
  * fake only needs to structurally satisfy those six.
  */
 import * as real from '@actual-app/api'
-import * as fake from '../../../scripts/fake-backend/actual-fake-api.ts'
 
-export const api: typeof real = process.env.ACTUAL_FAKE_BACKEND === 'true' ? (fake as unknown as typeof real) : real
+// A plain string literal here would pull scripts/fake-backend/ into tsc's rootDir
+// check for the production build (tsconfig.build.json's rootDir is 'src') even
+// though this branch never runs there. Building the specifier keeps it dynamic
+// enough that tsc treats the import as untyped instead of resolving the file.
+const FAKE_API_MODULE = ['..', '..', '..', 'scripts', 'fake-backend', 'actual-fake-api.ts'].join('/')
+
+export const api: typeof real =
+  process.env.ACTUAL_FAKE_BACKEND === 'true'
+    ? ((await import(FAKE_API_MODULE)) as unknown as typeof real)
+    : real
