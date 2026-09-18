@@ -30,6 +30,7 @@ export interface EchartsTheme {
   valueAxis: Record<string, unknown>
   tooltip: Record<string, unknown>
   legend: Record<string, unknown>
+  sankey: Record<string, unknown>
 }
 
 export function echartsTheme(theme: ResolvedTheme): EchartsTheme {
@@ -66,5 +67,12 @@ export function echartsTheme(theme: ResolvedTheme): EchartsTheme {
       itemWidth: 10,
       itemHeight: 10,
     },
+    // Unlike every other option above, ECharts never merges a series' own textStyle
+    // fallback for this: a sankey node's label only inherits `textStyle.color` if the
+    // series sets none of `label` itself, and `SpendSankey.tsx` already sets
+    // `label.width`/`overflow` — so the label color has to be filled in here, keyed by
+    // series subtype (`getTheme().get('sankey')`), the one theme path ECharts merges
+    // per-field into a series that already has some label config of its own (#383).
+    sankey: { label: { color: c.text } },
   }
 }
