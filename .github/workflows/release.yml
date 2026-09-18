@@ -78,8 +78,13 @@ jobs:
           HARBOR_REPLICATION_POLICY_ID: ${{ vars.HARBOR_REPLICATION_POLICY_ID }}
           HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
           HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
+          # Lets this runner's requests skip Cloudflare's bot/WAF challenge on
+          # the harbor.bunbun.be zone via a WAF custom rule matched on this
+          # header — see the Cloudflare dashboard WAF custom rule for details.
+          CF_CI_BYPASS_SECRET: ${{ secrets.CF_CI_BYPASS_SECRET }}
         run: |
           id="$(curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+            -H "x-ci-bypass: $CF_CI_BYPASS_SECRET" \
             -X POST "$HARBOR_URL/api/v2.0/replication/executions" \
             -H 'Content-Type: application/json' \
             -d "{\"policy_id\": $HARBOR_REPLICATION_POLICY_ID}" \
@@ -96,9 +101,11 @@ jobs:
           HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
           HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
           EXECUTION_ID: ${{ steps.replicate.outputs.execution_id }}
+          CF_CI_BYPASS_SECRET: ${{ secrets.CF_CI_BYPASS_SECRET }}
         run: |
           for _ in $(seq 1 60); do
             status="$(curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+              -H "x-ci-bypass: $CF_CI_BYPASS_SECRET" \
               "$HARBOR_URL/api/v2.0/replication/executions/$EXECUTION_ID" | jq -r '.status')"
             case "$status" in
               Succeed) echo "Replication execution $EXECUTION_ID succeeded."; exit 0 ;;
@@ -119,8 +126,10 @@ jobs:
           # Confirmed by hand: this is the only tag the replication policy
           # actually pulls, even though Docker Hub also has 1.x/edge/sha-*.
           TAG: latest
+          CF_CI_BYPASS_SECRET: ${{ secrets.CF_CI_BYPASS_SECRET }}
         run: |
           curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+            -H "x-ci-bypass: $CF_CI_BYPASS_SECRET" \
             -X POST "$HARBOR_URL/api/v2.0/projects/$HARBOR_PROJECT/repositories/$HARBOR_REPOSITORY/artifacts/$TAG/scan" \
             -H 'Content-Type: application/json'
           echo "Scan triggered for $HARBOR_PROJECT/$HARBOR_REPOSITORY:$TAG"
