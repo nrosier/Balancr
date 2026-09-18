@@ -53,8 +53,10 @@ async function runAql<T>(
   row: z.ZodType<T>,
 ): Promise<T[]> {
   // Building and serializing the query happens locally; only the resulting
-  // plain `QueryState` object crosses IPC. `aqlQuery` itself accepts either a
-  // live `Query` or its serialized state — the worker gets the latter.
+  // plain `QueryState` object crosses IPC — a live `Query`'s methods don't
+  // survive structured cloning across the fork. The public `aqlQuery` always
+  // calls `.serialize()` on what it's given, so `worker.ts`'s `runCall`
+  // re-wraps this already-serialized state before calling it (#381).
   const state = build().serialize()
   const raw = await withActual(db, tenantId, (actual) =>
     actual.aqlQuery(state as unknown as Query),

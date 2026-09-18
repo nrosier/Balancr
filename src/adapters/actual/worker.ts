@@ -221,11 +221,25 @@ function errorResponse(id: number, error: unknown): ActualResponse {
   return { id, ok: false, error: typeof code === 'string' ? { message, code } : { message } }
 }
 
+/**
+ * `@actual-app/api`'s public `aqlQuery(query)` unconditionally calls
+ * `query.serialize()` on its argument — but `runAql` (`queries.ts`) already
+ * serialized the query in the main process before sending it over IPC, since
+ * a live `Query`'s methods can't survive structured cloning across a fork.
+ * Re-wrapping the already-serialized state in something `.serialize()`-able
+ * is what makes the two ends agree on what crosses the wire (#381).
+ */
+function argsForCall(method: string, args: readonly unknown[]): readonly unknown[] {
+  if (method !== 'aqlQuery') return args
+  const [state, ...rest] = args
+  return [{ serialize: () => state }, ...rest]
+}
+
 async function runCall(method: string, args: readonly unknown[]): Promise<unknown> {
   if (!ALLOWED_METHODS.has(method)) throw new Error(`method not allowed: ${method}`)
   const fn = (api as unknown as Record<string, (...callArgs: unknown[]) => unknown>)[method]
   if (typeof fn !== 'function') throw new Error(`@actual-app/api has no method ${method}`)
-  return await fn(...args)
+  return await fn(...argsForCall(method, args))
 }
 
 /**
