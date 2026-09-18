@@ -68,10 +68,7 @@ jobs:
     # same condition metadata-action's `enable=` above uses to decide whether
     # to push it at all. `vars.HARBOR_URL` stays empty until Harbor is wired
     # up, so this is a clean no-op until then rather than a red check.
-    # TEMPORARY (revert once the Harbor 403 is diagnosed): also run on pushes
-    # to main, since the tag-only trigger below means a normal push can't
-    # exercise this job while we're debugging it.
-    if: vars.HARBOR_URL != '' && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')))
+    if: vars.HARBOR_URL != '' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Harbor replication
@@ -82,15 +79,11 @@ jobs:
           HARBOR_ROBOT_USER: ${{ secrets.HARBOR_ROBOT_USER }}
           HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
         run: |
-          # TEMPORARY (revert once the Harbor 403 is diagnosed): -i instead of
-          # -f/-D -/-o /dev/null so a failing response's actual headers and
-          # body land in this step's log instead of being discarded.
-          response="$(curl -i -s -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
+          id="$(curl -fsS -u "$HARBOR_ROBOT_USER:$HARBOR_ROBOT_TOKEN" \
             -X POST "$HARBOR_URL/api/v2.0/replication/executions" \
             -H 'Content-Type: application/json' \
-            -d "{\"policy_id\": $HARBOR_REPLICATION_POLICY_ID}")"
-          echo "$response"
-          id="$(echo "$response" | grep -i '^Location:' | grep -o '[0-9]*$' | tr -d '\r')"
+            -d "{\"policy_id\": $HARBOR_REPLICATION_POLICY_ID}" \
+            -D - -o /dev/null | grep -i '^Location:' | grep -o '[0-9]*$' | tr -d '\r')"
           if [[ -z "$id" ]]; then
             echo 'Harbor did not return a replication execution id.' >&2
             exit 1
