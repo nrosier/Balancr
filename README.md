@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v1.2.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.0--rc.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -990,16 +990,19 @@ ends.
 | `1.0.0` | Blessed by the person whose money it is | ✅ |
 | `1.1.0` | Small fixes and polish shipped after v1.0.0 | ✅ |
 | `1.2.0` | v1.1's polish batch closed; net worth's Directly available splits into on-budget and off-budget | ✅ |
+| `2.0.0-rc.N` | Multi-tenant: isolated per-tenant data, integrations and job scheduling | 🔄 shipping as `2.0.0-rc.1` |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `1.2.3` is the current release, a patch on top of
-`1.2.0`. Every feature issue in the list above is still closed; this slice is
-dependency, lockfile, and base-image maintenance only, with no user-facing
-behavior change.
+**Where it is now** — `2.0.0-rc.1` is the current release, the first
+candidate for multi-tenancy. Every feature issue in the v2.0.0 milestone is
+closed; what remains before `2.0.0` is testing rather than building. An
+existing single-tenant deployment upgrades in place onto tenant 1 with no
+change to what it shows — see `CHANGELOG.md` for the new required
+`CONFIG_ENCRYPTION_KEY` env var this upgrade needs.
 
-`docker pull` now resolves `latest` to `1.2.3`; a release candidate is published
-under its own tag only, same as before.
+`docker pull` now resolves `latest` to `1.2.3` until `2.0.0` itself ships; a
+release candidate is published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and
