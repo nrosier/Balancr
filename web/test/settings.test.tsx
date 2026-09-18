@@ -1915,7 +1915,7 @@ describe('property', () => {
           label: 'Home',
           propertyValueCents: 40_000_000,
           rentCents: null,
-          mortgage: null,
+          mortgages: [],
           ...extra,
         },
       ],
@@ -1956,7 +1956,7 @@ describe('property', () => {
                 label: 'Home',
                 propertyValueCents: 40_000_000,
                 rentCents: null,
-                mortgage: null,
+                mortgages: [],
               },
             ],
           },
@@ -2014,7 +2014,7 @@ describe('property', () => {
     })
   })
 
-  it('shows the mortgage sub-form only once the checkbox is on, and includes it on save', async () => {
+  it('shows the mortgage sub-form only once "Add a mortgage" is clicked, and includes it on save', async () => {
     const stated = withOneProperty()
     const calls = await open({
       ...READS,
@@ -2024,7 +2024,7 @@ describe('property', () => {
 
     expect(screen.queryByLabelText('Outstanding balance')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
     expect(screen.getByLabelText('Outstanding balance')).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
@@ -2047,14 +2047,16 @@ describe('property', () => {
                 label: 'Home',
                 propertyValueCents: 40_000_000,
                 rentCents: null,
-                mortgage: {
-                  principalCents: 20_000_000,
-                  anchorDate: '2026-09-01',
-                  rateBp: 350,
-                  monthlyPaymentCents: 150_000,
-                  remainingTermMonths: 180,
-                  originalPrincipalCents: null,
-                },
+                mortgages: [
+                  {
+                    principalCents: 20_000_000,
+                    anchorDate: '2026-09-01',
+                    rateBp: 350,
+                    monthlyPaymentCents: 150_000,
+                    remainingTermMonths: 180,
+                    originalPrincipalCents: null,
+                  },
+                ],
               },
             ],
           },
@@ -2067,7 +2069,7 @@ describe('property', () => {
     await open(READS)
 
     addProperty()
-    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
     fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
 
     expect(within(property()).getByText('Reads as 3,5%.')).toBeTruthy()
@@ -2077,7 +2079,7 @@ describe('property', () => {
     const calls = await open(READS)
 
     addProperty()
-    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
     fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
     fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
     fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '180' } })
@@ -2096,13 +2098,50 @@ describe('property', () => {
     const calls = await open(READS)
 
     addProperty()
-    fireEvent.click(screen.getByLabelText('Has a mortgage'))
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
     fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
     // Rate, term and payment are left empty — an incomplete mortgage, not a missing one.
 
     expect(within(property()).getAllByText("Something in this row isn't a valid number yet.").length).toBeGreaterThan(0)
     expect(saveProperty().disabled).toBe(true)
     expect(writes(calls)).toEqual([])
+  })
+
+  it('adds a second mortgage independently of the first, and removes either on its own', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
+
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    const balances = screen.getAllByLabelText('Outstanding balance') as HTMLInputElement[]
+    expect(balances).toHaveLength(2)
+    expect(balances[0]?.value).toBe('200000')
+    expect(balances[1]?.value).toBe('')
+
+    fireEvent.change(balances[1] as HTMLInputElement, { target: { value: '50000' } })
+    expect((screen.getAllByLabelText('Outstanding balance')[0] as HTMLInputElement).value).toBe('200000')
+
+    fireEvent.click(within(property()).getAllByRole('button', { name: 'Remove mortgage' })[0] as HTMLElement)
+    const remaining = screen.getAllByLabelText('Outstanding balance') as HTMLInputElement[]
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]?.value).toBe('50000')
+  })
+
+  it('stops offering "Add a mortgage" once a property already has three (#393)', async () => {
+    await open(READS)
+
+    addProperty()
+    const addMortgage = (): HTMLButtonElement =>
+      within(property()).getByRole('button', { name: 'Add a mortgage' }) as HTMLButtonElement
+
+    fireEvent.click(addMortgage())
+    fireEvent.click(addMortgage())
+    fireEvent.click(addMortgage())
+
+    expect(screen.getAllByLabelText('Outstanding balance')).toHaveLength(3)
+    expect(addMortgage().disabled).toBe(true)
   })
 
   it('leaves the list read-only for a viewer', async () => {

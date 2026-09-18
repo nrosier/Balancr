@@ -310,14 +310,15 @@ const referencePatchRequest = z.strictObject({
 })
 
 /**
- * The owned properties and their mortgages, if any (#227).
+ * The owned properties and their mortgages, if any (#227, #393).
  *
  * The whole list, always — same reason as the household roster: a list's only two
  * gestures are "here is a new one" and "drop a row", and a merge can't express the
- * second. The bounds (rate, term, non-negative cents, the twenty-property cap) live in
+ * second. Same for the mortgages nested inside each property. The bounds (rate, term,
+ * non-negative cents, the twenty-property and three-mortgage caps) live in
  * `propertiesSchema` and are enforced by `saveProperties`, the same division every other
  * patch on this page explains. There is no rate-history endpoint: a rate change on one
- * property is a fresh PATCH of the whole list with today's actual balance as its new
+ * mortgage is a fresh PATCH of the whole list with today's actual balance as its new
  * anchor.
  */
 const propertyPatchRequest = z.strictObject({
@@ -328,16 +329,17 @@ const propertyPatchRequest = z.strictObject({
       label: z.string().optional(),
       propertyValueCents: z.number().int().nullable().optional(),
       rentCents: z.number().int().nullable().optional(),
-      mortgage: z
-        .strictObject({
-          principalCents: z.number().int(),
-          anchorDate: z.string(),
-          rateBp: z.number().int(),
-          monthlyPaymentCents: z.number().int(),
-          remainingTermMonths: z.number().int(),
-          originalPrincipalCents: z.number().int().nullable().optional(),
-        })
-        .nullable()
+      mortgages: z
+        .array(
+          z.strictObject({
+            principalCents: z.number().int(),
+            anchorDate: z.string(),
+            rateBp: z.number().int(),
+            monthlyPaymentCents: z.number().int(),
+            remainingTermMonths: z.number().int(),
+            originalPrincipalCents: z.number().int().nullable().optional(),
+          }),
+        )
         .optional(),
     }),
   ),

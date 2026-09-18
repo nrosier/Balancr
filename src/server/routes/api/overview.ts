@@ -110,9 +110,9 @@ export function buildOverview(db: Db, tenantId: string): Overview {
             propertyValueCents: properties.some((property) => property.propertyValueCents !== null)
               ? properties.reduce((sum, property) => sum + (property.propertyValueCents ?? 0), 0)
               : null,
-            mortgageBalanceCents: properties.some((property) => property.mortgage !== null)
+            mortgageBalanceCents: properties.some((property) => property.mortgages.length > 0)
               ? properties.reduce(
-                  (sum, property) => sum + outstandingBalanceCents(property.mortgage, today),
+                  (sum, property) => sum + outstandingBalanceCents(property.mortgages, today),
                   0,
                 )
               : null,

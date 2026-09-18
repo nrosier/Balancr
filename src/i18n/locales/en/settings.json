@@ -375,7 +375,6 @@
     "add": "Add a property",
     "cashFlowReads": "{{value}} left after the mortgage payment each month.",
     "equityReads": "{{value}} of equity today.",
-    "hasMortgage": "Has a mortgage",
     "hint": "What you own — the home you live in, or a place you rent out. A change is reflected in net worth and on the portfolio page the next time either loads; nothing here recomputes.",
     "invalid": "Something in this row isn't a valid number yet.",
     "kind": {
@@ -387,6 +386,7 @@
     "label": "Name",
     "labelPlaceholder": "e.g. Home, Antwerp flat",
     "mortgage": {
+      "add": "Add a mortgage",
       "anchorDate": "Balance as of",
       "originalPrincipal": "Original loan amount",
       "originalPrincipalHint": "Optional. Lets Balancr show how much of the loan is paid off.",
@@ -396,6 +396,7 @@
       "principal": "Outstanding balance",
       "rate": "Interest rate",
       "rateReads": "Reads as {{value}}.",
+      "remove": "Remove mortgage",
       "term": "Months remaining",
       "useStandardPayment": "Use the standard payment for this rate and term"
     },
