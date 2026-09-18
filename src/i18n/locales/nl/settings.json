@@ -370,7 +370,8 @@
     "invalid": "Iets in deze rij is nog geen geldig getal.",
     "kind": {
       "primary": "Eigen woning",
-      "rental": "Verhuur"
+      "rental": "Verhuur",
+      "owned": "In eigendom"
     },
     "kindLabel": "Type",
     "label": "Naam",

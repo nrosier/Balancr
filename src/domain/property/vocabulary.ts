@@ -10,7 +10,7 @@
  * has with the finding vocabulary.
  */
 
-export const propertyKinds = ['primary', 'rental'] as const
+export const propertyKinds = ['primary', 'rental', 'owned'] as const
 export type PropertyKind = (typeof propertyKinds)[number]
 
 /** A household owns a handful of properties, not a portfolio of them. */
