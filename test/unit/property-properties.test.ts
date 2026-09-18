@@ -14,6 +14,7 @@ import {
   loadProperties,
   netCashFlowCents,
   outstandingBalanceCents,
+  paidOffBp,
   PROPERTY_KEY,
   propertyEquityCents,
   saveProperties,
@@ -29,6 +30,7 @@ const mortgage = (overrides: Partial<Mortgage> = {}): Mortgage => ({
   rateBp: 350,
   monthlyPaymentCents: 90_000,
   remainingTermMonths: 240,
+  originalPrincipalCents: null,
   ...overrides,
 })
 
@@ -176,6 +178,37 @@ describe('standardMonthlyPaymentCents', () => {
 
   it('is zero over no term', () => {
     expect(standardMonthlyPaymentCents(100_000, 300, 0)).toBe(0)
+  })
+})
+
+describe('paidOffBp (#392)', () => {
+  it('is null with no mortgage at all', () => {
+    expect(paidOffBp(null, '2026-06-01')).toBeNull()
+  })
+
+  it('is null when the original amount was never entered', () => {
+    const m = mortgage({ originalPrincipalCents: null })
+    expect(paidOffBp(m, '2026-01-01')).toBeNull()
+  })
+
+  it('is null when the original amount is zero', () => {
+    const m = mortgage({ originalPrincipalCents: 0 })
+    expect(paidOffBp(m, '2026-01-01')).toBeNull()
+  })
+
+  it('is the share of the original amount no longer owed', () => {
+    const m = mortgage({
+      anchorDate: '2026-01-01',
+      principalCents: 120_000,
+      originalPrincipalCents: 240_000,
+      rateBp: 0,
+      monthlyPaymentCents: 10_000,
+      remainingTermMonths: 12,
+    })
+    // At the anchor: 120 000 / 240 000 owed => half paid off already.
+    expect(paidOffBp(m, '2026-01-01')).toBe(5_000)
+    // Three months on, at 10 000/month with no interest: 90 000 owed of 240 000.
+    expect(paidOffBp(m, '2026-04-01')).toBe(6_250)
   })
 })
 

@@ -38,6 +38,7 @@ export {
   MAX_PROPERTIES,
   netCashFlowCents,
   outstandingBalanceCents,
+  paidOffBp,
   propertyEquityCents,
   propertyKinds,
   standardMonthlyPaymentCents,
@@ -60,6 +61,8 @@ export const mortgageSchema = z
     monthlyPaymentCents: z.int().min(0),
     /** Bounded at 50 years. */
     remainingTermMonths: z.int().min(0).max(600),
+    /** What the loan started at, or null when nobody has entered it (#392). */
+    originalPrincipalCents: z.int().min(0).nullable().default(null),
   })
   .strict()
 

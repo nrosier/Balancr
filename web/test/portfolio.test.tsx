@@ -910,6 +910,8 @@ describe('property', () => {
     label: 'House',
     propertyValueCents: 40_000_000,
     mortgageBalanceCents: 18_000_000,
+    mortgageAnchorDate: null,
+    mortgagePaidOffBp: null,
     equityCents: 22_000_000,
     rentCents: null,
     netCashFlowCents: null,
@@ -922,6 +924,8 @@ describe('property', () => {
     label: 'Antwerp flat',
     propertyValueCents: 25_000_000,
     mortgageBalanceCents: 0,
+    mortgageAnchorDate: null,
+    mortgagePaidOffBp: null,
     equityCents: 25_000_000,
     rentCents: 90_000,
     netCashFlowCents: 90_000,
@@ -946,6 +950,7 @@ describe('property', () => {
       'Home',
       '€ 400.000',
       '€ 180.000',
+      '—',
       '€ 220.000',
       '—',
       '—',
@@ -963,11 +968,31 @@ describe('property', () => {
       'Rental',
       '€ 250.000',
       '€ 0',
+      '—',
       '€ 250.000',
       '€ 900',
       '€ 900',
       '4,5%',
     ])
+  })
+
+  it('marks the balance as an estimate and shows the paid-off share once there is a mortgage', async () => {
+    serve(
+      json({
+        ...FULL,
+        properties: [
+          { ...HOME, mortgageAnchorDate: '2026-01-01', mortgagePaidOffBp: 5_500 },
+        ],
+        totalPropertyEquityCents: 22_000_000,
+      }),
+    )
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Property' })
+
+    const cells = row('House')
+    expect(cells[3]).toContain('≈')
+    expect(cells[3]).toContain('€ 180.000')
+    expect(cells[4]).toBe('55%')
   })
 })
 

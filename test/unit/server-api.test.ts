@@ -611,6 +611,7 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
       rateBp: 0,
       monthlyPaymentCents: 0,
       remainingTermMonths: 600,
+      originalPrincipalCents: null,
     },
   }
 
@@ -651,6 +652,8 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
         label: 'House',
         propertyValueCents: 40_000_000,
         mortgageBalanceCents: 18_000_000,
+        mortgageAnchorDate: '2020-01-01',
+        mortgagePaidOffBp: null,
         equityCents: 22_000_000,
         rentCents: null,
         netCashFlowCents: null,
@@ -662,6 +665,8 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
         label: 'Antwerp flat',
         propertyValueCents: 25_000_000,
         mortgageBalanceCents: 0,
+        mortgageAnchorDate: null,
+        mortgagePaidOffBp: null,
         equityCents: 25_000_000,
         rentCents: 90_000,
         netCashFlowCents: 90_000,

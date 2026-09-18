@@ -26,6 +26,15 @@ export interface Mortgage {
   monthlyPaymentCents: number
   /** Months remaining as of `anchorDate`. */
   remainingTermMonths: number
+  /**
+   * What the loan started at, or null when nobody has entered it (#392) — every mortgage
+   * stored before this field existed, and any re-anchor since that didn't bother typing it
+   * in. Kept separate from `principalCents` rather than inferred from the first row a
+   * mortgage ever had, because there is no history table (see `properties.ts`): a re-anchor
+   * overwrites `principalCents` in place, so nothing on disk remembers what the loan was
+   * before the first statement anyone entered.
+   */
+  originalPrincipalCents: number | null
 }
 
 export interface Property {
@@ -77,6 +86,18 @@ export function standardMonthlyPaymentCents(
 
   const factor = Math.pow(1 + monthlyRate, termMonths)
   return Math.round((principalCents * monthlyRate * factor) / (factor - 1))
+}
+
+/**
+ * Share of the original loan paid off by `asOfDate`, in basis points, or null when there
+ * is nothing to compare the current balance against — no mortgage, or one whose original
+ * amount nobody has entered (#392).
+ */
+export function paidOffBp(mortgage: Mortgage | null, asOfDate: string): number | null {
+  if (mortgage === null) return null
+  if (mortgage.originalPrincipalCents === null || mortgage.originalPrincipalCents === 0) return null
+  const outstanding = outstandingBalanceCents(mortgage, asOfDate)
+  return Math.round((1 - outstanding / mortgage.originalPrincipalCents) * 10_000)
 }
 
 /** Equity at `asOfDate`, or null when the property's value isn't tracked. */
