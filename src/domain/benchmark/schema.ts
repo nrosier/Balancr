@@ -34,7 +34,7 @@
  */
 import { z } from 'zod'
 import { verifiedDateSchema } from '../verified-date.ts'
-import { BENCHMARK_GROUPS, COICOP_DIVISIONS } from './vocabulary.ts'
+import { BENCHMARK_COUNTRIES, BENCHMARK_GROUPS, COICOP_DIVISIONS } from './vocabulary.ts'
 
 /** Basis points as a share of a whole: 1400 is 14,00%. */
 const shareBp = z.int().min(0).max(10_000)
@@ -131,7 +131,13 @@ export type BenchmarkGroupEntry = z.infer<typeof groupSchema>
 export const benchmarkFileSchema = z
   .object({
     version: z.literal(1),
-    jurisdiction: z.literal('BE'),
+    /**
+     * Which country this file's shares, scale and reference household describe (#244).
+     * `BENCHMARK_COUNTRIES` is the closed set a household may pick on the settings screen;
+     * a file's own `jurisdiction` says which one it answers for, so a mismatched filename
+     * and jurisdiction fails to load rather than comparing a household to the wrong survey.
+     */
+    jurisdiction: z.enum(BENCHMARK_COUNTRIES),
     source: sourceSchema,
     equivalence: equivalenceSchema,
     reference_household: referenceHouseholdSchema.optional(),

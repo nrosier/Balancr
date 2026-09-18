@@ -45,6 +45,7 @@ import {
   isOutsideConsumption,
   MIN_MAPPED_BP,
   type BenchmarkBlock,
+  type BenchmarkCountry,
   type BenchmarkGroup,
   type BenchmarkPeriodKind,
   type BenchmarkUnavailable,
@@ -193,6 +194,8 @@ export interface Comparison {
   readonly household: EquivalentAdults
   /** The average household on the same scale. Null unless the file carries one. */
   readonly referenceHouseholdBp: number | null
+  /** Which country's file this comparison is drawn from (#244), for the card's own wording. */
+  readonly jurisdiction: BenchmarkCountry
   readonly source: BenchmarkSourceWire
   /** Which of the file's blocks nobody has confirmed at the source. */
   readonly transcribed: readonly BenchmarkBlock[]
@@ -341,6 +344,7 @@ export function compareToBenchmark(input: CompareInput): BenchmarkComparison {
       .map((row) => ({ ...row, shareBp: shareBp(row.spentCents, consumptionCents) })),
     household: scaled,
     referenceHouseholdBp: reference?.equivalent_adults_bp ?? null,
+    jurisdiction: benchmark.jurisdiction,
     source: {
       survey: benchmark.source.survey,
       year: benchmark.source.year,

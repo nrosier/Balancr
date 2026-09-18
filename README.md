@@ -285,7 +285,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
 | **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS`, `TAX_RULES_PATH` |
-| **Benchmark** | `BENCHMARK_PATH` |
+| **Benchmark** | `BENCHMARK_DIR` |
 | **Egress** | `EGRESS_MODE` (`enforce`\|`warn`\|`off`), `EGRESS_EXTRA_HOSTS` |
 | **Locale** | `DEFAULT_LOCALE` (`en`), `SUPPORTED_LOCALES`, `FORMAT_LOCALE` (`nl-BE`), `TZ`, `BASE_CURRENCY` |
 | **Jobs** | `JOBS_ENABLED`, `JOBS_SYNC_INTERVAL_MINUTES`, `JOBS_NIGHTLY_HOUR`, `JOBS_HISTORY_MONTHS`, `JOB_HISTORY_KEEP` |
@@ -601,20 +601,25 @@ not the share turned into an amount, not a guess at what a rebalance would cost.
 returning a figure that disagrees with the computed one changes nothing on any screen.
 
 
-## Comparing with Belgian households
+## Comparing with other households
 
 Your own twelve-month norm answers "is this month unusual for me". It cannot answer "is
 €650 a month on food a lot", and that second question is what the budget page's last card is
 for.
 
-The reference is Statbel's **Household Budget Survey**: the share of its total an average
-Belgian household spends on each of ten lines. It lives in
-[`config/statbel-benchmark.yaml`](config/statbel-benchmark.yaml) — a dated file carrying the
-survey, the year, a citation, the day somebody last checked it and a `status` per block,
-the same arrangement as [Belgian tax](#belgian-tax) — and `BENCHMARK_PATH` points at it.
-Point that at a path that does not exist and the card disappears while every other figure
-stays exactly as it was: not everybody wants their spending held up against an average, and
-that is a supported choice rather than a broken install.
+The household picks a country in Settings → Household (#244), and the reference is a
+household-budget survey for that country: the share of its total an average household
+spends on each of ten lines. Balancr ships one real file today, Belgium's from Statbel's
+**Household Budget Survey**, at
+[`config/benchmark/be.yaml`](config/benchmark/be.yaml) — a dated file carrying the survey,
+the year, a citation, the day somebody last checked it and a `status` per block, the same
+arrangement as [Belgian tax](#belgian-tax). `BENCHMARK_DIR` points at the directory these
+files live in, and a country's file is that directory plus the country's own lowercase
+code — `be.yaml`, `nl.yaml`. A household whose country has no file yet (every one besides
+Belgium, for now) simply gets no card, while every other figure stays exactly as it was:
+not everybody wants their spending held up against an average, and that is a supported
+choice rather than a broken install. Point `BENCHMARK_DIR` at a directory that does not
+exist and the same thing happens for every country, Belgium included.
 
 Nothing in the app edits those shares. A screen that let anybody type over them would be a
 screen that manufactures a reference, which is the one failure that would make this feature

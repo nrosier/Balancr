@@ -42,6 +42,21 @@ export const BENCHMARK_GROUPS = [
 ] as const
 export type BenchmarkGroup = (typeof BENCHMARK_GROUPS)[number]
 
+/**
+ * Which countries a household can compare against, and which of them Balancr actually
+ * ships a file for (#244).
+ *
+ * A closed set for the same reason the group ids are: the picker offers exactly these,
+ * `householdSchema` refuses anything else, and the file schema's `jurisdiction` is this
+ * enum rather than a free string — so a typo in a new country's file fails to load rather
+ * than silently comparing nobody to nothing. Listed here rather than derived from
+ * whichever files happen to exist on disk, because a household picks its country before
+ * Balancr ever looks for a file, and the six with no file yet are meant to say so on the
+ * settings screen rather than disappear from the list.
+ */
+export const BENCHMARK_COUNTRIES = ['BE', 'NL', 'DE', 'FR', 'ES', 'IT', 'US'] as const
+export type BenchmarkCountry = (typeof BENCHMARK_COUNTRIES)[number]
+
 /** The twelve COICOP divisions that are household consumption, as two-digit strings. */
 export const COICOP_DIVISIONS = [
   '01',

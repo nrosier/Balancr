@@ -14,7 +14,7 @@
  *  - Below `MIN_MAPPED_BP` there is no comparison at all, only a reason.
  *  - The household is aged at the year of the month being compared, not at today.
  *
- * The realistic cases run against the shipped `config/statbel-benchmark.yaml`, so a
+ * The realistic cases run against the shipped `config/benchmark/be.yaml`, so a
  * transposed digit in it fails here rather than on a page. Since #290 that file carries
  * the reference household, so the shipped basis is `level` — the cases that assert *mix*
  * arithmetic strip the reference explicitly rather than relying on the file to lack it,
@@ -55,7 +55,9 @@ import {
   saveCoicop,
 } from '../../src/domain/benchmark/mapping.ts'
 import {
+  benchmarkOrNull,
   loadBenchmark,
+  resolveBenchmarkPath,
   transcribedBlocks,
   type Benchmark,
 } from '../../src/domain/benchmark/model.ts'
@@ -71,7 +73,7 @@ import { MAX_HOUSEHOLD_MEMBERS } from '../../src/domain/benchmark/vocabulary.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 
 /** The file Balancr ships, read from disk. Every realistic case below compares to this. */
-const SHIPPED = loadBenchmark('config/statbel-benchmark.yaml')
+const SHIPPED = loadBenchmark('config/benchmark/be.yaml')
 
 /**
  * The shipped file with its euro figures taken away, which is what it was before #290.
@@ -84,9 +86,11 @@ const SHIPPED_MIX: Benchmark = { ...SHIPPED, referenceHousehold: null }
 
 const HOUSEHOLD = (members: Household['members'] = []): Household => ({
   members,
-  sharedCostBp: null,
   // Irrelevant to the equivalence scale — nothing here reads it — but `Household` is a
-  // whole roster and the benchmark is fed the real thing (#289).
+  // whole roster and the benchmark is fed the real thing (#289). Same for `country` (#244):
+  // it picks which file gets read, not how the scale computes.
+  country: 'BE',
+  sharedCostBp: null,
   sharedCostDirection: 'whole_invoice',
 })
 
@@ -188,6 +192,29 @@ describe('the shipped benchmark file', () => {
   })
 })
 
+describe('resolveBenchmarkPath and benchmarkOrNull (#244)', () => {
+  it('names a file per country, lowercased, in the given directory', () => {
+    expect(resolveBenchmarkPath('BE', 'config/benchmark')).toBe('config/benchmark/be.yaml')
+    expect(resolveBenchmarkPath('NL', 'config/benchmark')).toBe('config/benchmark/nl.yaml')
+    // A trailing slash on the directory does not double up.
+    expect(resolveBenchmarkPath('BE', 'config/benchmark/')).toBe('config/benchmark/be.yaml')
+  })
+
+  it('resolves the real file Belgium ships', () => {
+    const benchmark = benchmarkOrNull('BE', 'config/benchmark')
+    expect(benchmark).not.toBeNull()
+    expect(benchmark?.jurisdiction).toBe('BE')
+  })
+
+  it('returns null, not an error, for a country with no file yet', () => {
+    // Six of the seven countries a household may pick have no file — the shipped state,
+    // not a misconfiguration (#244) — and this is the exact path `benchmarkContext` reads
+    // by way of `household.country`, so a household that picks the Netherlands sees "no
+    // comparison configured" rather than a crash or Belgium's own figures.
+    expect(benchmarkOrNull('NL', 'config/benchmark')).toBeNull()
+  })
+})
+
 describe('compareToBenchmark: the comparisons it refuses', () => {
   it('reports no file rather than an error when none is configured', () => {
     const result = compare([row({ categoryId: 'c1' })], { c1: '01' }, { benchmark: null })
@@ -251,6 +278,20 @@ describe('compareToBenchmark: the comparisons it refuses', () => {
     )
     expect(result.mappedShareBp).toBe(10_000)
     expect(result.comparedCents).toBe(185_000)
+  })
+
+  it('names the file it drew the comparison from, not always Belgium (#244)', () => {
+    // The comparison's own `jurisdiction` is the file's, not a household preference —
+    // this is what lets the card word itself for whichever country's file actually
+    // answered, rather than assuming Statbel's the only publisher Balancr ever reads.
+    const result = ok(
+      compare(
+        [row({ categoryId: 'rent', spentCents: 120_000 }), row({ categoryId: 'groceries', spentCents: 65_000 })],
+        { rent: '04', groceries: '01' },
+        { benchmark: { ...SHIPPED, jurisdiction: 'NL' } },
+      ),
+    )
+    expect(result.jurisdiction).toBe('NL')
   })
 })
 
@@ -700,7 +741,7 @@ describe('householdSchema', () => {
     // (#44). The direction defaults instead of being nullable, because there is no
     // "unknown" reading of a share — every roster on disk already has one, and
     // `whole_invoice` is the one they were all saved under (#289).
-    const one = { members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' }
+    const one = { country: 'BE', members: [], sharedCostBp: null, sharedCostDirection: 'whole_invoice' }
     expect(DEFAULT_HOUSEHOLD).toEqual(one)
     expect(householdSchema.parse(undefined)).toEqual(one)
   })
@@ -722,6 +763,7 @@ describe('householdSchema', () => {
 
   it('treats a member as full time unless told otherwise', () => {
     expect(householdSchema.parse({ members: [{ birthYear: 2013 }] })).toEqual({
+      country: 'BE',
       members: [{ birthYear: 2013, custodyBp: 10_000 }],
       sharedCostBp: null,
       sharedCostDirection: 'whole_invoice',
@@ -752,6 +794,7 @@ describe('householdSchema', () => {
 
   it('accepts a name for the first person, trimmed like a member label (#215)', () => {
     expect(householdSchema.parse({ members: [], selfLabel: '  Nick  ' })).toEqual({
+      country: 'BE',
       members: [],
       selfLabel: 'Nick',
       sharedCostBp: null,
@@ -791,10 +834,16 @@ describe('the stored household', () => {
       sharedCostDirection: 'my_share',
     })
     expect(loadHousehold(ctx.db, TENANT_ID)).toEqual({
+      country: 'BE',
       members: [{ birthYear: 2013, custodyBp: 5_000, label: 'Teenager' }],
       sharedCostBp: 6_000,
       sharedCostDirection: 'my_share',
     })
+  })
+
+  it('round-trips a chosen country, which is what picks the file to compare against (#244)', () => {
+    saveHousehold(ctx.db, TENANT_ID, { country: 'NL', members: [] })
+    expect(loadHousehold(ctx.db, TENANT_ID).country).toBe('NL')
   })
 
   it('takes the direction back to the whole invoice when a patch omits it (#289)', () => {

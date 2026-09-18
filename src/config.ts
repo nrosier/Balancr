@@ -300,15 +300,17 @@ const EnvSchema = z.object({
   TAX_RULES_PATH: z.string().min(1).default('./config/belgian-tax.yaml'),
 
   /**
-   * Where the household-budget benchmark lives (#43).
+   * Where the household-budget benchmark files live, one per country (#43, #244).
    *
-   * Same arrangement as the tax rules, with one difference: this file is genuinely
-   * optional. A deployment that points this at nothing gets no comparison against a
-   * national average and every other figure unchanged — which is a reasonable thing to
-   * want, and is why `benchmarkOrNull` treats an absent file as a choice rather than as
-   * a misconfiguration to log about every quarter of an hour.
+   * A directory rather than a single path, because a household now picks a country
+   * (`householdSchema.country`) and `resolveBenchmarkPath` derives the filename from it
+   * — `be.yaml`, `nl.yaml`. This file is genuinely optional per country: a household
+   * whose country has no file gets no comparison against a national average and every
+   * other figure unchanged, which is a reasonable thing to want, and is why
+   * `benchmarkOrNull` treats an absent file as a choice rather than as a misconfiguration
+   * to log about every quarter of an hour.
    */
-  BENCHMARK_PATH: z.string().min(1).default('./config/statbel-benchmark.yaml'),
+  BENCHMARK_DIR: z.string().min(1).default('./config/benchmark/'),
 
   // Egress
   /**
@@ -571,7 +573,7 @@ export function configSummary(): Record<string, unknown> {
     FUND_UNIVERSE_PATH: config.FUND_UNIVERSE_PATH,
     FUND_UNIVERSE_MAX_AGE_DAYS: config.FUND_UNIVERSE_MAX_AGE_DAYS,
     TAX_RULES_PATH: config.TAX_RULES_PATH,
-    BENCHMARK_PATH: config.BENCHMARK_PATH,
+    BENCHMARK_DIR: config.BENCHMARK_DIR,
     EGRESS_MODE: config.EGRESS_MODE,
     EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
