@@ -68,9 +68,22 @@ jobs:
     # same condition metadata-action's `enable=` above uses to decide whether
     # to push it at all. `vars.HARBOR_URL` stays empty until Harbor is wired
     # up, so this is a clean no-op until then rather than a red check.
-    if: vars.HARBOR_URL != '' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+    # TEMPORARY (revert once the Cloudflare bypass step is confirmed): also
+    # run on pushes to main so this can be tested without a real tag.
+    if: vars.HARBOR_URL != '' && (github.ref == 'refs/heads/main' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')))
     runs-on: ubuntu-latest
     steps:
+      # Cloudflare's Bot Fight Mode/WAF challenges this runner's requests
+      # before Harbor ever sees them — this whitelists just this job's own
+      # runner IP for the duration and removes it again afterward, success
+      # or failure.
+      - name: Bypass Cloudflare for this runner
+        uses: xiaotianxt/bypass-cloudflare-for-github-action@v2.1.0
+        with:
+          cf_account_id: ${{ secrets.CF_ACCOUNT_ID }}
+          cf_zone_id: ${{ secrets.CF_ZONE_ID }}
+          cf_api_token: ${{ secrets.CF_API_TOKEN }}
+
       - name: Trigger Harbor replication
         id: replicate
         env:
