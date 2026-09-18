@@ -67,6 +67,7 @@ function fact(id: string, spentCents: number, overrides: Partial<MonthlyFact> = 
 
 const household = (overrides: Partial<Household> = {}): Household => ({
   members: [],
+  country: 'BE',
   sharedCostBp: null,
   // The stored default, and the direction every case below is in unless it says otherwise:
   // it is what the feature modelled before #289, so it is the reading these tests were

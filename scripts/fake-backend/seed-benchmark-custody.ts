@@ -28,7 +28,7 @@ import {
   CAT_UTILITIES,
 } from './actual-data.ts'
 
-/** Divisions per `config/statbel-benchmark.yaml`'s own `groups[].coicop` lists. */
+/** Divisions per `config/benchmark/be.yaml`'s own `groups[].coicop` lists. */
 const COICOP: Readonly<Record<string, CoicopChoice>> = {
   [CAT_RENT]: '04',
   [CAT_UTILITIES]: '04',

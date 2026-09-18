@@ -94,7 +94,8 @@
     },
     "comparison": {
       "title": "Vergelijking",
-      "hint": "Het gemiddelde Belgische huishouden waarmee jouw uitgaven vergeleken worden, en waar dat cijfer vandaan komt."
+      "hint": "Het gemiddelde {{demonym}} huishouden waarmee jouw uitgaven vergeleken worden, en waar dat cijfer vandaan komt.",
+      "hintNoFile": "Het gemiddelde huishouden waarmee jouw uitgaven vergeleken zouden worden, en waar dat cijfer vandaan komt — zodra er een bestand is voor het gekozen land."
     },
     "household": {
       "add": "Iemand toevoegen",
@@ -103,6 +104,15 @@
       "birthYear": "Geboortejaar",
       "blocked_one": "De gegevens van één persoon zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rij hierboven aan of verwijder ze.",
       "blocked_other": "De gegevens van {{value}} personen zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rijen hierboven aan of verwijder ze.",
+      "country": "Land",
+      "countryHint": "Welk nationaal gemiddelde jouw uitgaven vergeleken worden. Balancr levert vandaag een echt bestand voor België; elk ander land toont de vergelijking als niet ingesteld tot er een bestand bijkomt.",
+      "country_BE": "België",
+      "country_DE": "Duitsland",
+      "country_ES": "Spanje",
+      "country_FR": "Frankrijk",
+      "country_IT": "Italië",
+      "country_NL": "Nederland",
+      "country_US": "Verenigde Staten",
       "custody": "Tijd hier",
       "hint": "Wie hier woont, want dat is wat jouw uitgaven vergelijkbaar maakt met een nationaal gemiddelde. Een wijziging geldt voor de volgende vergelijking; niets op deze pagina wordt hier herrekend.",
       "label": "Naam",
@@ -172,7 +182,7 @@
       "unmapped": "Niet toegewezen"
     },
     "noFile": "Er kon geen referentiebestand gelezen worden, dus nergens wordt een vergelijking gemaakt.",
-    "noFileHint": "Balancr levert er een mee in config/statbel-benchmark.yaml. Controleer BENCHMARK_PATH en het serverlog — een bestand dat niet gelezen kan worden, wordt daar met de reden vermeld.",
+    "noFileHint": "Balancr levert er een mee voor België in config/benchmark/be.yaml. Controleer BENCHMARK_DIR en het serverlog — een bestand dat niet gelezen kan worden, wordt daar met de reden vermeld.",
     "provenance": {
       "mixOnly": "Het maandtotaal van het gemiddelde huishouden is niet ingevuld, dus enkel de verdeling wordt vergeleken: aandelen tegen aandelen, nooit euro's tegen euro's. Het bestand legt uit hoe je het invult.",
       "scale": "{{citation}}. Laatst nagekeken {{verified}}.",

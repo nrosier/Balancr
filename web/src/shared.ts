@@ -189,6 +189,7 @@ export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'
 
 export {
+  BENCHMARK_COUNTRIES,
   BENCHMARK_GROUPS,
   // The benchmark card's own period chooser (#323). From `vocabulary.ts` rather than
   // `compare.ts`, which the comment above the group list already explains:
@@ -204,6 +205,7 @@ export {
   SHARED_COST_DIRECTIONS,
 } from '../../src/domain/benchmark/vocabulary.ts'
 export type {
+  BenchmarkCountry,
   BenchmarkGroup,
   BenchmarkPeriodKind,
   CoicopDivision,

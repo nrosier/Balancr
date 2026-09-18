@@ -32,6 +32,7 @@ import { BENCHMARK_BASES, BENCHMARK_PERIODS } from '../../../domain/benchmark/co
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
   BENCHMARK_BLOCKS,
+  BENCHMARK_COUNTRIES,
   BENCHMARK_GROUPS,
   BENCHMARK_UNAVAILABLE,
   COICOP_DIVISIONS,
@@ -422,6 +423,8 @@ export const benchmarkComparisonSchema = z.discriminatedUnion('kind', [
       members: z.int().nonnegative(),
     }),
     referenceHouseholdBp: basisPoints().nullable(),
+    /** Which country's file this comparison is drawn from (#244). */
+    jurisdiction: z.enum(BENCHMARK_COUNTRIES),
     source: benchmarkSourceSchema,
     transcribed: z.array(z.enum(BENCHMARK_BLOCKS)),
   }),
@@ -1365,6 +1368,8 @@ export const statusSchema = z.object({
 export const benchmarkSettingSchema = z.object({
   file: z
     .object({
+      /** Which country's file this is (#244) — the same file the household's own picker chose. */
+      jurisdiction: z.enum(BENCHMARK_COUNTRIES),
       source: benchmarkSourceSchema,
       equivalence: z.object({
         scale: z.string(),
@@ -1409,6 +1414,8 @@ export const benchmarkSettingSchema = z.object({
     })
     .nullable(),
   household: z.object({
+    /** Which country's benchmark file this household compares against (#244). */
+    country: z.enum(BENCHMARK_COUNTRIES),
     members: z.array(
       z.object({
         birthYear: z.int(),
