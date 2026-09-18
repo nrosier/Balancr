@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.1] — 2026-09-18
+
+### Fixed
+
+- **Budget → Benchmark/Custody's own Period picker looked like a duplicate of
+  the page's Month picker** ([#389](https://github.com/nrosier/Balancr/issues/389)).
+  Each card draws its own comparison-period picker above the page's separate
+  Month toolbar with no card boundary between them, reading as the same
+  control rendered twice. The picker now sits inside the card/notice box it
+  belongs to instead of floating above it.
+
 ## [2.0.0] — 2026-09-18
 
 Blessed by the person whose money it is. Every feature issue in the v2.0.0
