@@ -135,17 +135,22 @@ equivalence:
 # the route for a container install with no way to edit a file on disk. An override is
 # marked `transcribed` on screen, because Balancr cannot vouch for a figure somebody typed.
 reference_household:
-  mean_monthly_cents: 368919
+  mean_monthly_cents: 395295
   equivalent_adults_bp: 15066
-  citation: 'Statbel, Household Budget Survey 2024 — mean expenditure per household and per consumption unit'
+  citation: 'Statbel HBS 2024, inflation-adjusted to August 2026 via Eurostat HICP and Statbel CPI (#398)'
   source_url: 'https://statbel.fgov.be/en/themes/households/household-budget-survey-hbs'
-  last_verified: '2026-09-07'
-  status: confirmed
+  last_verified: '2026-09-18'
+  status: transcribed
   notes: >-
-    Derived from sheet HBS_Tab01_BE_2024, row COICOP 0, of the 2024 XLSX download.
-    Monthly total is € 44.270,26 per year ÷ 12. Household size is € 44.270,26 ÷ €
-    29.383,46 per consumption unit = 1,5066 equivalent adults on the modified OECD scale,
-    the same scale as the equivalence block above. Statbel counts imputed rent for
+    The survey's own figure is 2024 prices, € 3.689,19/month (git history has the HBS
+    derivation). Scaled forward to today rather than left two years stale, chained across
+    two series since none covers both 2024 and the present month: Eurostat `prc_hicp_aind`
+    (CP00, 2015=100) — BE annual average 131,52 (2024) → 135,49 (2025), factor 1,030186 —
+    then Statbel's national CPI (base 2025=100) at 104,01 for August 2026, factor 1,0401
+    over the 2025 average. Combined 1,030186 × 1,0401 ≈ 1,071496, so € 3.689,19 ×
+    1,071496 ≈ € 3.952,95/month. `equivalent_adults_bp` is structural, not a price, so
+    it is untouched. `status: transcribed` because this figure was computed here, not
+    read off a Statbel table — re-derive periodically. Statbel counts imputed rent for
     owner-occupiers in the housing division, which Balancr's own figures do not, so an
     owner without a mortgage reads well below the reference for that reason alone.
 
