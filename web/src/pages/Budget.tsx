@@ -133,17 +133,14 @@ export function Budget(): ReactNode {
   // computed for *this* fetch, and the list a year resolves against does not change with
   // which month is on screen, so last fetch's copy is exactly as good as this one's.
   const [knownMonths, setKnownMonths] = useState<readonly string[]>([])
-  // The benchmark card's own window (#323) — a second page-owned selection, folded
-  // into the same query string as `month` rather than a state of its own component,
-  // for the reason the page picker already is: `useResource` refetches on a path
-  // change and that is the entire mechanism. `'month'` is left out of the query
-  // string entirely, since it is the server's own default and every existing
+  // Benchmark's and Custody's own comparison window (#323, #345) — no longer a
+  // selection of its own (#389's follow-up): the two controls stacked one under the
+  // other read as duplicate date pickers, so each card's window now just follows
+  // whatever kind the page picker above is set to, and there is nothing left to
+  // fold into the query string but that same kind. `'month'` is left out of the
+  // query string entirely, since it is the server's own default and every existing
   // bookmark predates this control.
-  const [benchmarkPeriod, setBenchmarkPeriod] = useState<BenchmarkPeriodKind>('month')
-  // The custody card's own window (#345) — independent of `benchmarkPeriod`, the same
-  // way the server's `?custodyPeriod=` is independent of `?benchmarkPeriod=`: widening
-  // one card's window says nothing about the other's.
-  const [custodyPeriod, setCustodyPeriod] = useState<BenchmarkPeriodKind>('month')
+  const cardPeriodKind: BenchmarkPeriodKind = period === null ? 'month' : period.kind
   // No period yet means "whatever the server considers latest", which is what the
   // endpoint defaults to. A year resolves to a concrete anchor month client-side (#345)
   // — the server still only ever sees one resolved `?month=YYYY-MM`.
@@ -155,8 +152,10 @@ export function Budget(): ReactNode {
         : resolveYearAnchor(knownMonths, period.value)
   const params = new URLSearchParams()
   if (month !== null) params.set('month', month)
-  if (benchmarkPeriod !== 'month') params.set('benchmarkPeriod', benchmarkPeriod)
-  if (custodyPeriod !== 'month') params.set('custodyPeriod', custodyPeriod)
+  if (cardPeriodKind !== 'month') {
+    params.set('benchmarkPeriod', cardPeriodKind)
+    params.set('custodyPeriod', cardPeriodKind)
+  }
   const query = params.toString()
   const resource = useResource<BudgetPayload>(query === '' ? '/api/budget' : `/api/budget?${query}`)
 
@@ -180,10 +179,7 @@ export function Budget(): ReactNode {
                 section={section}
                 period={period}
                 onPeriodSelect={setPeriod}
-                benchmarkPeriod={benchmarkPeriod}
-                onBenchmarkPeriodSelect={setBenchmarkPeriod}
-                custodyPeriod={custodyPeriod}
-                onCustodyPeriodSelect={setCustodyPeriod}
+                cardPeriodKind={cardPeriodKind}
                 onRefreshed={resource.reload}
               />
             ) : (
@@ -201,10 +197,7 @@ interface FiguresProps {
   section: (typeof BUDGET_SECTIONS)[number]['id']
   period: Period | null
   onPeriodSelect: (period: Period) => void
-  benchmarkPeriod: BenchmarkPeriodKind
-  onBenchmarkPeriodSelect: (period: BenchmarkPeriodKind) => void
-  custodyPeriod: BenchmarkPeriodKind
-  onCustodyPeriodSelect: (period: BenchmarkPeriodKind) => void
+  cardPeriodKind: BenchmarkPeriodKind
   onRefreshed: () => void
 }
 
@@ -213,10 +206,7 @@ function Figures({
   section,
   period,
   onPeriodSelect,
-  benchmarkPeriod,
-  onBenchmarkPeriodSelect,
-  custodyPeriod,
-  onCustodyPeriodSelect,
+  cardPeriodKind,
   onRefreshed,
 }: FiguresProps): ReactNode {
   const { t, language } = useT()
@@ -288,10 +278,8 @@ function Figures({
             period={displayPeriod}
             onSelect={onPeriodSelect}
             id="budget-month"
-            // "Month", not "Period" (#345): Benchmark and Custody each already carry a
-            // "Period"-labeled picker of their own on the tab this one shares, and a
-            // second control with the same accessible name on one page is a name two
-            // readers — sighted or on a screen reader — cannot tell apart.
+            // "Month", not "Period" (#345) — the only picker on the page since #389's
+            // follow-up removed Benchmark's and Custody's own.
             label={t('budget:picker.month')}
             kindLabel={(kind) => t(`budget:picker.period.${kind}`)}
             availableMonths={availableMonths}
@@ -366,13 +354,7 @@ function Figures({
         answers for itself now (#300) — the server sends `no_month` when there are no rows,
         and every reason has a box.
       */}
-      {section === 'benchmark' && (
-        <Benchmark
-          benchmark={benchmark}
-          period={benchmarkPeriod}
-          onPeriodSelect={onBenchmarkPeriodSelect}
-        />
-      )}
+      {section === 'benchmark' && <Benchmark benchmark={benchmark} period={cardPeriodKind} />}
 
       {/*
         Same as the Benchmark tab above, and for the same reason: no `categories.length > 0`
@@ -380,13 +362,7 @@ function Figures({
         would otherwise draw nothing at all. `Custody` answers for itself instead (#280) — the
         server sends `no_month` when there are no rows, and every reason has a box.
       */}
-      {section === 'custody' && (
-        <Custody
-          custody={custody}
-          period={custodyPeriod}
-          onPeriodSelect={onCustodyPeriodSelect}
-        />
-      )}
+      {section === 'custody' && <Custody custody={custody} period={cardPeriodKind} />}
 
       {section === 'notes' && <MonthNotePanel initialMonth={month} owner={owner} />}
     </>

@@ -36,12 +36,13 @@
  *    `zero_share` a share it cannot divide by, `no_month` the month itself — whose
  *    notice on the Overview section is not on screen from here.
  *
- * A sixth, added by #345 and narrowed by #389, mirroring Benchmark's own (#323): **the
- * comparison window is Month or Year, and nothing finer.** `unavailable` carries no
- * `period` of its own, so the selection lives on the page as a prop. What #389 removed
- * is the calendar this card's control used to offer alongside that switch: a popover
- * whose date cells looked pickable but were a no-op unless the click happened to change
- * the kind. `PeriodKindToggle` is the two-state switch that was ever actually wired.
+ * A sixth, added by #345, narrowed by #389 and settled for good after, mirroring
+ * Benchmark's own (#323): **the comparison window is Month or Year, and nothing
+ * finer.** `unavailable` carries no `period` of its own, so the selection lives on the
+ * page as a prop. #389 first replaced this card's calendar popover — a no-op unless a
+ * click happened to change the kind — with a plain Month/Year toggle, which still read
+ * as a second date picker under the page's own. The card draws no control of its own at
+ * all now: `period` just follows the page picker's own kind.
  *
  * Nothing here is computed. Every figure arrives as an integer, including the co-parent's
  * part, which is a subtraction the server did.
@@ -51,7 +52,6 @@ import { Trans } from 'react-i18next'
 import { useT } from '../i18n.ts'
 import { formatBp, formatMonth, type BenchmarkPeriodKind, type CustodyWire } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
-import { PeriodKindToggle } from '../ui/PeriodPicker.tsx'
 
 /** Whole euro, like every other total on this page. */
 const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
@@ -60,23 +60,11 @@ export interface CustodyProps {
   custody: CustodyWire
   /** The page's own selection (#345) — not on the wire, since `unavailable` has none. */
   period: BenchmarkPeriodKind
-  onPeriodSelect: (period: BenchmarkPeriodKind) => void
 }
 
-export function Custody({ custody, period, onPeriodSelect }: CustodyProps): ReactNode {
+export function Custody({ custody, period }: CustodyProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
-
-  const picker = (
-    <div className="toolbar">
-      <PeriodKindToggle
-        kind={period}
-        onSelect={onPeriodSelect}
-        label={t('budget:custody.periodLabel')}
-        kindLabel={(kind) => t(`budget:custody.period.${kind}`)}
-      />
-    </div>
-  )
 
   if (custody.kind === 'unavailable') {
     // Two of the four reasons name the flagged total, and can: something was flagged, so
@@ -86,11 +74,7 @@ export function Custody({ custody, period, onPeriodSelect }: CustodyProps): Reac
     // print as nought.
     const withFigure = custody.reason === 'no_basis' || custody.reason === 'zero_share'
     return (
-      // `picker` sits inside the notice's own box, not above it (#389): a second
-      // "Period"-looking control stacked directly under the page's own "Month" toolbar,
-      // with no card boundary between them, read as the same control rendered twice.
       <div className="notice notice--info" role="status">
-        {picker}
         <p className="notice__lead">
           {withFigure ? (
             <Trans
@@ -121,7 +105,6 @@ export function Custody({ custody, period, onPeriodSelect }: CustodyProps): Reac
 
   return (
     <section className="card">
-      {picker}
       <h2 className="card__title">{t('budget:custody.title')}</h2>
 
       <p className="custody__lede">

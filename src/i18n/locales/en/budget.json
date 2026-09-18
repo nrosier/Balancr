@@ -48,11 +48,8 @@
     "mapped": "{{share}} of your <money>{{consumption}}</money> of household spending is mapped to a group, and only that part is compared.",
     "outside": "<money>{{amount}}</money> of savings, taxes and transfers sits outside the comparison: it is not household consumption, and the survey's shares do not cover it.",
     "period": {
-      "month": "Month",
-      "prorated": "This period is {{progress}} through — the reference side matches: any month already finished counts in full, and the one still open counts only its own share of a month.",
-      "year": "Year"
+      "prorated": "This period is {{progress}} through — the reference side matches: any month already finished counts in full, and the one still open counts only its own share of a month."
     },
-    "periodLabel": "Period",
     "source": "{{citation}}. Last checked {{verified}}.",
     "state": {
       "above": "Above reference",
@@ -141,11 +138,6 @@
         "year": "In {{year}} you paid <money>{{paid}}</money> on costs shared with a co-parent. <money2>{{derived}}</money2> of that is economically yours; <money3>{{other}}</money3> is the other household's share."
       }
     },
-    "period": {
-      "month": "Month",
-      "year": "Year"
-    },
-    "periodLabel": "Period",
     "share": {
       "month": "Shared costs are {{share}} of what you spent this month.",
       "year": "Shared costs are {{share}} of what you spent this year."

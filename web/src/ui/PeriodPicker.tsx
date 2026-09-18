@@ -65,50 +65,6 @@ export function switchKind(period: Period, kind: PeriodKind): Period {
   return { kind: 'month', value: `${period.value}-${month}` }
 }
 
-export interface PeriodKindToggleProps {
-  kind: PeriodKind
-  onSelect: (kind: PeriodKind) => void
-  /** The accessible name for the group — there is no visible label. */
-  label: string
-  kindLabel: (kind: PeriodKind) => string
-}
-
-/**
- * The Month/Year pill, on its own, with no trigger and no calendar (#389).
- *
- * A card whose own comparison window only ever varies by kind — Benchmark, Custody —
- * has no business offering a calendar grid: every cell in it is a no-op unless it
- * happens to change the kind, which is exactly what this control does directly instead
- * of hiding behind a popover that looks like it can do more.
- */
-export function PeriodKindToggle({
-  kind,
-  onSelect,
-  label,
-  kindLabel,
-}: PeriodKindToggleProps): ReactNode {
-  return (
-    <div
-      className={`period-picker__mode${kind === 'year' ? ' is-year' : ''}`}
-      role="group"
-      aria-label={label}
-    >
-      <span className="period-picker__mode-thumb" />
-      {KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          className={`period-picker__mode-btn${kind === k ? ' active' : ''}`}
-          aria-pressed={kind === k}
-          onClick={() => onSelect(k)}
-        >
-          {kindLabel(k)}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function PeriodPicker({
   period,
   onSelect,

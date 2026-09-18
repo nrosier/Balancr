@@ -39,17 +39,15 @@
  *    invite the stronger conclusion from the weaker comparison, so the lede says it in
  *    words and the reference column is explained rather than labelled.
  *
- * A sixth, added by #323 and narrowed by #389: **the comparison window is Month or
- * Year, and nothing finer.** `unavailable` carries no `period` field — a mapping
- * problem has nothing to do with the window asked for — so the selection lives on the
- * page as a prop, same as `Budget.tsx`'s own `month` state. What changed under #389 is
- * that the control drawn here no longer pretends to offer more than that: it used to be
- * the same calendar-popover `PeriodPicker` the page's own "Month" toolbar uses, with its
- * value silently ignored and only the kind read back — every cell you could click looked
- * live and almost all of them did nothing. `PeriodKindToggle` is the two-state switch
- * that was ever actually wired, with no popover pretending otherwise. It is drawn above
- * both branches for the same reason as before: switching away from a mapping problem is
- * exactly the thing a reader who hit one might try first.
+ * A sixth, added by #323, narrowed by #389 and settled for good after: **the comparison
+ * window is Month or Year, and nothing finer.** `unavailable` carries no `period` field —
+ * a mapping problem has nothing to do with the window asked for — so the selection lives
+ * on the page as a prop, same as `Budget.tsx`'s own `month` state. #389's fix replaced a
+ * calendar popover that silently ignored every click with a plain Month/Year toggle drawn
+ * in the card — a real improvement, but one that still read as a second date picker
+ * stacked under the page's own. The card no longer draws a control of its own at all:
+ * `period` now just follows the page picker's own kind, one control on the page instead
+ * of two that looked alike.
  *
  * Nothing here is computed, in keeping with the rest of the page: every figure arrives as
  * an integer. The one arithmetic is basis points into a scale figure, which is the unit
@@ -71,7 +69,6 @@ import {
   type BenchmarkWire,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
-import { PeriodKindToggle } from '../ui/PeriodPicker.tsx'
 
 /** Whole euro, like every other total on this page. Cents on a monthly figure are noise. */
 const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
@@ -119,31 +116,15 @@ export interface BenchmarkProps {
   benchmark: BenchmarkWire
   /** The page's own selection (#323) — not on the wire, since `unavailable` has none. */
   period: BenchmarkPeriodKind
-  onPeriodSelect: (period: BenchmarkPeriodKind) => void
 }
 
-export function Benchmark({ benchmark, period, onPeriodSelect }: BenchmarkProps): ReactNode {
+export function Benchmark({ benchmark, period }: BenchmarkProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
 
-  const picker = (
-    <div className="toolbar">
-      <PeriodKindToggle
-        kind={period}
-        onSelect={onPeriodSelect}
-        label={t('budget:benchmark.periodLabel')}
-        kindLabel={(kind) => t(`budget:benchmark.period.${kind}`)}
-      />
-    </div>
-  )
-
   if (benchmark.kind === 'unavailable') {
     return (
-      // `picker` sits inside the notice's own box, not above it (#389): a second
-      // "Period"-looking control stacked directly under the page's own "Month" toolbar,
-      // with no card boundary between them, read as the same control rendered twice.
       <div className="notice notice--info" role="status">
-        {picker}
         <p className="notice__lead">
           {t(`budget:benchmark.unavailable.${benchmark.reason}`, {
             // Only `too_unmapped` prints either of these, and it always has the share —
@@ -165,7 +146,6 @@ export function Benchmark({ benchmark, period, onPeriodSelect }: BenchmarkProps)
 
   return (
     <section className="card">
-      {picker}
       <h2 className="card__title">{t('budget:benchmark.title')}</h2>
 
       <p className="benchmark__lede">

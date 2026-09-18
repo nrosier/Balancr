@@ -48,11 +48,8 @@
     "mapped": "{{share}} van jouw <money>{{consumption}}</money> huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
     "outside": "<money>{{amount}}</money> aan sparen, belastingen en overdrachten valt buiten de vergelijking: het is geen huishoudelijke consumptie en de aandelen van het onderzoek dekken het niet.",
     "period": {
-      "month": "Maand",
-      "prorated": "Deze periode is {{progress}} voorbij — de referentiekant volgt mee: elke afgelopen maand telt volledig, en de lopende maand telt enkel voor haar eigen aandeel.",
-      "year": "Jaar"
+      "prorated": "Deze periode is {{progress}} voorbij — de referentiekant volgt mee: elke afgelopen maand telt volledig, en de lopende maand telt enkel voor haar eigen aandeel."
     },
-    "periodLabel": "Periode",
     "source": "{{citation}}. Laatst nagekeken {{verified}}.",
     "state": {
       "above": "Boven referentie",
@@ -141,11 +138,6 @@
         "year": "In {{year}} betaalde je <money>{{paid}}</money> aan kosten die je met een co-ouder deelt. <money2>{{derived}}</money2> daarvan is economisch voor jou; <money3>{{other}}</money3> is het aandeel van het andere huishouden."
       }
     },
-    "period": {
-      "month": "Maand",
-      "year": "Jaar"
-    },
-    "periodLabel": "Periode",
     "share": {
       "month": "Gedeelde kosten zijn {{share}} van wat je deze maand uitgaf.",
       "year": "Gedeelde kosten zijn {{share}} van wat je dit jaar uitgaf."
