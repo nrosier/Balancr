@@ -1967,6 +1967,21 @@ describe('property', () => {
     expect(screen.getByLabelText('Monthly rent')).toBeTruthy()
   })
 
+  it('offers a third kind, owned outright, that also asks for no rent', async () => {
+    await open(READS)
+
+    addProperty()
+    const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement
+    expect(Array.from(typeSelect.options, (option) => option.value)).toEqual([
+      'primary',
+      'rental',
+      'owned',
+    ])
+
+    fireEvent.change(typeSelect, { target: { value: 'owned' } })
+    expect(screen.queryByLabelText('Monthly rent')).toBeNull()
+  })
+
   it('reads back the equity a stated value implies', async () => {
     await open({ ...READS, '/api/settings': json(withOneProperty()) })
 

@@ -1,5 +1,6 @@
 /**
- * What the household owns — the home it lives in, and whatever it rents out (#227).
+ * What the household owns — the home it lives in, whatever it rents out, and anything
+ * else it holds outright but neither lives in nor rents (#227, #390).
  *
  * Ghostfolio has no liability type that can model a rate that changes, and a paid-down
  * room in an actual house is not a fund position `advice/{drift,suggest}.ts` could ever
@@ -432,7 +433,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                           {rateBp === null
                             ? t('settings:property.invalid')
                             : t('settings:property.mortgage.rateReads', {
-                                value: formatBp(rateBp),
+                                value: formatBp(rateBp, { maxFractionDigits: 2 }),
                               })}
                         </p>
                       </div>

@@ -76,6 +76,15 @@ describe('the stored properties', () => {
     expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
   })
 
+  it('round-trips an owned property that is neither primary nor rental', () => {
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [
+        property({ id: 'cottage', kind: 'owned', label: 'Family cottage', mortgage: null }),
+      ],
+    })
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
   it('degrades to an empty list rather than throwing, for either kind of damage', () => {
     write('{ not json')
     expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)

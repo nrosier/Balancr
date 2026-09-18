@@ -5,12 +5,14 @@
  * could ever buy or sell — so this stays out of the `REAL_ESTATE` allocation band and is
  * its own small settings record instead.
  *
- * A list, not a singleton: the household can own the place it lives in (`primary`) and
- * separately rent out one or more others (`rental`), each with its own value and its own
- * mortgage or none at all. A rental also carries the rent it brings in, which is what
- * `netCashFlowCents`/`grossYieldBp` in `vocabulary.ts` turn into "is this one actually
- * worth it" — questions a primary residence never asks, so those two only mean anything
- * once `rentCents` is set.
+ * A list, not a singleton: the household can own the place it lives in (`primary`),
+ * separately rent out one or more others (`rental`), and hold a third kind of property
+ * that is neither — bought outright, inherited, held for a family member — where `owned`
+ * fits without forcing a real distinction into one of the other two. Each row has its own
+ * value and its own mortgage or none at all. A rental also carries the rent it brings in,
+ * which is what `netCashFlowCents`/`grossYieldBp` in `vocabulary.ts` turn into "is this one
+ * actually worth it" — questions neither a primary residence nor an `owned` property ever
+ * asks, so those two only mean anything once `rentCents` is set on a `rental` row.
  *
  * The arithmetic lives in `vocabulary.ts`, a module a browser can import; this file adds
  * the zod schema and the two functions that touch the database. Same load/save contract

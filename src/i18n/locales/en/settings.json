@@ -370,7 +370,8 @@
     "invalid": "Something in this row isn't a valid number yet.",
     "kind": {
       "primary": "Home",
-      "rental": "Rental"
+      "rental": "Rental",
+      "owned": "Owned"
     },
     "kindLabel": "Type",
     "label": "Name",
