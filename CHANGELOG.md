@@ -6,6 +6,35 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.1.0] — 2026-09-18
+
+### Added
+
+- **A household now picks its own country** ([#244](https://github.com/nrosier/Balancr/issues/244))
+  in Settings → Household, and the benchmark comparison resolves its reference file
+  from that country instead of always reading Belgium's. `BENCHMARK_PATH` (a single
+  file) is now `BENCHMARK_DIR` (one file per country, `<dir>/<country>.yaml`); the
+  shipped file moved from `config/statbel-benchmark.yaml` to
+  `config/benchmark/be.yaml`. An existing deployment that set `BENCHMARK_PATH`
+  needs to set `BENCHMARK_DIR` instead, pointing at the directory rather than the
+  file. Six of the seven pickable countries (NL, DE, FR, ES, IT, US) have no file
+  yet — the comparison card falls back to its existing "no comparison configured"
+  empty state, the same one a missing or misconfigured file always produced. The
+  budget card's wording is now demonym-driven off the loaded file's own
+  jurisdiction rather than hardcoding "Belgian." Tax rules stay Belgium-only for
+  now.
+
+### Changed
+
+- **The Belgian benchmark reference figure is inflation-adjusted to August 2026**
+  ([#398](https://github.com/nrosier/Balancr/issues/398)) instead of sitting at
+  Statbel's 2024 survey price. It's scaled forward by chaining Eurostat's
+  annual-average HICP for Belgium with Statbel's own national CPI (base
+  2025=100), giving €3.952,95/month (395295 cents), up from €3.689,19. The
+  figure's `status` moves from `confirmed` to `transcribed` since it's now a
+  computed estimate rather than a value read straight off a Statbel table; the
+  full derivation is documented in the file's own `notes` field.
+
 ## [2.0.5] — 2026-09-18
 
 ### Changed
