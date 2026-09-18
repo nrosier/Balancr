@@ -96,26 +96,27 @@ export function Custody({ custody, period, onPeriodSelect, month }: CustodyProps
     // print as nought.
     const withFigure = custody.reason === 'no_basis' || custody.reason === 'zero_share'
     return (
-      <>
+      // `picker` sits inside the notice's own box, not above it (#389): a second
+      // "Period"-looking control stacked directly under the page's own "Month" toolbar,
+      // with no card boundary between them, read as the same control rendered twice.
+      <div className="notice notice--info" role="status">
         {picker}
-        <div className="notice notice--info" role="status">
-          <p className="notice__lead">
-            {withFigure ? (
-              <Trans
-                i18nKey={`budget:custody.unavailable.${custody.reason}`}
-                // Both of these reasons always carry the flagged total; the nullable type is
-                // the union's, not this branch's.
-                components={{
-                  money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
-                }}
-              />
-            ) : (
-              t(`budget:custody.unavailable.${custody.reason}`)
-            )}
-          </p>
-          <p className="notice__hint">{t(`budget:custody.unavailable.hint.${custody.reason}`)}</p>
-        </div>
-      </>
+        <p className="notice__lead">
+          {withFigure ? (
+            <Trans
+              i18nKey={`budget:custody.unavailable.${custody.reason}`}
+              // Both of these reasons always carry the flagged total; the nullable type is
+              // the union's, not this branch's.
+              components={{
+                money: <Money cents={custody.paidCents ?? 0} options={{ whole: true }} />,
+              }}
+            />
+          ) : (
+            t(`budget:custody.unavailable.${custody.reason}`)
+          )}
+        </p>
+        <p className="notice__hint">{t(`budget:custody.unavailable.hint.${custody.reason}`)}</p>
+      </div>
     )
   }
 
@@ -129,79 +130,77 @@ export function Custody({ custody, period, onPeriodSelect, month }: CustodyProps
     grossedUp ? line.totalCents : line.yoursCents
 
   return (
-    <>
+    <section className="card">
       {picker}
-      <section className="card">
-        <h2 className="card__title">{t('budget:custody.title')}</h2>
+      <h2 className="card__title">{t('budget:custody.title')}</h2>
 
-        <p className="custody__lede">
-          <Trans
-            i18nKey={`budget:custody.lede.${custody.direction}.${period}`}
-            values={{
-              month: formatMonth(custody.month, language),
-              year: custody.month.slice(0, 4),
-            }}
-            components={{
-              money: <Money cents={custody.paidCents} options={{ whole: true }} />,
-              money2: <Money cents={derived(custody)} options={{ whole: true }} />,
-              money3: <Money cents={custody.otherCents} options={{ whole: true }} />,
-            }}
-          />
-        </p>
+      <p className="custody__lede">
+        <Trans
+          i18nKey={`budget:custody.lede.${custody.direction}.${period}`}
+          values={{
+            month: formatMonth(custody.month, language),
+            year: custody.month.slice(0, 4),
+          }}
+          components={{
+            money: <Money cents={custody.paidCents} options={{ whole: true }} />,
+            money2: <Money cents={derived(custody)} options={{ whole: true }} />,
+            money3: <Money cents={custody.otherCents} options={{ whole: true }} />,
+          }}
+        />
+      </p>
 
-        <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
-          <table className="table custody__table">
-            <caption className="table__caption" id={captionId}>
-              {t(`budget:custody.caption.${custody.direction}`)}
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">{t('budget:custody.column.category')}</th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:custody.column.paid')}
+      <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
+        <table className="table custody__table">
+          <caption className="table__caption" id={captionId}>
+            {t(`budget:custody.caption.${custody.direction}`)}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('budget:custody.column.category')}</th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:custody.column.paid')}
+              </th>
+              <th scope="col" className="table__cell--number">
+                {t(grossedUp ? 'budget:custody.column.total' : 'budget:custody.column.borne')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {custody.lines.map((line) => (
+              <tr key={line.categoryId}>
+                <th scope="row" className="table__cell--name">
+                  {line.categoryName}
                 </th>
-                <th scope="col" className="table__cell--number">
-                  {t(grossedUp ? 'budget:custody.column.total' : 'budget:custody.column.borne')}
-                </th>
+                <td className="table__cell--number">{euro(line.paidCents)}</td>
+                <td className="table__cell--number">{euro(derived(line))}</td>
               </tr>
-            </thead>
-            <tbody>
-              {custody.lines.map((line) => (
-                <tr key={line.categoryId}>
-                  <th scope="row" className="table__cell--name">
-                    {line.categoryName}
-                  </th>
-                  <td className="table__cell--number">{euro(line.paidCents)}</td>
-                  <td className="table__cell--number">{euro(derived(line))}</td>
-                </tr>
-              ))}
-            </tbody>
-            {/*
-              A footer rather than a last row, so a screen reader announces it as the
-              summary it is and the rows above stay a list of categories. The two totals
-              are the sums of the columns above them, which is why the server rounds each
-              line rather than the total.
-            */}
-            <tfoot>
-              <tr>
-                <th scope="row">{t('budget:custody.total')}</th>
-                <td className="table__cell--number">{euro(custody.paidCents)}</td>
-                <td className="table__cell--number">{euro(derived(custody))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+            ))}
+          </tbody>
+          {/*
+            A footer rather than a last row, so a screen reader announces it as the
+            summary it is and the rows above stay a list of categories. The two totals
+            are the sums of the columns above them, which is why the server rounds each
+            line rather than the total.
+          */}
+          <tfoot>
+            <tr>
+              <th scope="row">{t('budget:custody.total')}</th>
+              <td className="table__cell--number">{euro(custody.paidCents)}</td>
+              <td className="table__cell--number">{euro(derived(custody))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-        <ul className="custody__meta">
-          <li>
-            {custody.basis === 'stated'
-              ? t('budget:custody.basis.stated', { share })
-              : t('budget:custody.basis.roster', { count: custody.members, share })}
-          </li>
-          <li>{t(`budget:custody.share.${period}`, { share: formatBp(custody.shareOfSpendBp) })}</li>
-          <li>{t(`budget:custody.assumption.${custody.direction}`, { share })}</li>
-        </ul>
-      </section>
-    </>
+      <ul className="custody__meta">
+        <li>
+          {custody.basis === 'stated'
+            ? t('budget:custody.basis.stated', { share })
+            : t('budget:custody.basis.roster', { count: custody.members, share })}
+        </li>
+        <li>{t(`budget:custody.share.${period}`, { share: formatBp(custody.shareOfSpendBp) })}</li>
+        <li>{t(`budget:custody.assumption.${custody.direction}`, { share })}</li>
+      </ul>
+    </section>
   )
 }

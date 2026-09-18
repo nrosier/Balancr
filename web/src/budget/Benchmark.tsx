@@ -146,184 +146,181 @@ export function Benchmark({ benchmark, period, onPeriodSelect, month }: Benchmar
 
   if (benchmark.kind === 'unavailable') {
     return (
-      <>
+      // `picker` sits inside the notice's own box, not above it (#389): a second
+      // "Period"-looking control stacked directly under the page's own "Month" toolbar,
+      // with no card boundary between them, read as the same control rendered twice.
+      <div className="notice notice--info" role="status">
         {picker}
-        <div className="notice notice--info" role="status">
-          <p className="notice__lead">
-            {t(`budget:benchmark.unavailable.${benchmark.reason}`, {
-              // Only `too_unmapped` prints either of these, and it always has the share —
-              // `no_mapping` is zero by construction, and the two reasons that predate any
-              // mapping have nothing to report, so the nullable type is the union's rather
-              // than this branch's. Passed for all four because an unused variable costs a
-              // `t()` call nothing, and a fifth reason that needs one should not have to
-              // find its way back in here.
-              share: formatBp(benchmark.mappedShareBp ?? 0),
-              floor: formatBp(MIN_MAPPED_BP),
-            })}
-          </p>
-          <p className="notice__hint">
-            {t(`budget:benchmark.unavailable.hint.${benchmark.reason}`)}
-          </p>
-        </div>
-      </>
+        <p className="notice__lead">
+          {t(`budget:benchmark.unavailable.${benchmark.reason}`, {
+            // Only `too_unmapped` prints either of these, and it always has the share —
+            // `no_mapping` is zero by construction, and the two reasons that predate any
+            // mapping have nothing to report, so the nullable type is the union's rather
+            // than this branch's. Passed for all four because an unused variable costs a
+            // `t()` call nothing, and a fifth reason that needs one should not have to
+            // find its way back in here.
+            share: formatBp(benchmark.mappedShareBp ?? 0),
+            floor: formatBp(MIN_MAPPED_BP),
+          })}
+        </p>
+        <p className="notice__hint">{t(`budget:benchmark.unavailable.hint.${benchmark.reason}`)}</p>
+      </div>
     )
   }
 
   const { groups, household, source, unmapped } = benchmark
 
   return (
-    <>
+    <section className="card">
       {picker}
-      <section className="card">
-        <h2 className="card__title">{t('budget:benchmark.title')}</h2>
+      <h2 className="card__title">{t('budget:benchmark.title')}</h2>
 
-        <p className="benchmark__lede">
+      <p className="benchmark__lede">
+        <Trans
+          i18nKey={`budget:benchmark.lede.${benchmark.basis}.${benchmark.period}`}
+          values={{
+            month: formatMonth(benchmark.month, language),
+            // The window's own calendar year for `year` — always the anchor month's,
+            // since that is what `year` sums from January through.
+            year: benchmark.month.slice(0, 4),
+            survey: source.survey,
+            surveyYear: String(source.year),
+          }}
+          components={{ money: <Money cents={benchmark.comparedCents} options={{ whole: true }} /> }}
+        />
+      </p>
+
+      <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
+        <table className="table">
+          <caption className="table__caption" id={captionId}>
+            {t('budget:benchmark.caption', { survey: source.survey, year: String(source.year) })}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('budget:benchmark.column.group')}</th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:benchmark.column.yours')}
+              </th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:benchmark.column.yourShare')}
+              </th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:benchmark.column.referenceShare')}
+              </th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:benchmark.column.reference')}
+              </th>
+              <th scope="col" className="table__cell--number">
+                {t('budget:benchmark.column.difference')}
+              </th>
+              <th scope="col">{t('budget:benchmark.column.state')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((line) => {
+              const state = lineState(line)
+              return (
+                <tr key={line.group}>
+                  <th scope="row" className="table__cell--name">
+                    {t(`budget:benchmark.group.${line.group}`)}
+                  </th>
+                  <td className="table__cell--number">{euro(line.yourCents)}</td>
+                  <td className="table__cell--number">{formatBp(line.yourShareBp)}</td>
+                  <td className="table__cell--number">{formatBp(line.referenceShareBp)}</td>
+                  <td className="table__cell--number">{euro(line.benchmarkCents)}</td>
+                  {/*
+                    An em dash where the reference is zero: a group the survey puts no
+                    money in makes every euro an infinite overshoot, and `deltaBp` is
+                    null there rather than a number nobody should read.
+                  */}
+                  <td className="table__cell--number">
+                    {line.deltaBp === null || state === 'unmapped'
+                      ? '—'
+                      : formatBp(line.deltaBp, { signed: true })}
+                  </td>
+                  <td className={`benchmark__state benchmark__state--${state}`}>
+                    {t(`budget:benchmark.state.${state}`)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="benchmark__meta">
+        {/*
+          Only when the reference side is not counting a whole period: a finished
+          month or a finished year needs no caveat, and printing one anyway would
+          train the reader to skip it on the months it actually matters (#323).
+        */}
+        {benchmark.periodProgressBp >= 10_000 ? null : (
+          <li>
+            {t('budget:benchmark.period.prorated', {
+              progress: formatBp(benchmark.periodProgressBp),
+            })}
+          </li>
+        )}
+        <li>
           <Trans
-            i18nKey={`budget:benchmark.lede.${benchmark.basis}.${benchmark.period}`}
-            values={{
-              month: formatMonth(benchmark.month, language),
-              // The window's own calendar year for `year` — always the anchor month's,
-              // since that is what `year` sums from January through.
-              year: benchmark.month.slice(0, 4),
-              survey: source.survey,
-              surveyYear: String(source.year),
-            }}
-            components={{ money: <Money cents={benchmark.comparedCents} options={{ whole: true }} /> }}
+            i18nKey="budget:benchmark.mapped"
+            values={{ share: formatBp(benchmark.mappedShareBp) }}
+            components={{ money: <Money cents={benchmark.consumptionCents} options={{ whole: true }} /> }}
           />
-        </p>
-
-        <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
-          <table className="table">
-            <caption className="table__caption" id={captionId}>
-              {t('budget:benchmark.caption', { survey: source.survey, year: String(source.year) })}
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">{t('budget:benchmark.column.group')}</th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:benchmark.column.yours')}
-                </th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:benchmark.column.yourShare')}
-                </th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:benchmark.column.referenceShare')}
-                </th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:benchmark.column.reference')}
-                </th>
-                <th scope="col" className="table__cell--number">
-                  {t('budget:benchmark.column.difference')}
-                </th>
-                <th scope="col">{t('budget:benchmark.column.state')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((line) => {
-                const state = lineState(line)
-                return (
-                  <tr key={line.group}>
-                    <th scope="row" className="table__cell--name">
-                      {t(`budget:benchmark.group.${line.group}`)}
-                    </th>
-                    <td className="table__cell--number">{euro(line.yourCents)}</td>
-                    <td className="table__cell--number">{formatBp(line.yourShareBp)}</td>
-                    <td className="table__cell--number">{formatBp(line.referenceShareBp)}</td>
-                    <td className="table__cell--number">{euro(line.benchmarkCents)}</td>
-                    {/*
-                      An em dash where the reference is zero: a group the survey puts no
-                      money in makes every euro an infinite overshoot, and `deltaBp` is
-                      null there rather than a number nobody should read.
-                    */}
-                    <td className="table__cell--number">
-                      {line.deltaBp === null || state === 'unmapped'
-                        ? '—'
-                        : formatBp(line.deltaBp, { signed: true })}
-                    </td>
-                    <td className={`benchmark__state benchmark__state--${state}`}>
-                      {t(`budget:benchmark.state.${state}`)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <ul className="benchmark__meta">
-          {/*
-            Only when the reference side is not counting a whole period: a finished
-            month or a finished year needs no caveat, and printing one anyway would
-            train the reader to skip it on the months it actually matters (#323).
-          */}
-          {benchmark.periodProgressBp >= 10_000 ? null : (
-            <li>
-              {t('budget:benchmark.period.prorated', {
-                progress: formatBp(benchmark.periodProgressBp),
-              })}
-            </li>
-          )}
+        </li>
+        {benchmark.outsideCents === 0 ? null : (
           <li>
             <Trans
-              i18nKey="budget:benchmark.mapped"
-              values={{ share: formatBp(benchmark.mappedShareBp) }}
-              components={{ money: <Money cents={benchmark.consumptionCents} options={{ whole: true }} /> }}
+              i18nKey="budget:benchmark.outside"
+              components={{ money: <Money cents={benchmark.outsideCents} options={{ whole: true }} /> }}
             />
           </li>
-          {benchmark.outsideCents === 0 ? null : (
-            <li>
-              <Trans
-                i18nKey="budget:benchmark.outside"
-                components={{ money: <Money cents={benchmark.outsideCents} options={{ whole: true }} /> }}
-              />
-            </li>
-          )}
-          {householdLines(household, t).map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-
-        {unmapped.length === 0 ? null : (
-          <div className="notice notice--warn" role="status">
-            <p className="notice__lead">{t('budget:benchmark.unmapped.title')}</p>
-            <ul className="notice__list">
-              {unmapped.map((category) => (
-                <li key={category.categoryId}>
-                  <Trans
-                    i18nKey="budget:benchmark.unmapped.line"
-                    values={{ name: category.categoryName, share: formatBp(category.shareBp) }}
-                    components={{ money: <Money cents={category.spentCents} options={{ whole: true }} /> }}
-                  />
-                </li>
-              ))}
-            </ul>
-            <p className="notice__hint">{t('budget:benchmark.unmapped.hint')}</p>
-          </div>
         )}
+        {householdLines(household, t).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
 
-        {/*
-          The provenance, always visible rather than behind a disclosure, for the reason
-          the tax block gives: a figure nobody can trace is a figure this app made up.
-          `transcribed` names the blocks of the file nobody has confirmed against the
-          source, which is a weaker claim than the rest of the card and says so.
-        */}
+      {unmapped.length === 0 ? null : (
+        <div className="notice notice--warn" role="status">
+          <p className="notice__lead">{t('budget:benchmark.unmapped.title')}</p>
+          <ul className="notice__list">
+            {unmapped.map((category) => (
+              <li key={category.categoryId}>
+                <Trans
+                  i18nKey="budget:benchmark.unmapped.line"
+                  values={{ name: category.categoryName, share: formatBp(category.shareBp) }}
+                  components={{ money: <Money cents={category.spentCents} options={{ whole: true }} /> }}
+                />
+              </li>
+            ))}
+          </ul>
+          <p className="notice__hint">{t('budget:benchmark.unmapped.hint')}</p>
+        </div>
+      )}
+
+      {/*
+        The provenance, always visible rather than behind a disclosure, for the reason
+        the tax block gives: a figure nobody can trace is a figure this app made up.
+        `transcribed` names the blocks of the file nobody has confirmed against the
+        source, which is a weaker claim than the rest of the card and says so.
+      */}
+      <p className="benchmark__source">
+        {t('budget:benchmark.source', {
+          citation: source.citation,
+          verified: formatDate(source.lastVerified),
+        })}
+      </p>
+      {benchmark.transcribed.length === 0 ? null : (
         <p className="benchmark__source">
-          {t('budget:benchmark.source', {
-            citation: source.citation,
-            verified: formatDate(source.lastVerified),
+          {t('budget:benchmark.transcribed', {
+            blocks: formatList(
+              benchmark.transcribed.map((block) => t(`budget:benchmark.block.${block}`)),
+              language,
+            ),
           })}
         </p>
-        {benchmark.transcribed.length === 0 ? null : (
-          <p className="benchmark__source">
-            {t('budget:benchmark.transcribed', {
-              blocks: formatList(
-                benchmark.transcribed.map((block) => t(`budget:benchmark.block.${block}`)),
-                language,
-              ),
-            })}
-          </p>
-        )}
-      </section>
-    </>
+      )}
+    </section>
   )
 }
