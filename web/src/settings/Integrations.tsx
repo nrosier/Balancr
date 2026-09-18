@@ -14,10 +14,14 @@
  *  - **A draft, not three, per sub-form.** Same reasoning as `Property.tsx`'s rows: the
  *    save button stays disabled until something is actually typed, so a stray click can't
  *    resubmit a form nobody touched.
- *  - **Test connection sends the full candidate, never the stored value.** Nothing here is
- *    saved by a test, so there is no partial credential to merge against — which also means
- *    a secret field left blank cannot be tested, because there is nothing on this screen to
- *    send. The button stays disabled until every field the test route requires is filled in.
+ *  - **Test connection sends a typed secret, never a stored one — but a blank field is not
+ *    automatically "no secret".** Nothing here is saved by a test, so there is no partial
+ *    credential to merge against on this screen; the server does that merge instead,
+ *    falling back to the tenant's own stored secret when the field is left blank and one
+ *    exists (#382), so testing an already-configured integration doesn't require retyping
+ *    it. The button (and, while disabled, a hint next to it) reflects that: it's enabled
+ *    once every non-secret field is filled and *some* secret — typed or stored — is
+ *    available, and disabled with an explanation otherwise.
  */
 import { useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
@@ -31,6 +35,21 @@ function Configured({ yes }: { yes: boolean }): ReactNode {
     <span className={`badge badge--${yes ? 'ok' : 'warn'}`}>
       {t(yes ? 'settings:integrations.configured' : 'settings:integrations.notConfigured')}
     </span>
+  )
+}
+
+/**
+ * Why "Test connection" is inert right now, shown next to the button rather than
+ * only in a `title` tooltip — a disabled button suppresses hover/focus feedback in
+ * some browsers, so the explanation has to be visible on its own (#382).
+ */
+function TestHint({ reason }: { reason: 'fields' | 'secret' | null }): ReactNode {
+  const { t } = useT()
+  if (reason === null) return null
+  return (
+    <p className="panel__meta muted">
+      {reason === 'fields' ? t('settings:integrations.testNeedsFields') : t('settings:integrations.testNeedsSecret')}
+    </p>
   )
 }
 
@@ -73,7 +92,9 @@ function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
   const password = current.password.trim()
   const e2ePassword = current.e2ePassword.trim()
   const ok = serverUrl !== '' && syncId !== ''
-  const canTest = ok && password !== ''
+  const secretAvailable = password !== '' || actual.passwordConfigured
+  const canTest = ok && secretAvailable
+  const testHint: 'fields' | 'secret' | null = !ok ? 'fields' : !secretAvailable ? 'secret' : null
 
   const submit = (): void => {
     state.save(
@@ -185,13 +206,19 @@ function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
                 'actual-test',
                 'POST',
                 '/api/settings/integrations/actual/test',
-                { serverUrl, syncId, password, ...(e2ePassword === '' ? {} : { e2ePassword }) },
+                {
+                  serverUrl,
+                  syncId,
+                  ...(password === '' ? {} : { password }),
+                  ...(e2ePassword === '' ? {} : { e2ePassword }),
+                },
                 setResult,
               )
             }}
           >
             {state.pending === 'actual-test' ? t('settings:integrations.testing') : t('settings:integrations.test')}
           </button>
+          {locked ? null : <TestHint reason={testHint} />}
         </div>
 
         <TestResult result={result} />
@@ -223,7 +250,9 @@ function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactN
   const url = current.url.trim()
   const securityToken = current.securityToken.trim()
   const ok = url !== ''
-  const canTest = ok && securityToken !== ''
+  const secretAvailable = securityToken !== '' || ghostfolio.tokenConfigured
+  const canTest = ok && secretAvailable
+  const testHint: 'fields' | 'secret' | null = !ok ? 'fields' : !secretAvailable ? 'secret' : null
 
   const submit = (): void => {
     state.save(
@@ -297,7 +326,7 @@ function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactN
                 'ghostfolio-test',
                 'POST',
                 '/api/settings/integrations/ghostfolio/test',
-                { url, securityToken },
+                { url, ...(securityToken === '' ? {} : { securityToken }) },
                 setResult,
               )
             }}
@@ -306,6 +335,7 @@ function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactN
               ? t('settings:integrations.testing')
               : t('settings:integrations.test')}
           </button>
+          {locked ? null : <TestHint reason={testHint} />}
         </div>
 
         <TestResult result={result} />
@@ -344,8 +374,16 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
 
   const apiKey = current.apiKey.trim()
   const googleCloudProject = current.googleCloudProject.trim()
-  const canTest =
-    current.provider === 'vertex' ? googleCloudProject !== '' : apiKey !== ''
+  const secretAvailable = apiKey !== '' || gemini.apiKeyConfigured
+  const canTest = current.provider === 'vertex' ? googleCloudProject !== '' : secretAvailable
+  const testHint: 'fields' | 'secret' | null =
+    current.provider === 'vertex'
+      ? googleCloudProject === ''
+        ? 'fields'
+        : null
+      : secretAvailable
+        ? null
+        : 'secret'
 
   const submit = (): void => {
     state.save(
@@ -498,6 +536,7 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
           >
             {state.pending === 'gemini-test' ? t('settings:integrations.testing') : t('settings:integrations.test')}
           </button>
+          {locked ? null : <TestHint reason={testHint} />}
         </div>
 
         <TestResult result={result} />

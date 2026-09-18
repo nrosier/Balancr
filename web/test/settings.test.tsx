@@ -2169,12 +2169,46 @@ describe('integrations', () => {
     })
   })
 
-  it('will not test a connection until the password to test is actually filled in', async () => {
+  it('can test immediately against a stored password, without retyping it (#382)', async () => {
     await open(READS)
 
+    expect(testButton('Actual').disabled).toBe(false)
+  })
+
+  it('will not test a connection with no password typed and none stored, and says why (#382)', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        integrations: {
+          ...PAYLOAD.integrations,
+          actual: { ...PAYLOAD.integrations.actual, passwordConfigured: false },
+        },
+      }),
+    })
+
     expect(testButton('Actual').disabled).toBe(true)
+    expect(within(panel('Actual')).getByText('Retype the value to test, or save one first.')).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } })
     expect(testButton('Actual').disabled).toBe(false)
+  })
+
+  it('tests against the stored password when the field is left blank (#382)', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/integrations/actual/test': json({ ok: true, message: null }),
+    })
+
+    fireEvent.click(testButton('Actual'))
+
+    await screen.findByText('Connected successfully.')
+    expect(writes(calls)).toEqual([
+      {
+        path: '/api/settings/integrations/actual/test',
+        method: 'POST',
+        body: { serverUrl: 'https://actual.example.com', syncId: 'sync-id' },
+      },
+    ])
   })
 
   it('tests the candidate on screen, not the stored value, and reports the result inline', async () => {

@@ -243,6 +243,8 @@
     "notConfigured": "Not configured",
     "secretUnchanged": "Leave blank to keep the stored value.",
     "test": "Test connection",
+    "testNeedsFields": "Fill in the fields above to test.",
+    "testNeedsSecret": "Retype the value to test, or save one first.",
     "testOk": "Connected successfully.",
     "testing": "Testing…",
     "title": "Integrations"
