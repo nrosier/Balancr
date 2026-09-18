@@ -40,7 +40,7 @@ const TREND_MONTHS = ['2026-06', '2026-07', '2026-08']
  * The Statbel comparison for `FULL`, on `FULL`'s own money.
  *
  * Every figure here is what `compareToBenchmark` produces from the two spending
- * categories above and the shipped `config/statbel-benchmark.yaml`, written out rather
+ * categories above and the shipped `config/benchmark/be.yaml`, written out rather
  * than computed: Groceries' € 650 under food and Rent's € 1.200 under housing come to
  * € 1.850 of compared spending, and each reference line is that total times the survey's
  * published share. A fixture that computed them would agree with a card that computed
@@ -76,6 +76,7 @@ const BENCHMARK: Extract<BudgetPayload['benchmark'], { kind: 'ok' }> = {
   unmapped: [],
   household: { bp: 11_500, prorated: true, children: 1, members: 1 },
   referenceHouseholdBp: null,
+  jurisdiction: 'BE',
   source: {
     survey: 'Household Budget Survey (HBS)',
     year: 2024,
@@ -668,8 +669,9 @@ describe('the Belgian comparison', () => {
 
   it('sends the reader to the settings panel when the deployment ships no benchmark', async () => {
     // `no_file` is the one reason the reader of a budget page may not be able to act on:
-    // it means `BENCHMARK_PATH` points at nothing readable, which is a config and a log
-    // question. So the box says the comparison is off and names where that is explained,
+    // it means `BENCHMARK_DIR` has nothing readable for the household's own country, which
+    // is a config and a log question. So the box says the comparison is off and names where
+    // that is explained,
     // rather than reprinting an operator's file path under a month's figures.
     serve(
       json({
@@ -687,8 +689,8 @@ describe('the Belgian comparison', () => {
     expect(screen.getByText(/Settings, Benchmark names the file that is expected/)).toBeTruthy()
     // Not the operator detail itself: that lives on the panel this points at, and stating
     // a path and a log location twice is two places to update when either changes.
-    expect(screen.queryByText(/statbel-benchmark\.yaml/)).toBeNull()
-    expect(screen.queryByText(/BENCHMARK_PATH/)).toBeNull()
+    expect(screen.queryByText(/be\.yaml/)).toBeNull()
+    expect(screen.queryByText(/BENCHMARK_DIR/)).toBeNull()
   })
 
   it('says nothing is mapped yet, which is not the same as spending nothing', async () => {

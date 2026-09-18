@@ -54,6 +54,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import {
+  BENCHMARK_COUNTRIES,
   COICOP_DIVISIONS,
   custodyShare,
   divisionOf,
@@ -68,6 +69,7 @@ import {
   AI_VISIBILITY_CHOICES,
   SAVINGS_NATURE_CHOICES,
   SHARED_COST_DIRECTIONS,
+  type BenchmarkCountry,
   type BenchmarkSetting,
   type SharedCostDirection,
 } from '../shared.ts'
@@ -134,6 +136,16 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   const [drafts, setDrafts] = useState<Draft[] | null>(null)
   const rows = drafts ?? benchmark.household.members.map(draftOf)
   const locked = !owner || state.busy
+
+  /**
+   * The chosen country, as picked, or null for "whatever is stored" (#244).
+   *
+   * Same shape as every other draft here: the outer null is "untouched", so a save always
+   * sends the household wholesale without having to track which box somebody actually
+   * touched.
+   */
+  const [countryDraft, setCountryDraft] = useState<BenchmarkCountry | null>(null)
+  const country = countryDraft ?? benchmark.household.country
 
   /**
    * The first person's own name as typed, or null for "whatever is stored" (#215).
@@ -228,6 +240,7 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
   const submit = (): void => {
     const selfLabel = selfLabelText.trim()
     const body = {
+      country,
       members,
       ...(selfLabel === '' ? {} : { selfLabel }),
       sharedCostBp: sharedBp,
@@ -241,6 +254,7 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
       setSharedDraft(null)
       setSelfLabelDraft(null)
       setDirectionDraft(null)
+      setCountryDraft(null)
     })
   }
 
@@ -282,6 +296,26 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
           submit()
         }}
       >
+        <div className="field">
+          <label className="field__label" htmlFor="benchmark-country">
+            {t('settings:benchmark.household.country')}
+          </label>
+          <select
+            id="benchmark-country"
+            className="field__input"
+            value={country}
+            disabled={locked}
+            onChange={(event) => setCountryDraft(event.target.value as BenchmarkCountry)}
+          >
+            {BENCHMARK_COUNTRIES.map((option) => (
+              <option key={option} value={option}>
+                {t(`settings:benchmark.household.country_${option}`)}
+              </option>
+            ))}
+          </select>
+          <p className="panel__meta muted">{t('settings:benchmark.household.countryHint')}</p>
+        </div>
+
         <div className="field">
           <label className="field__label" htmlFor="self-label">
             {t('settings:benchmark.household.selfLabel')}
@@ -568,7 +602,8 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
               (drafts === null &&
                 sharedDraft === null &&
                 selfLabelDraft === null &&
-                directionDraft === null) ||
+                directionDraft === null &&
+                countryDraft === null) ||
               invalid.size > 0 ||
               sharedInvalid
             }
@@ -595,7 +630,13 @@ export function ComparisonPanel({ settings, state, owner }: SettingsPanelProps):
   return (
     <Panel
       title={t('settings:benchmark.comparison.title')}
-      hint={t('settings:benchmark.comparison.hint')}
+      hint={
+        file === null
+          ? t('settings:benchmark.comparison.hintNoFile')
+          : t('settings:benchmark.comparison.hint', {
+              demonym: t(`budget:benchmark.demonym.${file.jurisdiction}`),
+            })
+      }
       notice={owner ? null : <p className="panel__meta muted">{t('settings:viewerOnly')}</p>}
     >
       {file === null ? (

@@ -143,10 +143,11 @@ export function Benchmark({ benchmark, period }: BenchmarkProps): ReactNode {
   }
 
   const { groups, household, source, unmapped } = benchmark
+  const demonym = t(`budget:benchmark.demonym.${benchmark.jurisdiction}`)
 
   return (
     <section className="card">
-      <h2 className="card__title">{t('budget:benchmark.title')}</h2>
+      <h2 className="card__title">{t('budget:benchmark.title', { demonym })}</h2>
 
       <p className="benchmark__lede">
         <Trans
@@ -158,6 +159,7 @@ export function Benchmark({ benchmark, period }: BenchmarkProps): ReactNode {
             year: benchmark.month.slice(0, 4),
             survey: source.survey,
             surveyYear: String(source.year),
+            demonym,
           }}
           components={{ money: <Money cents={benchmark.comparedCents} options={{ whole: true }} /> }}
         />

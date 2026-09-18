@@ -6,6 +6,15 @@
       "source": "de gepubliceerde aandelen"
     },
     "caption": "Jouw uitgaven per groep, naast de aandelen van {{survey}} {{year}}",
+    "demonym": {
+      "BE": "Belgische",
+      "DE": "Duitse",
+      "ES": "Spaanse",
+      "FR": "Franse",
+      "IT": "Italiaanse",
+      "NL": "Nederlandse",
+      "US": "Amerikaanse"
+    },
     "column": {
       "difference": "Verschil",
       "group": "Groep",
@@ -41,8 +50,8 @@
         "year": "Waar {{year}} op uitkomt, naast een volledig jaar van wat een huishouden van jouw grootte uitgaf volgens {{survey}} {{surveyYear}}: jouw <money>{{total}}</money> vergeleken uitgaven tegen die van hen, euro voor euro."
       },
       "mix": {
-        "month": "Hoe jouw <money>{{total}}</money> uitgaven van {{month}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij.",
-        "year": "Hoe jouw <money>{{total}}</money> uitgaven van {{year}} verdeeld is, naast de aandelen die Belgische huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
+        "month": "Hoe jouw <money>{{total}}</money> uitgaven van {{month}} verdeeld is, naast de aandelen die {{demonym}} huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij.",
+        "year": "Hoe jouw <money>{{total}}</money> uitgaven van {{year}} verdeeld is, naast de aandelen die {{demonym}} huishoudens rapporteerden in {{survey}} {{surveyYear}}. Enkel aandelen — er is geen maandtotaal voor het gemiddelde huishouden overgenomen, dus hier staat niet of jij méér uitgeeft dan zij."
       }
     },
     "mapped": "{{share}} van jouw <money>{{consumption}}</money> huishoudelijke uitgaven is aan een groep toegewezen, en enkel dat deel wordt vergeleken.",
@@ -57,7 +66,7 @@
       "inLine": "In lijn",
       "unmapped": "Niets toegewezen"
     },
-    "title": "Vergeleken met Belgische huishoudens",
+    "title": "Vergeleken met {{demonym}} huishoudens",
     "transcribed": "Nog niet bij de bron bevestigd: {{blocks}}.",
     "unavailable": {
       "hint": {

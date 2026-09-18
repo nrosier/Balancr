@@ -2,11 +2,11 @@
 #
 # Balancr reads this file to answer one question: "is what I spend on housing unusual for
 # a Belgian household?" It ships filled in and is used in place, so nothing here needs
-# setting up. Point BENCHMARK_PATH at a copy on your data volume if you want to correct a
-# figure without waiting for a release:
+# setting up. Point BENCHMARK_DIR at a directory holding a copy on your data volume if you
+# want to correct a figure without waiting for a release:
 #
-#   cp config/statbel-benchmark.yaml data/statbel-benchmark.yaml    # local
-#   BENCHMARK_PATH=/data/statbel-benchmark.yaml                     # in a container
+#   mkdir -p data/benchmark && cp config/benchmark/be.yaml data/benchmark/be.yaml   # local
+#   BENCHMARK_DIR=/data/benchmark                                                  # in a container
 #
 # WHERE THESE FIGURES COME FROM, AND WHAT `status` MEANS (#290). Every block below now
 # says `status: confirmed`: the shares and the reference household were derived from the
