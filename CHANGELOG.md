@@ -6,6 +6,19 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.3] — 2026-09-18
+
+### Fixed
+
+- **`2.0.2`'s production Docker build failed** before an image was ever published.
+  `src/adapters/actual/api-source.ts` (added for #391's local-dev fake backend)
+  statically imported a file under `scripts/`, which sits outside the production
+  build's `src`-only `rootDir` — a difference `npm run typecheck` doesn't catch,
+  since it type-checks against a more permissive config than the actual build does.
+  The import is now built at runtime instead of written as a literal, so the
+  build no longer resolves that file at all. `2.0.2` is superseded by this release;
+  no image was ever pushed for it.
+
 ## [2.0.2] — 2026-09-18
 
 ### Added
