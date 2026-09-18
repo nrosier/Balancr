@@ -228,9 +228,9 @@ describe('when the jobs have never run', () => {
 describe('when the server answers with a month', () => {
   beforeEach(() => {
     serve(json(FULL))
-    // The savings card's pro-ration caveat reads the real clock (#345), so it is pinned
-    // here to the same instant `FRESH.asOf` already names — after August, so July and
-    // August both read as finished months rather than drifting with the day this runs.
+    // The savings card sums a period off the real clock (#345), so it is pinned here to
+    // the same instant `FRESH.asOf` already names — after August, so July and August
+    // both read as finished months rather than drifting with the day this runs.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
   })
@@ -262,16 +262,35 @@ describe('when the server answers with a month', () => {
     renderApp(<Overview />)
 
     expect(await screen.findByText('23,2%')).toBeTruthy()
-    expect(
-      screen.getByText(
-        'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
-      ),
-    ).toBeTruthy()
+    expect(screen.getByText('Over 2 months, July 2026 to August 2026')).toBeTruthy()
     expect(screen.getByText('€ 8.200')).toBeTruthy()
     expect(screen.getByText('€ 6.300')).toBeTruthy()
     // The month's assigned figure is gone with the month: an envelope total has no
     // meaning summed over a period, so it does not belong under a period's rate.
     expect(screen.queryByText('Assigned')).toBeNull()
+    // Both months in this fixture have nothing still to come, so the row that names it
+    // stays off rather than printing a "Still to come: € 0,00" that says nothing (#397).
+    expect(screen.queryByText('Still to come')).toBeNull()
+  })
+
+  it('adds a "still to come" row once the period has money not yet posted (#397)', async () => {
+    const withCommitted: OverviewPayload = {
+      ...FULL,
+      flows: FULL.flows.map((entry) =>
+        entry.month === '2026-08' ? { ...entry, committedCents: 40_000 } : entry,
+      ),
+    }
+    serve(json(withCommitted))
+    renderApp(<Overview />)
+
+    // The committed money folds into the rate itself (#361) — 40 000 more effective
+    // spend against the same 8 200 income drops 23,2% to 18,3%.
+    expect(await screen.findByText('18,3%')).toBeTruthy()
+    // The span sentence carries no caveat about why the figure might still move (#397) —
+    // that reasoning is dropped, and the amount itself is now a row instead of prose.
+    expect(screen.getByText('Over 2 months, July 2026 to August 2026')).toBeTruthy()
+    expect(screen.getByText('Still to come')).toBeTruthy()
+    expect(screen.getByText('€ 400')).toBeTruthy()
   })
 
   it('re-reads the same flows for another window without asking the server again', async () => {
