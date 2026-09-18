@@ -83,6 +83,9 @@ jobs:
           cf_account_id: ${{ secrets.CF_ACCOUNT_ID }}
           cf_zone_id: ${{ secrets.CF_ZONE_ID }}
           cf_api_token: ${{ secrets.CF_API_TOKEN }}
+          # The IP-list WAF skip alone didn't get past Harbor's 403 — Bot
+          # Fight Mode is what's actually challenging this runner.
+          disable_bot_fight_mode: true
 
       - name: Trigger Harbor replication
         id: replicate
