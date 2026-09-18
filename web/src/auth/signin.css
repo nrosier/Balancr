@@ -53,8 +53,6 @@
   margin: var(--space-5) 0;
   font-size: var(--type-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .signin__or::before,

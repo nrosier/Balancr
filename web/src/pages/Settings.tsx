@@ -60,7 +60,7 @@ import { MembersPanel } from '../settings/Members.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { PropertyPanel } from '../settings/Property.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
-import { sectionFor } from '../settings/sections.ts'
+import { SETTINGS_SECTIONS, sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsSection } from '../settings/Thresholds.tsx'
@@ -68,7 +68,7 @@ import { useSettings, type SettingsPanelProps } from '../settings/state.ts'
 import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
-import { useSubsection, type Section } from '../ui/sections.ts'
+import { labelKeyFor, useSubsection, type Section } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
@@ -151,7 +151,11 @@ export function Settings(): ReactNode {
 
   return (
     <>
-      <PageHeader title={t('nav.settings')} lede={t('page.settings.lede')} />
+      <PageHeader
+        title={t('nav.settings')}
+        section={t(labelKeyFor(SETTINGS_SECTIONS, section))}
+        lede={t('page.settings.lede')}
+      />
 
       <SettingsNav>
         <DataState resource={state.resource}>

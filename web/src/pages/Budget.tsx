@@ -88,6 +88,7 @@ import { PaceBar } from '../ui/PaceBar.tsx'
 import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { SectionNav } from '../ui/SectionNav.tsx'
+import { labelKeyFor } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../budget/benchmark.css'
 import '../budget/custody.css'
@@ -165,7 +166,11 @@ export function Budget(): ReactNode {
 
   return (
     <>
-      <PageHeader title={t('nav.budget')} lede={t('page.budget.lede')} />
+      <PageHeader
+        title={t('nav.budget')}
+        section={t(labelKeyFor(BUDGET_SECTIONS, section))}
+        lede={t('page.budget.lede')}
+      />
       <SectionNav sections={BUDGET_SECTIONS} ariaLabel={t('nav.budget')}>
         <DataState resource={resource} isEmpty={isEmpty}>
           {(data) =>

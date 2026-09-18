@@ -18,13 +18,16 @@ import type { ReactNode } from 'react'
 
 export interface PageHeaderProps {
   title: string
+  /** The active tab's label, for a page split into its own sections. Optional. */
+  section?: string
   /** One line under the title. Optional — a dense page may not want one. */
   lede?: string
 }
 
-export function PageHeader({ title, lede }: PageHeaderProps): ReactNode {
+export function PageHeader({ title, section, lede }: PageHeaderProps): ReactNode {
   return (
     <header className="page__header">
+      {section === undefined ? null : <p className="page__section">{section}</p>}
       <h1 className="page__title">{title}</h1>
       {lede === undefined ? null : <p className="page__lede">{lede}</p>}
     </header>

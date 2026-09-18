@@ -33,6 +33,7 @@ export const BASE = {
   'type-lg': '1.25rem',
   'type-xl': '1.5rem',
   'type-2xl': '2rem',
+  'type-3xl': '2.5rem',
 
   'lead-tight': '1.2',
   'lead-normal': '1.55',
