@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.3-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.0.4-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1024,13 +1024,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.0.3` is the current release, small fixes and dev-only
+**Where it is now** — `2.0.4` is the current release, small fixes and dev-only
 tooling on top of `2.0.0`'s multi-tenant milestone. An existing single-tenant
 deployment upgrades in place onto tenant 1 with no change to what it shows —
 see `CHANGELOG.md` for the new required `CONFIG_ENCRYPTION_KEY` env var this
 upgrade needs.
 
-`docker pull` now resolves `latest` to `2.0.3`; a release candidate is
+`docker pull` now resolves `latest` to `2.0.4`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped

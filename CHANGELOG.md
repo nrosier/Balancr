@@ -6,6 +6,17 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.4] — 2026-09-18
+
+### Fixed
+
+- **Benchmark and Custody each drew their own Month/Year toggle for the comparison
+  window**, styled with the same pill classes as the page's real calendar picker —
+  two controls that read as one duplicated datepicker, and the smaller of the two
+  clipped its own popover whenever a card's "no data" notice box was short. Both
+  cards now just follow the page picker's own kind; there is exactly one date
+  control on the page.
+
 ## [2.0.3] — 2026-09-18
 
 ### Fixed
