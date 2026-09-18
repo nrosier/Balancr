@@ -106,6 +106,7 @@
     "title": "Off-budget accounts"
   },
   "property": {
+    "balanceEstimate": "Estimated by amortizing forward from the balance last confirmed against a statement on {{date}}.",
     "caption_one": "One property.",
     "caption_other": "{{value}} properties.",
     "column": {
@@ -114,6 +115,7 @@
       "equity": "Equity",
       "kind": "Type",
       "name": "Property",
+      "paidOff": "Paid off",
       "rent": "Rent",
       "value": "Value",
       "yield": "Yield"

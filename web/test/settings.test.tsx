@@ -2045,6 +2045,7 @@ describe('property', () => {
                   rateBp: 350,
                   monthlyPaymentCents: 150_000,
                   remainingTermMonths: 180,
+                  originalPrincipalCents: null,
                 },
               },
             ],

@@ -177,6 +177,7 @@ export {
   MAX_PROPERTIES,
   netCashFlowCents,
   outstandingBalanceCents,
+  paidOffBp,
   propertyEquityCents,
   propertyKinds,
   standardMonthlyPaymentCents,
