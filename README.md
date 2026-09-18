@@ -221,6 +221,8 @@ so the browser talks to the real API.
 | `npm run dev` | Server in watch mode with `.env` loaded |
 | `npm run dev:web` | Vite dev server for the UI, proxying to the above |
 | `npm run probe` | Read-only check of Actual and Ghostfolio, three months reconciled category by category against Actual's own totals, and net worth against Ghostfolio's dashboard |
+| `npm run fake:ghostfolio` | A fake Ghostfolio for local dev, see below |
+| `npm run fake:seed` | Maps the fake dataset's categories to COICOP divisions and a custody split, see below |
 | `npm run backup:verify` | Decrypt a snapshot in a temp directory and prove it restores — the newest one, or `-- --all` |
 | `npm run backup:restore` | Put a snapshot back, after verifying it in full |
 | `npm test` | Unit tests — server under Node, UI under jsdom |
@@ -243,6 +245,33 @@ it exits non-zero on a disagreement, because a category total that differs from
 Actual's is a hygiene bug rather than a rounding issue. Those two sections are the
 only place in the app that prints real amounts to a terminal, so read the output;
 don't paste it into an issue.
+
+### Local dev without real Actual/Ghostfolio
+
+Neither upstream is required to work on the UI or the domain logic:
+
+```bash
+npm run fake:ghostfolio     # a fake Ghostfolio on :4333, in its own terminal
+ACTUAL_FAKE_BACKEND=true npm run dev
+npm run dev:web
+```
+
+Point `GHOSTFOLIO_URL` at `http://localhost:4333` and `GHOSTFOLIO_SECURITY_TOKEN`
+at anything non-empty (it's never checked). `ACTUAL_FAKE_BACKEND=true` swaps
+`@actual-app/api` for an in-memory fake with the same generated budget every run
+(`ACTUAL_SERVER_URL`/`ACTUAL_PASSWORD`/`ACTUAL_SYNC_ID` still need some
+syntactically-valid value to pass startup validation, but their content is never
+read). Both fakes persist their generated data under `data/fake-backend/` —
+delete a file there to regenerate it. `npm run probe` works unmodified against
+either.
+
+Benchmark and Custody stay empty even with the fake Actual data running, because
+both read Balancr's own `category_meta`/`settings` tables rather than anything
+Actual exposes — the same tables the Settings screen's category mapping and
+household forms write. Once the sync job has run at least once (on startup, or via
+the status panel's refresh button), `npm run fake:seed` maps the fake categories to
+COICOP divisions, flags two as custody-shared, and sets a 50% household split, so
+both tabs render real content instead of their empty states.
 
 ## Configuration
 
