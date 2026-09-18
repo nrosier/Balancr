@@ -378,6 +378,10 @@
     "labelPlaceholder": "bv. Thuis, Appartement Antwerpen",
     "mortgage": {
       "anchorDate": "Saldo per",
+      "originalPrincipal": "Oorspronkelijk geleend bedrag",
+      "originalPrincipalHint": "Optioneel. Hiermee kan Balancr laten zien hoeveel van de lening al is afgelost.",
+      "originalPrincipalPlaceholder": "bv. wat de lening was op dag één",
+      "paidOffReads": "{{value}} van de oorspronkelijke lening afgelost.",
       "payment": "Maandelijkse betaling",
       "principal": "Openstaand saldo",
       "rate": "Rentevoet",
