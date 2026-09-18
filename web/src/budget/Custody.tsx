@@ -36,11 +36,12 @@
  *    `zero_share` a share it cannot divide by, `no_month` the month itself — whose
  *    notice on the Overview section is not on screen from here.
  *
- * A sixth, added by #345, mirroring Benchmark's own (#323): **the period picker is a page
- * control, not a fact about the data.** `unavailable` carries no `period` of its own, so
- * the selected value comes from the page as a prop — `custody.month` is always the
- * anchor month regardless of kind, the same convention `benchmark.month` keeps, so a year
- * selection still has one concrete month to fall back the picker's calendar on.
+ * A sixth, added by #345 and narrowed by #389, mirroring Benchmark's own (#323): **the
+ * comparison window is Month or Year, and nothing finer.** `unavailable` carries no
+ * `period` of its own, so the selection lives on the page as a prop. What #389 removed
+ * is the calendar this card's control used to offer alongside that switch: a popover
+ * whose date cells looked pickable but were a no-op unless the click happened to change
+ * the kind. `PeriodKindToggle` is the two-state switch that was ever actually wired.
  *
  * Nothing here is computed. Every figure arrives as an integer, including the co-parent's
  * part, which is a subtraction the server did.
@@ -50,7 +51,7 @@ import { Trans } from 'react-i18next'
 import { useT } from '../i18n.ts'
 import { formatBp, formatMonth, type BenchmarkPeriodKind, type CustodyWire } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
-import { PeriodPicker } from '../ui/PeriodPicker.tsx'
+import { PeriodKindToggle } from '../ui/PeriodPicker.tsx'
 
 /** Whole euro, like every other total on this page. */
 const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
@@ -60,28 +61,17 @@ export interface CustodyProps {
   /** The page's own selection (#345) — not on the wire, since `unavailable` has none. */
   period: BenchmarkPeriodKind
   onPeriodSelect: (period: BenchmarkPeriodKind) => void
-  /**
-   * The page's own resolved anchor month (`Budget.tsx`'s `data.month`) — the calendar's
-   * value while `custody` is `unavailable`, which carries no `month` of its own.
-   */
-  month: string
 }
 
-export function Custody({ custody, period, onPeriodSelect, month }: CustodyProps): ReactNode {
+export function Custody({ custody, period, onPeriodSelect }: CustodyProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
-  const periodSelectId = useId()
-
-  const anchor = custody.kind === 'ok' ? custody.month : month
 
   const picker = (
     <div className="toolbar">
-      <PeriodPicker
-        // Same no-op-on-a-different-cell behavior Benchmark's picker has: `value` is
-        // derived from the anchor month, not owned by this control.
-        period={{ kind: period, value: period === 'month' ? anchor : anchor.slice(0, 4) }}
-        onSelect={(next) => onPeriodSelect(next.kind)}
-        id={periodSelectId}
+      <PeriodKindToggle
+        kind={period}
+        onSelect={onPeriodSelect}
         label={t('budget:custody.periodLabel')}
         kindLabel={(kind) => t(`budget:custody.period.${kind}`)}
       />

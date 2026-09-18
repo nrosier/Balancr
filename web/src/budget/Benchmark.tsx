@@ -39,12 +39,17 @@
  *    invite the stronger conclusion from the weaker comparison, so the lede says it in
  *    words and the reference column is explained rather than labelled.
  *
- * A sixth, added by #323: **the period picker is a page control, not a fact about the
- * data.** `unavailable` carries no `period` field — a mapping problem has nothing to do
- * with the window asked for — so the selected value has to come from the page as a prop,
- * the same arrangement `MonthPicker` already has with `Budget.tsx`'s own `month` state.
- * It is drawn above both branches for that reason: switching away from a mapping problem
- * is exactly the thing a reader who hit one might try first.
+ * A sixth, added by #323 and narrowed by #389: **the comparison window is Month or
+ * Year, and nothing finer.** `unavailable` carries no `period` field — a mapping
+ * problem has nothing to do with the window asked for — so the selection lives on the
+ * page as a prop, same as `Budget.tsx`'s own `month` state. What changed under #389 is
+ * that the control drawn here no longer pretends to offer more than that: it used to be
+ * the same calendar-popover `PeriodPicker` the page's own "Month" toolbar uses, with its
+ * value silently ignored and only the kind read back — every cell you could click looked
+ * live and almost all of them did nothing. `PeriodKindToggle` is the two-state switch
+ * that was ever actually wired, with no popover pretending otherwise. It is drawn above
+ * both branches for the same reason as before: switching away from a mapping problem is
+ * exactly the thing a reader who hit one might try first.
  *
  * Nothing here is computed, in keeping with the rest of the page: every figure arrives as
  * an integer. The one arithmetic is basis points into a scale figure, which is the unit
@@ -66,7 +71,7 @@ import {
   type BenchmarkWire,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
-import { PeriodPicker } from '../ui/PeriodPicker.tsx'
+import { PeriodKindToggle } from '../ui/PeriodPicker.tsx'
 
 /** Whole euro, like every other total on this page. Cents on a monthly figure are noise. */
 const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole: true }} />
@@ -115,29 +120,17 @@ export interface BenchmarkProps {
   /** The page's own selection (#323) — not on the wire, since `unavailable` has none. */
   period: BenchmarkPeriodKind
   onPeriodSelect: (period: BenchmarkPeriodKind) => void
-  /**
-   * The page's own resolved anchor month (`Budget.tsx`'s `data.month`) — the calendar's
-   * value while `benchmark` is `unavailable`, which carries no `month` of its own.
-   */
-  month: string
 }
 
-export function Benchmark({ benchmark, period, onPeriodSelect, month }: BenchmarkProps): ReactNode {
+export function Benchmark({ benchmark, period, onPeriodSelect }: BenchmarkProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
-  const periodSelectId = useId()
-
-  const anchor = benchmark.kind === 'ok' ? benchmark.month : month
 
   const picker = (
     <div className="toolbar">
-      <PeriodPicker
-        // Picking a different calendar cell while staying in the same kind is a no-op:
-        // `value` is derived from the anchor month, not owned by this control, and
-        // snaps back on the next render (#323's "page control, not a data fact").
-        period={{ kind: period, value: period === 'month' ? anchor : anchor.slice(0, 4) }}
-        onSelect={(next) => onPeriodSelect(next.kind)}
-        id={periodSelectId}
+      <PeriodKindToggle
+        kind={period}
+        onSelect={onPeriodSelect}
         label={t('budget:benchmark.periodLabel')}
         kindLabel={(kind) => t(`budget:benchmark.period.${kind}`)}
       />
