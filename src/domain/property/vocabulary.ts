@@ -16,6 +16,9 @@ export type PropertyKind = (typeof propertyKinds)[number]
 /** A household owns a handful of properties, not a portfolio of them. */
 export const MAX_PROPERTIES = 20
 
+/** A primary mortgage, a second/HELOC, a renovation loan — not an open-ended ledger (#393). */
+export const MAX_MORTGAGES_PER_PROPERTY = 3
+
 export interface Mortgage {
   /** Outstanding balance as of `anchorDate` — the re-anchor point, not the original loan amount. */
   principalCents: number
@@ -45,20 +48,18 @@ export interface Property {
   propertyValueCents: number | null
   /** Monthly rent received. Only meaningful for a `rental`. */
   rentCents: number | null
-  /** Null when the property has no mortgage — paid off, or bought outright. */
-  mortgage: Mortgage | null
+  /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
+  mortgages: Mortgage[]
 }
 
 /**
- * Outstanding balance at `asOfDate`, amortizing forward from the mortgage's `anchorDate`
- * one whole month at a time. A loop over integer cents rather than the closed-form
- * annuity formula: it's easier to reason about (and to test against a hand-built table)
- * than floating-point exponents, and it makes "floor at zero once the term is exhausted"
- * a natural stopping condition instead of a separate case.
+ * Outstanding balance at `asOfDate` for one mortgage, amortizing forward from its
+ * `anchorDate` one whole month at a time. A loop over integer cents rather than the
+ * closed-form annuity formula: it's easier to reason about (and to test against a
+ * hand-built table) than floating-point exponents, and it makes "floor at zero once the
+ * term is exhausted" a natural stopping condition instead of a separate case.
  */
-export function outstandingBalanceCents(mortgage: Mortgage | null, asOfDate: string): number {
-  if (mortgage === null) return 0
-
+function amortizedBalanceCents(mortgage: Mortgage, asOfDate: string): number {
   const months = Math.max(0, monthsBetween(mortgage.anchorDate, asOfDate))
   const n = Math.min(months, mortgage.remainingTermMonths)
   const monthlyRate = mortgage.rateBp / 10_000 / 12
@@ -69,6 +70,11 @@ export function outstandingBalanceCents(mortgage: Mortgage | null, asOfDate: str
     balance = balance + interest - mortgage.monthlyPaymentCents
   }
   return Math.max(0, Math.round(balance))
+}
+
+/** Summed outstanding balance across every mortgage on the property, 0 if it has none. */
+export function outstandingBalanceCents(mortgages: readonly Mortgage[], asOfDate: string): number {
+  return mortgages.reduce((sum, mortgage) => sum + amortizedBalanceCents(mortgage, asOfDate), 0)
 }
 
 /**
@@ -89,31 +95,47 @@ export function standardMonthlyPaymentCents(
 }
 
 /**
- * Share of the original loan paid off by `asOfDate`, in basis points, or null when there
- * is nothing to compare the current balance against — no mortgage, or one whose original
- * amount nobody has entered (#392).
+ * Combined share of the original loan(s) paid off by `asOfDate`, in basis points, or null
+ * when there is nothing to compare the current balance against — no mortgage, or *any*
+ * mortgage whose original amount nobody has entered (#392). Not a partial sum over the
+ * mortgages that do have one: that would silently answer "how much of the debt I bothered
+ * to record an original for is paid off" instead of the question the label asks.
  */
-export function paidOffBp(mortgage: Mortgage | null, asOfDate: string): number | null {
-  if (mortgage === null) return null
-  if (mortgage.originalPrincipalCents === null || mortgage.originalPrincipalCents === 0) return null
-  const outstanding = outstandingBalanceCents(mortgage, asOfDate)
-  return Math.round((1 - outstanding / mortgage.originalPrincipalCents) * 10_000)
+export function paidOffBp(mortgages: readonly Mortgage[], asOfDate: string): number | null {
+  if (mortgages.length === 0) return null
+  if (mortgages.some((m) => m.originalPrincipalCents === null || m.originalPrincipalCents === 0)) {
+    return null
+  }
+  const outstanding = outstandingBalanceCents(mortgages, asOfDate)
+  const original = mortgages.reduce((sum, m) => sum + (m.originalPrincipalCents ?? 0), 0)
+  return Math.round((1 - outstanding / original) * 10_000)
+}
+
+/**
+ * The earliest (most-stale) anchor date across a property's mortgages, or null when it has
+ * none. The conservative choice when several mortgages disagree: the combined balance is
+ * only as fresh as its stalest input (#393).
+ */
+export function earliestAnchorDate(mortgages: readonly Mortgage[]): string | null {
+  if (mortgages.length === 0) return null
+  return mortgages.map((m) => m.anchorDate).reduce((earliest, date) => (date < earliest ? date : earliest))
 }
 
 /** Equity at `asOfDate`, or null when the property's value isn't tracked. */
 export function propertyEquityCents(property: Property, asOfDate: string): number | null {
   if (property.propertyValueCents === null) return null
-  return property.propertyValueCents - outstandingBalanceCents(property.mortgage, asOfDate)
+  return property.propertyValueCents - outstandingBalanceCents(property.mortgages, asOfDate)
 }
 
 /**
- * Rent minus the mortgage payment it's funding, or null when the rent isn't tracked. Zero
+ * Rent minus the mortgage payments it's funding, or null when the rent isn't tracked. Zero
  * for a property with no mortgage — the payment side of the subtraction is simply zero,
  * not "not applicable".
  */
 export function netCashFlowCents(property: Property): number | null {
   if (property.rentCents === null) return null
-  return property.rentCents - (property.mortgage?.monthlyPaymentCents ?? 0)
+  const payments = property.mortgages.reduce((sum, m) => sum + m.monthlyPaymentCents, 0)
+  return property.rentCents - payments
 }
 
 /** Annualized rent over value, in basis points. Null unless both rent and value are tracked. */

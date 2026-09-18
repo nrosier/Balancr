@@ -15,7 +15,9 @@
  * The balance itself is priced as of the request (see `portfolio.ts`'s own doc
  * comment), but it's an amortization forward from `mortgageAnchorDate`, not a fresh
  * read off a statement — the `≈` and the info tip on that cell say so, and name the
- * date it last was one (#392).
+ * date it last was one (#392). A property can carry more than one mortgage (#393);
+ * the balance is their sum and the date is the *earliest* of their anchors, so the
+ * estimate is only ever as fresh as its stalest input.
  */
 import { useId, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'

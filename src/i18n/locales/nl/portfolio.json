@@ -106,7 +106,7 @@
     "title": "Rekeningen buiten budget"
   },
   "property": {
-    "balanceEstimate": "Geschat door vanaf het saldo dat laatst tegen een afrekening is bevestigd op {{date}} verder af te bouwen.",
+    "balanceEstimate": "Geschat door verder af te bouwen vanaf de saldi die laatst tegen een afrekening zijn bevestigd — geen enkele recenter dan {{date}}.",
     "caption_one": "Eén eigendom.",
     "caption_other": "{{value}} eigendommen.",
     "column": {

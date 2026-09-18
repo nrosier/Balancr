@@ -806,15 +806,20 @@ export const portfolioPropertySchema = z.object({
   kind: z.enum(['primary', 'rental']),
   label: z.string(),
   propertyValueCents: cents().nullable(),
+  /** Summed across every mortgage on the property (#393), 0 if it has none. */
   mortgageBalanceCents: cents(),
   /**
-   * When `mortgageBalanceCents` was last confirmed against a statement, or null when
-   * there's no mortgage (#392) — the balance itself is priced as of the request (see the
-   * file doc comment), but it amortizes forward from this date rather than from today, so
-   * the client needs it to say the figure is an estimate and since when.
+   * The earliest of the property's mortgages' anchor dates, or null when it has none
+   * (#393) — `mortgageBalanceCents` is priced as of the request (see the file doc
+   * comment), but each mortgage amortizes forward from its own anchor rather than from
+   * today, so the client needs the stalest one to say the combined figure is an estimate
+   * and since when it's been one.
    */
   mortgageAnchorDate: z.string().nullable(),
-  /** Share of the original loan paid off, or null with no mortgage or no original amount on file. */
+  /**
+   * Combined share of the original loan(s) paid off, or null with no mortgage or if *any*
+   * of them has no original amount on file (#392, #393).
+   */
   mortgagePaidOffBp: basisPoints().nullable(),
   equityCents: cents().nullable(),
   /** Monthly rent received. Only meaningful for a `rental`. */
@@ -1509,9 +1514,9 @@ export const benchmarkSettingSchema = z.object({
 })
 
 /**
- * One owned property and its mortgage, if it has one (#227). Sent as-is — the wire shape
- * is the stored record, not a derived balance: `outstandingBalanceCents` needs a date,
- * and `today` is a fact about the request, not about settings.
+ * One owned property's mortgage (#227). Sent as-is — the wire shape is the stored record,
+ * not a derived balance: `outstandingBalanceCents` needs a date, and `today` is a fact
+ * about the request, not about settings.
  */
 const propertyMortgageSchema = z.object({
   principalCents: cents(),
@@ -1531,8 +1536,8 @@ const propertySchema = z.object({
   propertyValueCents: cents().nullable(),
   /** Monthly rent received. Only meaningful for a `rental`. */
   rentCents: cents().nullable(),
-  /** Null when the property has no mortgage — paid off, or bought outright. */
-  mortgage: propertyMortgageSchema.nullable(),
+  /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
+  mortgages: z.array(propertyMortgageSchema),
 })
 
 export const propertiesSettingSchema = z.object({
