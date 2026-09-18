@@ -6,6 +6,40 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.0.0-rc.2] — 2026-09-18
+
+Three fixes found while shaking out rc.1.
+
+### Fixed
+
+- **Every Actual sync read crashed with "query.serialize is not a function"**
+  ([#381](https://github.com/nrosier/Balancr/issues/381)). `@actual-app/api`'s
+  `aqlQuery` calls `query.serialize()` on its argument, but `queries.ts`
+  already serializes the query before sending it over IPC to the worker fork
+  — a live `Query`'s methods cannot survive structured cloning — so the
+  worker called `aqlQuery` with an already-plain object that had no
+  `.serialize()` of its own. The worker now re-wraps the plain state in an
+  object whose `.serialize()` just returns it, satisfying the real package
+  without changing how the IPC boundary serializes.
+- **Settings' "Test connection" gave no feedback when clicked without
+  retyping a stored secret**
+  ([#382](https://github.com/nrosier/Balancr/issues/382)). A secret field is
+  always blank on load, so testing an already-configured Actual, Ghostfolio
+  or Gemini connection without first retyping its password/token did
+  nothing — the button was disabled with no explanation. The button is now
+  enabled whenever a secret is available either typed or already stored,
+  disabled with a visible inline hint otherwise, and a test against a
+  blank secret field now falls back server-side to the tenant's own stored
+  one rather than refusing — the stored secret is still never echoed back
+  to the browser.
+- **Sankey chart ("Where the money goes") node labels had no explicit
+  colour** ([#383](https://github.com/nrosier/Balancr/issues/383)). Every
+  other chart element gets its colour from the shared ECharts theme, but a
+  sankey series only inherits that global text colour when it sets no
+  label config of its own — and this chart already sets `label.width`/
+  `overflow` — so its labels fell through to ECharts' own undyed default
+  instead.
+
 ## [2.0.0-rc.1] — 2026-09-18
 
 Closes the v2.0.0 Multi-tenant milestone: every feature issue in it
