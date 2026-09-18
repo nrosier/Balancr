@@ -714,39 +714,29 @@ describe('the Belgian comparison', () => {
 })
 
 /**
- * The Month/Year toggle above the table (`PeriodKindToggle`). Until #389 this was the
- * same calendar-popover `PeriodPicker` the page's own "Month" toolbar uses, with every
- * date cell wired to a no-op — clicking one looked live and quietly did nothing unless
- * it happened to change the kind. The toggle replaced it with exactly the two states
- * that were ever actually wired, and nothing that looks like it can do more.
+ * The comparison window (#323, #345), which used to be a control of its own on this
+ * card — first a calendar popover with every cell wired to a no-op (until #389), then
+ * a plain Month/Year toggle that still read as a second date picker stacked under the
+ * page's own. Neither is drawn here any more: the card's window just follows whatever
+ * kind the page's own "Month" picker is set to.
  */
-describe("the benchmark card's period picker", () => {
-  it('asks for the full year once the Year toggle is clicked', async () => {
+describe("the benchmark card's comparison window", () => {
+  it('asks for the full year once the page picker turns to Year, with no control of its own', async () => {
     const mock = serve({
       '/api/budget': json(FULL),
-      '/api/budget?benchmarkPeriod=year': json(FULL),
+      '/api/budget?month=2026-08&benchmarkPeriod=year&custodyPeriod=year': json(FULL),
     })
     renderApp(<Budget />, { path: '/budget/benchmark' })
     await screen.findByText('Compared with Belgian households')
 
-    const toggle = screen.getByRole('group', { name: 'Period' })
-    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
+    expect(screen.queryByRole('group', { name: 'Period' })).toBeNull()
 
-    await waitFor(() => expect(paths(mock)).toContain('/api/budget?benchmarkPeriod=year'))
-  })
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
-  it('offers only the Month/Year toggle, with no calendar to pick a specific date from (#389)', async () => {
-    const mock = serve(json(FULL))
-    renderApp(<Budget />, { path: '/budget/benchmark' })
-    await screen.findByText('Compared with Belgian households')
-
-    expect(screen.queryByRole('dialog')).toBeNull()
-    const toggle = screen.getByRole('group', { name: 'Period' })
-    expect(within(toggle).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'Month',
-      'Year',
-    ])
-    expect(paths(mock).length).toBe(1)
+    await waitFor(() =>
+      expect(paths(mock)).toContain('/api/budget?month=2026-08&benchmarkPeriod=year&custodyPeriod=year'),
+    )
   })
 })
 
@@ -997,11 +987,11 @@ describe('the shared-cost split', () => {
 })
 
 /**
- * The custody card's own period picker (#345) — `?custodyPeriod=`, independent of
- * `?benchmarkPeriod=` (its own describe block above): widening one card's window says
- * nothing about the other's.
+ * The custody card's own comparison window (#345) — no longer a control of its own
+ * (see the benchmark describe block above for why): it follows the page's own Month
+ * picker, in lockstep with the benchmark card's window rather than independently of it.
  */
-describe("the custody card's period picker", () => {
+describe("the custody card's comparison window", () => {
   const SPLIT: CustodyWire = {
     kind: 'ok',
     month: '2026-08',
@@ -1027,32 +1017,22 @@ describe("the custody card's period picker", () => {
   }
   const withSplit = (custody: CustodyWire): BudgetPayload => ({ ...FULL, custody })
 
-  it('asks for the full year once the Year toggle is clicked', async () => {
+  it('asks for the full year once the page picker turns to Year, with no control of its own', async () => {
     const mock = serve({
       '/api/budget': json(withSplit(SPLIT)),
-      '/api/budget?custodyPeriod=year': json(withSplit(SPLIT)),
+      '/api/budget?month=2026-08&benchmarkPeriod=year&custodyPeriod=year': json(withSplit(SPLIT)),
     })
     renderApp(<Budget />, { path: '/budget/custody' })
     await screen.findByText('Costs shared with a co-parent')
 
-    const toggle = screen.getByRole('group', { name: 'Period' })
-    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
+    expect(screen.queryByRole('group', { name: 'Period' })).toBeNull()
 
-    await waitFor(() => expect(paths(mock)).toContain('/api/budget?custodyPeriod=year'))
-  })
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
-  it('offers only the Month/Year toggle, with no calendar to pick a specific date from (#389)', async () => {
-    const mock = serve(json(withSplit(SPLIT)))
-    renderApp(<Budget />, { path: '/budget/custody' })
-    await screen.findByText('Costs shared with a co-parent')
-
-    expect(screen.queryByRole('dialog')).toBeNull()
-    const toggle = screen.getByRole('group', { name: 'Period' })
-    expect(within(toggle).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'Month',
-      'Year',
-    ])
-    expect(paths(mock).length).toBe(1)
+    await waitFor(() =>
+      expect(paths(mock)).toContain('/api/budget?month=2026-08&benchmarkPeriod=year&custodyPeriod=year'),
+    )
   })
 
   it('switches the lede and the share line to year wording once Year is picked', async () => {
@@ -1060,14 +1040,14 @@ describe("the custody card's period picker", () => {
     // that the copy follows `period` rather than staying on "this month" (#345).
     const mock = serve({
       '/api/budget': json(withSplit(SPLIT)),
-      '/api/budget?custodyPeriod=year': json(withSplit(SPLIT)),
+      '/api/budget?month=2026-08&benchmarkPeriod=year&custodyPeriod=year': json(withSplit(SPLIT)),
     })
     renderApp(<Budget />, { path: '/budget/custody' })
     await screen.findByText(withMoney(/In August 2026 you paid € 400 on costs shared with a co-parent\./))
     expect(mock).toBeTruthy()
 
-    const toggle = screen.getByRole('group', { name: 'Period' })
-    fireEvent.click(within(toggle).getByRole('button', { name: 'Year' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Month' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Year' }))
 
     expect(
       await screen.findByText(withMoney(/In 2026 you paid € 400 on costs shared with a co-parent\./)),
