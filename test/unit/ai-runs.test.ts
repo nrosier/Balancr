@@ -10,7 +10,7 @@
  *  - `ai_spend_monthly` sums the ledger and nothing else, so there is no second
  *    counter that can disagree about how much has been spent.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'

@@ -22,7 +22,7 @@
  * way `budget.test.tsx` does — not to assert geometry, but to keep ECharts' "Can't get
  * DOM width or height" warning out of output that is about something else.
  */
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Portfolio } from '../src/pages/Portfolio.tsx'
 import { formatQuantity } from '../src/ui/HoldingsTable.tsx'
@@ -367,10 +367,6 @@ function serve(
   vi.stubGlobal('fetch', mock)
   return mock
 }
-
-/** The paths asked of the server, in order. */
-const paths = (mock: ReturnType<typeof vi.fn>): string[] =>
-  mock.mock.calls.map((call) => String(call[0]))
 
 /** Every chart's accessible summary, with `Intl`'s non-breaking spaces normalised. */
 const summaries = (): string[] =>

@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@actual-app/api": "26.9.0",
+    "@actual-app/core": "26.9.0",
     "@fastify/cookie": "^11.1.2",
     "@fastify/helmet": "^13.1.1",
     "@fastify/rate-limit": "^11.2.0",
