@@ -65,7 +65,6 @@ import {
   MIN_DELTA_BP,
   MIN_MAPPED_BP,
   type BenchmarkGroupLine,
-  type BenchmarkPeriodKind,
   type BenchmarkWire,
 } from '../shared.ts'
 import { Money } from '../ui/Money.tsx'
@@ -114,11 +113,9 @@ function householdLines(
 
 export interface BenchmarkProps {
   benchmark: BenchmarkWire
-  /** The page's own selection (#323) — not on the wire, since `unavailable` has none. */
-  period: BenchmarkPeriodKind
 }
 
-export function Benchmark({ benchmark, period }: BenchmarkProps): ReactNode {
+export function Benchmark({ benchmark }: BenchmarkProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
 

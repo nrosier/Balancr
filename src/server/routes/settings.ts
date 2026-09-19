@@ -125,7 +125,6 @@ import {
   integrationsSettingSchema,
   integrationTestSchema,
   inviteCreatedSchema,
-  inviteSettingSchema,
   promptBodySchema,
   promptDiffSchema,
   promptSchema,

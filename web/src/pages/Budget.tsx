@@ -354,7 +354,7 @@ function Figures({
         answers for itself now (#300) — the server sends `no_month` when there are no rows,
         and every reason has a box.
       */}
-      {section === 'benchmark' && <Benchmark benchmark={benchmark} period={cardPeriodKind} />}
+      {section === 'benchmark' && <Benchmark benchmark={benchmark} />}
 
       {/*
         Same as the Benchmark tab above, and for the same reason: no `categories.length > 0`
@@ -630,7 +630,7 @@ interface TrendWallProps {
  * the one line of context that turns its shape into a statement.
  */
 function TrendWall({ categories, months, signals }: TrendWallProps): ReactNode {
-  const { t, language } = useT()
+  const { t } = useT()
   const [expanded, setExpanded] = useState(false)
 
   if (categories.length === 0 || months.length === 0) return null

@@ -57,7 +57,6 @@ const SEPARATOR = ' · '
 
 /** The three numbers a band is made of, in the order they are read. */
 const EDGES = ['minBp', 'targetBp', 'maxBp'] as const
-type Edge = (typeof EDGES)[number]
 
 /** `EQUITY.targetBp`, which is also how a typed value is keyed while it is a draft. */
 type Path = string

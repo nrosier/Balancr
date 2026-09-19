@@ -340,7 +340,7 @@ describe('the page', () => {
     ])
     pending.unmount()
 
-    const ledger = renderApp(<Insights />, { path: '/insights/ledger' })
+    renderApp(<Insights />, { path: '/insights/ledger' })
     await screen.findByText('What was sent')
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'What was sent',
