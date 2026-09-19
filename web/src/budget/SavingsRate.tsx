@@ -28,8 +28,7 @@
  * for whatever the page's own month/year picker is showing. A component that kept
  * its own state could not be steered either way.
  */
-import { Fragment, useId, useMemo, type ReactNode } from 'react'
-import { Trans } from 'react-i18next'
+import { useId, useMemo, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import {
   absolutePeriodSavings,
@@ -48,9 +47,7 @@ import { PeriodPicker, type Period } from '../ui/PeriodPicker.tsx'
 type TFunction = ReturnType<typeof useT>['t']
 
 /**
- * The span a period actually covered, in words — plus a pro-ration caveat when the
- * period ends in a still-open month, the same disclosure `Benchmark.tsx` gives its own
- * period (#323), generalized here for the first time to a card that never had one.
+ * The span a period actually covered, in words: which month, or which range of them.
  *
  * Always printed, because a selectable window makes a bare percentage ambiguous, and a
  * fresh install asked for a year has three months — naming the real span is the same
@@ -60,48 +57,21 @@ type TFunction = ReturnType<typeof useT>['t']
  * own Spent/Income cards once a year's worth of flows replaces one month's, and a
  * second copy would be a second chance for the wording to drift.
  *
- * A second caveat joins the pro-ration one when `committedCents` is nonzero (#361):
- * the rate already folded in money a schedule promises but hasn't posted, which
- * makes it a prediction rather than a result until the open month closes. That
- * caveat names an amount, so unlike the other two sentences it is a `<Trans>`
- * wrapping `<Money>` rather than a plain `t()` string — the same reason `Metric`'s
- * `note` prop takes `ReactNode` — which is why this returns `ReactNode` rather
- * than `string` even though it usually is one.
+ * Used to also carry a pro-ration caveat (why a still-open period's rate might still
+ * move) and an estimate caveat naming `committedCents`; #397 dropped both as more
+ * detail than the card needs to carry inline — the committed amount itself is now its
+ * own `MetricRow` on the Overview page instead of prose.
  */
 export function spanNote(savings: AbsolutePeriodSavings, t: TFunction, language: string): ReactNode {
-  const span =
-    savings.from === null || savings.to === null
-      ? t('budget:savings.span.none')
-      : savings.from === savings.to
-        ? t('budget:savings.span.month', { month: formatMonth(savings.from, language) })
-        : t('budget:savings.span.range', {
-            months: t('time.monthCount', { count: savings.months }),
-            from: formatMonth(savings.from, language),
-            to: formatMonth(savings.to, language),
-          })
-  const parts: ReactNode[] = [span]
-  if (savings.periodProgressBp < 10_000) {
-    parts.push(t('budget:savings.period.prorated', { progress: formatBp(savings.periodProgressBp) }))
-  }
-  if (savings.committedCents > 0) {
-    parts.push(
-      <Trans
-        key="estimate"
-        i18nKey="budget:savings.period.estimate"
-        components={{ money: <Money cents={savings.committedCents} options={{ whole: true }} /> }}
-      />,
-    )
-  }
-  return (
-    <>
-      {parts.map((part, index) => (
-        <Fragment key={index}>
-          {index > 0 ? ' ' : null}
-          {part}
-        </Fragment>
-      ))}
-    </>
-  )
+  return savings.from === null || savings.to === null
+    ? t('budget:savings.span.none')
+    : savings.from === savings.to
+      ? t('budget:savings.span.month', { month: formatMonth(savings.from, language) })
+      : t('budget:savings.span.range', {
+          months: t('time.monthCount', { count: savings.months }),
+          from: formatMonth(savings.from, language),
+          to: formatMonth(savings.to, language),
+        })
 }
 
 export interface SavingsRateProps {
@@ -118,7 +88,8 @@ export interface SavingsRateProps {
    */
   onPeriodSelect?: (period: Period) => void
   /**
-   * Whether to print the period's summed income and spend beneath the rate.
+   * Whether to print the period's summed income and spend — plus, if nonzero, the
+   * still-to-come amount — beneath the rate.
    *
    * Required rather than defaulted, because the two pages answer it differently and a
    * default would hide the decision. On the Overview page the answer is yes: nothing else
@@ -171,6 +142,18 @@ export function SavingsRate({
           label: t('budget:metric.spent'),
           value: <Money cents={savings.spentCents} options={{ whole: true }} />,
         },
+        // Only when there is something to come — the same guard `Totals` on the Budget
+        // page gives its own "Still to come" card, since zero is the correct figure for
+        // every past period and a row reading "€ 0,00" says nothing while looking like
+        // a finding (#397).
+        ...(savings.committedCents === 0
+          ? []
+          : [
+              {
+                label: t('budget:metric.committed'),
+                value: <Money cents={savings.committedCents} options={{ whole: true }} />,
+              },
+            ]),
       ]
 
   return (
