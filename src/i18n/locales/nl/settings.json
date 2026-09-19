@@ -375,7 +375,6 @@
     "add": "Eigendom toevoegen",
     "cashFlowReads": "{{value}} over na de hypotheekbetaling per maand.",
     "equityReads": "{{value}} overwaarde vandaag.",
-    "hasMortgage": "Heeft een hypotheek",
     "hint": "Wat je in eigendom hebt — het huis waar je woont, of iets dat je verhuurt. Een wijziging is de volgende keer dat het vermogensoverzicht of de portefeuillepagina laadt zichtbaar; niets hier wordt hier herrekend.",
     "invalid": "Iets in deze rij is nog geen geldig getal.",
     "kind": {
@@ -387,6 +386,7 @@
     "label": "Naam",
     "labelPlaceholder": "bv. Thuis, Appartement Antwerpen",
     "mortgage": {
+      "add": "Hypotheek toevoegen",
       "anchorDate": "Saldo per",
       "originalPrincipal": "Oorspronkelijk geleend bedrag",
       "originalPrincipalHint": "Optioneel. Hiermee kan Balancr laten zien hoeveel van de lening al is afgelost.",
@@ -396,6 +396,7 @@
       "principal": "Openstaand saldo",
       "rate": "Rentevoet",
       "rateReads": "Komt neer op {{value}}.",
+      "remove": "Hypotheek verwijderen",
       "term": "Resterende looptijd in maanden",
       "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd"
     },

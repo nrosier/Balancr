@@ -9,7 +9,7 @@
  * separately rent out one or more others (`rental`), and hold a third kind of property
  * that is neither — bought outright, inherited, held for a family member — where `owned`
  * fits without forcing a real distinction into one of the other two. Each row has its own
- * value and its own mortgage or none at all. A rental also carries the rent it brings in,
+ * value and zero or more mortgages against it (#393). A rental also carries the rent it brings in,
  * which is what `netCashFlowCents`/`grossYieldBp` in `vocabulary.ts` turn into "is this one
  * actually worth it" — questions neither a primary residence nor an `owned` property ever
  * asks, so those two only mean anything once `rentCents` is set on a `rental` row.
@@ -31,10 +31,12 @@ import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
-import { MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
+import { MAX_MORTGAGES_PER_PROPERTY, MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
 
 export {
+  earliestAnchorDate,
   grossYieldBp,
+  MAX_MORTGAGES_PER_PROPERTY,
   MAX_PROPERTIES,
   netCashFlowCents,
   outstandingBalanceCents,
@@ -75,7 +77,7 @@ export const propertySchema = z
     label: z.string().max(80).default(''),
     propertyValueCents: z.int().min(0).nullable().default(null),
     rentCents: z.int().min(0).nullable().default(null),
-    mortgage: mortgageSchema.nullable().default(null),
+    mortgages: z.array(mortgageSchema).max(MAX_MORTGAGES_PER_PROPERTY).default([]),
   })
   .strict()
 
@@ -91,6 +93,29 @@ export const propertiesSchema = z
 export type Properties = z.infer<typeof propertiesSchema>
 
 export const DEFAULT_PROPERTIES: Properties = propertiesSchema.parse({})
+
+/**
+ * A property recorded before mortgages became a list (#393) has a lone `mortgage` key
+ * (object or null) instead of `mortgages`. Rewritten to the new shape before validation
+ * runs, so upgrading the code doesn't turn a real stored record into "invalid" and wipe it
+ * the way `loadProperties` degrades actual corruption below.
+ */
+function migrateLegacyMortgage(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object' || !('properties' in raw)) return raw
+  const properties = (raw as { properties: unknown }).properties
+  if (!Array.isArray(properties)) return raw
+
+  return {
+    ...raw,
+    properties: properties.map((property) => {
+      if (property === null || typeof property !== 'object' || !('mortgage' in property)) {
+        return property
+      }
+      const { mortgage, ...rest } = property as { mortgage: unknown }
+      return { ...rest, mortgages: mortgage === null ? [] : [mortgage] }
+    }),
+  }
+}
 
 export function loadProperties(db: Db, tenantId: string): Properties {
   const row = db
@@ -109,7 +134,7 @@ export function loadProperties(db: Db, tenantId: string): Properties {
     return DEFAULT_PROPERTIES
   }
 
-  const parsed = propertiesSchema.safeParse(raw)
+  const parsed = propertiesSchema.safeParse(migrateLegacyMortgage(raw))
   if (!parsed.success) {
     log.error(
       { key: PROPERTY_KEY, issues: z.prettifyError(parsed.error) },

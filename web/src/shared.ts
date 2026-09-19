@@ -174,6 +174,7 @@ export type { ScenarioInput, ScenarioMonth } from '../../src/domain/aggregate/sc
 
 export {
   grossYieldBp,
+  MAX_MORTGAGES_PER_PROPERTY,
   MAX_PROPERTIES,
   netCashFlowCents,
   outstandingBalanceCents,

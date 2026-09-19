@@ -605,14 +605,16 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
     label: 'House',
     propertyValueCents: 40_000_000,
     rentCents: null,
-    mortgage: {
-      principalCents: 18_000_000,
-      anchorDate: '2020-01-01',
-      rateBp: 0,
-      monthlyPaymentCents: 0,
-      remainingTermMonths: 600,
-      originalPrincipalCents: null,
-    },
+    mortgages: [
+      {
+        principalCents: 18_000_000,
+        anchorDate: '2020-01-01',
+        rateBp: 0,
+        monthlyPaymentCents: 0,
+        remainingTermMonths: 600,
+        originalPrincipalCents: null,
+      },
+    ],
   }
 
   const RENTAL = {
@@ -621,7 +623,7 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
     label: 'Antwerp flat',
     propertyValueCents: 25_000_000,
     rentCents: 90_000,
-    mortgage: null,
+    mortgages: [],
   }
 
   it("nets a property's equity into the overview total and reports the two halves", async () => {
@@ -686,6 +688,31 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
 
     expect(body.properties).toEqual([])
     expect(body.totalPropertyEquityCents).toBeNull()
+  })
+
+  it('sums a second mortgage into the balance and reports its earlier anchor (#393)', async () => {
+    const withSecondMortgage = {
+      ...HOME,
+      mortgages: [
+        ...HOME.mortgages,
+        {
+          principalCents: 4_000_000,
+          anchorDate: '2019-06-01',
+          rateBp: 0,
+          monthlyPaymentCents: 0,
+          remainingTermMonths: 120,
+          originalPrincipalCents: null,
+        },
+      ],
+    }
+    saveProperties(ctx.db, TENANT_ID, { properties: [withSecondMortgage] })
+
+    const portfolio = (await get('/api/portfolio')).json()
+    expect(portfolio.properties[0]?.mortgageBalanceCents).toBe(22_000_000)
+    expect(portfolio.properties[0]?.mortgageAnchorDate).toBe('2019-06-01')
+
+    const overview = (await get('/api/overview')).json()
+    expect(overview.netWorth.mortgageBalanceCents).toBe(22_000_000)
   })
 })
 
