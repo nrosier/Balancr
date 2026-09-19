@@ -19,7 +19,7 @@
  * renderer is what makes even this much possible: canvas would need a native package
  * and would hand back pixels nobody can assert against.
  */
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Chart } from '../src/charts/Chart.tsx'
 import { echarts, type EChartsCoreOption } from '../src/charts/echarts.ts'

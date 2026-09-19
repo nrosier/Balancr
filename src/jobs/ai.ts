@@ -30,7 +30,6 @@
  * which is also why it is last in the registry.
  */
 import { config } from '../config.ts'
-import type { Db } from '../db/index.ts'
 import { latestStoredMonth } from '../domain/aggregate/month-store.ts'
 import { runAnalysis, type AnalysisOutcome } from '../domain/ai/analysis.ts'
 import { tenantAiAvailability } from '../domain/ai/availability.ts'
