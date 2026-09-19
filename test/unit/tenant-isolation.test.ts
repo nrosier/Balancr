@@ -245,7 +245,7 @@ describe('properties', () => {
           label: 'Home',
           propertyValueCents: 30_000_000,
           rentCents: null,
-          mortgage: null,
+          mortgages: [],
         },
       ],
     })

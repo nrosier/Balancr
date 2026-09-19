@@ -106,7 +106,7 @@
     "title": "Off-budget accounts"
   },
   "property": {
-    "balanceEstimate": "Estimated by amortizing forward from the balance last confirmed against a statement on {{date}}.",
+    "balanceEstimate": "Estimated by amortizing forward from balances last confirmed against a statement — none more recently than {{date}}.",
     "caption_one": "One property.",
     "caption_other": "{{value}} properties.",
     "column": {
