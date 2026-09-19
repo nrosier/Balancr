@@ -1059,8 +1059,8 @@ describe("the custody card's comparison window", () => {
 })
 
 describe('the savings rate follows the page picker (#288, rebuilt for #345 and #351)', () => {
-  // The card's pro-ration caveat reads the real clock, so it is pinned to an instant
-  // after August — the same reasoning `overview.test.tsx` pins its own copy on.
+  // `absolutePeriodSavings` reads the real clock to sum a period, so it is pinned to
+  // an instant after August — the same reasoning `overview.test.tsx` pins its own copy on.
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
@@ -1114,9 +1114,7 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
     // Two months exist, and the card says two — the whole reason the span is printed
     // rather than the period name alone.
     await waitFor(() => expect(rate()).toBe('27,4%'))
-    expect(note()).toBe(
-      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
-    )
+    expect(note()).toBe('Over 2 months, July 2026 to August 2026')
   })
 
   it('reads the calendar month before the one on screen', async () => {
@@ -1132,8 +1130,10 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
     expect(note()).toBe('Over July 2026')
   })
 
-  it('adds an estimate caveat once the anchor month has money still to come (#361)', async () => {
-    // August is the still-open month in this fixture; July already has none.
+  it('names only the span here, with no caveat and no row, even with money still to come (#397)', async () => {
+    // August is the still-open month in this fixture; July already has none. This page's
+    // copy of the card carries no explanation of *why* that might still move (#397) and,
+    // being `showFlows: false`, no row for the amount either — unlike the Overview copy.
     const withCommitted = {
       ...FULL,
       history: FULL.history.map((entry) =>
@@ -1144,9 +1144,8 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
     renderApp(<Budget />)
     await screen.findByText('€ 3.100')
 
-    expect(note()).toBe(
-      "Over August 2026 It includes € 400 still to come, so it's an estimate until the month closes.",
-    )
+    expect(note()).toBe('Over August 2026')
+    expect(savingsCard()?.querySelectorAll('.metric__row').length ?? 0).toBe(0)
   })
 
   it('says the window is empty rather than printing a figure for no months', async () => {
@@ -1190,8 +1189,8 @@ describe('the savings rate follows the page picker (#288, rebuilt for #345 and #
 })
 
 describe('Spent and Income sum the page picker’s year, too (#355)', () => {
-  // The pro-ration caveat in the note reads the real clock, same as the savings-rate
-  // describe block above.
+  // `absolutePeriodSavings` reads the real clock, same as the savings-rate describe
+  // block above.
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-02T05:30:00Z'))
@@ -1235,8 +1234,7 @@ describe('Spent and Income sum the page picker’s year, too (#355)', () => {
     // July + August: €4.200 + €4.200 income, €3.000 + €3.100 spent.
     await waitFor(() => expect(value('Spent')).toBe('€ 6.100'))
     expect(value('Income')).toBe('€ 8.400')
-    const spanText =
-      'Over 2 months, July 2026 to August 2026 This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.'
+    const spanText = 'Over 2 months, July 2026 to August 2026'
     expect(note('Spent')).toBe(spanText)
     expect(note('Income')).toBe(spanText)
   })
@@ -1275,11 +1273,7 @@ describe('Spent and Income sum the page picker’s year, too (#355)', () => {
 
     await waitFor(() => expect(value('Spent')).toBe('Not known yet'))
     expect(value('Income')).toBe('Not known yet')
-    // Still a year, still 66,7% through — the pro-ration caveat is about the period,
-    // not the (empty) window, so it stays even once there is no figure to caveat.
-    expect(note('Spent')).toBe(
-      'No month with figures in this window This period is 66,7% through — any month already finished counts in full, and the one still open counts only its own share of a month.',
-    )
+    expect(note('Spent')).toBe('No month with figures in this window')
   })
 })
 
