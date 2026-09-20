@@ -765,7 +765,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       remainingMicroEur: budget.remainingMicroEur,
       usedBp: budget.usedBp,
       exceeded: budget.exceeded,
-      history: loadSpendHistory(db),
+      history: loadSpendHistory(db, user.tenantId),
     },
   })
 }
