@@ -514,6 +514,7 @@ export function answerClarification(
     tx.update(clarificationQueue).set({ status: 'answered', answeredAt: now }).where(matches).run()
 
     const auditId = recordAudit(tx, {
+      tenantId,
       action: 'clarification.answer',
       entity: CLARIFY_ENTITY,
       entityRef: row.categoryId,
@@ -558,6 +559,7 @@ export function dismissClarification(db: Db, tenantId: string, options: DismissO
     tx.update(clarificationQueue).set({ status: 'dismissed', answeredAt: now }).where(matches).run()
 
     recordAudit(tx, {
+      tenantId,
       action: 'clarification.dismiss',
       entity: CLARIFY_ENTITY,
       entityRef: row.categoryId,

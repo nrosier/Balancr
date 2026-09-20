@@ -503,7 +503,7 @@ describe('applyProposal', () => {
     const row = await propose({ nature: 'variable' })
     const result = await applyProposal(db, TENANT_ID, { id: row.id, userId: 'u1', now: NOW })
 
-    const entry = loadAuditTrail(db, { entityRef: 'food' })[0]
+    const entry = loadAuditTrail(db, TENANT_ID, { entityRef: 'food' })[0]
     expect(entry?.id).toBe(result.auditId)
     expect(entry?.action).toBe('proposal.apply')
     expect(entry?.actorId).toBe('u1')
@@ -526,7 +526,7 @@ describe('applyProposal', () => {
 
     expect(result.fields).toEqual([])
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('applied')
-    expect(JSON.parse(loadAuditTrail(db)[0]?.afterJson ?? 'null')).toEqual({})
+    expect(JSON.parse(loadAuditTrail(db, TENANT_ID)[0]?.afterJson ?? 'null')).toEqual({})
   })
 
   it('refuses one that was already decided', async () => {
@@ -563,7 +563,7 @@ describe('applyProposal', () => {
 
     await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/no metadata/)
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('pending')
-    expect(loadAuditTrail(db)).toHaveLength(0)
+    expect(loadAuditTrail(db, TENANT_ID)).toHaveLength(0)
   })
 
   it('does not touch confidence, which measures what the user stated themselves', async () => {
@@ -625,7 +625,7 @@ describe('transaction_category.set', () => {
     expect(updateTransactionCategory).toHaveBeenCalledWith(db, TENANT_ID, 'txn1', 'food')
     expect(result.fields).toEqual([{ field: 'category', before: 'Rent', after: 'Groceries' }])
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('applied')
-    expect(loadAuditTrail(db, { entityRef: 'txn1' })[0]?.action).toBe('proposal.apply')
+    expect(loadAuditTrail(db, TENANT_ID, { entityRef: 'txn1' })[0]?.action).toBe('proposal.apply')
   })
 
   it('leaves the proposal pending and the trail empty when the Actual write fails', async () => {
@@ -636,7 +636,7 @@ describe('transaction_category.set', () => {
     await expect(applyProposal(db, TENANT_ID, { id: row.id, now: NOW })).rejects.toThrow(/Actual is down/)
 
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('pending')
-    expect(loadAuditTrail(db)).toHaveLength(0)
+    expect(loadAuditTrail(db, TENANT_ID)).toHaveLength(0)
   })
 
   it('refuses to commit locally when the proposal was decided while the Actual write was in flight', async () => {
@@ -654,8 +654,8 @@ describe('transaction_category.set', () => {
     expect(updateTransactionCategory).toHaveBeenCalledTimes(1)
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('rejected')
     // Only the reject's audit entry — the apply never committed.
-    expect(loadAuditTrail(db)).toHaveLength(1)
-    expect(loadAuditTrail(db)[0]?.action).toBe('proposal.reject')
+    expect(loadAuditTrail(db, TENANT_ID)).toHaveLength(1)
+    expect(loadAuditTrail(db, TENANT_ID)[0]?.action).toBe('proposal.reject')
   })
 })
 
@@ -812,7 +812,7 @@ describe('rejectProposal', () => {
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('rejected')
     expect(metaOf('food').nature).toBeNull()
 
-    const entry = loadAuditTrail(db)[0]
+    const entry = loadAuditTrail(db, TENANT_ID)[0]
     expect(entry?.action).toBe('proposal.reject')
     expect(entry?.beforeJson).toBeNull()
     expect(entry?.afterJson).toBeNull()
@@ -843,7 +843,7 @@ describe('expireProposals', () => {
 
     expect(expireProposals(db, TENANT_ID, later)).toBe(1)
     expect(loadProposal(db, TENANT_ID, row.id)?.status).toBe('expired')
-    expect(loadAuditTrail(db)).toHaveLength(0)
+    expect(loadAuditTrail(db, TENANT_ID)).toHaveLength(0)
   })
 
   it('leaves a proposal that is still current alone', async () => {

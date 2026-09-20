@@ -192,6 +192,8 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]
 
 export interface AuditEntry {
+  /** The household this change belongs to. Required even for unattended changes. */
+  tenantId: string
   action: AuditAction
   /** The table the change landed in, e.g. `category_meta`. */
   entity: string
@@ -216,6 +218,7 @@ export function recordAudit(writer: AuditWriter, entry: AuditEntry): string {
   const rows = (writer as Db)
     .insert(auditLog)
     .values({
+      tenantId: entry.tenantId,
       action: entry.action,
       entity: entry.entity,
       entityRef: entry.entityRef,
@@ -248,8 +251,9 @@ export interface AuditQuery {
  * to this category recently", and a caller wanting the original state reads the
  * `before` of the oldest entry rather than paging through the newest.
  */
-export function loadAuditTrail(db: Db, query: AuditQuery = {}): AuditRow[] {
+export function loadAuditTrail(db: Db, tenantId: string, query: AuditQuery = {}): AuditRow[] {
   const filters = [
+    eq(auditLog.tenantId, tenantId),
     ...(query.entity === undefined ? [] : [eq(auditLog.entity, query.entity)]),
     ...(query.entityRef === undefined ? [] : [eq(auditLog.entityRef, query.entityRef)]),
     ...(query.action === undefined ? [] : [eq(auditLog.action, query.action)]),
@@ -258,7 +262,7 @@ export function loadAuditTrail(db: Db, query: AuditQuery = {}): AuditRow[] {
   return db
     .select()
     .from(auditLog)
-    .where(filters.length === 0 ? undefined : and(...filters))
+    .where(and(...filters))
     .orderBy(desc(auditLog.at), desc(auditLog.id))
     .limit(query.limit ?? 200)
     .all()

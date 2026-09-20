@@ -265,6 +265,7 @@ describe('audit_log survives everything it refers to', () => {
     ctx.db
       .insert(auditLog)
       .values({
+        tenantId: TENANT_ID,
         action: 'proposal.apply',
         actorId: 'deleted-user',
         entity: 'category_meta',

@@ -166,7 +166,13 @@ function seed(tenantId: string, suffix = '1'): { userId: string; accountMapId: s
     .run()
 
   db.insert(auditLog)
-    .values({ id: `audit-${suffix}`, action: 'jobs.refresh', entity: 'jobs', entityRef: 'refresh' })
+    .values({
+      id: `audit-${suffix}`,
+      tenantId,
+      action: 'jobs.refresh',
+      entity: 'jobs',
+      entityRef: 'refresh',
+    })
     .run()
 
   db.insert(jobs).values({ name: `sync-${suffix}`, tenantId }).run()

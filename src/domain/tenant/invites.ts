@@ -66,6 +66,7 @@ export function createInvite(db: Db, input: CreateInviteInput): CreatedInvite {
     if (created === undefined) throw new Error('inviting failed: insert returned no row')
 
     recordAudit(tx, {
+      tenantId: input.tenantId,
       action: 'tenant.invite.create',
       entity: 'tenant_invites',
       entityRef: created.id,
@@ -115,6 +116,7 @@ export function revokeInvite(db: Db, input: RevokeInviteInput): void {
     tx.update(tenantInvites).set({ revokedAt: now }).where(eq(tenantInvites.id, row.id)).run()
 
     recordAudit(tx, {
+      tenantId: input.tenantId,
       action: 'tenant.invite.revoke',
       entity: 'tenant_invites',
       entityRef: row.id,
