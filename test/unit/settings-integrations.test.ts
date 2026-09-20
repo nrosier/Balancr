@@ -162,8 +162,10 @@ describe('GET /api/settings', () => {
         provider: 'gemini-aistudio',
         apiKeyConfigured: true,
         googleCloudProject: null,
+        baseUrl: null,
         modelFast: 'gemini-3.7-flash',
         modelDeep: 'gemini-3.1-pro-preview',
+        modelPrices: {},
         budgetEurMicro: 15_000_000,
       },
     } satisfies IntegrationsSetting)
@@ -358,6 +360,10 @@ describe('PATCH /api/settings/integrations/ai', () => {
       googleCloudProject: null,
       modelFast: 'gemini-flash-lite',
       modelDeep: 'gemini-pro',
+      modelPrices: {
+        'gemini-flash-lite': { inputEur: 0.1, cachedInputEur: 0.01, cacheWriteInputEur: 0.1, outputEur: 0.2 },
+        'gemini-pro': { inputEur: 1, cachedInputEur: 0.1, cacheWriteInputEur: 1, outputEur: 2 },
+      },
       budgetEur: 42,
     })
 
@@ -370,6 +376,82 @@ describe('PATCH /api/settings/integrations/ai', () => {
     expect(row(ctx.db).aiModelFast).toBe('gemini-flash-lite')
     expect(row(ctx.db).aiModelDeep).toBe('gemini-pro')
     expect(row(ctx.db).aiMonthlyBudgetEurMicro).toBe(42_000_000)
+  })
+
+  it('stores an OpenAI preset with its fixed official URL and a provider-scoped key', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'openai',
+      apiKey: 'openai-key',
+      googleCloudProject: null,
+      baseUrl: null,
+      modelFast: 'gpt-5.4-mini',
+      modelDeep: 'gpt-5.4',
+      modelPrices: {},
+      budgetEur: 25,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.ai).toMatchObject({
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyConfigured: true,
+    })
+    expect(row(ctx.db).aiBaseUrl).toBeNull()
+    expect(decryptField(row(ctx.db).aiApiKeyEnc as string)).toBe('openai-key')
+  })
+
+  it('refuses to override a certified preset URL', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'xai',
+      apiKey: 'xai-key',
+      googleCloudProject: null,
+      baseUrl: 'https://proxy.example/v1',
+      modelFast: 'grok-4.3',
+      modelDeep: 'grok-4.3',
+      modelPrices: {},
+      budgetEur: 15,
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('clears the old provider key when switching without typing a replacement', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'xai',
+      googleCloudProject: null,
+      baseUrl: null,
+      modelFast: 'grok-4.3',
+      modelDeep: 'grok-4.3',
+      modelPrices: {},
+      budgetEur: 15,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(row(ctx.db).aiApiKeyEnc).toBeNull()
+  })
+
+  it('requires an explicit price for unknown models and permits an explicit zero', async () => {
+    const candidate = {
+      provider: 'openai' as const,
+      apiKey: 'openai-key',
+      googleCloudProject: null,
+      baseUrl: null,
+      modelFast: 'private-free-model',
+      modelDeep: 'private-free-model',
+      budgetEur: 15,
+    }
+    const refused = await patch('/api/settings/integrations/ai', { ...candidate, modelPrices: {} })
+    expect(refused.statusCode).toBe(400)
+    expect(refused.json<ErrorBody>().error.message).toContain('explicit price')
+
+    const accepted = await patch('/api/settings/integrations/ai', {
+      ...candidate,
+      modelPrices: {
+        'private-free-model': { inputEur: 0, cachedInputEur: 0, cacheWriteInputEur: 0, outputEur: 0 },
+      },
+    })
+    expect(accepted.statusCode).toBe(200)
+    expect(JSON.parse(row(ctx.db).aiModelPricesJson)).toMatchObject({
+      'private-free-model': { input: 0, cachedInput: 0, cacheWriteInput: 0, output: 0 },
+    })
   })
 
   it('is refused for a viewer', async () => {
@@ -685,6 +767,49 @@ describe('POST /api/settings/integrations/ai/test', () => {
     expect(genai.calls).toContainEqual(
       expect.objectContaining({ vertexai: true, project: 'candidate-project' }),
     )
+  })
+
+  it('runs a minimal strict structured-output probe for OpenAI-compatible presets', async () => {
+    const fetch = vi.fn(async (_input: Parameters<typeof globalThis.fetch>[0], _init?: RequestInit) => Response.json({
+      model: 'gpt-5.4-mini',
+      choices: [{ message: { content: '{"balancr_probe":true}' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'openai',
+      apiKey: 'candidate-key',
+      baseUrl: null,
+      model: 'gpt-5.4-mini',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+    const [url, init] = fetch.mock.calls[0]!
+    expect(url).toBe('https://api.openai.com/v1/chat/completions')
+    expect(JSON.parse(String(init?.body)).response_format).toMatchObject({
+      type: 'json_schema',
+      json_schema: { strict: true },
+    })
+  })
+
+  it('fails clearly when an endpoint ignores the strict response schema', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      model: 'grok-4.3',
+      choices: [{ message: { content: 'unsupported' }, finish_reason: 'stop' }],
+    })))
+
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'xai',
+      apiKey: 'candidate-key',
+      baseUrl: null,
+      model: 'grok-4.3',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toMatchObject({ ok: false })
+    expect(res.json<IntegrationTest>().message).toContain('Structured-output capability probe failed')
   })
 
   it('is refused for a viewer', async () => {

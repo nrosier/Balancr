@@ -465,7 +465,7 @@ export function estimateAnalysis(
     return { month: options.month, model, payloadChars, estimateMicroEur: 0, allowed: true, reason: 'reused' }
   }
 
-  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS, ai.modelPrices)
   const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
@@ -584,7 +584,13 @@ export async function runAnalysis(
     }
   }
 
-  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(
+    ai.provider,
+    model,
+    JSON.stringify(payload).length,
+    EXPECTED_OUTPUT_TOKENS,
+    ai.modelPrices,
+  )
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     // Recorded at zero cost: nothing was sent. The payload is stored anyway, so
@@ -650,7 +656,7 @@ export async function runAnalysis(
     }
   }
 
-  const cost = costMicroEur(result.provider, result.model, result.usage)
+  const cost = costMicroEur(result.provider, result.model, result.usage, ai.modelPrices)
 
   let grounded
   try {
@@ -668,6 +674,7 @@ export async function runAnalysis(
       status: 'error',
       promptId: prompt.id,
       usage: result.usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       // The tokens were spent whether or not the answer parsed, so the row is
       // billed. That is the number the cost guard has to see.
@@ -698,6 +705,7 @@ export async function runAnalysis(
     status: 'ok',
     promptId: prompt.id,
     usage: result.usage,
+    costMicroEurOverride: cost,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })

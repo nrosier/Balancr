@@ -99,12 +99,10 @@ half-English, and costs a fraction of what shipping raw transactions would.
 
 ### Where it goes, and when
 
-Four hosts, and three of them are yours: Actual, Ghostfolio and the OIDC issuer all sit
-on your own network. Google is the only third party, and only if the AI layer is
-configured at all — leave the Gemini credential empty and nothing leaves the machine
-except the calls that fetch your own data from your own servers. The
-[egress allowlist](#egress) is derived from those four, so a fifth host is refused
-rather than reviewed.
+Actual, Ghostfolio and the OIDC issuer normally sit on your own network. The selected
+AI provider is the only additional destination, and only if the AI layer is configured
+at all. The [egress allowlist](#egress) includes the certified provider preset or an
+operator-approved custom host; an unapproved host is refused rather than reviewed.
 
 - **Which Google.** `GEMINI_PROVIDER=vertex`, the recommended setting, sends to Vertex
   AI in `GOOGLE_CLOUD_LOCATION` (`europe-west1` by default), which keeps the request in
@@ -112,6 +110,12 @@ rather than reviewed.
   plain API key with none of that, and a **free-tier** key is the one configuration to
   avoid outright: its terms allow Google to use prompts to improve its products, and
   these prompts are your budget.
+- **Other providers.** Settings offers certified presets for OpenAI and xAI/Grok with
+  fixed official HTTPS endpoints. The custom OpenAI-compatible option covers gateways
+  and local runtimes on a best-effort basis: Chat Completions compatibility alone does
+  not prove strict JSON-schema support, so saving credentials and models is separate
+  from the explicit, minimal-cost structured-output capability test. A custom hostname
+  must first be listed in `EGRESS_EXTRA_HOSTS`; a tenant setting never widens egress.
 - **Once a night, and never on a page load.** The nightly pass runs at
   `JOBS_NIGHTLY_HOUR` (03:00 local) and is the only thing that spends money on its own.
   Opening Insights makes no call — the findings, the narrative and the queues were
@@ -281,7 +285,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 |---|---|
 | **Actual** | `ACTUAL_SERVER_URL`, `ACTUAL_PASSWORD`, `ACTUAL_SYNC_ID`, `ACTUAL_E2E_PASSWORD` (encrypted budgets only) |
 | **Ghostfolio** | `GHOSTFOLIO_URL`, `GHOSTFOLIO_SECURITY_TOKEN` |
-| **Gemini** | `AI_ENABLED`, `GEMINI_PROVIDER` (`vertex`\|`aistudio`), `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`, `GEMINI_CACHE_MIN_TOKENS` |
+| **AI bootstrap** | `AI_ENABLED`, legacy first-tenant import through `GEMINI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`; providers are then managed per tenant in Settings |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
 | **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS`, `TAX_RULES_PATH` |
@@ -295,7 +299,7 @@ Two settings people expect to be one: `DEFAULT_LOCALE` switches the language,
 because `Intl` with `en-BE` produces `€1,234.56` — so an English UI would
 otherwise render amounts that no longer match your bank statements.
 
-The whole Gemini block is optional. Leave the credential empty and Balancr starts
+The whole AI block is optional. Leave the bootstrap credential empty and Balancr starts
 anyway: the aggregation, the overspend signals, the burn rate and the net-worth history
 are computed locally and never involved a model, and the pages that would have needed one
 name the variable to set. `AI_ENABLED=false` switches it off with the key left in place;
@@ -978,7 +982,8 @@ cron ─────┴── sync → aggregate → snapshot → nightly AI run
 adapters ─┼── actual/      @actual-app/api, sole owner of the sync dataDir
           ├── ghostfolio/  REST, capability-probed
           └── ai/          provider-neutral call, usage and pricing boundary
-                └── gemini/  native AI Studio and Vertex implementation
+                ├── gemini/  native AI Studio and Vertex implementation
+                └── openai-compatible/  OpenAI, xAI and approved custom endpoints
 ```
 
 One container, modular inside. The one hard constraint is that a single process

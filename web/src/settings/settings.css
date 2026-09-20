@@ -1040,6 +1040,25 @@
   gap: var(--space-3);
 }
 
+.integrations-price {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(8rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.integrations-price > .field__label {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 52rem) {
+  .integrations-price {
+    grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Invites (#373)
 

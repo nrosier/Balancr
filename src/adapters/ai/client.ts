@@ -2,6 +2,7 @@
 import type { Db } from '../../db/index.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { callGemini, setGeminiClient } from '../gemini/client.ts'
+import { callOpenAiCompatible } from '../openai-compatible/client.ts'
 import type { AiCall, AiResult } from './types.ts'
 
 export async function callAi(db: Db, tenantId: string, call: AiCall): Promise<AiResult> {
@@ -10,6 +11,10 @@ export async function callAi(db: Db, tenantId: string, call: AiCall): Promise<Ai
     case 'gemini-aistudio':
     case 'gemini-vertex':
       return callGemini(db, tenantId, call)
+    case 'openai':
+    case 'xai':
+    case 'openai-compatible':
+      return callOpenAiCompatible(db, tenantId, call)
   }
 }
 

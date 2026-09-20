@@ -12,7 +12,9 @@ import {
   FALLBACK_PRICE,
   MODEL_PRICES,
   microEurToEur,
+  OPENAI_MODEL_PRICES,
   priceFor,
+  XAI_MODEL_PRICES,
 } from '../../src/adapters/ai/pricing.ts'
 
 const PROVIDER = 'gemini-aistudio' as const
@@ -60,9 +62,33 @@ describe('priceFor', () => {
   })
 
   it('dates every entry', () => {
-    for (const entry of [...Object.values(MODEL_PRICES), FALLBACK_PRICE]) {
+    for (const entry of [
+      ...Object.values(MODEL_PRICES),
+      ...Object.values(OPENAI_MODEL_PRICES),
+      ...Object.values(XAI_MODEL_PRICES),
+      FALLBACK_PRICE,
+    ]) {
       expect(entry.verified).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     }
+  })
+
+  it('has dated certified OpenAI and xAI preset prices', () => {
+    expect(priceFor('openai', 'gpt-5.4-mini').price).toBe(OPENAI_MODEL_PRICES['gpt-5.4-mini'])
+    expect(priceFor('openai', 'gpt-5.4-2026-09-01').price).toBe(OPENAI_MODEL_PRICES['gpt-5.4'])
+    expect(priceFor('xai', 'grok-4.3-latest').price).toBe(XAI_MODEL_PRICES['grok-4.3'])
+  })
+
+  it('accepts explicit zero-cost custom models without falling through to the fallback', () => {
+    const free = {
+      local: { input: 0, output: 0, cachedInput: 0, cacheWriteInput: 0, verified: '2026-09-20' },
+    }
+    expect(priceFor('openai-compatible', 'local', free)).toEqual({ price: free.local, known: true })
+    expect(costMicroEur('openai-compatible', 'local', {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+    }, free)).toBe(0)
   })
 })
 

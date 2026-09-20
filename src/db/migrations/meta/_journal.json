@@ -225,6 +225,13 @@
       "when": 1789935201156,
       "tag": "0031_aberrant_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1789936796333,
+      "tag": "0032_natural_junta",
+      "breakpoints": true
     }
   ]
 }
