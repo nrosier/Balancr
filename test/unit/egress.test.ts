@@ -34,7 +34,10 @@ function freshDb(): Db {
   return db
 }
 
-function insertIntegrations(db: Db, urls: { actualServerUrl: string; ghostfolioUrl: string }): void {
+function insertIntegrations(
+  db: Db,
+  urls: { actualServerUrl: string; ghostfolioUrl: string; aiProvider?: 'gemini-aistudio' | 'openai' | 'xai' | 'openai-compatible' },
+): void {
   db.insert(tenantIntegrations)
     .values({
       tenantId: getSoleTenantId(db),
@@ -43,7 +46,7 @@ function insertIntegrations(db: Db, urls: { actualServerUrl: string; ghostfolioU
       actualSyncId: 'sync-id',
       ghostfolioUrl: urls.ghostfolioUrl,
       ghostfolioSecurityTokenEnc: 'unused-in-this-test',
-      aiProvider: 'gemini-aistudio',
+      aiProvider: urls.aiProvider ?? 'gemini-aistudio',
     })
     .run()
 }
@@ -142,6 +145,37 @@ describe('the allowlist', () => {
 
     const res = await fetch('https://tenant-actual.example/health')
     expect(await res.text()).toBe('ok')
+  })
+
+  it('allows fixed official AI hosts for the tenant-selected certified presets', async () => {
+    const { allowedHosts } = await freshEgress()
+    const openaiDb = freshDb()
+    insertIntegrations(openaiDb, {
+      actualServerUrl: 'https://actual.example',
+      ghostfolioUrl: 'https://ghostfolio.example',
+      aiProvider: 'openai',
+    })
+    expect(allowedHosts(openaiDb).has('api.openai.com')).toBe(true)
+
+    const xaiDb = freshDb()
+    insertIntegrations(xaiDb, {
+      actualServerUrl: 'https://actual.example',
+      ghostfolioUrl: 'https://ghostfolio.example',
+      aiProvider: 'xai',
+    })
+    expect(allowedHosts(xaiDb).has('api.x.ai')).toBe(true)
+  })
+
+  it('does not let a custom tenant base URL widen egress', async () => {
+    const { allowedHosts } = await freshEgress()
+    const db = freshDb()
+    insertIntegrations(db, {
+      actualServerUrl: 'https://actual.example',
+      ghostfolioUrl: 'https://ghostfolio.example',
+      aiProvider: 'openai-compatible',
+    })
+    db.update(tenantIntegrations).set({ aiBaseUrl: 'https://tenant-picked.example/v1' }).run()
+    expect(allowedHosts(db).has('tenant-picked.example')).toBe(false)
   })
 })
 

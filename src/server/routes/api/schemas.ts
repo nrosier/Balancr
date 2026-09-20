@@ -17,6 +17,7 @@
  * what the SPA in `0.6.0` may rely on, expressed once, next to nothing else.
  */
 import { z } from 'zod'
+import { AI_PROVIDERS } from '../../../domain/ai/providers.ts'
 import { DRIFT_STATES } from '../../../domain/advice/drift.ts'
 import { BAND_CLASSES, PRESET_IDS, PROFILE_IDS } from '../../../domain/advice/profile.ts'
 import {
@@ -1566,11 +1567,18 @@ export const integrationsSettingSchema = z.object({
     tokenConfigured: z.boolean(),
   }),
   ai: z.object({
-    provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
+    provider: z.enum(AI_PROVIDERS),
     apiKeyConfigured: z.boolean(),
     googleCloudProject: z.string().nullable(),
+    baseUrl: z.string().nullable(),
     modelFast: z.string(),
     modelDeep: z.string(),
+    modelPrices: z.record(z.string(), z.object({
+      inputEurMicro: microEur(),
+      cachedInputEurMicro: microEur(),
+      cacheWriteInputEurMicro: microEur(),
+      outputEurMicro: microEur(),
+    })),
     budgetEurMicro: microEur(),
   }),
 })

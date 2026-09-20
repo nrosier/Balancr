@@ -334,8 +334,10 @@ const PAYLOAD: Payload = {
       provider: 'gemini-aistudio',
       apiKeyConfigured: true,
       googleCloudProject: null,
+      baseUrl: null,
       modelFast: 'gemini-3.7-flash',
       modelDeep: 'gemini-3.1-pro-preview',
+      modelPrices: {},
       budgetEurMicro: 15_000_000,
     },
   },
@@ -2198,6 +2200,26 @@ describe('integrations', () => {
     expect(saveButton('AI provider').disabled).toBe(true)
   })
 
+  it('shows certified OpenAI settings separately from best-effort compatible endpoints', async () => {
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai' } })
+    const official = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(official.value).toBe('https://api.openai.com/v1')
+    expect(official.readOnly).toBe(true)
+    expect(screen.queryByLabelText('Google Cloud project')).toBeNull()
+    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('gpt-5.4-mini')
+    expect(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai-compatible' } })
+    const custom = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(custom.readOnly).toBe(false)
+    expect(within(panel('AI provider')).getByText(/Best-effort compatibility/)).toBeTruthy()
+    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
+  })
+
   it('saves only what changed, and sends no password at all rather than a blank one', async () => {
     const calls = await open({ ...READS, '/api/settings/integrations/actual': json(PAYLOAD) })
 
@@ -2332,8 +2354,10 @@ describe('integrations', () => {
           body: {
             provider: 'gemini-vertex',
             googleCloudProject: null,
+            baseUrl: null,
             modelFast: 'gemini-3.7-flash',
             modelDeep: 'gemini-3.1-pro-preview',
+            modelPrices: {},
             budgetEur: 15,
           },
         },

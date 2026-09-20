@@ -67,8 +67,10 @@ describe('resolvedIntegrations', () => {
         provider: 'gemini-aistudio',
         apiKey: 'gemini-key',
         project: null,
+        baseUrl: null,
         modelFast: 'gemini-flash-lite',
         modelDeep: 'gemini-pro',
+        modelPrices: {},
         budgetEurMicro: 42_000_000,
       },
     })

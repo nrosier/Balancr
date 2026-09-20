@@ -9,7 +9,8 @@
  */
 import { eq } from 'drizzle-orm'
 import type { Db } from './index.ts'
-import { eurToMicroEur } from '../adapters/ai/pricing.ts'
+import { eurToMicroEur, parseModelPricesJson, type ModelPrices } from '../adapters/ai/pricing.ts'
+import type { AiProvider } from '../adapters/ai/types.ts'
 import { config } from '../config.ts'
 import { decryptField, encryptField } from './field-crypto.ts'
 import { getSoleTenantId } from './tenant.ts'
@@ -58,10 +59,11 @@ export function integrationAvailability(db: Db, tenantId: string): IntegrationAv
   return {
     actual: row.actualServerUrl !== '' && row.actualSyncId !== '' && row.actualPasswordEnc.length > 0,
     ghostfolio: row.ghostfolioUrl !== '' && row.ghostfolioSecurityTokenEnc.length > 0,
-    ai:
-      row.aiProvider === 'gemini-aistudio'
-        ? row.aiApiKeyEnc !== null
-        : row.googleCloudProject !== null,
+    ai: (() => {
+      if (row.aiProvider === 'gemini-vertex') return row.googleCloudProject !== null
+      if (row.aiProvider === 'openai-compatible') return row.aiBaseUrl !== null
+      return row.aiApiKeyEnc !== null
+    })(),
   }
 }
 
@@ -87,9 +89,11 @@ export interface ResolvedIntegrations {
     readonly token: string
   }
   readonly ai: {
-    readonly provider: 'gemini-aistudio' | 'gemini-vertex'
+    readonly provider: AiProvider
     readonly apiKey: string | null
     readonly project: string | null
+    readonly baseUrl: string | null
+    readonly modelPrices: ModelPrices
     readonly modelFast: string
     readonly modelDeep: string
     readonly budgetEurMicro: number
@@ -113,6 +117,8 @@ export function resolvedIntegrations(db: Db, tenantId: string): ResolvedIntegrat
       provider: row.aiProvider,
       apiKey: row.aiApiKeyEnc === null ? null : decryptField(row.aiApiKeyEnc),
       project: row.googleCloudProject,
+      baseUrl: row.aiBaseUrl,
+      modelPrices: parseModelPricesJson(row.aiModelPricesJson),
       modelFast: row.aiModelFast,
       modelDeep: row.aiModelDeep,
       budgetEurMicro: row.aiMonthlyBudgetEurMicro,
@@ -149,6 +155,8 @@ export function importEnvIntegrationsOnce(db: Db): boolean {
       aiProvider: config.GEMINI_PROVIDER === 'vertex' ? 'gemini-vertex' : 'gemini-aistudio',
       aiApiKeyEnc: config.GEMINI_API_KEY ? encryptField(config.GEMINI_API_KEY) : null,
       googleCloudProject: config.GOOGLE_CLOUD_PROJECT ?? null,
+      aiBaseUrl: null,
+      aiModelPricesJson: '{}',
       aiModelFast: config.GEMINI_MODEL_FAST,
       aiModelDeep: config.GEMINI_MODEL_DEEP,
       aiMonthlyBudgetEurMicro: eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR),
