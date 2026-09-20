@@ -118,6 +118,7 @@ function seed(tenantId: string, suffix = '1'): { userId: string; accountMapId: s
   db.insert(prompts)
     .values({
       id: `prompt-${suffix}`,
+      tenantId,
       key: `analysis.system-${suffix}`,
       locale: 'nl',
       version: 1,

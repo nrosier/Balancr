@@ -5,54 +5,13 @@
  * for data that predates the `tenants` table. Both are worth testing directly
  * rather than only through the call sites that happen to use them.
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
+import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { tenants, users } from '../../src/db/schema.ts'
 import { allTenantIds, getSoleTenantId } from '../../src/db/tenant.ts'
-
-interface JournalEntry {
-  tag: string
-  when: number
-}
-
-/**
- * Fakes drizzle's own migration bookkeeping so a later `applyMigrations` call
- * treats every migration up to and including `lastAppliedTag` as already run,
- * after executing their raw SQL directly. This reproduces a database as it
- * stood just before the backfill migration (0024), so the backfill itself —
- * the one hand-written, data-touching migration in this project — can be
- * exercised against a row that predates it, the way a real deployment's does.
- */
-function seedPreMigrationDb(sqlite: { exec: (sql: string) => unknown }, lastAppliedTag: string): void {
-  const journal = JSON.parse(
-    readFileSync(join(migrationsFolder, 'meta', '_journal.json'), 'utf8'),
-  ) as { entries: JournalEntry[] }
-
-  const lastIdx = journal.entries.findIndex((entry) => entry.tag === lastAppliedTag)
-  if (lastIdx === -1) throw new Error(`no journal entry for ${lastAppliedTag}`)
-
-  for (const entry of journal.entries.slice(0, lastIdx + 1)) {
-    const sql = readFileSync(join(migrationsFolder, `${entry.tag}.sql`), 'utf8')
-    for (const statement of sql.split('--> statement-breakpoint')) {
-      const trimmed = statement.trim()
-      if (trimmed.length > 0) sqlite.exec(trimmed)
-    }
-  }
-
-  // Mirrors the table drizzle's migrator creates for itself, with one row
-  // dated at the last migration we just ran by hand — `migrate()` only looks
-  // at the newest `created_at` to decide where to resume.
-  sqlite.exec(
-    'CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)',
-  )
-  sqlite.exec(
-    `INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('fixture', ${journal.entries[lastIdx]!.when})`,
-  )
-}
+import { seedPreMigrationDb } from '../helpers/pre-migration-db.ts'
 
 describe('default-tenant backfill migration', () => {
   it('seeds exactly one tenant labelled Default', () => {

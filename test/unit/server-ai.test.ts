@@ -272,13 +272,13 @@ describe('POST /api/ai/dry-run', () => {
   })
 
   it('tests the version it was given rather than the active one', async () => {
-    const active = createPromptVersion(ctx.db, {
+    const active = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'analysis.system',
       locale: 'en',
       body: 'The active prompt.',
       activate: true,
     })
-    const draft = createPromptVersion(ctx.db, {
+    const draft = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'analysis.system',
       locale: 'en',
       body: 'The draft under test.',
@@ -306,7 +306,7 @@ describe('POST /api/ai/dry-run', () => {
   })
 
   it('refuses a narrative prompt sent to the analysis pass', async () => {
-    const narrative = createPromptVersion(ctx.db, {
+    const narrative = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'narrative.system',
       locale: 'en',
       body: 'Write the month up.',

@@ -10,10 +10,15 @@
 import { describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { auditLog, tenantIntegrations, users } from '../../src/db/schema.ts'
+import { auditLog, prompts, tenantIntegrations, users } from '../../src/db/schema.ts'
 import { allTenantIds, getSoleTenantId } from '../../src/db/tenant.ts'
 import { createInvite } from '../../src/domain/tenant/invites.ts'
 import { createTenantAndOwner, redeemInviteAsViewer } from '../../src/domain/tenant/provisioning.ts'
+import {
+  DEFAULT_PROMPTS,
+  PROMPT_KEYS,
+  resolvePrompt,
+} from '../../src/domain/ai/prompts.ts'
 
 function freshDb(): ReturnType<typeof createTestDb> {
   const ctx = createTestDb()
@@ -41,6 +46,12 @@ describe('createTenantAndOwner', () => {
         .all()
         .find((row) => row.tenantId === owner.tenantId)
       expect(integrations).toBeDefined()
+
+      const seeded = db.select().from(prompts).all().filter((row) => row.tenantId === owner.tenantId)
+      expect(seeded).toHaveLength(PROMPT_KEYS.length)
+      for (const key of PROMPT_KEYS) {
+        expect(resolvePrompt(db, owner.tenantId, key, 'nl').body).toBe(DEFAULT_PROMPTS[key])
+      }
 
       const entry = db.select().from(auditLog).all().find((row) => row.action === 'tenant.create')
       expect(entry?.entityRef).toBe(owner.tenantId)

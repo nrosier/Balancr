@@ -204,15 +204,16 @@ function monthToRun(db: Db, tenantId: string, asked: unknown): string {
  */
 function dryRunPrompt(
   db: Db,
+  tenantId: string,
   locale: string,
   promptId: string | undefined,
 ): { id: string | null; version: number } {
   if (promptId === undefined) {
-    const active = resolvePrompt(db, 'analysis.system', locale)
+    const active = resolvePrompt(db, tenantId, 'analysis.system', locale)
     return { id: active.id, version: active.version }
   }
 
-  const row = loadPrompt(db, promptId)
+  const row = loadPrompt(db, tenantId, promptId)
   if (row === null) throw notFound('No such prompt version.')
   if (row.key !== 'analysis.system') {
     throw badRequest('That is not an analysis prompt.', { key: row.key })
@@ -316,7 +317,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     const body = parseBody(dryRunRequest, request.body)
     const locale = body.locale ?? user.locale
     const month = monthToRun(db, user.tenantId, body.month)
-    const prompt = dryRunPrompt(db, locale, body.promptId)
+    const prompt = dryRunPrompt(db, user.tenantId, locale, body.promptId)
 
     const outcome = await runAnalysis(db, user.tenantId, {
       month,

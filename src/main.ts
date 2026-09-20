@@ -19,9 +19,9 @@
  *     tenant-configured hosts from the database, which does not exist until the
  *     migrations in step 2 have run. Nothing before this point ever calls
  *     `fetch`, so nothing is unguarded in between.
- *  5. the built-in prompts are seeded, so a fresh database has an active,
- *     inspectable prompt rather than a hidden constant. Idempotent, and it never
- *     touches a prompt someone has edited.
+ *  5. the built-in prompts are seeded per tenant, so every household has an active,
+ *     inspectable prompt rather than a hidden or shared constant. Idempotent, and it
+ *     never touches a prompt someone has edited.
  *  6. i18n initialises before the first render or cron digest, which have no
  *     request context to fall back on.
  *  7. the scheduler starts last, once everything it needs is up. It ticks
@@ -36,6 +36,7 @@ import { closeAllActual } from './adapters/actual/client.ts'
 import { config, configSummary } from './config.ts'
 import { applyMigrations } from './db/apply-migrations.ts'
 import { closeDatabase, db } from './db/index.ts'
+import { allTenantIds } from './db/tenant.ts'
 import { importEnvIntegrationsOnce } from './db/tenant-integrations.ts'
 import { seedPrompts } from './domain/ai/prompts.ts'
 import {
@@ -143,7 +144,10 @@ async function main(): Promise<void> {
   // has fetched yet. `egress.ts` states plainly what this does and does not cover.
   installEgressGuard(config.EGRESS_MODE, db)
 
-  const seeded = seedPrompts(db)
+  const seeded = allTenantIds(db).reduce(
+    (count, tenantId) => count + seedPrompts(db, tenantId),
+    0,
+  )
   if (seeded > 0) log.info({ prompts: seeded }, 'seeded built-in prompts')
 
   await initI18n()
