@@ -36,6 +36,7 @@ import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import { createPromptVersion, loadActivePrompt, resolvePrompt } from '../../src/domain/ai/prompts.ts'
+import { recordRun } from '../../src/domain/ai/runs.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -231,6 +232,24 @@ describe('GET /api/settings', () => {
     const res = await get('/api/settings', viewer)
     expect(res.statusCode).toBe(200)
     expect(res.json<Settings>().profile.role).toBe('viewer')
+  })
+
+  it("shows only the signed-in tenant's AI spend history (#411)", async () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    const capped = (payloadHash: string) => ({
+      kind: 'findings' as const,
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: '2026-09' },
+      payloadHash,
+      status: 'capped' as const,
+    })
+    recordRun(ctx.db, tenantId, capped('own-run'))
+    recordRun(ctx.db, otherTenantId, capped('other-run'))
+
+    const settings = (await get('/api/settings')).json<Settings>()
+    expect(settings.ai.history).toHaveLength(1)
+    expect(settings.ai.history[0]?.runCount).toBe(1)
   })
 })
 

@@ -93,6 +93,10 @@ function at(id: string, month: string): string {
 const runIn = (month: string, overrides: Partial<RecordRun> = {}): string =>
   at(recordRun(db, tenantId, run(overrides)), month)
 
+/** A run for an explicitly chosen tenant, used by isolation regressions. */
+const runFor = (runTenantId: string, month: string, overrides: Partial<RecordRun> = {}): string =>
+  at(recordRun(db, runTenantId, run(overrides)), month)
+
 describe('recordRun', () => {
   it('stores the payload verbatim, which is what makes the audit possible', () => {
     const payload = { month: '2026-03', categories: [{ label: 'c1', name: 'Groceries' }] }
@@ -363,7 +367,7 @@ describe('recentRuns', () => {
 
 describe('ai_spend_monthly', () => {
   it('is zeroes for a month with no runs, not a missing row', () => {
-    expect(loadSpendMonth(db, '2026-03')).toEqual({
+    expect(loadSpendMonth(db, tenantId, '2026-03')).toEqual({
       month: '2026-03',
       runCount: 0,
       inputTokens: 0,
@@ -377,7 +381,7 @@ describe('ai_spend_monthly', () => {
     runIn('2026-03')
     runIn('2026-03')
 
-    const month = loadSpendMonth(db, '2026-03')
+    const month = loadSpendMonth(db, tenantId, '2026-03')
     expect(month.runCount).toBe(2)
     expect(month.inputTokens).toBe(6_000)
     expect(month.outputTokens).toBe(1_000)
@@ -392,7 +396,7 @@ describe('ai_spend_monthly', () => {
     runIn('2026-03', { status: 'error' })
     at(recordRun(db, tenantId, refused('capped')), '2026-03')
 
-    const month = loadSpendMonth(db, '2026-03')
+    const month = loadSpendMonth(db, tenantId, '2026-03')
     expect(month.runCount).toBe(2)
     expect(month.costMicroEur).toBe(
       costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
@@ -404,8 +408,8 @@ describe('ai_spend_monthly', () => {
     runIn('2026-03')
     runIn('2026-03')
 
-    expect(loadSpendMonth(db, '2026-02').runCount).toBe(1)
-    expect(loadSpendMonth(db, '2026-03').runCount).toBe(2)
+    expect(loadSpendMonth(db, tenantId, '2026-02').runCount).toBe(1)
+    expect(loadSpendMonth(db, tenantId, '2026-03').runCount).toBe(2)
   })
 
   it('groups by the UTC month, the same rule spendMonthOf uses', () => {
@@ -414,8 +418,8 @@ describe('ai_spend_monthly', () => {
     const id = recordRun(db, tenantId, run())
     backdate(id, new Date('2026-02-28T23:30:00Z'))
 
-    expect(loadSpendMonth(db, '2026-02').runCount).toBe(1)
-    expect(loadSpendMonth(db, '2026-03').runCount).toBe(0)
+    expect(loadSpendMonth(db, tenantId, '2026-02').runCount).toBe(1)
+    expect(loadSpendMonth(db, tenantId, '2026-03').runCount).toBe(0)
     expect(spendMonthOf(new Date('2026-02-28T23:30:00Z'))).toBe('2026-02')
   })
 
@@ -424,7 +428,7 @@ describe('ai_spend_monthly', () => {
     runIn('2026-02')
     runIn('2026-03')
 
-    expect(loadSpendHistory(db).map((month) => month.month)).toEqual([
+    expect(loadSpendHistory(db, tenantId).map((month) => month.month)).toEqual([
       '2026-03',
       '2026-02',
       '2026-01',
@@ -436,7 +440,26 @@ describe('ai_spend_monthly', () => {
     runIn('2026-02')
     runIn('2026-03')
 
-    expect(loadSpendHistory(db, 2).map((month) => month.month)).toEqual(['2026-03', '2026-02'])
+    expect(loadSpendHistory(db, tenantId, 2).map((month) => month.month)).toEqual([
+      '2026-03',
+      '2026-02',
+    ])
+  })
+
+  it("excludes another tenant's runs from the same months (#411)", () => {
+    const otherTenantId = createSecondTenant(db)
+    runFor(tenantId, '2026-02', { costMicroEurOverride: eurToMicroEur(1) })
+    runFor(tenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(2) })
+    runFor(otherTenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(9) })
+
+    expect(loadSpendHistory(db, tenantId)).toMatchObject([
+      { month: '2026-03', runCount: 1, costMicroEur: eurToMicroEur(2) },
+      { month: '2026-02', runCount: 1, costMicroEur: eurToMicroEur(1) },
+    ])
+    expect(loadSpendMonth(db, otherTenantId, '2026-03')).toMatchObject({
+      runCount: 1,
+      costMicroEur: eurToMicroEur(9),
+    })
   })
 })
 
@@ -490,6 +513,40 @@ describe('budgetState', () => {
   it('converts to euros for a banner', () => {
     runIn('2026-03', { costMicroEurOverride: eurToMicroEur(2.5) })
     expect(budgetEur(budgetState(db, tenantId, now))).toEqual({ spent: 2.5, budget: 15 })
+  })
+
+  it("does not let another tenant's exhausted budget block this tenant (#411)", () => {
+    const otherTenantId = createSecondTenant(db)
+    db.update(tenantIntegrations)
+      .set({ geminiMonthlyBudgetEurMicro: eurToMicroEur(1) })
+      .where(eq(tenantIntegrations.tenantId, otherTenantId))
+      .run()
+    runFor(otherTenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(1) })
+
+    expect(budgetState(db, otherTenantId, now)).toMatchObject({
+      budgetMicroEur: eurToMicroEur(1),
+      remainingMicroEur: 0,
+      exceeded: true,
+    })
+    expect(budgetState(db, tenantId, now)).toMatchObject({
+      budgetMicroEur: eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR),
+      spentMicroEur: 0,
+      remainingMicroEur: eurToMicroEur(config.GEMINI_MONTHLY_BUDGET_EUR),
+      exceeded: false,
+    })
+  })
+
+  it("changes one tenant's allowance only when that tenant spends (#411)", () => {
+    const otherTenantId = createSecondTenant(db)
+    const before = budgetState(db, tenantId, now)
+
+    runFor(otherTenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(4) })
+    expect(budgetState(db, tenantId, now)).toEqual(before)
+
+    runFor(tenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(3) })
+    expect(budgetState(db, tenantId, now).remainingMicroEur).toBe(
+      before.remainingMicroEur - eurToMicroEur(3),
+    )
   })
 })
 

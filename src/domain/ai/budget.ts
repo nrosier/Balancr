@@ -16,7 +16,7 @@
  * Month-to-date comes from `ai_spend_monthly`, a view over `ai_runs` — the ledger
  * is the only place cost is stored, so there is nothing to reconcile.
  */
-import { eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { aiSpendMonthly } from '../../db/schema.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
@@ -55,8 +55,12 @@ const EMPTY_MONTH = (month: string): SpendMonth => ({
 })
 
 /** One month's totals, straight off the view. Zeroes for a month with no runs. */
-export function loadSpendMonth(db: Db, month: string): SpendMonth {
-  const row = db.select().from(aiSpendMonthly).where(eq(aiSpendMonthly.month, month)).get()
+export function loadSpendMonth(db: Db, tenantId: string, month: string): SpendMonth {
+  const row = db
+    .select()
+    .from(aiSpendMonthly)
+    .where(and(eq(aiSpendMonthly.tenantId, tenantId), eq(aiSpendMonthly.month, month)))
+    .get()
   if (row === undefined) return EMPTY_MONTH(month)
   return {
     month: row.month,
@@ -69,14 +73,14 @@ export function loadSpendMonth(db: Db, month: string): SpendMonth {
 }
 
 /** Every month with spend, newest first — the history behind the spend page. */
-export function loadSpendHistory(db: Db, limit = 24): SpendMonth[] {
+export function loadSpendHistory(db: Db, tenantId: string, limit = 24): SpendMonth[] {
   return db
     .select()
     .from(aiSpendMonthly)
-    .orderBy(aiSpendMonthly.month)
+    .where(eq(aiSpendMonthly.tenantId, tenantId))
+    .orderBy(desc(aiSpendMonthly.month))
+    .limit(limit)
     .all()
-    .slice(-limit)
-    .reverse()
 }
 
 export interface BudgetState {
@@ -102,7 +106,7 @@ export interface BudgetState {
  */
 export function budgetState(db: Db, tenantId: string, now: Date = new Date()): BudgetState {
   const month = spendMonthOf(now)
-  const spentMicroEur = loadSpendMonth(db, month).costMicroEur
+  const spentMicroEur = loadSpendMonth(db, tenantId, month).costMicroEur
   const budgetMicroEur = resolvedIntegrations(db, tenantId).gemini.budgetEurMicro
 
   return {
