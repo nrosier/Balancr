@@ -400,6 +400,34 @@ describe('PATCH /api/settings/integrations/ai', () => {
     expect(decryptField(row(ctx.db).aiApiKeyEnc as string)).toBe('openai-key')
   })
 
+  it('stores the Anthropic preset while keeping its key out of responses and audit records', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'anthropic',
+      apiKey: 'anthropic-key',
+      googleCloudProject: null,
+      baseUrl: null,
+      modelFast: 'claude-sonnet-5',
+      modelDeep: 'claude-opus-5',
+      modelPrices: {},
+      budgetEur: 25,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).not.toContain('anthropic-key')
+    expect(res.json<Settings>().integrations.ai).toMatchObject({
+      provider: 'anthropic',
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKeyConfigured: true,
+      modelFast: 'claude-sonnet-5',
+      modelDeep: 'claude-opus-5',
+    })
+    expect(row(ctx.db).aiBaseUrl).toBeNull()
+    expect(row(ctx.db).aiApiKeyEnc).not.toBe('anthropic-key')
+    expect(decryptField(row(ctx.db).aiApiKeyEnc as string)).toBe('anthropic-key')
+    expect(lastAudit(ctx.db)?.beforeJson).not.toContain('anthropic-key')
+    expect(lastAudit(ctx.db)?.afterJson).not.toContain('anthropic-key')
+  })
+
   it('refuses to override a certified preset URL', async () => {
     const res = await patch('/api/settings/integrations/ai', {
       provider: 'xai',
@@ -792,6 +820,93 @@ describe('POST /api/settings/integrations/ai/test', () => {
       type: 'json_schema',
       json_schema: { strict: true },
     })
+  })
+
+  it('runs Anthropic\'s native structured-output probe with a candidate key', async () => {
+    const fetch = vi.fn(async (_input: Parameters<typeof globalThis.fetch>[0], _init?: RequestInit) => Response.json({
+      model: 'claude-sonnet-5-20260901',
+      content: [{ type: 'text', text: '{"balancr_probe":true}' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'anthropic',
+      apiKey: 'candidate-key',
+      baseUrl: null,
+      model: 'claude-sonnet-5',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toEqual({ ok: true, message: null })
+    const [url, init] = fetch.mock.calls[0]!
+    expect(url).toBe('https://api.anthropic.com/v1/messages')
+    expect(new Headers(init?.headers).get('x-api-key')).toBe('candidate-key')
+    expect(JSON.parse(String(init?.body)).output_config).toEqual({
+      format: {
+        type: 'json_schema',
+        schema: expect.objectContaining({ required: ['balancr_probe'] }),
+      },
+    })
+  })
+
+  it('uses a stored Anthropic key only when Anthropic is the stored provider', async () => {
+    const fetch = vi.fn(async (_input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => Response.json({
+      model: 'claude-sonnet-5',
+      content: [{ type: 'text', text: '{"balancr_probe":true}' }],
+      stop_reason: 'end_turn',
+      usage: {},
+      seenKey: new Headers(init?.headers).get('x-api-key'),
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const wrongProvider = await post('/api/settings/integrations/ai/test', {
+      provider: 'anthropic',
+      baseUrl: null,
+      model: 'claude-sonnet-5',
+    })
+    expect(wrongProvider.statusCode).toBe(400)
+    expect(fetch).not.toHaveBeenCalled()
+
+    await patch('/api/settings/integrations/ai', {
+      provider: 'anthropic',
+      apiKey: 'stored-anthropic-key',
+      googleCloudProject: null,
+      baseUrl: null,
+      modelFast: 'claude-sonnet-5',
+      modelDeep: 'claude-opus-5',
+      modelPrices: {},
+      budgetEur: 15,
+    })
+    const sameProvider = await post('/api/settings/integrations/ai/test', {
+      provider: 'anthropic',
+      baseUrl: null,
+      model: 'claude-sonnet-5',
+    })
+
+    expect(sameProvider.statusCode).toBe(200)
+    expect(new Headers(fetch.mock.calls[0]![1]?.headers).get('x-api-key')).toBe('stored-anthropic-key')
+  })
+
+  it('reports when Anthropic ignores the required JSON schema', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      model: 'claude-sonnet-5',
+      content: [{ type: 'text', text: 'unsupported' }],
+      stop_reason: 'end_turn',
+      usage: {},
+    })))
+
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'anthropic',
+      apiKey: 'candidate-key',
+      baseUrl: null,
+      model: 'claude-sonnet-5',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<IntegrationTest>()).toMatchObject({ ok: false })
+    expect(res.json<IntegrationTest>().message).toContain('Structured-output capability probe failed')
   })
 
   it('fails clearly when an endpoint ignores the strict response schema', async () => {

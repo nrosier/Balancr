@@ -25,8 +25,8 @@ Actual and Ghostfolio each hold half the picture, and neither can reason across
 the two. Net worth, savings rate and "can I afford to invest more this month"
 all need both — which today means a spreadsheet, every month.
 
-Balancr joins them, computes the numbers itself, and asks Gemini only to explain
-and prioritise what it already knows.
+Balancr joins them, computes the numbers itself, and asks the selected AI model
+only to explain and prioritise what it already knows.
 
 ## What it does
 
@@ -58,8 +58,8 @@ and prioritise what it already knows.
 ## The rule that makes it trustworthy
 
 **The model never computes a number.** Every figure is aggregated in TypeScript
-and SQL from your own data; Gemini receives pre-computed facts and returns
-*codes*, not prose:
+and SQL from your own data; the selected provider receives pre-computed facts and
+returns *codes*, not prose:
 
 ```json
 { "code": "above_baseline", "category_id": 42, "value": 0.18, "severity": "warn" }
@@ -116,6 +116,18 @@ operator-approved custom host; an unapproved host is refused rather than reviewe
   not prove strict JSON-schema support, so saving credentials and models is separate
   from the explicit, minimal-cost structured-output capability test. A custom hostname
   must first be listed in `EGRESS_EXTRA_HOSTS`; a tenant setting never widens egress.
+- **Anthropic Claude.** The Claude preset uses Anthropic's first-party
+  [Messages API](https://platform.claude.com/docs/en/api/messages), not its
+  OpenAI-compatibility layer. Structured responses use native JSON schemas and are
+  still parsed and validated locally. Only the stable system instruction is eligible
+  for prompt caching; changing instructions and financial data stay in the user
+  message. Anthropic's current commercial policy says API prompts and responses are
+  not retained by default, subject to documented abuse-monitoring and legal-hold
+  exceptions. Prompt-cache key/value representations and hashes remain in memory for
+  their TTL, and structured-output schemas may be cached for up to 24 hours. Zero Data
+  Retention depends on the organisation's Anthropic arrangement. Check Anthropic's
+  current [data-retention documentation](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)
+  before choosing it for sensitive financial data.
 - **Once a night, and never on a page load.** The nightly pass runs at
   `JOBS_NIGHTLY_HOUR` (03:00 local) and is the only thing that spends money on its own.
   Opening Insights makes no call — the findings, the narrative and the queues were
@@ -130,9 +142,9 @@ operator-approved custom host; an unapproved host is refused rather than reviewe
   cannot know the dishwasher broke. Two passes see it — the budget nudge, when it sizes
   next month's envelopes, and the month in words, so it attributes a movement to your
   explanation instead of calling it unexplained drift. The findings pass is sent none of
-  it. Whatever you type there is sent as typed, so it is the one field where what reaches
-  Google is your decision rather than the redactor's; leave the box empty and nothing
-  about the month is described in anyone's words but the figures'.
+  it. Whatever you type there is sent as typed, so it is the one field where what
+  reaches the selected provider is your decision rather than the redactor's; leave the
+  box empty and nothing about the month is described in anyone's words but the figures'.
 - **Three answers per envelope, and you pick each one.** Settings → Benchmark →
   Categories has a "Sent to the AI" column with one control per envelope:
   - **Name and amounts** — the default, and what every envelope did before this column
@@ -191,8 +203,9 @@ It is a shoulder-check, not a security boundary:
 
 ## Quick start
 
-Requires an existing Actual Budget server, a Ghostfolio instance and a Gemini
-API key (a paid one — the free tier may use prompts to improve Google's models).
+Requires an existing Actual Budget server, a Ghostfolio instance and an initial Gemini
+API key (a paid one — the free tier may use prompts to improve Google's models). The AI
+provider can then be changed per tenant in Settings, including to native Anthropic Claude.
 
 ```bash
 git clone https://github.com/nrosier/Balancr.git
@@ -932,36 +945,38 @@ docker build -t balancr:test . && scripts/verify-image.sh balancr:test
 ### Egress
 
 Balancr refuses to connect to a host nobody configured. The allowlist is derived from
-`.env` — Actual, Ghostfolio, the OIDC issuer and Google's Gemini endpoint — so there is
-no second list to keep in step: moving Ghostfolio to a new hostname needs no edit here.
+`.env` and tenant integration rows — Actual, Ghostfolio, the OIDC issuer and the fixed
+host for each selected certified AI provider — so there is no second list to keep in
+step: moving Ghostfolio to a new hostname needs no edit here.
 
 | | |
 |---|---|
 | `EGRESS_MODE=enforce` | the default: refuse the connection and log the host |
 | `EGRESS_MODE=warn` | allow it and log the host — how to see what a new dependency wants before deciding whether it should have it |
 | `EGRESS_MODE=off` | leave `fetch` alone |
-| `EGRESS_EXTRA_HOSTS` | hostnames to allow beyond the four, for an outbound proxy |
+| `EGRESS_EXTRA_HOSTS` | additional hostnames to allow, including an outbound proxy or approved custom AI endpoint |
 
 A denial logs the host and never the path or query, because on an exfiltration attempt
 the query string *is* the data being exfiltrated.
 
 What this defends against is a dependency rather than a network. This process holds the
-Actual password, the Ghostfolio token, the Gemini key and a database of your finances,
+Actual password, the Ghostfolio token, the selected AI key and a database of your finances,
 and the realistic attack on that is a compromised transitive package posting the lot
 somewhere. It wraps global `fetch`, so it covers the Ghostfolio adapter, the Gemini SDK,
-`openid-client` and anything else using the standard API; it does **not** cover a
-library that reaches for `node:http` directly, a native module, or a child process, and
-it is not a sandbox — code running in this process can put the original `fetch` back.
+the native Anthropic client, `openid-client` and anything else using the standard API;
+it does **not** cover a library that reaches for `node:http` directly, a native module,
+or a child process, and it is not a sandbox — code running in this process can put the
+original `fetch` back.
 So: a real barrier against accidental and casual exfiltration, an audit trail for
 anything unexpected, and no claim to stop an attacker who already runs code here. That
 last one is what the network layer is for, and it is worth having as well: Docker
-networks cannot express "these four hosts", so that version of the rule lives on the
-host firewall or in whatever egress gateway the network already has.
+networks cannot express this application-level host allowlist, so that version of the
+rule lives on the host firewall or in whatever egress gateway the network already has.
 
 ### The `.env` file
 
-It holds the Actual password, the Ghostfolio token, the Gemini key, the session secret
-and the backup passphrase — the whole set, in plain text. `chmod 600 .env`, which the
+It holds the Actual password, the Ghostfolio token, the initial Gemini key, the session
+secret and the backup passphrase — the whole set, in plain text. `chmod 600 .env`, which the
 quick start does, and which Balancr checks at every start: a group- or world-readable
 file gets one warning naming the mode and the command that fixes it. A warning, not a
 refusal — the mode of a file is not a reason to leave someone without their budget page.
@@ -983,7 +998,8 @@ adapters ─┼── actual/      @actual-app/api, sole owner of the sync dataD
           ├── ghostfolio/  REST, capability-probed
           └── ai/          provider-neutral call, usage and pricing boundary
                 ├── gemini/  native AI Studio and Vertex implementation
-                └── openai-compatible/  OpenAI, xAI and approved custom endpoints
+                ├── openai-compatible/  OpenAI, xAI and approved custom endpoints
+                └── anthropic/  native Claude Messages API
 ```
 
 One container, modular inside. The one hard constraint is that a single process

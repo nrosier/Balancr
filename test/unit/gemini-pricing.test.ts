@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  ANTHROPIC_MODEL_PRICES,
   costMicroEur,
   estimateCostMicroEur,
   eurToMicroEur,
@@ -66,6 +67,7 @@ describe('priceFor', () => {
       ...Object.values(MODEL_PRICES),
       ...Object.values(OPENAI_MODEL_PRICES),
       ...Object.values(XAI_MODEL_PRICES),
+      ...Object.values(ANTHROPIC_MODEL_PRICES),
       FALLBACK_PRICE,
     ]) {
       expect(entry.verified).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -76,6 +78,17 @@ describe('priceFor', () => {
     expect(priceFor('openai', 'gpt-5.4-mini').price).toBe(OPENAI_MODEL_PRICES['gpt-5.4-mini'])
     expect(priceFor('openai', 'gpt-5.4-2026-09-01').price).toBe(OPENAI_MODEL_PRICES['gpt-5.4'])
     expect(priceFor('xai', 'grok-4.3-latest').price).toBe(XAI_MODEL_PRICES['grok-4.3'])
+  })
+
+  it('prices current native Claude models and every cache bin', () => {
+    const price = ANTHROPIC_MODEL_PRICES['claude-sonnet-5']!
+    expect(priceFor('anthropic', 'claude-sonnet-5-20260901')).toEqual({ price, known: true })
+    expect(costMicroEur('anthropic', 'claude-sonnet-5', {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cachedTokens: 1_000_000,
+      cacheWriteTokens: 1_000_000,
+    })).toBe(price.input + price.output + price.cachedInput + price.cacheWriteInput)
   })
 
   it('accepts explicit zero-cost custom models without falling through to the fallback', () => {

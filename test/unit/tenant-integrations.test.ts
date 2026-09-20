@@ -145,6 +145,16 @@ describe('integrationAvailability', () => {
     expect(integrationAvailability(db2, tenantId2).ai).toBe(true)
   })
 
+  it('uses the tenant-scoped API key to determine Anthropic availability', () => {
+    const db = freshDb()
+    const tenantId = getSoleTenantId(db)
+    insertRow(db, tenantId, { aiProvider: 'anthropic', aiApiKeyEnc: null })
+    expect(integrationAvailability(db, tenantId).ai).toBe(false)
+
+    insertRow(db, tenantId, { aiProvider: 'anthropic', aiApiKeyEnc: encryptField('claude-key') })
+    expect(integrationAvailability(db, tenantId).ai).toBe(true)
+  })
+
   it('reports ai unavailable for a vertex row with no project, available once one is set', () => {
     const db = freshDb()
     const tenantId = getSoleTenantId(db)

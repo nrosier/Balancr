@@ -272,14 +272,17 @@ describe('findReusableRun', () => {
     expect(findReusableRun(db, tenantId, key())?.id).toBe(id)
   })
 
-  it('never reuses a run from another provider', () => {
-    recordRun(db, tenantId, source())
-    db.update(tenantIntegrations)
-      .set({ aiProvider: 'gemini-vertex', googleCloudProject: 'test-project' })
-      .where(eq(tenantIntegrations.tenantId, tenantId))
-      .run()
+  it('keeps reusable runs scoped between Gemini, OpenAI-compatible and Anthropic', () => {
+    const providers = ['gemini-aistudio', 'openai-compatible', 'anthropic'] as const
+    const ids = new Map(providers.map((provider) => [provider, recordRun(db, tenantId, source({ provider }))]))
 
-    expect(findReusableRun(db, tenantId, key())).toBeNull()
+    for (const provider of providers) {
+      db.update(tenantIntegrations)
+        .set({ aiProvider: provider })
+        .where(eq(tenantIntegrations.tenantId, tenantId))
+        .run()
+      expect(findReusableRun(db, tenantId, key())?.id).toBe(ids.get(provider))
+    }
   })
 
   it.each([

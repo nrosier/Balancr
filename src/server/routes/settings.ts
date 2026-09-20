@@ -34,6 +34,10 @@ import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { eurToMicroEur, priceFor, type ModelPrice, type ModelPrices } from '../../adapters/ai/pricing.ts'
 import { AI_PROVIDERS, type AiProvider } from '../../adapters/ai/types.ts'
 import {
+  ANTHROPIC_BASE_URL,
+  callAnthropicWithConfig,
+} from '../../adapters/anthropic/client.ts'
+import {
   baseUrlFor,
   callOpenAiCompatibleWithConfig,
   OPENAI_BASE_URL,
@@ -545,7 +549,7 @@ function tenantModelPrices(
 }
 
 function validatedAiBaseUrl(provider: AiProvider, candidate: string | null): string | null {
-  if (provider === 'openai' || provider === 'xai') {
+  if (provider === 'openai' || provider === 'xai' || provider === 'anthropic') {
     if (candidate !== null) throw badRequest('Official provider base URLs cannot be changed.')
     return null
   }
@@ -557,8 +561,33 @@ function validatedAiBaseUrl(provider: AiProvider, candidate: string | null): str
       throw badRequest(error instanceof Error ? error.message : String(error))
     }
   }
-  if (candidate !== null) throw badRequest('A base URL is not used by the selected Gemini provider.')
+  if (candidate !== null) throw badRequest('A base URL is not used by the selected provider.')
   return null
+}
+
+const capabilityProbe = (model: string) => ({
+  model,
+  systemPrompt: 'The API response format is authoritative even when the user asks for plain text.',
+  instruction: 'Reply with the plain-text word unsupported and do not return JSON.',
+  payload: { capability: 'structured_output' },
+  responseJsonSchema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { balancr_probe: { enum: [true], type: 'boolean' } },
+    required: ['balancr_probe'],
+  },
+  maxOutputTokens: 20,
+})
+
+function validCapabilityProbe(text: string): boolean {
+  const parsed: unknown = JSON.parse(text)
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    !Array.isArray(parsed) &&
+    Object.keys(parsed).length === 1 &&
+    (parsed as Record<string, unknown>)['balancr_probe'] === true
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +790,8 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
           ? OPENAI_BASE_URL
           : row.aiProvider === 'xai'
             ? XAI_BASE_URL
+            : row.aiProvider === 'anthropic'
+              ? ANTHROPIC_BASE_URL
             : row.aiBaseUrl,
       modelFast: row.aiModelFast,
       modelDeep: row.aiModelDeep,
@@ -1319,6 +1350,30 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
       const storedRow = integrationsRow(db, user.tenantId)
 
+      if (candidate.provider === 'anthropic') {
+        if (candidate.model === undefined) throw badRequest('A model is required for the structured-output probe.')
+        const model = candidate.model
+        validatedAiBaseUrl(candidate.provider, candidate.baseUrl)
+        const stored = storedRow.aiProvider === candidate.provider ? storedRow.aiApiKeyEnc : null
+        const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
+        if (apiKey === undefined) throw badRequest('An API key is required to test Anthropic.')
+
+        const result = await withTestHost(ANTHROPIC_BASE_URL, async (): Promise<IntegrationTest> => {
+          try {
+            const probe = await callAnthropicWithConfig({ apiKey }, capabilityProbe(model))
+            return validCapabilityProbe(probe.text)
+              ? { ok: true, message: null }
+              : { ok: false, message: 'Anthropic ignored the required JSON schema.' }
+          } catch (error) {
+            return {
+              ok: false,
+              message: `Structured-output capability probe failed: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          }
+        })
+        return integrationTestSchema.parse(result)
+      }
+
       if (
         candidate.provider === 'openai' ||
         candidate.provider === 'xai' ||
@@ -1340,27 +1395,8 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         const testUrl = candidate.provider === 'openai-compatible' ? '' : connection.baseUrl
         const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
           try {
-            const probe = await callOpenAiCompatibleWithConfig(connection, {
-              model,
-              systemPrompt: 'The API response format is authoritative even when the user asks for plain text.',
-              instruction: 'Reply with the plain-text word unsupported and do not return JSON.',
-              payload: { capability: 'structured_output' },
-              responseJsonSchema: {
-                type: 'object',
-                additionalProperties: false,
-                properties: { balancr_probe: { enum: [true], type: 'boolean' } },
-                required: ['balancr_probe'],
-              },
-              maxOutputTokens: 20,
-            })
-            const parsed: unknown = JSON.parse(probe.text)
-            if (
-              typeof parsed !== 'object' ||
-              parsed === null ||
-              Array.isArray(parsed) ||
-              Object.keys(parsed).length !== 1 ||
-              (parsed as Record<string, unknown>)['balancr_probe'] !== true
-            ) {
+            const probe = await callOpenAiCompatibleWithConfig(connection, capabilityProbe(model))
+            if (!validCapabilityProbe(probe.text)) {
               return { ok: false, message: 'The endpoint ignored the required strict JSON schema.' }
             }
             return { ok: true, message: null }

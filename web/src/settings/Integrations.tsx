@@ -402,6 +402,8 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const secretAvailable = apiKey !== '' || storedKeyApplies
   const isCustom = current.provider === 'openai-compatible'
   const isOfficialCompatible = current.provider === 'openai' || current.provider === 'xai'
+  const isAnthropic = current.provider === 'anthropic'
+  const hasFixedEndpoint = isOfficialCompatible || isAnthropic
   const canTest =
     current.provider === 'gemini-vertex'
       ? googleCloudProject !== ''
@@ -497,11 +499,16 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
                     ? 'https://api.openai.com/v1'
                     : provider === 'xai'
                       ? 'https://api.x.ai/v1'
+                      : provider === 'anthropic'
+                        ? 'https://api.anthropic.com/v1'
                       : provider === 'openai-compatible'
                         ? ''
                         : '',
                 ...(provider === 'openai' ? { modelFast: 'gpt-5.4-mini', modelDeep: 'gpt-5.4' } : {}),
                 ...(provider === 'xai' ? { modelFast: 'grok-4.3', modelDeep: 'grok-4.3' } : {}),
+                ...(provider === 'anthropic'
+                  ? { modelFast: 'claude-sonnet-5', modelDeep: 'claude-opus-5' }
+                  : {}),
                 ...(provider === 'gemini-aistudio' || provider === 'gemini-vertex'
                   ? { modelFast: 'gemini-3.7-flash', modelDeep: 'gemini-3.1-pro-preview' }
                   : {}),
@@ -513,6 +520,7 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
             <option value="openai">{t('settings:integrations.ai.provider.openai')}</option>
             <option value="xai">{t('settings:integrations.ai.provider.xai')}</option>
             <option value="openai-compatible">{t('settings:integrations.ai.provider.compatible')}</option>
+            <option value="anthropic">{t('settings:integrations.ai.provider.anthropic')}</option>
           </select>
         </div>
 
@@ -549,7 +557,7 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
           />
         </div> : null}
 
-        {isCustom || isOfficialCompatible ? <div className="field">
+        {isCustom || hasFixedEndpoint ? <div className="field">
           <label className="field__label" htmlFor="integrations-ai-base-url">
             {t('settings:integrations.ai.baseUrl')}
           </label>
@@ -559,7 +567,7 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
             type="url"
             autoComplete="off"
             value={current.baseUrl}
-            readOnly={isOfficialCompatible}
+            readOnly={hasFixedEndpoint}
             disabled={locked}
             onChange={(event) => edit({ baseUrl: event.target.value })}
           />
@@ -583,7 +591,7 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
           />
         </div>
 
-        {isCustom || isOfficialCompatible ? <fieldset className="field">
+        {isCustom || isOfficialCompatible || isAnthropic ? <fieldset className="field">
           <legend className="field__label">{t('settings:integrations.ai.prices')}</legend>
           <p className="panel__meta muted">{t('settings:integrations.ai.pricesHint')}</p>
           {selectedModels.map((model) => {
@@ -672,7 +680,7 @@ function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
           >
             {state.pending === 'ai-test'
               ? t('settings:integrations.testing')
-              : isCustom || isOfficialCompatible
+              : isCustom || isOfficialCompatible || isAnthropic
                 ? t('settings:integrations.ai.capabilityTest')
                 : t('settings:integrations.test')}
           </button>

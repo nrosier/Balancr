@@ -251,6 +251,7 @@
       "pricesHint": "Every selected model without a certified price needs an explicit price. Enter zero for a free local model.",
       "provider": {
         "aistudio": "Google AI Studio",
+        "anthropic": "Anthropic Claude",
         "compatible": "Custom OpenAI-compatible",
         "openai": "OpenAI",
         "vertex": "Vertex AI",

@@ -87,12 +87,31 @@ export const XAI_MODEL_PRICES: Record<string, ModelPrice> = {
   'grok-4.3': { input: 1_157_408, output: 2_314_815, cachedInput: 185_186, cacheWriteInput: 1_157_408, verified: '2026-09-20' },
 }
 
+/** First-party Claude API prices using the 5-minute cache-write tier. */
+export const ANTHROPIC_MODEL_PRICES: Record<string, ModelPrice> = {
+  'claude-sonnet-5': {
+    input: 1_851_852,
+    output: 9_259_260,
+    cachedInput: 185_186,
+    cacheWriteInput: 2_314_815,
+    verified: '2026-09-20',
+  },
+  'claude-opus-5': {
+    input: 4_629_630,
+    output: 23_148_149,
+    cachedInput: 462_963,
+    cacheWriteInput: 5_787_038,
+    verified: '2026-09-20',
+  },
+}
+
 export const PROVIDER_PRICES: Record<AiProvider, Record<string, ModelPrice>> = {
   'gemini-aistudio': MODEL_PRICES,
   'gemini-vertex': MODEL_PRICES,
   openai: OPENAI_MODEL_PRICES,
   xai: XAI_MODEL_PRICES,
   'openai-compatible': {},
+  anthropic: ANTHROPIC_MODEL_PRICES,
 }
 
 /**
@@ -103,10 +122,10 @@ export const PROVIDER_PRICES: Record<AiProvider, Record<string, ModelPrice>> = {
  * model was free as far as we knew".
  */
 export const FALLBACK_PRICE: ModelPrice = {
-  input: 2_314_815,
-  output: 13_888_889,
-  cachedInput: 289_000,
-  cacheWriteInput: 2_314_815,
+  input: 4_629_630,
+  output: 23_148_149,
+  cachedInput: 462_963,
+  cacheWriteInput: 5_787_038,
   verified: '2026-09-20',
 }
 

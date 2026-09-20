@@ -36,7 +36,11 @@ function freshDb(): Db {
 
 function insertIntegrations(
   db: Db,
-  urls: { actualServerUrl: string; ghostfolioUrl: string; aiProvider?: 'gemini-aistudio' | 'openai' | 'xai' | 'openai-compatible' },
+  urls: {
+    actualServerUrl: string
+    ghostfolioUrl: string
+    aiProvider?: 'gemini-aistudio' | 'openai' | 'xai' | 'openai-compatible' | 'anthropic'
+  },
 ): void {
   db.insert(tenantIntegrations)
     .values({
@@ -164,6 +168,14 @@ describe('the allowlist', () => {
       aiProvider: 'xai',
     })
     expect(allowedHosts(xaiDb).has('api.x.ai')).toBe(true)
+
+    const anthropicDb = freshDb()
+    insertIntegrations(anthropicDb, {
+      actualServerUrl: 'https://actual.example',
+      ghostfolioUrl: 'https://ghostfolio.example',
+      aiProvider: 'anthropic',
+    })
+    expect(allowedHosts(anthropicDb).has('api.anthropic.com')).toBe(true)
   })
 
   it('does not let a custom tenant base URL widen egress', async () => {
