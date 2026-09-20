@@ -228,6 +228,182 @@ describe('enforce', () => {
   })
 })
 
+describe('redirects (#412)', () => {
+  const urlOf = (input: Parameters<typeof fetch>[0]): string =>
+    typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+
+  it.each([
+    'http://127.0.0.1:3000/private',
+    'http://[::1]:3000/private',
+    'http://169.254.169.254/latest/meta-data',
+    'http://10.0.0.1/admin',
+    'http://192.168.1.1/admin',
+    'http://metadata.google.internal/computeMetadata/v1/',
+    'https://collector.evil.example/report',
+  ])('blocks an allowed host redirecting to %s', async (location) => {
+    const inner = vi.fn(async () =>
+      new Response(null, { status: 302, headers: { location } }),
+    )
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, EgressDeniedError } = await freshEgress()
+    installEgressGuard()
+
+    await expect(fetch('https://actual.test/start')).rejects.toThrow(EgressDeniedError)
+    // The redirect target was validated before a second socket could be opened.
+    expect(inner).toHaveBeenCalledOnce()
+  })
+
+  it('follows a relative and cross-host chain when every hop is allowed', async () => {
+    const inner = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = urlOf(input)
+      if (url === 'https://actual.test/start') {
+        return new Response(null, { status: 302, headers: { location: '/middle' } })
+      }
+      if (url === 'https://actual.test/middle') {
+        return new Response(null, {
+          status: 307,
+          headers: { location: 'https://ghostfolio.test/finish' },
+        })
+      }
+      return new Response('ok')
+    })
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard } = await freshEgress()
+    installEgressGuard()
+
+    const response = await fetch('https://actual.test/start')
+    expect(await response.text()).toBe('ok')
+    expect(inner.mock.calls.map(([input]) => urlOf(input))).toEqual([
+      'https://actual.test/start',
+      'https://actual.test/middle',
+      'https://ghostfolio.test/finish',
+    ])
+  })
+
+  it('preserves a 307 body, then applies 303 GET and cross-origin credential rules', async () => {
+    const seen: Array<{ url: string; method: string; body: string; authorization: string | null }> = []
+    const inner = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const request = input instanceof Request ? input : new Request(input)
+      seen.push({
+        url: request.url,
+        method: request.method,
+        body: await request.text(),
+        authorization: request.headers.get('authorization'),
+      })
+      if (seen.length === 1) {
+        return new Response(null, { status: 307, headers: { location: '/preserved' } })
+      }
+      if (seen.length === 2) {
+        return new Response(null, {
+          status: 303,
+          headers: { location: 'https://ghostfolio.test/finished' },
+        })
+      }
+      return new Response('ok')
+    })
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard } = await freshEgress()
+    installEgressGuard()
+
+    await fetch('https://actual.test/start', {
+      method: 'POST',
+      headers: { authorization: 'Bearer secret', 'content-type': 'text/plain' },
+      body: 'payload',
+    })
+
+    expect(seen).toEqual([
+      {
+        url: 'https://actual.test/start',
+        method: 'POST',
+        body: 'payload',
+        authorization: 'Bearer secret',
+      },
+      {
+        url: 'https://actual.test/preserved',
+        method: 'POST',
+        body: 'payload',
+        authorization: 'Bearer secret',
+      },
+      {
+        url: 'https://ghostfolio.test/finished',
+        method: 'GET',
+        body: '',
+        authorization: null,
+      },
+    ])
+  })
+
+  it.each([301, 302])('turns a POST into a bodyless GET after a %i', async (status) => {
+    const seen: Array<{ method: string; body: string; contentType: string | null }> = []
+    const inner = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const request = input instanceof Request ? input : new Request(input)
+      seen.push({
+        method: request.method,
+        body: await request.text(),
+        contentType: request.headers.get('content-type'),
+      })
+      return seen.length === 1
+        ? new Response(null, { status, headers: { location: '/finished' } })
+        : new Response('ok')
+    })
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard } = await freshEgress()
+    installEgressGuard()
+
+    await fetch('https://actual.test/start', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'payload',
+    })
+
+    expect(seen).toEqual([
+      { method: 'POST', body: 'payload', contentType: 'text/plain' },
+      { method: 'GET', body: '', contentType: null },
+    ])
+  })
+
+  it('fails a redirect loop before repeating a request', async () => {
+    const inner = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const location = urlOf(input).endsWith('/a') ? '/b' : '/a'
+      return new Response(null, { status: 302, headers: { location } })
+    })
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, EgressRedirectError } = await freshEgress()
+    installEgressGuard()
+
+    await expect(fetch('https://actual.test/a')).rejects.toThrow(EgressRedirectError)
+    expect(inner).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails deterministically after five redirect hops', async () => {
+    const inner = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const current = Number(new URL(urlOf(input)).pathname.slice(1))
+      return new Response(null, { status: 302, headers: { location: `/${current + 1}` } })
+    })
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, EgressRedirectError, MAX_EGRESS_REDIRECTS } = await freshEgress()
+    installEgressGuard()
+
+    const error = await fetch('https://actual.test/0').catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(EgressRedirectError)
+    expect((error as Error).message).toContain('5-hop limit')
+    expect(inner).toHaveBeenCalledTimes(MAX_EGRESS_REDIRECTS + 1)
+  })
+
+  it('keeps the caller\'s manual redirect mode manual', async () => {
+    const inner = vi.fn(async () =>
+      new Response(null, { status: 302, headers: { location: 'https://collector.evil.example/' } }),
+    )
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard } = await freshEgress()
+    installEgressGuard()
+
+    const response = await fetch('https://actual.test/start', { redirect: 'manual' })
+    expect(response.status).toBe(302)
+    expect(inner).toHaveBeenCalledOnce()
+  })
+})
+
 describe('the other two modes', () => {
   it('warn allows the call, so a new dependency can be seen before it is judged', async () => {
     const inner = vi.fn(async () => new Response('ok'))
