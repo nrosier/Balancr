@@ -942,6 +942,7 @@ export async function applyProposal(
       .run()
 
     const auditId = recordAudit(tx, {
+      tenantId,
       action: 'proposal.apply',
       entity: handler.entity,
       entityRef: row.targetRef,
@@ -1053,6 +1054,7 @@ export function rejectProposal(db: Db, tenantId: string, options: DecideOptions)
       .run()
 
     recordAudit(tx, {
+      tenantId,
       action: 'proposal.reject',
       entity: handler.entity,
       entityRef: row.targetRef,

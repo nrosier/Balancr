@@ -85,6 +85,7 @@ export function createTenantAndOwner(db: Db, input: CreateTenantAndOwnerInput): 
     if (owner === undefined) throw new Error('creating the owner returned no row')
 
     recordAudit(tx, {
+      tenantId: tenant.id,
       action: 'tenant.create',
       entity: 'tenants',
       entityRef: tenant.id,
@@ -149,6 +150,7 @@ export function redeemInviteAsViewer(db: Db, input: RedeemInviteAsViewerInput): 
     tx.update(tenantInvites).set({ redeemedBy: viewer.id }).where(eq(tenantInvites.id, invite.id)).run()
 
     recordAudit(tx, {
+      tenantId: invite.tenantId,
       action: 'tenant.invite.redeem',
       entity: 'tenant_invites',
       entityRef: invite.id,

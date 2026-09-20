@@ -116,8 +116,10 @@ const post = (
   })
 }
 
-const refreshTrail = (): AuditRow[] => loadAuditTrail(ctx.db, { action: 'jobs.refresh' })
-const resetTrail = (): AuditRow[] => loadAuditTrail(ctx.db, { action: 'jobs.reset' })
+const refreshTrail = (): AuditRow[] =>
+  loadAuditTrail(ctx.db, getSoleTenantId(ctx.db), { action: 'jobs.refresh' })
+const resetTrail = (): AuditRow[] =>
+  loadAuditTrail(ctx.db, getSoleTenantId(ctx.db), { action: 'jobs.reset' })
 
 const after = (row: AuditRow | undefined): Record<string, unknown> | null =>
   row === undefined ? null : auditValues(row).after

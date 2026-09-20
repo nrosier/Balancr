@@ -406,7 +406,7 @@ describe('answerClarification', () => {
       userId: 'u1',
     })
 
-    const row = loadAuditTrail(db, { entityRef: 'food' })[0]
+    const row = loadAuditTrail(db, TENANT_ID, { entityRef: 'food' })[0]
     expect(row?.id).toBe(auditId)
     expect(row?.action).toBe('clarification.answer')
     expect(row?.actorId).toBe('u1')
@@ -455,7 +455,7 @@ describe('answerClarification', () => {
     )
     expect(openRow().status).toBe('open')
     expect(metaOf('food').nature).toBeNull()
-    expect(loadAuditTrail(db)).toHaveLength(0)
+    expect(loadAuditTrail(db, TENANT_ID)).toHaveLength(0)
   })
 })
 
@@ -470,7 +470,7 @@ describe('dismissClarification', () => {
 
     expect(openRow().status).toBe('dismissed')
     expect(openQuestionCount(db, TENANT_ID)).toBe(0)
-    const row = loadAuditTrail(db)[0]
+    const row = loadAuditTrail(db, TENANT_ID)[0]
     expect(row?.action).toBe('clarification.dismiss')
     expect(row?.beforeJson).toBeNull()
     expect(row?.afterJson).toBeNull()

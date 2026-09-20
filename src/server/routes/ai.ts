@@ -445,7 +445,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       })
       if ('busy' in outcome) throw busyError(outcome.busy)
 
-      auditRefresh(db, user.id, outcome)
+      auditRefresh(db, user.tenantId, user.id, outcome)
 
       reply.code(202)
       return refreshAcceptedSchema.parse({

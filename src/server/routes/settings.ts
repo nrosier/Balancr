@@ -863,6 +863,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.params',
       entity: 'settings',
       entityRef: PARAMS_KEY,
@@ -903,6 +904,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.advice',
       entity: 'settings',
       entityRef: PROFILE_KEY,
@@ -944,6 +946,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.household',
       entity: 'settings',
       entityRef: HOUSEHOLD_KEY,
@@ -992,6 +995,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.benchmarkReference',
       entity: 'settings',
       entityRef: REFERENCE_OVERRIDE_KEY,
@@ -1030,6 +1034,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.property',
       entity: 'settings',
       entityRef: PROPERTY_KEY,
@@ -1069,6 +1074,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.integrations',
       entity: 'tenant_integrations',
       entityRef: tenantId,
@@ -1100,6 +1106,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.integrations',
       entity: 'tenant_integrations',
       entityRef: tenantId,
@@ -1133,6 +1140,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.integrations',
       entity: 'tenant_integrations',
       entityRef: tenantId,
@@ -1323,6 +1331,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.coicop',
       entity: 'category_meta',
       entityRef: categoryId,
@@ -1369,6 +1378,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.custodyShared',
       entity: 'category_meta',
       entityRef: categoryId,
@@ -1412,6 +1422,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.aiVisibility',
       entity: 'category_meta',
       entityRef: categoryId,
@@ -1449,6 +1460,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.nature',
       entity: 'category_meta',
       entityRef: categoryId,
@@ -1481,6 +1493,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     rememberLocale(reply, updated.locale)
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'settings.locale',
       entity: 'users',
       entityRef: user.id,
@@ -1512,6 +1525,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'account.map',
       entity: 'account_map',
       entityRef: id,
@@ -1542,6 +1556,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'account.map',
       entity: 'account_map',
       entityRef: id,
@@ -1568,6 +1583,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     for (const id of accountMapIds) {
       const before = rows.find((row) => row.id === id)
       recordAudit(db, {
+        tenantId: user.tenantId,
         action: 'account.map',
         entity: 'account_map',
         entityRef: id,
@@ -1604,6 +1620,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     for (const row of after) {
       recordAudit(db, {
+        tenantId: user.tenantId,
         action: 'account.map',
         entity: 'account_map',
         entityRef: row.id,
@@ -1643,6 +1660,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (after === null) throw notFound('No such account.')
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'account.map',
       entity: 'account_map',
       entityRef: id,
@@ -1719,6 +1737,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     })
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'prompt.create',
       entity: 'prompts',
       entityRef: row.id,
@@ -1736,6 +1755,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     if (row.active && previous?.id !== row.id) {
       recordAudit(db, {
+        tenantId: user.tenantId,
         action: 'prompt.activate',
         entity: 'prompts',
         entityRef: row.id,
@@ -1763,6 +1783,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const activated = activatePrompt(db, user.tenantId, id)
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'prompt.activate',
       entity: 'prompts',
       entityRef: activated.id,
@@ -1798,6 +1819,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     deactivateOverride(db, user.tenantId, key, params.locale)
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'prompt.activate',
       entity: 'prompts',
       entityRef: previous.id,

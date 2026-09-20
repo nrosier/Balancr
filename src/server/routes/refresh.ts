@@ -121,9 +121,15 @@ export function requireJobsEnabled(enabled: boolean): void {
  * read by `entityRef` — "when was `portfolio` last pulled by hand" is a question about
  * one job, and an entry holding four names does not answer it.
  */
-export function auditRefresh(db: Db, actorId: string, started: RefreshStarted): void {
+export function auditRefresh(
+  db: Db,
+  tenantId: string,
+  actorId: string,
+  started: RefreshStarted,
+): void {
   for (const name of started.accepted) {
     recordAudit(db, {
+      tenantId,
       action: 'jobs.refresh',
       entity: 'jobs',
       entityRef: name,
@@ -145,11 +151,13 @@ export function auditRefresh(db: Db, actorId: string, started: RefreshStarted): 
  */
 export function auditReset(
   db: Db,
+  tenantId: string,
   actorId: string,
   wiped: readonly { table: string; rows: number }[],
   started: RefreshStarted,
 ): void {
   recordAudit(db, {
+    tenantId,
     action: 'jobs.reset',
     entity: 'jobs',
     entityRef: 'reset',
@@ -187,7 +195,7 @@ export function registerRefreshRoutes(
       const outcome = startRefresh(db, registry, user.tenantId, asked)
       if ('busy' in outcome) throw busyError(outcome.busy)
 
-      auditRefresh(db, user.id, outcome)
+      auditRefresh(db, user.tenantId, user.id, outcome)
 
       reply.code(202)
       return refreshAcceptedSchema.parse({
@@ -219,7 +227,7 @@ export function registerRefreshRoutes(
       const outcome = startRefresh(db, registry, tenantId, RESET_REFRESH)
       if ('busy' in outcome) throw busyError(outcome.busy)
 
-      auditReset(db, user.id, wiped, outcome)
+      auditReset(db, tenantId, user.id, wiped, outcome)
 
       reply.code(202)
       return refreshAcceptedSchema.parse({
