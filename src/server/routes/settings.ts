@@ -551,13 +551,13 @@ const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, E
  * that showed an empty box in either case is how someone saves a prompt over
  * nothing and wonders why the output changed.
  */
-function promptSetting(db: Db, key: PromptKey, locale: string): PromptSetting {
-  const active = resolvePrompt(db, key, locale)
+function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string): PromptSetting {
+  const active = resolvePrompt(db, tenantId, key, locale)
   return promptSchema.parse({
     key,
     locale,
     active: { id: active.id, version: active.version, locale: active.locale, body: active.body },
-    versions: listPromptVersions(db, key, locale).map((row) => ({
+    versions: listPromptVersions(db, tenantId, key, locale).map((row) => ({
       id: row.id,
       version: row.version,
       active: row.active,
@@ -746,10 +746,10 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     // reactivating one is the rollback gesture. `active.locale` is what distinguishes
     // the two states, and it is already on the wire.
     prompts: PROMPT_KEYS.flatMap((key) => [
-      promptSetting(db, key, SHARED_LOCALE),
-      ...config.SUPPORTED_LOCALES.map((locale) => promptSetting(db, key, locale)).filter(
-        (entry) => entry.versions.length > 0,
-      ),
+      promptSetting(db, user.tenantId, key, SHARED_LOCALE),
+      ...config.SUPPORTED_LOCALES.map((locale) =>
+        promptSetting(db, user.tenantId, key, locale),
+      ).filter((entry) => entry.versions.length > 0),
     ]),
     accounts: accounts.map((row) => toAccountSetting(row, exclusionReasons.get(row.id) ?? null)),
     dedupe: dedupeCandidates(accounts, loadLatestAccountBalances(db, user.tenantId)).map((candidate) => ({
@@ -1656,8 +1656,8 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
   /** One stored version, text included. The list in `/api/settings` omits it. */
   app.get('/api/settings/prompts/:id', (request: FastifyRequest): PromptBody => {
-    requireUser(request)
-    const row = loadPrompt(db, (request.params as { id: string }).id)
+    const user = requireUser(request)
+    const row = loadPrompt(db, user.tenantId, (request.params as { id: string }).id)
     if (row === null) throw notFound('No such prompt version.')
 
     return promptBodySchema.parse({
@@ -1682,9 +1682,9 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * of one's own deployment's prompt is not a change.
    */
   app.post('/api/settings/prompts/diff', (request: FastifyRequest): PromptDiff => {
-    requireUser(request)
+    const user = requireUser(request)
     const { key, locale, body } = parseBody(promptDiffRequest, request.body)
-    const { active, diff } = diffAgainstActive(db, key, locale, body)
+    const { active, diff } = diffAgainstActive(db, user.tenantId, key, locale, body)
 
     return promptDiffSchema.parse({
       active: { id: active.id, version: active.version, locale: active.locale },
@@ -1705,8 +1705,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const input = parseBody(promptCreateRequest, request.body)
 
-    const previous = input.activate === true ? loadActivePrompt(db, input.key, input.locale) : null
-    const row = createPromptVersion(db, {
+    const previous =
+      input.activate === true
+        ? loadActivePrompt(db, user.tenantId, input.key, input.locale)
+        : null
+    const row = createPromptVersion(db, user.tenantId, {
       key: input.key,
       locale: input.locale,
       body: input.body,
@@ -1753,11 +1756,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const id = (request.params as { id: string }).id
 
-    const row = loadPrompt(db, id)
+    const row = loadPrompt(db, user.tenantId, id)
     if (row === null) throw notFound('No such prompt version.')
 
-    const previous = loadActivePrompt(db, promptKeyOf(row.key), row.locale)
-    const activated = activatePrompt(db, id)
+    const previous = loadActivePrompt(db, user.tenantId, promptKeyOf(row.key), row.locale)
+    const activated = activatePrompt(db, user.tenantId, id)
 
     recordAudit(db, {
       action: 'prompt.activate',
@@ -1790,9 +1793,9 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       throw badRequest(`Unsupported locale: ${params.locale}`)
     }
 
-    const previous = loadActivePrompt(db, key, params.locale)
+    const previous = loadActivePrompt(db, user.tenantId, key, params.locale)
     if (previous === null) throw conflict('That language has no override to switch off.')
-    deactivateOverride(db, key, params.locale)
+    deactivateOverride(db, user.tenantId, key, params.locale)
 
     recordAudit(db, {
       action: 'prompt.activate',

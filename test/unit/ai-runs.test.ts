@@ -208,12 +208,12 @@ describe('findReusableRun', () => {
   beforeEach(() => {
     promptA = db
       .insert(prompts)
-      .values({ key: 'analysis.system', locale: 'en', version: 1, body: 'a' })
+      .values({ tenantId, key: 'analysis.system', locale: 'en', version: 1, body: 'a' })
       .returning({ id: prompts.id })
       .get()!.id
     promptB = db
       .insert(prompts)
-      .values({ key: 'analysis.system', locale: 'en', version: 2, body: 'b' })
+      .values({ tenantId, key: 'analysis.system', locale: 'en', version: 2, body: 'b' })
       .returning({ id: prompts.id })
       .get()!.id
   })

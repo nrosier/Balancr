@@ -14,6 +14,7 @@ import {
   prompts,
   proposals,
   sessions,
+  tenants,
   users,
 } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -60,28 +61,43 @@ describe('foreign keys', () => {
   })
 })
 
-describe('prompts: at most one active version per (key, locale)', () => {
-  const base = { key: 'analysis.system', locale: 'en', body: 'text' }
+describe('prompts: at most one active version per tenant and (key, locale)', () => {
+  const base = () => ({
+    tenantId: TENANT_ID,
+    key: 'analysis.system',
+    locale: 'en',
+    body: 'text',
+  })
 
   it('allows many inactive versions alongside one active', () => {
-    ctx.db.insert(prompts).values({ ...base, version: 1, active: false }).run()
-    ctx.db.insert(prompts).values({ ...base, version: 2, active: false }).run()
-    ctx.db.insert(prompts).values({ ...base, version: 3, active: true }).run()
+    ctx.db.insert(prompts).values({ ...base(), version: 1, active: false }).run()
+    ctx.db.insert(prompts).values({ ...base(), version: 2, active: false }).run()
+    ctx.db.insert(prompts).values({ ...base(), version: 3, active: true }).run()
     expect(ctx.db.select().from(prompts).all()).toHaveLength(3)
   })
 
   it('rejects a second active version, so rollback cannot leave two live', () => {
-    ctx.db.insert(prompts).values({ ...base, version: 1, active: true }).run()
+    ctx.db.insert(prompts).values({ ...base(), version: 1, active: true }).run()
     expect(() =>
-      ctx.db.insert(prompts).values({ ...base, version: 2, active: true }).run(),
+      ctx.db.insert(prompts).values({ ...base(), version: 2, active: true }).run(),
     ).toThrow(/UNIQUE/i)
   })
 
   it('scopes the constraint per locale', () => {
-    ctx.db.insert(prompts).values({ ...base, version: 1, active: true }).run()
+    ctx.db.insert(prompts).values({ ...base(), version: 1, active: true }).run()
     ctx.db
       .insert(prompts)
-      .values({ ...base, locale: 'nl', version: 1, active: true })
+      .values({ ...base(), locale: 'nl', version: 1, active: true })
+      .run()
+    expect(ctx.db.select().from(prompts).all()).toHaveLength(2)
+  })
+
+  it('scopes active versions and version numbers per tenant', () => {
+    const tenantB = ctx.db.insert(tenants).values({ label: 'Second' }).returning().get()
+    ctx.db.insert(prompts).values({ ...base(), version: 1, active: true }).run()
+    ctx.db
+      .insert(prompts)
+      .values({ ...base(), tenantId: tenantB.id, version: 1, active: true })
       .run()
     expect(ctx.db.select().from(prompts).all()).toHaveLength(2)
   })
