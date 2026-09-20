@@ -22,7 +22,7 @@ import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { config } from '../src/config.ts'
 import { isSnapshot } from '../src/backup/snapshot.ts'
-import { restoreBackup } from '../src/backup/restore.ts'
+import { RestoreRollbackError, restoreBackup } from '../src/backup/restore.ts'
 
 const heading = (text: string): void => void process.stdout.write(`\n\x1b[1m${text}\x1b[0m\n`)
 const ok = (text: string): void => void process.stdout.write(`  \x1b[32m✓\x1b[0m ${text}\n`)
@@ -107,10 +107,15 @@ async function main(): Promise<void> {
     process.stdout.write('\n')
   } catch (error) {
     bad(`Could not restore: ${error instanceof Error ? error.message : String(error)}`)
-    line('A wrong passphrase and a damaged file look identical here — that is how')
-    line('authenticated encryption works. Check BACKUP_PASSPHRASE first, then try an')
-    line('older snapshot; `npm run backup:verify -- --all` says which ones are good.')
-    line(`Nothing was changed: ${to} is as it was.`)
+    if (error instanceof RestoreRollbackError) {
+      line('Rollback was incomplete. Do not start Balancr until the paths above have')
+      line('been inspected and the live database and sidecars have been put back together.')
+    } else {
+      line('A wrong passphrase and a damaged file look identical here — that is how')
+      line('authenticated encryption works. Check BACKUP_PASSPHRASE first, then try an')
+      line('older snapshot; `npm run backup:verify -- --all` says which ones are good.')
+      line(`Nothing was changed: ${to} is as it was.`)
+    }
     process.exit(1)
   }
 }
