@@ -149,3 +149,4 @@ vite.config.ts.timestamp-*
 *.db-wal
 *.db-shm
 .playwright-mcp/
+.vscode/
