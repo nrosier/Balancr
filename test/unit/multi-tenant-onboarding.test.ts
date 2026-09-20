@@ -24,7 +24,7 @@ import { beginOnboarding } from '../../src/server/auth/onboarding.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, ONBOARDING_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
-import type { RefreshAccepted } from '../../src/server/routes/api/schemas.ts'
+import type { RefreshAccepted, Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
 
 let ctx: ReturnType<typeof apiFixture>
@@ -121,6 +121,11 @@ describe('a second household, provisioned through the real route', () => {
   it('onboards, reads, writes and refreshes without throwing or touching tenant A', async () => {
     const insightsABefore = await asOwnerA('GET', '/api/insights')
     expect(insightsABefore.statusCode).toBe(200)
+    const settingsABefore = (await asOwnerA('GET', '/api/settings')).json<Settings>()
+    const categoryABefore = settingsABefore.benchmark.categories.find(
+      (category) => category.categoryId === 'cat-groceries',
+    )
+    if (categoryABefore === undefined) throw new Error('tenant A has no groceries fixture')
 
     const token = beginOnboarding(ctx.db, { sub: 'ak-jo', email: 'jo@example.test', name: 'Jo' }).token
     const created = await send(
@@ -160,6 +165,32 @@ describe('a second household, provisioned through the real route', () => {
 
     const insightsB = await asOwnerB('GET', '/api/insights')
     expect(insightsB.json<{ months: string[] }>().months).toEqual([])
+
+    // Tenant A's category ids are not a capability: B neither sees the rows in the
+    // settings payload nor reaches any of the four manual mapping writers by guessing
+    // one (#409).
+    const settingsB = (await asOwnerB('GET', '/api/settings')).json<Settings>()
+    expect(settingsB.benchmark.categories).toEqual([])
+    for (const [path, payload] of [
+      ['coicop', { coicop: '01' }],
+      ['custody-shared', { custodyShared: true }],
+      ['ai-visibility', { aiVisibility: 'absent' }],
+      ['nature', { nature: 'savings' }],
+    ] as const) {
+      const attempted = await asOwnerB(
+        'PATCH',
+        `/api/settings/categories/${categoryABefore.categoryId}/${path}`,
+        payload,
+      )
+      expect(attempted.statusCode).toBe(404)
+    }
+
+    const categoryAAfter = (await asOwnerA('GET', '/api/settings'))
+      .json<Settings>()
+      .benchmark.categories.find(
+        (category) => category.categoryId === categoryABefore.categoryId,
+      )
+    expect(categoryAAfter).toEqual(categoryABefore)
 
     // A settings write for B never touches A's household.
     const patchB = await asOwnerB('PATCH', '/api/settings/household', {

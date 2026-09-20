@@ -71,6 +71,7 @@ import {
 import type { Equivalence } from '../../src/domain/benchmark/schema.ts'
 import { MAX_HOUSEHOLD_MEMBERS } from '../../src/domain/benchmark/vocabulary.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 /** The file Balancr ships, read from disk. Every realistic case below compares to this. */
 const SHIPPED = loadBenchmark('config/benchmark/be.yaml')
@@ -1030,12 +1031,12 @@ describe('the COICOP mapping', () => {
     spentCents?: number
   }
 
-  function seed(rows: Row[], month = '2026-08'): void {
+  function seed(rows: Row[], month = '2026-08', tenantId = TENANT_ID): void {
     for (const entry of rows) {
       ctx.db
         .insert(categoryMeta)
         .values({
-          tenantId: TENANT_ID,
+          tenantId,
           categoryId: entry.id,
           nameSnapshot: entry.name,
           isIncome: entry.isIncome ?? false,
@@ -1047,7 +1048,7 @@ describe('the COICOP mapping', () => {
       ctx.db
         .insert(monthlyCategoryFacts)
         .values({
-          tenantId: TENANT_ID,
+          tenantId,
           month,
           categoryId: entry.id,
           spentCents: entry.spentCents,
@@ -1068,7 +1069,7 @@ describe('the COICOP mapping', () => {
 
     // Unmapped and spending first, largest first; then mapped; then income and hidden,
     // because the comparison skips both and asking about them changes nothing.
-    expect(loadMapping(ctx.db, '2026-08').map((row) => row.categoryId)).toEqual([
+    expect(loadMapping(ctx.db, TENANT_ID, '2026-08').map((row) => row.categoryId)).toEqual([
       'transport',
       'groceries',
       'rent',
@@ -1082,7 +1083,7 @@ describe('the COICOP mapping', () => {
       { id: 'b', name: 'Bikes', spentCents: 10_000 },
       { id: 'a', name: 'Ants', spentCents: 90_000 },
     ])
-    const rows = loadMapping(ctx.db, null)
+    const rows = loadMapping(ctx.db, TENANT_ID, null)
     expect(rows.map((row) => row.categoryName)).toEqual(['Ants', 'Bikes'])
     // No month, so no figure to show: a zero here is "not computed", and the panel
     // prints it as the euro figure it is rather than inventing one.
@@ -1093,24 +1094,48 @@ describe('the COICOP mapping', () => {
     // The form writes divisions; a proposal may have written `04.5.1`, and the settings
     // panel is the one place that has to cope with the difference.
     seed([{ id: 'energy', name: 'Energy', coicop: '04.5.1', spentCents: 8_000 }])
-    expect(loadMapping(ctx.db, '2026-08')[0]?.coicop).toBe('04.5.1')
+    expect(loadMapping(ctx.db, TENANT_ID, '2026-08')[0]?.coicop).toBe('04.5.1')
+  })
+
+  it('keeps category metadata and same-id spending inside the requested tenant (#409)', () => {
+    const tenantB = createSecondTenant(ctx.db)
+    seed([{ id: 'same-id', name: 'A groceries', spentCents: 10_000 }])
+    seed(
+      [
+        { id: 'same-id', name: 'B groceries', spentCents: 90_000 },
+        { id: 'tenant-b-only', name: 'B private', spentCents: 50_000 },
+      ],
+      '2026-08',
+      tenantB,
+    )
+
+    expect(
+      loadMapping(ctx.db, TENANT_ID, '2026-08').map(
+        ({ categoryId, categoryName, spentCents }) => ({ categoryId, categoryName, spentCents }),
+      ),
+    ).toEqual([{ categoryId: 'same-id', categoryName: 'A groceries', spentCents: 10_000 }])
+
+    expect(() => saveCoicop(ctx.db, TENANT_ID, 'tenant-b-only', '01')).toThrow(MappingError)
+    expect(
+      loadMapping(ctx.db, tenantB, null).find((row) => row.categoryId === 'tenant-b-only')?.coicop,
+    ).toBeNull()
   })
 
   it('writes a division, and takes one back', () => {
     seed([{ id: 'groceries', name: 'Groceries' }])
-    saveCoicop(ctx.db, 'groceries', '01')
-    expect(loadMapping(ctx.db, null)[0]?.coicop).toBe('01')
+    saveCoicop(ctx.db, TENANT_ID, 'groceries', '01')
+    expect(loadMapping(ctx.db, TENANT_ID, null)[0]?.coicop).toBe('01')
 
     // Null is a value here and nowhere else: correcting your own mistake is what this
     // route exists for.
-    saveCoicop(ctx.db, 'groceries', null)
-    expect(loadMapping(ctx.db, null)[0]?.coicop).toBeNull()
+    saveCoicop(ctx.db, TENANT_ID, 'groceries', null)
+    expect(loadMapping(ctx.db, TENANT_ID, null)[0]?.coicop).toBeNull()
   })
 
   it('refuses to invent a category', () => {
     // `category_meta` rows come from what Actual actually has. One conjured here would
     // sit in the mapping table for ever with nothing to tell it from a real one.
-    expect(() => saveCoicop(ctx.db, 'ghost', '01')).toThrow(MappingError)
+    expect(() => saveCoicop(ctx.db, TENANT_ID, 'ghost', '01')).toThrow(MappingError)
   })
 
   describe('what the AI may see of an envelope (#278)', () => {
@@ -1136,32 +1161,32 @@ describe('the COICOP mapping', () => {
 
     it('writes both columns together, so the pair is never contradictory', () => {
       seed([{ id: 'therapy', name: 'Health' }])
-      expect(loadMapping(ctx.db, null)[0]?.aiVisibility).toBe('shown')
+      expect(loadMapping(ctx.db, TENANT_ID, null)[0]?.aiVisibility).toBe('shown')
 
-      saveAiVisibility(ctx.db, 'therapy', 'label_only')
+      saveAiVisibility(ctx.db, TENANT_ID, 'therapy', 'label_only')
       expect(columns('therapy')).toEqual({ sensitive: true, aiExcluded: false })
 
       // `sensitive` comes along, because exclusion is strictly stronger and anything
       // that reads only the older column must still withhold.
-      saveAiVisibility(ctx.db, 'therapy', 'absent')
+      saveAiVisibility(ctx.db, TENANT_ID, 'therapy', 'absent')
       expect(columns('therapy')).toEqual({ sensitive: true, aiExcluded: true })
 
       // And back, in one write: going to `shown` clears both, or an envelope somebody
       // un-excluded would keep sending no name with no control left saying why.
-      saveAiVisibility(ctx.db, 'therapy', 'shown')
+      saveAiVisibility(ctx.db, TENANT_ID, 'therapy', 'shown')
       expect(columns('therapy')).toEqual({ sensitive: false, aiExcluded: false })
     })
 
     it('reports every state back through the mapping the panel reads', () => {
       seed([{ id: 'therapy', name: 'Health' }])
       for (const visibility of AI_VISIBILITY_CHOICES) {
-        saveAiVisibility(ctx.db, 'therapy', visibility)
-        expect(loadMapping(ctx.db, null)[0]?.aiVisibility).toBe(visibility)
+        saveAiVisibility(ctx.db, TENANT_ID, 'therapy', visibility)
+        expect(loadMapping(ctx.db, TENANT_ID, null)[0]?.aiVisibility).toBe(visibility)
       }
     })
 
     it('refuses to invent a category here too', () => {
-      expect(() => saveAiVisibility(ctx.db, 'ghost', 'absent')).toThrow(MappingError)
+      expect(() => saveAiVisibility(ctx.db, TENANT_ID, 'ghost', 'absent')).toThrow(MappingError)
     })
   })
 })

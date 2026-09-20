@@ -674,7 +674,7 @@ function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
             savedOn: override.savedOn,
           },
     outsideCode: '00',
-    categories: loadMapping(db, latestStoredMonth(db, tenantId)),
+    categories: loadMapping(db, tenantId, latestStoredMonth(db, tenantId)),
   }
 }
 
@@ -1308,11 +1308,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { coicop } = parseBody(coicopPatchRequest, request.body)
 
-    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    const before = loadMapping(db, user.tenantId, null).find(
+      (row) => row.categoryId === categoryId,
+    )
     if (before === undefined) throw notFound('No such category.')
 
     try {
-      saveCoicop(db, categoryId, coicop)
+      saveCoicop(db, user.tenantId, categoryId, coicop)
     } catch (error) {
       // Only reachable if the row disappeared between the two statements, which means a
       // sync dropped the category — a 404 rather than a 500, because nothing is broken.
@@ -1352,11 +1354,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { custodyShared } = parseBody(custodySharedPatchRequest, request.body)
 
-    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    const before = loadMapping(db, user.tenantId, null).find(
+      (row) => row.categoryId === categoryId,
+    )
     if (before === undefined) throw notFound('No such category.')
 
     try {
-      saveCustodyShared(db, categoryId, custodyShared)
+      saveCustodyShared(db, user.tenantId, categoryId, custodyShared)
     } catch (error) {
       // As above: only reachable if a sync dropped the category between the two
       // statements, which is a 404 rather than a 500 because nothing is broken.
@@ -1395,11 +1399,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { aiVisibility } = parseBody(aiVisibilityPatchRequest, request.body)
 
-    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    const before = loadMapping(db, user.tenantId, null).find(
+      (row) => row.categoryId === categoryId,
+    )
     if (before === undefined) throw notFound('No such category.')
 
     try {
-      saveAiVisibility(db, categoryId, aiVisibility)
+      saveAiVisibility(db, user.tenantId, categoryId, aiVisibility)
     } catch (error) {
       if (error instanceof MappingError) throw notFound('No such category.')
       throw error
@@ -1430,11 +1436,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { nature } = parseBody(naturePatchRequest, request.body)
 
-    const before = loadMapping(db, null).find((row) => row.categoryId === categoryId)
+    const before = loadMapping(db, user.tenantId, null).find(
+      (row) => row.categoryId === categoryId,
+    )
     if (before === undefined) throw notFound('No such category.')
 
     try {
-      saveNature(db, categoryId, nature)
+      saveNature(db, user.tenantId, categoryId, nature)
     } catch (error) {
       if (error instanceof MappingError) throw notFound('No such category.')
       throw error

@@ -34,7 +34,7 @@
  * same three things; splitting them would mean two copies of `requireCategory` and two
  * lists of categories on one screen.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../db/schema.ts'
 import { COICOP_DIVISIONS, OUTSIDE_CONSUMPTION } from './vocabulary.ts'
@@ -128,7 +128,7 @@ export function aiVisibilityOf(row: {
  * mapped, then by spend — which puts the envelope that is distorting the comparison most
  * on the first line, and is the whole reason this list is not alphabetical.
  */
-export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
+export function loadMapping(db: Db, tenantId: string, month: string | null): CategoryMapping[] {
   const spend = new Map<string, number>()
   if (month !== null) {
     for (const row of db
@@ -137,7 +137,12 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
         spentCents: monthlyCategoryFacts.spentCents,
       })
       .from(monthlyCategoryFacts)
-      .where(eq(monthlyCategoryFacts.month, month))
+      .where(
+        and(
+          eq(monthlyCategoryFacts.tenantId, tenantId),
+          eq(monthlyCategoryFacts.month, month),
+        ),
+      )
       .all()) {
       spend.set(row.categoryId, row.spentCents)
     }
@@ -156,6 +161,7 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
       aiExcluded: categoryMeta.aiExcluded,
     })
     .from(categoryMeta)
+    .where(eq(categoryMeta.tenantId, tenantId))
     .all()
     .map(({ sensitive, aiExcluded, ...row }) => ({
       ...row,
@@ -181,27 +187,32 @@ export function loadMapping(db: Db, month: string | null): CategoryMapping[] {
 /**
  * Throws unless the category already has a metadata row.
  *
- * Both writers below update rather than upsert, and that is deliberate: `category_meta`
+ * The writers below update rather than upsert, and that is deliberate: `category_meta`
  * rows are written by the sync pass out of what Actual actually has, and a row conjured
  * here would be a category that exists only in Balancr — which would then show up in this
  * table for ever with no way to tell it from a real one.
  */
-function requireCategory(db: Db, categoryId: string): void {
+function requireCategory(db: Db, tenantId: string, categoryId: string): void {
   const existing = db
     .select({ categoryId: categoryMeta.categoryId })
     .from(categoryMeta)
-    .where(eq(categoryMeta.categoryId, categoryId))
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .get()
   if (existing === undefined) throw new MappingError(`category ${categoryId} has no metadata row`)
 }
 
 /** Stores one category's division, or clears it. */
-export function saveCoicop(db: Db, categoryId: string, code: CoicopChoice | null): void {
-  requireCategory(db, categoryId)
+export function saveCoicop(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  code: CoicopChoice | null,
+): void {
+  requireCategory(db, tenantId, categoryId)
 
   db.update(categoryMeta)
     .set({ coicopCode: code, updatedAt: new Date() })
-    .where(eq(categoryMeta.categoryId, categoryId))
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .run()
 }
 
@@ -212,12 +223,17 @@ export function saveCoicop(db: Db, categoryId: string, code: CoicopChoice | null
  * category is either one the arrangement splits or it is not, and "unknown" is what the
  * clarification queue is for.
  */
-export function saveCustodyShared(db: Db, categoryId: string, shared: boolean): void {
-  requireCategory(db, categoryId)
+export function saveCustodyShared(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  shared: boolean,
+): void {
+  requireCategory(db, tenantId, categoryId)
 
   db.update(categoryMeta)
     .set({ custodyShared: shared, updatedAt: new Date() })
-    .where(eq(categoryMeta.categoryId, categoryId))
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .run()
 }
 
@@ -233,8 +249,13 @@ export function saveCustodyShared(db: Db, categoryId: string, shared: boolean): 
  * `sensitive` still keeps the name back. It also stops the `sensitive_unknown`
  * clarification asking about an envelope whose answer has already been given.
  */
-export function saveAiVisibility(db: Db, categoryId: string, visibility: AiVisibility): void {
-  requireCategory(db, categoryId)
+export function saveAiVisibility(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  visibility: AiVisibility,
+): void {
+  requireCategory(db, tenantId, categoryId)
 
   db.update(categoryMeta)
     .set({
@@ -242,7 +263,7 @@ export function saveAiVisibility(db: Db, categoryId: string, visibility: AiVisib
       sensitive: visibility !== 'shown',
       updatedAt: new Date(),
     })
-    .where(eq(categoryMeta.categoryId, categoryId))
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .run()
 }
 
@@ -254,11 +275,16 @@ export function saveAiVisibility(db: Db, categoryId: string, visibility: AiVisib
  * (or null) — never the AI-proposal values `category_meta.nature` also carries —
  * so this and `category_meta.set` can never contend over the same column.
  */
-export function saveNature(db: Db, categoryId: string, nature: SavingsNatureChoice | null): void {
-  requireCategory(db, categoryId)
+export function saveNature(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  nature: SavingsNatureChoice | null,
+): void {
+  requireCategory(db, tenantId, categoryId)
 
   db.update(categoryMeta)
     .set({ nature, updatedAt: new Date() })
-    .where(eq(categoryMeta.categoryId, categoryId))
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .run()
 }
