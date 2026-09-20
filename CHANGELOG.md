@@ -6,6 +6,65 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.2.0] — 2026-09-20
+
+### Added
+
+- **Provider-neutral AI configuration and execution**
+  ([#406](https://github.com/nrosier/Balancr/issues/406),
+  [#422](https://github.com/nrosier/Balancr/issues/422)-[#427](https://github.com/nrosier/Balancr/issues/427)).
+  Google Gemini remains available through AI Studio and Vertex AI; tenants can
+  now also select official OpenAI and xAI/Grok presets, an operator-approved
+  custom OpenAI-compatible endpoint, or native Anthropic Claude through the
+  Messages API. Provider-specific authentication, structured-output handling,
+  usage accounting and pricing now sit behind one shared boundary. Only Gemini
+  through AI Studio has been tested end to end against a live provider; all
+  other integrations are preview functionality covered by automated contract
+  tests and should pass the settings panel's capability test before use.
+- **Up to three mortgages per property**
+  ([#393](https://github.com/nrosier/Balancr/issues/393),
+  [#402](https://github.com/nrosier/Balancr/issues/402)), so a second mortgage,
+  HELOC or renovation loan can sit alongside the primary loan. Existing stored
+  properties migrate automatically, and portfolio balances and payments sum all
+  attached loans.
+
+### Changed
+
+- **Overview now shows committed spending still to come as its own metric**
+  ([#397](https://github.com/nrosier/Balancr/issues/397),
+  [#403](https://github.com/nrosier/Balancr/issues/403)) instead of explaining
+  the open month's savings-rate proration in prose.
+- **Dead frontend code and implicit dependencies were removed**
+  ([#404](https://github.com/nrosier/Balancr/issues/404),
+  [#405](https://github.com/nrosier/Balancr/issues/405)); TypeScript now rejects
+  unused locals and parameters in both server and web builds.
+
+### Fixed
+
+- **Benchmark category mappings are tenant-scoped on every read and write**
+  ([#409](https://github.com/nrosier/Balancr/issues/409),
+  [#415](https://github.com/nrosier/Balancr/issues/415)), closing a path that
+  could disclose or modify another household's category settings.
+- **AI prompts, spend totals and budget enforcement are tenant-scoped**
+  ([#410](https://github.com/nrosier/Balancr/issues/410),
+  [#411](https://github.com/nrosier/Balancr/issues/411),
+  [#417](https://github.com/nrosier/Balancr/issues/417),
+  [#418](https://github.com/nrosier/Balancr/issues/418)); one household can no
+  longer change another's prompt or consume its allowance.
+- **Every egress redirect is validated before it is followed**
+  ([#412](https://github.com/nrosier/Balancr/issues/412),
+  [#419](https://github.com/nrosier/Balancr/issues/419)), including connection
+  tests that run in worker processes, so an approved URL cannot redirect a
+  request to a disallowed destination.
+- **Failed backup restores roll moved database files back into place**
+  ([#413](https://github.com/nrosier/Balancr/issues/413),
+  [#420](https://github.com/nrosier/Balancr/issues/420)); pre-restore names are
+  collision-resistant and a failed install no longer leaves the live path absent.
+- **Audit records retain and enforce their tenant metadata**
+  ([#414](https://github.com/nrosier/Balancr/issues/414),
+  [#421](https://github.com/nrosier/Balancr/issues/421)) instead of writing
+  unscoped rows that could become a future isolation hazard.
+
 ## [2.1.0] — 2026-09-18
 
 ### Added

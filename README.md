@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.1.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.2.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1056,18 +1056,20 @@ ends.
 | `2.0.0-rc.N` | Multi-tenant: isolated per-tenant data, integrations and job scheduling | ✅ shipped as `2.0.0-rc.2` |
 | `2.0.0` | Blessed by the person whose money it is | ✅ |
 | `2.1.0` | Benchmark: inflation-adjusted reference figure, country selection for the comparison | ✅ |
+| `2.2.0` | Multi-provider AI and multi-tenant security hardening | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.1.0` is the current release. The Belgian benchmark
-reference figure is inflation-adjusted instead of frozen at its 2024 survey
-price, and a household now picks its own country in Settings, so the benchmark
-comparison resolves per-country rather than always reading Belgium's file — an
-existing deployment that set `BENCHMARK_PATH` needs to set `BENCHMARK_DIR`
-instead (see `CHANGELOG.md`). An existing single-tenant deployment otherwise
-upgrades in place onto tenant 1 with no change to what it shows.
+**Where it is now** — `2.2.0` is the current release. AI configuration is now
+provider-neutral, with presets for Google Gemini, OpenAI, xAI/Grok and native
+Anthropic Claude plus approved custom OpenAI-compatible endpoints. Only Google
+Gemini through AI Studio has been tested end to end against a live provider;
+the other integrations remain preview functionality backed by automated contract
+tests. This release also closes the tenant-isolation and egress findings from the
+security review, makes failed backup restores rollback-safe, and supports up to
+three mortgages per property. Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.1.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.2.0`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
