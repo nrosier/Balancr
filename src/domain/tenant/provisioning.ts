@@ -16,6 +16,7 @@ import { tenantIntegrations, tenantInvites, tenants, users } from '../../db/sche
 import { config } from '../../config.ts'
 import { encryptField } from '../../db/field-crypto.ts'
 import { recordAudit } from '../audit.ts'
+import { seedPrompts } from '../ai/prompts.ts'
 import { claimInvite } from './invites.ts'
 
 export type User = typeof users.$inferSelect
@@ -37,7 +38,8 @@ export interface CreateTenantAndOwnerInput {
 /**
  * Starts a new household: a `tenants` row, a placeholder `tenantIntegrations`
  * row (required — `integrationsRow` hard-throws without one, and the new
- * owner's own `/settings` has to load), and the `users` row that owns both.
+ * owner's own `/settings` has to load), tenant-local built-in prompts, and the
+ * `users` row that owns them.
  *
  * The creator is unconditionally the owner — not decided by counting
  * anything, since a brand-new tenant has no other user by construction.
@@ -90,6 +92,11 @@ export function createTenantAndOwner(db: Db, input: CreateTenantAndOwnerInput): 
       after: { label: tenant.label },
       at: now,
     })
+
+    // A tenant starts with its own rows rather than falling through to another
+    // household's editable prompt history. Nested transactions are savepoints in
+    // SQLite, so prompt seeding remains part of this all-or-nothing provisioning.
+    seedPrompts(tx, tenant.id)
 
     return owner
   })

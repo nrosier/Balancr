@@ -571,7 +571,7 @@ export async function runNarrative(
     return failed(period, locale, 'capped', decision.reason, runId)
   }
 
-  const prompt = resolvePrompt(db, 'narrative.system', locale)
+  const prompt = resolvePrompt(db, tenantId, 'narrative.system', locale)
 
   let call: NarrativeCall
   try {

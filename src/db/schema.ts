@@ -856,12 +856,16 @@ export const portfolioMetrics = sqliteTable(
 /**
  * Versioned, tunable prompts. Rollback is flipping `active` — no edit ever
  * destroys the previous text. Authored in English regardless of UI language
- * (one canonical version to maintain) but stored per locale so they can diverge.
+ * (one canonical version to maintain) but stored per tenant and locale so
+ * households and deliberate language overrides can diverge independently.
  */
 export const prompts = sqliteTable(
   'prompts',
   {
     id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
     /** e.g. `analysis.system`, `narrative.monthly`. */
     key: text().notNull(),
     locale: text().notNull(),
@@ -875,11 +879,11 @@ export const prompts = sqliteTable(
     }),
   },
   (t) => [
-    uniqueIndex('prompts_key_locale_version_uq').on(t.key, t.locale, t.version),
-    // At most one active row per (key, locale) — enforced by the database
+    uniqueIndex('prompts_key_locale_version_uq').on(t.tenantId, t.key, t.locale, t.version),
+    // At most one active row per tenant and (key, locale) — enforced by the database
     // rather than by whoever remembers to clear the old flag.
     uniqueIndex('prompts_one_active_uq')
-      .on(t.key, t.locale)
+      .on(t.tenantId, t.key, t.locale)
       .where(sql`active = 1`),
   ],
 )

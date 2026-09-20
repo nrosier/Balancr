@@ -27,6 +27,8 @@ import { diffLines, type Diff } from '../../util/diff.ts'
 import { SHARED_LOCALE } from './prompt-locale.ts'
 
 export type PromptRow = typeof prompts.$inferSelect
+type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0]
+type PromptDb = Db | Transaction
 
 /**
  * The prompts that exist. A closed set: a key nothing reads is a prompt nobody
@@ -371,35 +373,62 @@ export function composeSystemPrompt(body: string, locale: string): string {
 // ---------------------------------------------------------------------------
 
 /** Every version of one prompt, newest first. */
-export function listPromptVersions(db: Db, key: PromptKey, locale: string): PromptRow[] {
+export function listPromptVersions(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  locale: string,
+): PromptRow[] {
   return db
     .select()
     .from(prompts)
-    .where(and(eq(prompts.key, key), eq(prompts.locale, locale)))
+    .where(
+      and(eq(prompts.tenantId, tenantId), eq(prompts.key, key), eq(prompts.locale, locale)),
+    )
     .orderBy(desc(prompts.version))
     .all()
 }
 
-export function loadActivePrompt(db: Db, key: PromptKey, locale: string): PromptRow | null {
+export function loadActivePrompt(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  locale: string,
+): PromptRow | null {
   return (
     db
       .select()
       .from(prompts)
-      .where(and(eq(prompts.key, key), eq(prompts.locale, locale), eq(prompts.active, true)))
+      .where(
+        and(
+          eq(prompts.tenantId, tenantId),
+          eq(prompts.key, key),
+          eq(prompts.locale, locale),
+          eq(prompts.active, true),
+        ),
+      )
       .get() ?? null
   )
 }
 
-export function loadPrompt(db: Db, id: string): PromptRow | null {
-  return db.select().from(prompts).where(eq(prompts.id, id)).get() ?? null
+export function loadPrompt(db: PromptDb, tenantId: string, id: string): PromptRow | null {
+  return (
+    db
+      .select()
+      .from(prompts)
+      .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
+      .get() ?? null
+  )
 }
 
 /** The next version number for a (key, locale). Versions never restart at 1. */
-export function nextVersion(db: Db, key: PromptKey, locale: string): number {
+export function nextVersion(db: PromptDb, tenantId: string, key: PromptKey, locale: string): number {
   const latest = db
     .select({ version: prompts.version })
     .from(prompts)
-    .where(and(eq(prompts.key, key), eq(prompts.locale, locale)))
+    .where(
+      and(eq(prompts.tenantId, tenantId), eq(prompts.key, key), eq(prompts.locale, locale)),
+    )
     .orderBy(desc(prompts.version))
     .limit(1)
     .get()
@@ -423,7 +452,11 @@ export interface NewPromptVersion {
  * unique index means "insert active row" and "clear the previous active row" are
  * only valid together.
  */
-export function createPromptVersion(db: Db, input: NewPromptVersion): PromptRow {
+export function createPromptVersion(
+  db: PromptDb,
+  tenantId: string,
+  input: NewPromptVersion,
+): PromptRow {
   const body = input.body.trim()
   if (body === '') throw new Error(`prompt ${input.key} (${input.locale}) cannot be empty`)
 
@@ -433,7 +466,13 @@ export function createPromptVersion(db: Db, input: NewPromptVersion): PromptRow 
     const latest = tx
       .select({ version: prompts.version })
       .from(prompts)
-      .where(and(eq(prompts.key, input.key), eq(prompts.locale, input.locale)))
+      .where(
+        and(
+          eq(prompts.tenantId, tenantId),
+          eq(prompts.key, input.key),
+          eq(prompts.locale, input.locale),
+        ),
+      )
       .orderBy(desc(prompts.version))
       .limit(1)
       .get()
@@ -441,12 +480,19 @@ export function createPromptVersion(db: Db, input: NewPromptVersion): PromptRow 
     if (input.activate === true) {
       tx.update(prompts)
         .set({ active: false })
-        .where(and(eq(prompts.key, input.key), eq(prompts.locale, input.locale)))
+        .where(
+          and(
+            eq(prompts.tenantId, tenantId),
+            eq(prompts.key, input.key),
+            eq(prompts.locale, input.locale),
+          ),
+        )
         .run()
     }
     const rows = tx
       .insert(prompts)
       .values({
+        tenantId,
         key: input.key,
         locale: input.locale,
         version,
@@ -467,16 +513,29 @@ export function createPromptVersion(db: Db, input: NewPromptVersion): PromptRow 
  * Makes one version the active one. This is also the rollback gesture: pass the
  * id of an older version and it becomes active again, with its text untouched.
  */
-export function activatePrompt(db: Db, id: string): PromptRow {
+export function activatePrompt(db: PromptDb, tenantId: string, id: string): PromptRow {
   return db.transaction((tx) => {
-    const row = tx.select().from(prompts).where(eq(prompts.id, id)).get()
+    const row = tx
+      .select()
+      .from(prompts)
+      .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
+      .get()
     if (row === undefined) throw new Error(`prompt version ${id} does not exist`)
 
     tx.update(prompts)
       .set({ active: false })
-      .where(and(eq(prompts.key, row.key), eq(prompts.locale, row.locale)))
+      .where(
+        and(
+          eq(prompts.tenantId, tenantId),
+          eq(prompts.key, row.key),
+          eq(prompts.locale, row.locale),
+        ),
+      )
       .run()
-    tx.update(prompts).set({ active: true }).where(eq(prompts.id, id)).run()
+    tx.update(prompts)
+      .set({ active: true })
+      .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
+      .run()
     return { ...row, active: true }
   })
 }
@@ -493,14 +552,26 @@ export function activatePrompt(db: Db, id: string): PromptRow {
  * built-in constant with nothing in the UI saying so, and the gesture wanted there is
  * activating a different version.
  */
-export function deactivateOverride(db: Db, key: PromptKey, locale: string): number {
+export function deactivateOverride(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  locale: string,
+): number {
   if (locale === SHARED_LOCALE) {
     throw new Error('the shared prompt cannot be deactivated; activate a version instead')
   }
   return db
     .update(prompts)
     .set({ active: false })
-    .where(and(eq(prompts.key, key), eq(prompts.locale, locale), eq(prompts.active, true)))
+    .where(
+      and(
+        eq(prompts.tenantId, tenantId),
+        eq(prompts.key, key),
+        eq(prompts.locale, locale),
+        eq(prompts.active, true),
+      ),
+    )
     .run().changes
 }
 
@@ -526,11 +597,13 @@ export function supersededBuiltIn(key: PromptKey, body: string): boolean {
  * designed for "nobody has written a Dutch prompt" could never fire, and an edit
  * made in English simply stopped applying to a Dutch run.
  *
- * Idempotent, and safe to run at every startup. Three cases, and the third is the one
- * added for #183:
+ * Idempotent per tenant, and safe to run at every startup. Four cases, and the last is
+ * the one added for #183:
  *
  *  - no shared version → write the default and activate it, so a fresh database boots
  *    with a working, inspectable prompt rather than a hidden constant nobody can see;
+ *  - versions but no active shared row → add and activate the default. This is the safe
+ *    result when a legacy global history is split between its authors' tenants;
  *  - an active version nobody recognises → leave it alone. It is somebody's own wording,
  *    and a deploy that silently replaced it would be the worst bug in this file;
  *  - an active version that is byte-identical to a superseded built-in → add the new
@@ -540,18 +613,28 @@ export function supersededBuiltIn(key: PromptKey, body: string): boolean {
  * The count returned is rows written, which now covers both a seed and an upgrade — it
  * feeds a startup log line saying how many prompts were touched, and both are.
  */
-export function seedPrompts(db: Db): number {
+export function seedPrompts(db: PromptDb, tenantId: string): number {
   let written = 0
   for (const key of PROMPT_KEYS) {
     const body = DEFAULT_PROMPTS[key]
-    const existing = listPromptVersions(db, key, SHARED_LOCALE)
+    const existing = listPromptVersions(db, tenantId, key, SHARED_LOCALE)
 
     if (existing.length > 0) {
-      const active = loadActivePrompt(db, key, SHARED_LOCALE)
-      if (active === null) continue
+      const active = loadActivePrompt(db, tenantId, key, SHARED_LOCALE)
+      if (active === null) {
+        createPromptVersion(db, tenantId, {
+          key,
+          locale: SHARED_LOCALE,
+          body,
+          note: 'built-in default',
+          activate: true,
+        })
+        written += 1
+        continue
+      }
       // Already the newest built-in, or an edit. Either way, nothing to do.
       if (!supersededBuiltIn(key, active.body)) continue
-      createPromptVersion(db, {
+      createPromptVersion(db, tenantId, {
         key,
         locale: SHARED_LOCALE,
         body,
@@ -562,7 +645,7 @@ export function seedPrompts(db: Db): number {
       continue
     }
 
-    createPromptVersion(db, {
+    createPromptVersion(db, tenantId, {
       key,
       locale: SHARED_LOCALE,
       body,
@@ -596,9 +679,14 @@ export interface ResolvedPrompt {
  * for the shared row and could never be reached, because seeding gave every locale
  * an active row of its own.
  */
-export function resolvePrompt(db: Db, key: PromptKey, locale: string): ResolvedPrompt {
+export function resolvePrompt(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  locale: string,
+): ResolvedPrompt {
   for (const candidate of locale === SHARED_LOCALE ? [SHARED_LOCALE] : [locale, SHARED_LOCALE]) {
-    const active = loadActivePrompt(db, key, candidate)
+    const active = loadActivePrompt(db, tenantId, key, candidate)
     if (active !== null) {
       return {
         id: active.id,
@@ -621,11 +709,12 @@ export function resolvePrompt(db: Db, key: PromptKey, locale: string): ResolvedP
  * against nothing.
  */
 export function diffAgainstActive(
-  db: Db,
+  db: PromptDb,
+  tenantId: string,
   key: PromptKey,
   locale: string,
   body: string,
 ): { active: ResolvedPrompt; diff: Diff } {
-  const active = resolvePrompt(db, key, locale)
+  const active = resolvePrompt(db, tenantId, key, locale)
   return { active, diff: diffLines(active.body, body.trim()) }
 }

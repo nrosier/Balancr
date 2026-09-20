@@ -43,6 +43,7 @@ import { CSRF_COOKIE, LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/coo
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -50,11 +51,16 @@ let owner: string
 let viewer: string
 let tenantId: string
 
-function signIn(db: Db, role: 'owner' | 'viewer', locale = 'en'): string {
+function signIn(
+  db: Db,
+  role: 'owner' | 'viewer',
+  locale = 'en',
+  userTenantId = getSoleTenantId(db),
+): string {
   const row = db
     .insert(users)
     .values({
-      tenantId: getSoleTenantId(db),
+      tenantId: userTenantId,
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role === 'owner' ? 'Nick' : 'Guest',
@@ -178,7 +184,7 @@ describe('GET /api/settings', () => {
   })
 
   it('lists a language override alongside the shared prompt, once one exists', async () => {
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'nl',
       body: 'Je rangschikt signalen.',
@@ -199,7 +205,7 @@ describe('GET /api/settings', () => {
   })
 
   it('does not put a prompt body in the version list, or an external id in an account', async () => {
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'en',
       body: 'You rank signals.\nNothing else.',
@@ -959,7 +965,7 @@ describe('the prompt editor', () => {
   it('stores a version without activating it', async () => {
     // Two gestures, because the point of versioning a prompt is that saving a draft
     // does not change tonight's output.
-    const before = loadActivePrompt(ctx.db, 'analysis.system', 'en')
+    const before = loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'en')
     const res = await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: 'en',
@@ -974,7 +980,7 @@ describe('the prompt editor', () => {
     expect(versions).toHaveLength(1)
     expect(versions?.[0]?.active).toBe(false)
     expect(versions?.[0]?.note).toBe('shorter')
-    expect(loadActivePrompt(ctx.db, 'analysis.system', 'en')?.id).toBe(before?.id)
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'en')?.id).toBe(before?.id)
     expect(auditActions(ctx.db)).toEqual(['prompt.create'])
   })
 
@@ -986,14 +992,14 @@ describe('the prompt editor', () => {
       activate: true,
     })
     expect(res.statusCode).toBe(200)
-    expect(loadActivePrompt(ctx.db, 'analysis.system', 'en')?.body).toBe(body)
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'en')?.body).toBe(body)
     // Two entries: what was written, and what became active. They are separate
     // questions and an audit trail that merged them could answer neither.
     expect(auditActions(ctx.db)).toEqual(['prompt.create', 'prompt.activate'])
   })
 
   it('serves one version with its text', async () => {
-    const created = createPromptVersion(ctx.db, {
+    const created = createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'en',
       body,
@@ -1029,13 +1035,13 @@ describe('the prompt editor', () => {
   })
 
   it('rolls back by activating an older version, text untouched', async () => {
-    const first = createPromptVersion(ctx.db, {
+    const first = createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'en',
       body: 'The first one.',
       activate: true,
     })
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'en',
       body,
@@ -1044,7 +1050,7 @@ describe('the prompt editor', () => {
 
     const res = await post(`/api/settings/prompts/${first.id}/activate`)
     expect(res.statusCode).toBe(200)
-    const active = loadActivePrompt(ctx.db, 'analysis.system', 'en')
+    const active = loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'en')
     expect(active?.id).toBe(first.id)
     expect(active?.body).toBe('The first one.')
     expect(auditActions(ctx.db)).toEqual(['prompt.activate'])
@@ -1096,18 +1102,18 @@ describe('the prompt editor', () => {
     // The bug this replaced: an edit made in one language stopped applying to the
     // other, and nothing said so.
     for (const locale of ['en', 'nl']) {
-      expect(resolvePrompt(ctx.db, 'analysis.system', locale).body).toBe(body)
+      expect(resolvePrompt(ctx.db, tenantId, 'analysis.system', locale).body).toBe(body)
     }
   })
 
   it('sends a language back to the shared prompt without deleting its versions', async () => {
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
       body,
       activate: true,
     })
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'nl',
       body: 'Je rangschikt signalen.',
@@ -1116,7 +1122,7 @@ describe('the prompt editor', () => {
 
     const res = await post('/api/settings/prompts/analysis.system/nl/shared')
     expect(res.statusCode).toBe(200)
-    expect(resolvePrompt(ctx.db, 'analysis.system', 'nl').body).toBe(body)
+    expect(resolvePrompt(ctx.db, tenantId, 'analysis.system', 'nl').body).toBe(body)
     // The entry stays in the payload with its history, because nothing here destroys
     // text and reactivating a version is the ordinary rollback. What changed is what
     // the language resolves to, and the payload says so: `active.locale` is now the
@@ -1126,7 +1132,7 @@ describe('the prompt editor', () => {
     expect(override?.versions).toHaveLength(1)
     expect(override?.versions[0]?.active).toBe(false)
     expect(override?.active.locale).toBe(SHARED_LOCALE)
-    expect(loadActivePrompt(ctx.db, 'analysis.system', 'nl')).toBeNull()
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')).toBeNull()
     expect(auditActions(ctx.db)).toEqual(['prompt.activate'])
   })
 
@@ -1147,7 +1153,7 @@ describe('the prompt editor', () => {
   })
 
   it('is refused for a viewer', async () => {
-    createPromptVersion(ctx.db, {
+    createPromptVersion(ctx.db, tenantId, {
       key: 'analysis.system',
       locale: 'nl',
       body: 'Je rangschikt signalen.',
@@ -1160,6 +1166,73 @@ describe('the prompt editor', () => {
       { token: viewer },
     )
     expect(res.statusCode).toBe(403)
-    expect(loadActivePrompt(ctx.db, 'analysis.system', 'nl')).not.toBeNull()
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')).not.toBeNull()
+  })
+
+  it('never reads, diffs, activates or deactivates another tenant\'s prompt (#410)', async () => {
+    const createdA = await post('/api/settings/prompts', {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Tenant A shared instructions.',
+      activate: true,
+    })
+    expect(createdA.statusCode).toBe(200)
+    const promptA = loadActivePrompt(ctx.db, tenantId, 'analysis.system', SHARED_LOCALE)
+    if (promptA === null) throw new Error('tenant A prompt was not activated')
+
+    await post('/api/settings/prompts', {
+      key: 'analysis.system',
+      locale: 'nl',
+      body: 'Tenant A Nederlandse instructies.',
+      activate: true,
+    })
+    const overrideA = loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')
+    if (overrideA === null) throw new Error('tenant A override was not activated')
+
+    const tenantB = createSecondTenant(ctx.db)
+    const ownerB = signIn(ctx.db, 'owner', 'en', tenantB)
+
+    const settingsB = (await get('/api/settings', ownerB)).json<Settings>()
+    expect(settingsB.prompts.flatMap((prompt) => prompt.versions.map((version) => version.id)))
+      .not.toContain(promptA.id)
+    expect((await get(`/api/settings/prompts/${promptA.id}`, ownerB)).statusCode).toBe(404)
+    expect(
+      (await post(`/api/settings/prompts/${promptA.id}/activate`, {}, { token: ownerB }))
+        .statusCode,
+    ).toBe(404)
+
+    const diffB = await post(
+      '/api/settings/prompts/diff',
+      { key: 'analysis.system', locale: 'en', body: 'Tenant B candidate.' },
+      { token: ownerB },
+    )
+    expect(diffB.statusCode).toBe(200)
+    expect(diffB.json<{ active: { id: string | null } }>().active.id).toBeNull()
+
+    const createdB = await post(
+      '/api/settings/prompts',
+      {
+        key: 'analysis.system',
+        locale: SHARED_LOCALE,
+        body: 'Tenant B shared instructions.',
+        activate: true,
+      },
+      { token: ownerB },
+    )
+    expect(createdB.statusCode).toBe(200)
+    expect(resolvePrompt(ctx.db, tenantB, 'analysis.system', 'en').body).toBe(
+      'Tenant B shared instructions.',
+    )
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', SHARED_LOCALE)?.id).toBe(
+      promptA.id,
+    )
+
+    const deactivateB = await post(
+      '/api/settings/prompts/analysis.system/nl/shared',
+      {},
+      { token: ownerB },
+    )
+    expect(deactivateB.statusCode).toBe(409)
+    expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')?.id).toBe(overrideA.id)
   })
 })

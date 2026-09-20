@@ -450,7 +450,7 @@ export function estimateAnalysis(
   }
 
   const payloadChars = JSON.stringify(prepared.payload).length
-  const prompt = resolvePromptFor(db, locale, undefined)
+  const prompt = resolvePromptFor(db, tenantId, locale, undefined)
   const reused = findReusableRun(db, tenantId, {
     kind: 'findings',
     period: options.month,
@@ -484,10 +484,15 @@ export function estimateAnalysis(
  * against a schema it was not written for, which is why the check exists rather
  * than trusting the caller's id.
  */
-function resolvePromptFor(db: Db, locale: string, promptId: string | undefined): ResolvedPrompt {
-  if (promptId === undefined) return resolvePrompt(db, 'analysis.system', locale)
+function resolvePromptFor(
+  db: Db,
+  tenantId: string,
+  locale: string,
+  promptId: string | undefined,
+): ResolvedPrompt {
+  if (promptId === undefined) return resolvePrompt(db, tenantId, 'analysis.system', locale)
 
-  const row = loadPrompt(db, promptId)
+  const row = loadPrompt(db, tenantId, promptId)
   if (row === null) throw new Error(`no such prompt version: ${promptId}`)
   if (row.key !== 'analysis.system') {
     throw new Error(`prompt ${promptId} is a ${row.key}, not an analysis prompt`)
@@ -538,7 +543,7 @@ export async function runAnalysis(
   // Resolved before the budget check, not after: the prompt version is part of
   // the reuse key, and the reuse check has to run before a free answer could be
   // wrongly refused for being "over budget" (#160).
-  const prompt = resolvePromptFor(db, locale, options.promptId)
+  const prompt = resolvePromptFor(db, tenantId, locale, options.promptId)
 
   if (options.force !== true) {
     const reused = findReusableRun(db, tenantId, {

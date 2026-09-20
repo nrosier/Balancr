@@ -13,31 +13,64 @@ import { readFileSync } from 'node:fs'
 import { eq, sql } from 'drizzle-orm'
 import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { prompts } from '../../src/db/schema.ts'
+import { aiRuns, prompts } from '../../src/db/schema.ts'
+import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { config } from '../../src/config.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import {
-  activatePrompt,
+  activatePrompt as activatePromptForTenant,
   composeSystemPrompt,
-  createPromptVersion,
-  deactivateOverride,
+  createPromptVersion as createPromptVersionForTenant,
+  deactivateOverride as deactivateOverrideForTenant,
   DEFAULT_PROMPTS,
-  diffAgainstActive,
+  diffAgainstActive as diffAgainstActiveForTenant,
   languageDirective,
-  listPromptVersions,
-  loadActivePrompt,
-  loadPrompt,
-  nextVersion,
+  listPromptVersions as listPromptVersionsForTenant,
+  loadActivePrompt as loadActivePromptForTenant,
+  loadPrompt as loadPromptForTenant,
+  nextVersion as nextVersionForTenant,
   PROMPT_KEYS,
-  resolvePrompt,
-  seedPrompts,
+  resolvePrompt as resolvePromptForTenant,
+  seedPrompts as seedPromptsForTenant,
   SUPERSEDED_PROMPTS,
   supersededBuiltIn,
+  type NewPromptVersion,
   type PromptKey,
 } from '../../src/domain/ai/prompts.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
+import { seedPreMigrationDb } from '../helpers/pre-migration-db.ts'
 
 let ctx: ReturnType<typeof createTestDb>
-let db: ReturnType<typeof createTestDb>['db']
+type TestDb = ReturnType<typeof createTestDb>['db']
+let db: TestDb
+
+// Most of this file proves prompt semantics inside one household. Keep those cases
+// terse while the exported API itself still requires an explicit tenant; the
+// multi-tenant cases below call the unwrapped functions directly.
+const tenantOf = (database: TestDb): string => getSoleTenantId(database)
+const activatePrompt = (database: TestDb, id: string) =>
+  activatePromptForTenant(database, tenantOf(database), id)
+const createPromptVersion = (database: TestDb, input: NewPromptVersion) =>
+  createPromptVersionForTenant(database, tenantOf(database), input)
+const deactivateOverride = (database: TestDb, key: PromptKey, locale: string) =>
+  deactivateOverrideForTenant(database, tenantOf(database), key, locale)
+const diffAgainstActive = (
+  database: TestDb,
+  key: PromptKey,
+  locale: string,
+  body: string,
+) => diffAgainstActiveForTenant(database, tenantOf(database), key, locale, body)
+const listPromptVersions = (database: TestDb, key: PromptKey, locale: string) =>
+  listPromptVersionsForTenant(database, tenantOf(database), key, locale)
+const loadActivePrompt = (database: TestDb, key: PromptKey, locale: string) =>
+  loadActivePromptForTenant(database, tenantOf(database), key, locale)
+const loadPrompt = (database: TestDb, id: string) =>
+  loadPromptForTenant(database, tenantOf(database), id)
+const nextVersion = (database: TestDb, key: PromptKey, locale: string) =>
+  nextVersionForTenant(database, tenantOf(database), key, locale)
+const resolvePrompt = (database: TestDb, key: PromptKey, locale: string) =>
+  resolvePromptForTenant(database, tenantOf(database), key, locale)
+const seedPrompts = (database: TestDb) => seedPromptsForTenant(database, tenantOf(database))
 
 beforeEach(() => {
   ctx = createTestDb()
@@ -354,6 +387,64 @@ describe('seedPrompts', () => {
   })
 })
 
+describe('tenant isolation (#410)', () => {
+  it('keeps versions, activation, resolution and deactivation inside one tenant', () => {
+    const tenantA = getSoleTenantId(db)
+    const tenantB = createSecondTenant(db)
+    seedPromptsForTenant(db, tenantA)
+    seedPromptsForTenant(db, tenantB)
+
+    const activeA = createPromptVersionForTenant(db, tenantA, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Tenant A instructions.',
+      activate: true,
+    })
+    const activeB = createPromptVersionForTenant(db, tenantB, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Tenant B instructions.',
+      activate: true,
+    })
+
+    expect(activeA.version).toBe(2)
+    expect(activeB.version).toBe(2)
+    expect(resolvePromptForTenant(db, tenantA, 'analysis.system', 'en').body).toBe(
+      'Tenant A instructions.',
+    )
+    expect(resolvePromptForTenant(db, tenantB, 'analysis.system', 'en').body).toBe(
+      'Tenant B instructions.',
+    )
+    expect(loadPromptForTenant(db, tenantA, activeB.id)).toBeNull()
+    expect(() => activatePromptForTenant(db, tenantA, activeB.id)).toThrow(/does not exist/)
+    expect(
+      listPromptVersionsForTenant(db, tenantA, 'analysis.system', SHARED_LOCALE).map(
+        (row) => row.id,
+      ),
+    ).not.toContain(activeB.id)
+
+    const diffA = diffAgainstActiveForTenant(
+      db,
+      tenantA,
+      'analysis.system',
+      'en',
+      'A candidate.',
+    )
+    expect(diffA.active.id).toBe(activeA.id)
+
+    const overrideB = createPromptVersionForTenant(db, tenantB, {
+      key: 'analysis.system',
+      locale: 'nl',
+      body: 'Alleen voor tenant B.',
+      activate: true,
+    })
+    expect(deactivateOverrideForTenant(db, tenantA, 'analysis.system', 'nl')).toBe(0)
+    expect(loadActivePromptForTenant(db, tenantB, 'analysis.system', 'nl')?.id).toBe(
+      overrideB.id,
+    )
+  })
+})
+
 describe('the superseded list', () => {
   it('never contains the text that is current, so the upgrade terminates', () => {
     // If a body were on both lists, `seedPrompts` would find the active version
@@ -598,6 +689,44 @@ describe('the 0010 collapse', () => {
   it('does nothing to an empty table', () => {
     collapse()
     expect(db.select().from(prompts).all()).toEqual([])
+  })
+})
+
+describe('the 0029 tenant backfill (#410)', () => {
+  it('preserves legacy history and attributes authored rows to their creator', () => {
+    const fresh = createTestDb()
+    try {
+      seedPreMigrationDb(fresh.sqlite, '0028_lowly_surge')
+      const bootstrap = fresh.sqlite.prepare('select id from tenants limit 1').get() as {
+        id: string
+      }
+
+      fresh.sqlite.exec(
+        `INSERT INTO tenants (id, label, created_at)
+           VALUES ('tenant-b', 'Second', 1789566155324);
+         INSERT INTO users (id, tenant_id, created_at) VALUES ('user-b', 'tenant-b', 1);
+         INSERT INTO prompts
+           (id, key, locale, version, body, active, note, created_at, created_by)
+         VALUES
+           ('built-in', 'narrative.system', '*', 1, 'Legacy built-in.', 1, 'built-in default', 1, NULL),
+           ('authored-b', 'analysis.system', '*', 1, 'Tenant B edit.', 1, NULL, 2, 'user-b');
+         INSERT INTO ai_runs
+           (id, tenant_id, kind, model, prompt_id, locale, payload_json, status, created_at)
+         VALUES
+           ('run-b', 'tenant-b', 'findings', 'model', 'authored-b', 'en', '{}', 'ok', 3);`,
+      )
+
+      applyMigrations(fresh.db as never)
+
+      const rows = fresh.db.select().from(prompts).all()
+      expect(rows.find((row) => row.id === 'built-in')?.tenantId).toBe(bootstrap.id)
+      expect(rows.find((row) => row.id === 'authored-b')?.tenantId).toBe('tenant-b')
+      expect(fresh.db.select().from(aiRuns).all().find((row) => row.id === 'run-b')?.promptId)
+        .toBe('authored-b')
+      expect(fresh.sqlite.pragma('foreign_key_check')).toEqual([])
+    } finally {
+      fresh.sqlite.close()
+    }
   })
 })
 
