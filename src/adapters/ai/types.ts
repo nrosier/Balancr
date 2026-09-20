@@ -1,6 +1,7 @@
-/** Provider identities are stable persistence keys, not display labels. */
-export const AI_PROVIDERS = ['gemini-aistudio', 'gemini-vertex'] as const
-export type AiProvider = (typeof AI_PROVIDERS)[number]
+import type { AiProvider } from '../../domain/ai/providers.ts'
+
+export { AI_PROVIDERS } from '../../domain/ai/providers.ts'
+export type { AiProvider } from '../../domain/ai/providers.ts'
 
 /** The provider-neutral request contract used by Balancr's AI domain. */
 export interface AiCall {

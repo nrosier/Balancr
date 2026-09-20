@@ -31,7 +31,15 @@ import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { resetAiClients } from '../../adapters/ai/client.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
-import { eurToMicroEur } from '../../adapters/ai/pricing.ts'
+import { eurToMicroEur, priceFor, type ModelPrice, type ModelPrices } from '../../adapters/ai/pricing.ts'
+import { AI_PROVIDERS, type AiProvider } from '../../adapters/ai/types.ts'
+import {
+  baseUrlFor,
+  callOpenAiCompatibleWithConfig,
+  OPENAI_BASE_URL,
+  validateCustomBaseUrl,
+  XAI_BASE_URL,
+} from '../../adapters/openai-compatible/client.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { decryptField, encryptField } from '../../db/field-crypto.ts'
@@ -468,12 +476,22 @@ const ghostfolioIntegrationPatchRequest = z.strictObject({
  * plain fields, the same as `googleCloudProject`.
  */
 const aiIntegrationPatchRequest = z.strictObject({
-  provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
+  provider: z.enum(AI_PROVIDERS),
   apiKey: z.string().min(1).optional(),
+  clearApiKey: z.boolean().optional(),
   googleCloudProject: z.string().min(1).nullable(),
+  baseUrl: z.string().min(1).nullable().default(null),
   modelFast: z.string().min(1),
   modelDeep: z.string().min(1),
+  modelPrices: z.record(z.string().min(1), z.strictObject({
+    inputEur: z.number().nonnegative(),
+    cachedInputEur: z.number().nonnegative(),
+    cacheWriteInputEur: z.number().nonnegative(),
+    outputEur: z.number().nonnegative(),
+  })).default({}),
   budgetEur: z.coerce.number().nonnegative(),
+}).refine((value) => !(value.clearApiKey === true && value.apiKey !== undefined), {
+  message: 'apiKey and clearApiKey cannot be used together',
 })
 
 /**
@@ -502,11 +520,46 @@ const ghostfolioIntegrationTestRequest = z.strictObject({
 
 /** See `actualIntegrationTestRequest`. `googleCloudLocation` defaults to the deployment's own when omitted. */
 const aiIntegrationTestRequest = z.strictObject({
-  provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
+  provider: z.enum(AI_PROVIDERS),
   apiKey: z.string().min(1).optional(),
   googleCloudProject: z.string().min(1).optional(),
   googleCloudLocation: z.string().min(1).optional(),
+  baseUrl: z.string().min(1).nullable().default(null),
+  model: z.string().min(1).optional(),
 })
+
+function tenantModelPrices(
+  prices: Record<string, { inputEur: number; cachedInputEur: number; cacheWriteInputEur: number; outputEur: number }>,
+): ModelPrices {
+  const verified = new Date().toISOString().slice(0, 10)
+  return Object.fromEntries(Object.entries(prices).map(([model, price]): [string, ModelPrice] => [
+    model.trim().toLowerCase(),
+    {
+      input: eurToMicroEur(price.inputEur),
+      cachedInput: eurToMicroEur(price.cachedInputEur),
+      cacheWriteInput: eurToMicroEur(price.cacheWriteInputEur),
+      output: eurToMicroEur(price.outputEur),
+      verified,
+    },
+  ]))
+}
+
+function validatedAiBaseUrl(provider: AiProvider, candidate: string | null): string | null {
+  if (provider === 'openai' || provider === 'xai') {
+    if (candidate !== null) throw badRequest('Official provider base URLs cannot be changed.')
+    return null
+  }
+  if (provider === 'openai-compatible') {
+    if (candidate === null) throw badRequest('A base URL is required for a custom OpenAI-compatible endpoint.')
+    try {
+      return validateCustomBaseUrl(candidate)
+    } catch (error) {
+      throw badRequest(error instanceof Error ? error.message : String(error))
+    }
+  }
+  if (candidate !== null) throw badRequest('A base URL is not used by the selected Gemini provider.')
+  return null
+}
 
 // ---------------------------------------------------------------------------
 //  Reading
@@ -703,8 +756,25 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
       provider: row.aiProvider,
       apiKeyConfigured: row.aiApiKeyEnc !== null,
       googleCloudProject: row.googleCloudProject,
+      baseUrl:
+        row.aiProvider === 'openai'
+          ? OPENAI_BASE_URL
+          : row.aiProvider === 'xai'
+            ? XAI_BASE_URL
+            : row.aiBaseUrl,
       modelFast: row.aiModelFast,
       modelDeep: row.aiModelDeep,
+      modelPrices: Object.fromEntries(
+        Object.entries(JSON.parse(row.aiModelPricesJson) as Record<string, ModelPrice>).map(([model, price]) => [
+          model,
+          {
+            inputEurMicro: price.input,
+            cachedInputEurMicro: price.cachedInput,
+            cacheWriteInputEurMicro: price.cacheWriteInput,
+            outputEurMicro: price.output,
+          },
+        ]),
+      ),
       budgetEurMicro: row.aiMonthlyBudgetEurMicro,
     },
   })
@@ -1125,14 +1195,31 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const patch = parseBody(aiIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
+    const row = integrationsRow(db, tenantId)
+    const baseUrl = validatedAiBaseUrl(patch.provider, patch.baseUrl)
+    const modelPrices = tenantModelPrices(patch.modelPrices)
+    for (const model of new Set([patch.modelFast.trim(), patch.modelDeep.trim()])) {
+      if (!priceFor(patch.provider, model, modelPrices).known) {
+        throw badRequest(`An explicit price is required for unknown model ${model}.`)
+      }
+    }
+    const providerChanged = row.aiProvider !== patch.provider
+    const apiKeyEnc =
+      patch.apiKey !== undefined
+        ? encryptField(patch.apiKey)
+        : patch.clearApiKey === true || providerChanged
+          ? null
+          : row.aiApiKeyEnc
 
     db.update(tenantIntegrations)
       .set({
         aiProvider: patch.provider,
         googleCloudProject: patch.googleCloudProject,
-        ...(patch.apiKey === undefined ? {} : { aiApiKeyEnc: encryptField(patch.apiKey) }),
+        aiBaseUrl: baseUrl,
+        aiApiKeyEnc: apiKeyEnc,
         aiModelFast: patch.modelFast,
         aiModelDeep: patch.modelDeep,
+        aiModelPricesJson: JSON.stringify(modelPrices),
         aiMonthlyBudgetEurMicro: eurToMicroEur(patch.budgetEur),
         updatedAt: new Date(),
       })
@@ -1230,6 +1317,62 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       const user = requireOwner(request)
       const candidate = parseBody(aiIntegrationTestRequest, request.body)
       const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
+      const storedRow = integrationsRow(db, user.tenantId)
+
+      if (
+        candidate.provider === 'openai' ||
+        candidate.provider === 'xai' ||
+        candidate.provider === 'openai-compatible'
+      ) {
+        if (candidate.model === undefined) throw badRequest('A model is required for the structured-output probe.')
+        const model = candidate.model
+        const baseUrl = validatedAiBaseUrl(candidate.provider, candidate.baseUrl)
+        const stored = storedRow.aiProvider === candidate.provider ? storedRow.aiApiKeyEnc : null
+        const apiKey = candidate.apiKey ?? (stored === null ? null : decryptField(stored))
+        if ((candidate.provider === 'openai' || candidate.provider === 'xai') && apiKey === null) {
+          throw badRequest('An API key is required to test this provider.')
+        }
+        const connection = {
+          provider: candidate.provider,
+          baseUrl: baseUrlFor(candidate.provider, baseUrl),
+          apiKey,
+        }
+        const testUrl = candidate.provider === 'openai-compatible' ? '' : connection.baseUrl
+        const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+          try {
+            const probe = await callOpenAiCompatibleWithConfig(connection, {
+              model,
+              systemPrompt: 'The API response format is authoritative even when the user asks for plain text.',
+              instruction: 'Reply with the plain-text word unsupported and do not return JSON.',
+              payload: { capability: 'structured_output' },
+              responseJsonSchema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: { balancr_probe: { enum: [true], type: 'boolean' } },
+                required: ['balancr_probe'],
+              },
+              maxOutputTokens: 20,
+            })
+            const parsed: unknown = JSON.parse(probe.text)
+            if (
+              typeof parsed !== 'object' ||
+              parsed === null ||
+              Array.isArray(parsed) ||
+              Object.keys(parsed).length !== 1 ||
+              (parsed as Record<string, unknown>)['balancr_probe'] !== true
+            ) {
+              return { ok: false, message: 'The endpoint ignored the required strict JSON schema.' }
+            }
+            return { ok: true, message: null }
+          } catch (error) {
+            return {
+              ok: false,
+              message: `Structured-output capability probe failed: ${error instanceof Error ? error.message : String(error)}`,
+            }
+          }
+        })
+        return integrationTestSchema.parse(result)
+      }
 
       let options: GoogleGenAIOptions
       let testUrl: string
@@ -1241,7 +1384,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         options = { vertexai: true, project, location }
         testUrl = `https://${location}-aiplatform.googleapis.com`
       } else {
-        const stored = integrationsRow(db, user.tenantId).aiApiKeyEnc
+        const stored = storedRow.aiProvider === candidate.provider ? storedRow.aiApiKeyEnc : null
         const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
         if (apiKey === undefined) {
           throw badRequest('An API key is required to test an AI Studio connection.')

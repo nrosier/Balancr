@@ -903,7 +903,7 @@ export const aiRuns = sqliteTable(
     kind: text({
       enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
     }).notNull(),
-    provider: text({ enum: ['gemini-aistudio', 'gemini-vertex'] })
+    provider: text({ enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible'] })
       .notNull()
       .default('gemini-aistudio'),
     model: text().notNull(),
@@ -1330,9 +1330,13 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
   actualE2ePasswordEnc: text('actual_e2e_password_enc'),
   ghostfolioUrl: text('ghostfolio_url').notNull(),
   ghostfolioSecurityTokenEnc: text('ghostfolio_security_token_enc').notNull(),
-  aiProvider: text('ai_provider', { enum: ['gemini-aistudio', 'gemini-vertex'] }).notNull(),
+  aiProvider: text('ai_provider', {
+    enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible'],
+  }).notNull(),
   aiApiKeyEnc: text('ai_api_key_enc'),
   googleCloudProject: text('google_cloud_project'),
+  aiBaseUrl: text('ai_base_url'),
+  aiModelPricesJson: text('ai_model_prices_json').notNull().default('{}'),
   aiModelFast: text('ai_model_fast').notNull().default('gemini-3.7-flash'),
   aiModelDeep: text('ai_model_deep').notNull().default('gemini-3.1-pro-preview'),
   aiMonthlyBudgetEurMicro: integer('ai_monthly_budget_eur_micro').notNull().default(15_000_000),

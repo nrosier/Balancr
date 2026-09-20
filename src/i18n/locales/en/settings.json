@@ -235,11 +235,26 @@
     "configured": "Configured",
     "ai": {
       "apiKey": "API key",
+      "baseUrl": "Base URL",
+      "capabilityTest": "Test model + structured output (small paid call)",
+      "compatibleHint": "Best-effort compatibility. The host must be approved by the deployment through EGRESS_EXTRA_HOSTS.",
       "googleCloudProject": "Google Cloud project",
       "hint": "The provider account the AI assistant runs on.",
+      "officialHint": "Certified preset; the official endpoint cannot be changed.",
+      "price": {
+        "cacheWriteInputEur": "Cache write",
+        "cachedInputEur": "Cached input",
+        "inputEur": "Input",
+        "outputEur": "Output"
+      },
+      "prices": "Prices in EUR per 1M tokens",
+      "pricesHint": "Every selected model without a certified price needs an explicit price. Enter zero for a free local model.",
       "provider": {
         "aistudio": "Google AI Studio",
-        "vertex": "Vertex AI"
+        "compatible": "Custom OpenAI-compatible",
+        "openai": "OpenAI",
+        "vertex": "Vertex AI",
+        "xai": "xAI / Grok"
       },
       "providerLabel": "Provider",
       "title": "AI provider"

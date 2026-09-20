@@ -235,11 +235,26 @@
     "configured": "Ingesteld",
     "ai": {
       "apiKey": "API-sleutel",
+      "baseUrl": "Basis-URL",
+      "capabilityTest": "Model + gestructureerde uitvoer testen (kleine betalende oproep)",
+      "compatibleHint": "Compatibiliteit op best-effortbasis. De host moet via EGRESS_EXTRA_HOSTS door de installatie zijn goedgekeurd.",
       "googleCloudProject": "Google Cloud-project",
       "hint": "Het leveranciersaccount waarop de AI-assistent draait.",
+      "officialHint": "Gecertificeerde voorinstelling; het officiële eindpunt kan niet worden gewijzigd.",
+      "price": {
+        "cacheWriteInputEur": "Cacheschrijfdata",
+        "cachedInputEur": "Gecachte invoer",
+        "inputEur": "Invoer",
+        "outputEur": "Uitvoer"
+      },
+      "prices": "Prijzen in EUR per 1 mln. tokens",
+      "pricesHint": "Elk geselecteerd model zonder gecertificeerde prijs heeft een expliciete prijs nodig. Voer nul in voor een gratis lokaal model.",
       "provider": {
         "aistudio": "Google AI Studio",
-        "vertex": "Vertex AI"
+        "compatible": "Aangepast OpenAI-compatibel",
+        "openai": "OpenAI",
+        "vertex": "Vertex AI",
+        "xai": "xAI / Grok"
       },
       "providerLabel": "Leverancier",
       "title": "AI-leverancier"

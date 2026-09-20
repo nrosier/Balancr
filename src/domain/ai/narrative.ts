@@ -476,7 +476,7 @@ export function estimateNarrative(
   if (prepared === null) return refused('no_facts')
 
   const payloadChars = JSON.stringify(prepared.narrativePayload).length
-  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS, ai.modelPrices)
   const decision = checkBudget(db, tenantId, estimateMicroEur, now)
 
   return {
@@ -554,7 +554,13 @@ export async function runNarrative(
   const { narrativePayload: payload, nameForLabel } = prepared
   const payloadHash = hashPayload(payload)
 
-  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(
+    ai.provider,
+    model,
+    JSON.stringify(payload).length,
+    EXPECTED_OUTPUT_TOKENS,
+    ai.modelPrices,
+  )
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
@@ -605,7 +611,7 @@ export async function runNarrative(
   }
 
   const { result, usage, truncated } = call
-  const cost = costMicroEur(result.provider, result.model, usage)
+  const cost = costMicroEur(result.provider, result.model, usage, ai.modelPrices)
   const bodyMd = result.text.trim()
 
   if (truncated) {
@@ -622,6 +628,7 @@ export async function runNarrative(
       status: 'error',
       promptId: prompt.id,
       usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model output still truncated after retrying at a higher token ceiling',
       userId: options.userId ?? null,
@@ -644,6 +651,7 @@ export async function runNarrative(
       status: 'error',
       promptId: prompt.id,
       usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
       userId: options.userId ?? null,
@@ -663,6 +671,7 @@ export async function runNarrative(
     status: 'ok',
     promptId: prompt.id,
     usage,
+    costMicroEurOverride: cost,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
@@ -731,7 +740,13 @@ export async function translateNarrative(
 
   const payload = { period, from, to, bodyMd: source.bodyMd }
   const payloadHash = hashPayload(payload)
-  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(
+    ai.provider,
+    model,
+    JSON.stringify(payload).length,
+    MAX_OUTPUT_TOKENS,
+    ai.modelPrices,
+  )
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
@@ -779,7 +794,7 @@ export async function translateNarrative(
   }
 
   const { result, usage, truncated } = call
-  const cost = costMicroEur(result.provider, result.model, usage)
+  const cost = costMicroEur(result.provider, result.model, usage, ai.modelPrices)
   const bodyMd = result.text.trim()
 
   if (truncated) {
@@ -793,6 +808,7 @@ export async function translateNarrative(
       payloadHash,
       status: 'error',
       usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model output still truncated after retrying at a higher token ceiling',
       userId: options.userId ?? null,
@@ -812,6 +828,7 @@ export async function translateNarrative(
       payloadHash,
       status: 'error',
       usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
       userId: options.userId ?? null,
@@ -829,6 +846,7 @@ export async function translateNarrative(
     payloadHash,
     status: 'ok',
     usage,
+    costMicroEurOverride: cost,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })

@@ -58,9 +58,9 @@ export interface RecordRun {
   period?: string | null
   usage?: TokenUsage
   /**
-   * Only pass this to override the computed figure — Google reporting a price we
-   * do not model. Otherwise the cost is derived from `model` and `usage`, so a
-   * caller cannot record a call as free by forgetting a field.
+   * The already-computed tenant/provider price for a result. Required by callers
+   * using explicit custom prices; built-in providers may leave it out and use the
+   * dated table below.
    */
   costMicroEurOverride?: number
   error?: string | null

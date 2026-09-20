@@ -251,7 +251,7 @@ export function estimateBudgetNudge(
   if (redaction === null) return refused('no_candidates')
 
   const payloadChars = JSON.stringify(redaction.payload).length
-  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS, ai.modelPrices)
   const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
@@ -318,7 +318,13 @@ export async function runBudgetNudge(
   const { payload, categoryIdFor } = redaction
   const payloadHash = hashPayload(payload)
 
-  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(
+    ai.provider,
+    model,
+    JSON.stringify(payload).length,
+    EXPECTED_OUTPUT_TOKENS,
+    ai.modelPrices,
+  )
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
@@ -385,7 +391,7 @@ export async function runBudgetNudge(
     }
   }
 
-  const cost = costMicroEur(result.provider, result.model, result.usage)
+  const cost = costMicroEur(result.provider, result.model, result.usage, ai.modelPrices)
 
   let grounded
   try {
@@ -402,6 +408,7 @@ export async function runBudgetNudge(
       payloadHash,
       status: 'error',
       usage: result.usage,
+      costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: message,
       userId: options.userId ?? null,
@@ -430,6 +437,7 @@ export async function runBudgetNudge(
     payloadHash,
     status: 'ok',
     usage: result.usage,
+    costMicroEurOverride: cost,
     durationMs: result.durationMs,
     userId: options.userId ?? null,
   })
