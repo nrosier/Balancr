@@ -42,10 +42,11 @@ const COICOP: Readonly<Record<string, CoicopChoice>> = {
 /** Utilities and subscriptions both carry real monthly spend, which is what makes the
  *  custody split worth looking at rather than a single tiny line. */
 const CUSTODY_SHARED = [CAT_UTILITIES, CAT_SUBSCRIPTIONS]
+const tenantId = getSoleTenantId(db)
 
 for (const [categoryId, code] of Object.entries(COICOP)) {
   try {
-    saveCoicop(db, categoryId, code)
+    saveCoicop(db, tenantId, categoryId, code)
   } catch (error) {
     if (error instanceof MappingError) {
       throw new Error(
@@ -58,13 +59,12 @@ for (const [categoryId, code] of Object.entries(COICOP)) {
 }
 
 for (const categoryId of CUSTODY_SHARED) {
-  saveCustodyShared(db, categoryId, true)
+  saveCustodyShared(db, tenantId, categoryId, true)
 }
 
 // sharedCostBp overrides the roster-derived share (custody.ts), so no household member
 // is needed to get a real split — the flagged categories alone would otherwise read
 // `no_basis` instead of `no_shared`.
-const tenantId = getSoleTenantId(db)
 saveHousehold(db, tenantId, { sharedCostBp: 5000, sharedCostDirection: 'whole_invoice' })
 
 console.log(
