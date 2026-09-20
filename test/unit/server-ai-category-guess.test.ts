@@ -12,7 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { FastifyInstance } from 'fastify'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiRuns, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -231,6 +231,7 @@ describe('POST /api/ai/category-guess', () => {
     fakeGemini('never called')
     recordRun(ctx.db, tenantId, {
       kind: 'category_guess',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},

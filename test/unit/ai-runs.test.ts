@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
-import { costMicroEur, eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { costMicroEur, eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import {
   budgetEur,
   budgetState,
@@ -53,15 +53,17 @@ beforeEach(() => {
 })
 
 const MODEL = 'gemini-3.7-flash'
+const PROVIDER = 'gemini-aistudio' as const
 
 const run = (overrides: Partial<RecordRun> = {}): RecordRun => ({
   kind: 'findings',
+  provider: PROVIDER,
   model: MODEL,
   locale: 'en',
   payload: { month: '2026-03', categories: [{ label: 'c1', spentCents: 42_000 }] },
   payloadHash: 'hash-default',
   status: 'ok',
-  usage: { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 },
+  usage: { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0, cacheWriteTokens: 0 },
   ...overrides,
 })
 
@@ -71,6 +73,7 @@ const run = (overrides: Partial<RecordRun> = {}): RecordRun => ({
  */
 const refused = (status: RunStatus): RecordRun => ({
   kind: 'findings',
+  provider: PROVIDER,
   model: MODEL,
   locale: 'en',
   payload: { month: '2026-03' },
@@ -107,10 +110,29 @@ describe('recordRun', () => {
     expect(loadRun(db, tenantId, id)?.payloadJson).toBe(JSON.stringify(payload))
   })
 
+  it('stores provider identity and cache-write usage on the ledger row', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({
+        provider: 'gemini-vertex',
+        usage: { inputTokens: 100, outputTokens: 20, cachedTokens: 10, cacheWriteTokens: 30 },
+      }),
+    )
+
+    expect(loadRun(db, tenantId, id)).toMatchObject({
+      provider: 'gemini-vertex',
+      inputTokens: 100,
+      outputTokens: 20,
+      cachedTokens: 10,
+      cacheWriteTokens: 30,
+    })
+  })
+
   it('derives the cost from the model and the tokens', () => {
     const id = recordRun(db, tenantId, run())
     expect(loadRun(db, tenantId, id)?.costMicroEur).toBe(
-      costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
+      costMicroEur(PROVIDER, MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0, cacheWriteTokens: 0 }),
     )
   })
 
@@ -250,6 +272,16 @@ describe('findReusableRun', () => {
     expect(findReusableRun(db, tenantId, key())?.id).toBe(id)
   })
 
+  it('never reuses a run from another provider', () => {
+    recordRun(db, tenantId, source())
+    db.update(tenantIntegrations)
+      .set({ aiProvider: 'gemini-vertex', googleCloudProject: 'test-project' })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+
+    expect(findReusableRun(db, tenantId, key())).toBeNull()
+  })
+
   it.each([
     ['kind', { kind: 'narrative' as const }],
     ['period', { period: '2026-04' }],
@@ -373,6 +405,7 @@ describe('ai_spend_monthly', () => {
       inputTokens: 0,
       outputTokens: 0,
       cachedTokens: 0,
+      cacheWriteTokens: 0,
       costMicroEur: 0,
     })
   })
@@ -385,9 +418,23 @@ describe('ai_spend_monthly', () => {
     expect(month.runCount).toBe(2)
     expect(month.inputTokens).toBe(6_000)
     expect(month.outputTokens).toBe(1_000)
+    expect(month.cacheWriteTokens).toBe(0)
     expect(month.costMicroEur).toBe(
-      2 * costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
+      2 * costMicroEur(PROVIDER, MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0, cacheWriteTokens: 0 }),
     )
+  })
+
+  it('sums cache-write tokens separately from cache reads', () => {
+    runIn('2026-03', {
+      usage: { inputTokens: 100, outputTokens: 20, cachedTokens: 30, cacheWriteTokens: 40 },
+    })
+
+    expect(loadSpendMonth(db, tenantId, '2026-03')).toMatchObject({
+      inputTokens: 100,
+      outputTokens: 20,
+      cachedTokens: 30,
+      cacheWriteTokens: 40,
+    })
   })
 
   it('counts a run whatever its status', () => {
@@ -399,7 +446,7 @@ describe('ai_spend_monthly', () => {
     const month = loadSpendMonth(db, tenantId, '2026-03')
     expect(month.runCount).toBe(2)
     expect(month.costMicroEur).toBe(
-      costMicroEur(MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0 }),
+      costMicroEur(PROVIDER, MODEL, { inputTokens: 3_000, outputTokens: 500, cachedTokens: 0, cacheWriteTokens: 0 }),
     )
   })
 
@@ -518,7 +565,7 @@ describe('budgetState', () => {
   it("does not let another tenant's exhausted budget block this tenant (#411)", () => {
     const otherTenantId = createSecondTenant(db)
     db.update(tenantIntegrations)
-      .set({ geminiMonthlyBudgetEurMicro: eurToMicroEur(1) })
+      .set({ aiMonthlyBudgetEurMicro: eurToMicroEur(1) })
       .where(eq(tenantIntegrations.tenantId, otherTenantId))
       .run()
     runFor(otherTenantId, '2026-03', { costMicroEurOverride: eurToMicroEur(1) })
@@ -597,7 +644,7 @@ describe('a zero budget', () => {
     // is the one interpretation that could produce a bill nobody asked for.
     const tenantId = getSoleTenantId(db)
     db.update(tenantIntegrations)
-      .set({ geminiMonthlyBudgetEurMicro: 0 })
+      .set({ aiMonthlyBudgetEurMicro: 0 })
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 

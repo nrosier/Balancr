@@ -1,5 +1,5 @@
 /**
- * The Actual/Ghostfolio/Gemini connection this tenant uses (#369).
+ * The Actual/Ghostfolio/AI connection this tenant uses (#369, #422).
  *
  * Three independent sub-forms, not a list: unlike `Property.tsx`'s roster, there is
  * exactly one of each integration per tenant, and the three have nothing to do with
@@ -344,8 +344,8 @@ function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactN
   )
 }
 
-interface GeminiDraft {
-  provider: 'aistudio' | 'vertex'
+interface AiDraft {
+  provider: 'gemini-aistudio' | 'gemini-vertex'
   apiKey: string
   googleCloudProject: string
   modelFast: string
@@ -353,31 +353,31 @@ interface GeminiDraft {
   budgetEur: string
 }
 
-const geminiDraftOf = (gemini: IntegrationsSetting['gemini']): GeminiDraft => ({
-  provider: gemini.provider,
+const aiDraftOf = (ai: IntegrationsSetting['ai']): AiDraft => ({
+  provider: ai.provider,
   apiKey: '',
-  googleCloudProject: gemini.googleCloudProject ?? '',
-  modelFast: gemini.modelFast,
-  modelDeep: gemini.modelDeep,
-  budgetEur: String(gemini.budgetEurMicro / 1_000_000),
+  googleCloudProject: ai.googleCloudProject ?? '',
+  modelFast: ai.modelFast,
+  modelDeep: ai.modelDeep,
+  budgetEur: String(ai.budgetEurMicro / 1_000_000),
 })
 
-function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+function AiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
-  const { gemini } = settings.integrations
+  const { ai } = settings.integrations
   const locked = !owner || state.busy
-  const [draft, setDraft] = useState<GeminiDraft | null>(null)
+  const [draft, setDraft] = useState<AiDraft | null>(null)
   const [result, setResult] = useState<IntegrationTest | null>(null)
-  const current = draft ?? geminiDraftOf(gemini)
+  const current = draft ?? aiDraftOf(ai)
 
-  const edit = (patch: Partial<GeminiDraft>): void => setDraft({ ...current, ...patch })
+  const edit = (patch: Partial<AiDraft>): void => setDraft({ ...current, ...patch })
 
   const apiKey = current.apiKey.trim()
   const googleCloudProject = current.googleCloudProject.trim()
-  const secretAvailable = apiKey !== '' || gemini.apiKeyConfigured
-  const canTest = current.provider === 'vertex' ? googleCloudProject !== '' : secretAvailable
+  const secretAvailable = apiKey !== '' || ai.apiKeyConfigured
+  const canTest = current.provider === 'gemini-vertex' ? googleCloudProject !== '' : secretAvailable
   const testHint: 'fields' | 'secret' | null =
-    current.provider === 'vertex'
+    current.provider === 'gemini-vertex'
       ? googleCloudProject === ''
         ? 'fields'
         : null
@@ -387,9 +387,9 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
 
   const submit = (): void => {
     state.save(
-      'integrations-gemini',
+      'integrations-ai',
       'PATCH',
-      '/api/settings/integrations/gemini',
+      '/api/settings/integrations/ai',
       {
         provider: current.provider,
         googleCloudProject: googleCloudProject === '' ? null : googleCloudProject,
@@ -404,8 +404,8 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
 
   return (
     <Panel
-      title={t('settings:integrations.gemini.title')}
-      hint={t('settings:integrations.gemini.hint')}
+      title={t('settings:integrations.ai.title')}
+      hint={t('settings:integrations.ai.hint')}
       notice={owner ? null : <p className="panel__meta muted">{t('settings:viewerOnly')}</p>}
     >
       <form
@@ -416,27 +416,27 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         }}
       >
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-provider">
-            {t('settings:integrations.gemini.providerLabel')}
+          <label className="field__label" htmlFor="integrations-ai-provider">
+            {t('settings:integrations.ai.providerLabel')}
           </label>
           <select
-            id="integrations-gemini-provider"
+            id="integrations-ai-provider"
             className="field__input"
             value={current.provider}
             disabled={locked}
-            onChange={(event) => edit({ provider: event.target.value as GeminiDraft['provider'] })}
+            onChange={(event) => edit({ provider: event.target.value as AiDraft['provider'] })}
           >
-            <option value="aistudio">{t('settings:integrations.gemini.provider.aistudio')}</option>
-            <option value="vertex">{t('settings:integrations.gemini.provider.vertex')}</option>
+            <option value="gemini-aistudio">{t('settings:integrations.ai.provider.aistudio')}</option>
+            <option value="gemini-vertex">{t('settings:integrations.ai.provider.vertex')}</option>
           </select>
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-api-key">
-            {t('settings:integrations.gemini.apiKey')} <Configured yes={gemini.apiKeyConfigured} />
+          <label className="field__label" htmlFor="integrations-ai-api-key">
+            {t('settings:integrations.ai.apiKey')} <Configured yes={ai.apiKeyConfigured} />
           </label>
           <input
-            id="integrations-gemini-api-key"
+            id="integrations-ai-api-key"
             className="field__input"
             type="password"
             autoComplete="new-password"
@@ -444,17 +444,17 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
             disabled={locked}
             onChange={(event) => edit({ apiKey: event.target.value })}
           />
-          {gemini.apiKeyConfigured ? (
+          {ai.apiKeyConfigured ? (
             <p className="panel__meta muted">{t('settings:integrations.secretUnchanged')}</p>
           ) : null}
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-project">
-            {t('settings:integrations.gemini.googleCloudProject')}
+          <label className="field__label" htmlFor="integrations-ai-project">
+            {t('settings:integrations.ai.googleCloudProject')}
           </label>
           <input
-            id="integrations-gemini-project"
+            id="integrations-ai-project"
             className="field__input"
             type="text"
             autoComplete="off"
@@ -465,11 +465,11 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-model-fast">
+          <label className="field__label" htmlFor="integrations-ai-model-fast">
             {t('settings:ai.model.fast')}
           </label>
           <input
-            id="integrations-gemini-model-fast"
+            id="integrations-ai-model-fast"
             className="field__input"
             type="text"
             autoComplete="off"
@@ -480,11 +480,11 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-model-deep">
+          <label className="field__label" htmlFor="integrations-ai-model-deep">
             {t('settings:ai.model.deep')}
           </label>
           <input
-            id="integrations-gemini-model-deep"
+            id="integrations-ai-model-deep"
             className="field__input"
             type="text"
             autoComplete="off"
@@ -495,11 +495,11 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         </div>
 
         <div className="field">
-          <label className="field__label" htmlFor="integrations-gemini-budget">
+          <label className="field__label" htmlFor="integrations-ai-budget">
             {t('settings:ai.budget')}
           </label>
           <input
-            id="integrations-gemini-budget"
+            id="integrations-ai-budget"
             className="field__input num"
             type="text"
             inputMode="decimal"
@@ -514,7 +514,7 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
 
         <div className="integrations__actions">
           <button type="submit" className="button button--primary" disabled={locked || draft === null}>
-            {state.pending === 'integrations-gemini' ? t('shell.loading') : t('action.save')}
+            {state.pending === 'integrations-ai' ? t('shell.loading') : t('action.save')}
           </button>
           <button
             type="button"
@@ -522,9 +522,9 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
             disabled={locked || !canTest}
             onClick={() => {
               state.ask<IntegrationTest>(
-                'gemini-test',
+                'ai-test',
                 'POST',
-                '/api/settings/integrations/gemini/test',
+                '/api/settings/integrations/ai/test',
                 {
                   provider: current.provider,
                   ...(apiKey === '' ? {} : { apiKey }),
@@ -534,7 +534,7 @@ function GeminiPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
               )
             }}
           >
-            {state.pending === 'gemini-test' ? t('settings:integrations.testing') : t('settings:integrations.test')}
+            {state.pending === 'ai-test' ? t('settings:integrations.testing') : t('settings:integrations.test')}
           </button>
           {locked ? null : <TestHint reason={testHint} />}
         </div>
@@ -550,7 +550,7 @@ export function IntegrationsPanel(props: SettingsPanelProps): ReactNode {
     <>
       <ActualPanel {...props} />
       <GhostfolioPanel {...props} />
-      <GeminiPanel {...props} />
+      <AiPanel {...props} />
     </>
   )
 }

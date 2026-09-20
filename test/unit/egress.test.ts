@@ -43,7 +43,7 @@ function insertIntegrations(db: Db, urls: { actualServerUrl: string; ghostfolioU
       actualSyncId: 'sync-id',
       ghostfolioUrl: urls.ghostfolioUrl,
       ghostfolioSecurityTokenEnc: 'unused-in-this-test',
-      geminiProvider: 'aistudio',
+      aiProvider: 'gemini-aistudio',
     })
     .run()
 }

@@ -26,13 +26,12 @@
  * month.
  */
 import { and, desc, eq } from 'drizzle-orm'
-import { callGemini, GeminiError, type GeminiCall, type GeminiResult } from '../../adapters/gemini/client.ts'
+import { callAi } from '../../adapters/ai/client.ts'
 import {
-  addUsage,
   costMicroEur,
   estimateCostMicroEur,
-  type TokenUsage,
-} from '../../adapters/gemini/pricing.ts'
+} from '../../adapters/ai/pricing.ts'
+import { addUsage, AiError, type AiCall, type AiResult, type TokenUsage } from '../../adapters/ai/types.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiNarratives } from '../../db/schema.ts'
@@ -458,7 +457,8 @@ export function estimateNarrative(
   options: { period: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelDeep
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelDeep
   const now = options.now ?? new Date()
   const refused = (reason: string): AnalysisEstimate => ({
     month: options.period,
@@ -476,7 +476,7 @@ export function estimateNarrative(
   if (prepared === null) return refused('no_facts')
 
   const payloadChars = JSON.stringify(prepared.narrativePayload).length
-  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimateMicroEur, now)
 
   return {
@@ -490,7 +490,7 @@ export function estimateNarrative(
 }
 
 interface NarrativeCall {
-  result: GeminiResult
+  result: AiResult
   usage: TokenUsage
   /** True only when the retry also hit `MAX_TOKENS` — the answer is unusable. */
   truncated: boolean
@@ -504,14 +504,14 @@ interface NarrativeCall {
 async function callNarrativeModel(
   db: Db,
   tenantId: string,
-  call: Omit<GeminiCall, 'maxOutputTokens'>,
+  call: Omit<AiCall, 'maxOutputTokens'>,
 ): Promise<NarrativeCall> {
-  const first = await callGemini(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
+  const first = await callAi(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS })
   if (first.finishReason !== 'MAX_TOKENS') {
     return { result: first, usage: first.usage, truncated: false }
   }
   log.warn({ model: call.model }, 'narrative call hit MAX_TOKENS; retrying once at a higher ceiling')
-  const retry = await callGemini(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
+  const retry = await callAi(db, tenantId, { ...call, maxOutputTokens: MAX_OUTPUT_TOKENS_RETRY })
   return {
     result: retry,
     usage: addUsage(first.usage, retry.usage),
@@ -526,7 +526,7 @@ async function callNarrativeModel(
  * per language, and everything that reads a narrative goes through here, so the
  * cache is not something a caller can forget to check.
  *
- * Never throws for a Gemini failure, for the same reason as `runAnalysis`: the
+ * Never throws for a provider failure, for the same reason as `runAnalysis`: the
  * nightly job's only trace of having tried is the run row.
  */
 export async function runNarrative(
@@ -535,7 +535,8 @@ export async function runNarrative(
   options: NarrativeOptions,
 ): Promise<NarrativeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelDeep
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelDeep
   const now = options.now ?? new Date()
   const period = options.period
 
@@ -553,11 +554,12 @@ export async function runNarrative(
   const { narrativePayload: payload, nameForLabel } = prepared
   const payloadHash = hashPayload(payload)
 
-  const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: ai.provider,
       model,
       locale,
       period,
@@ -584,9 +586,10 @@ export async function runNarrative(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
-    const message = error instanceof GeminiError ? error.message : String(error)
+    const message = error instanceof AiError ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: error instanceof AiError ? error.provider : ai.provider,
       model,
       locale,
       period,
@@ -602,7 +605,7 @@ export async function runNarrative(
   }
 
   const { result, usage, truncated } = call
-  const cost = costMicroEur(result.model, usage)
+  const cost = costMicroEur(result.provider, result.model, usage)
   const bodyMd = result.text.trim()
 
   if (truncated) {
@@ -610,6 +613,7 @@ export async function runNarrative(
     // tokens were still spent, so the run is still billed for them.
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: result.provider,
       model: result.model,
       locale,
       period,
@@ -631,6 +635,7 @@ export async function runNarrative(
     // its tokens, because they were spent and the guard has to see them.
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: result.provider,
       model: result.model,
       locale,
       period,
@@ -649,6 +654,7 @@ export async function runNarrative(
 
   const runId = recordRun(db, tenantId, {
     kind: 'narrative',
+    provider: result.provider,
     model: result.model,
     locale,
     period,
@@ -706,7 +712,8 @@ export async function translateNarrative(
   options: TranslateOptions,
 ): Promise<NarrativeOutcome> {
   const { period, from, to } = options
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const now = options.now ?? new Date()
 
   if (from === to) return failed(period, to, 'skipped', 'same_locale')
@@ -724,11 +731,12 @@ export async function translateNarrative(
 
   const payload = { period, from, to, bodyMd: source.bodyMd }
   const payloadHash = hashPayload(payload)
-  const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, MAX_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: ai.provider,
       model,
       locale: to,
       period,
@@ -753,9 +761,10 @@ export async function translateNarrative(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
-    const message = error instanceof GeminiError ? error.message : String(error)
+    const message = error instanceof AiError ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: error instanceof AiError ? error.provider : ai.provider,
       model,
       locale: to,
       period,
@@ -770,12 +779,13 @@ export async function translateNarrative(
   }
 
   const { result, usage, truncated } = call
-  const cost = costMicroEur(result.model, usage)
+  const cost = costMicroEur(result.provider, result.model, usage)
   const bodyMd = result.text.trim()
 
   if (truncated) {
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: result.provider,
       model: result.model,
       locale: to,
       period,
@@ -794,6 +804,7 @@ export async function translateNarrative(
   if (isBlankMarkdown(bodyMd)) {
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: result.provider,
       model: result.model,
       locale: to,
       period,
@@ -810,6 +821,7 @@ export async function translateNarrative(
 
   const runId = recordRun(db, tenantId, {
     kind: 'narrative',
+    provider: result.provider,
     model: result.model,
     locale: to,
     period,

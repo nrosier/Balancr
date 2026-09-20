@@ -162,7 +162,7 @@ describe('GET /api/settings', () => {
     expect(settings.params).toEqual(DEFAULT_PARAMS)
     expect(settings.paramDefaults).toEqual(DEFAULT_PARAMS)
     expect(settings.accounts).toHaveLength(3)
-    expect(settings.integrations.gemini.modelFast.length).toBeGreaterThan(0)
+    expect(settings.integrations.ai.modelFast.length).toBeGreaterThan(0)
     // The two controls that spend money read this rather than discovering the
     // refusal by pressing: the analysis rerun and the prompt editor's test run (#165).
     expect(settings.ai.availability).toEqual({ enabled: true, reason: null })
@@ -238,6 +238,7 @@ describe('GET /api/settings', () => {
     const otherTenantId = createSecondTenant(ctx.db)
     const capped = (payloadHash: string) => ({
       kind: 'findings' as const,
+      provider: 'gemini-aistudio' as const,
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { month: '2026-09' },

@@ -22,12 +22,12 @@ export function createSecondTenant(db: Db, label = 'Second'): string {
       actualE2ePasswordEnc: null,
       ghostfolioUrl: '',
       ghostfolioSecurityTokenEnc: encryptField(''),
-      geminiProvider: 'aistudio',
-      geminiApiKeyEnc: null,
+      aiProvider: 'gemini-aistudio',
+      aiApiKeyEnc: null,
       googleCloudProject: null,
-      geminiModelFast: config.GEMINI_MODEL_FAST,
-      geminiModelDeep: config.GEMINI_MODEL_DEEP,
-      geminiMonthlyBudgetEurMicro: 0,
+      aiModelFast: config.GEMINI_MODEL_FAST,
+      aiModelDeep: config.GEMINI_MODEL_DEEP,
+      aiMonthlyBudgetEurMicro: 0,
     })
     .run()
 

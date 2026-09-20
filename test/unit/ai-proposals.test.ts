@@ -89,6 +89,7 @@ beforeEach(() => {
   db.insert(users).values({ id: 'u1', tenantId: TENANT_ID, locale: 'en' }).run()
   runId = recordRun(db, TENANT_ID, {
     kind: 'findings',
+    provider: 'gemini-aistudio',
     model: 'gemini-3.7-flash',
     locale: 'en',
     payload: {},

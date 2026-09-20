@@ -977,7 +977,8 @@ cron ─────┴── sync → aggregate → snapshot → nightly AI run
           │
 adapters ─┼── actual/      @actual-app/api, sole owner of the sync dataDir
           ├── ghostfolio/  REST, capability-probed
-          └── gemini/      behind the redaction boundary
+          └── ai/          provider-neutral call, usage and pricing boundary
+                └── gemini/  native AI Studio and Vertex implementation
 ```
 
 One container, modular inside. The one hard constraint is that a single process

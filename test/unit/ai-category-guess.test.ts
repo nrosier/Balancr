@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { config } from '../../src/config.ts'
@@ -133,6 +133,7 @@ describe('estimateCategoryGuess', () => {
     seedCandidate()
     recordRun(db, tenantId, {
       kind: 'category_guess',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},
@@ -169,6 +170,7 @@ describe('runCategoryGuess', () => {
     seedCandidate()
     recordRun(db, tenantId, {
       kind: 'category_guess',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},

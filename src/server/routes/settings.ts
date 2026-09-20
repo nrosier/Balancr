@@ -29,8 +29,9 @@ import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
+import { resetAiClients } from '../../adapters/ai/client.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
-import { eurToMicroEur } from '../../adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../adapters/ai/pricing.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { decryptField, encryptField } from '../../db/field-crypto.ts'
@@ -457,17 +458,17 @@ const ghostfolioIntegrationPatchRequest = z.strictObject({
 })
 
 /**
- * The Gemini connection (#369). `googleCloudProject` is not a secret, so unlike
+ * The AI connection (#369, #422). `googleCloudProject` is not a secret, so unlike
  * `apiKey` it is not optional — it is replaced wholesale like every other plain field
- * on this page, and `null` is how a switch to `aistudio` clears it.
+ * on this page, and `null` is how a switch to AI Studio clears it.
  *
  * `modelFast`/`modelDeep`/`budgetEur` moved from `.env` to here (#371): a model
  * choice and a monthly cap are exactly as per-tenant as the credential they run
  * against, and unlike the credential neither is a secret — they round-trip as
  * plain fields, the same as `googleCloudProject`.
  */
-const geminiIntegrationPatchRequest = z.strictObject({
-  provider: z.enum(['aistudio', 'vertex']),
+const aiIntegrationPatchRequest = z.strictObject({
+  provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
   apiKey: z.string().min(1).optional(),
   googleCloudProject: z.string().min(1).nullable(),
   modelFast: z.string().min(1),
@@ -500,8 +501,8 @@ const ghostfolioIntegrationTestRequest = z.strictObject({
 })
 
 /** See `actualIntegrationTestRequest`. `googleCloudLocation` defaults to the deployment's own when omitted. */
-const geminiIntegrationTestRequest = z.strictObject({
-  provider: z.enum(['aistudio', 'vertex']),
+const aiIntegrationTestRequest = z.strictObject({
+  provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
   apiKey: z.string().min(1).optional(),
   googleCloudProject: z.string().min(1).optional(),
   googleCloudLocation: z.string().min(1).optional(),
@@ -698,13 +699,13 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
       url: row.ghostfolioUrl,
       tokenConfigured: row.ghostfolioSecurityTokenEnc.length > 0,
     },
-    gemini: {
-      provider: row.geminiProvider,
-      apiKeyConfigured: row.geminiApiKeyEnc !== null,
+    ai: {
+      provider: row.aiProvider,
+      apiKeyConfigured: row.aiApiKeyEnc !== null,
       googleCloudProject: row.googleCloudProject,
-      modelFast: row.geminiModelFast,
-      modelDeep: row.geminiModelDeep,
-      budgetEurMicro: row.geminiMonthlyBudgetEurMicro,
+      modelFast: row.aiModelFast,
+      modelDeep: row.aiModelDeep,
+      budgetEurMicro: row.aiMonthlyBudgetEurMicro,
     },
   })
 }
@@ -1118,25 +1119,26 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     return buildSettings(db, request)
   })
 
-  /** The Gemini connection this tenant's AI pass uses (#369). See the Actual route above. */
-  app.patch('/api/settings/integrations/gemini', (request: FastifyRequest) => {
+  /** The selected AI connection this tenant's AI pass uses (#369, #422). */
+  app.patch('/api/settings/integrations/ai', (request: FastifyRequest) => {
     const user = requireOwner(request)
-    const patch = parseBody(geminiIntegrationPatchRequest, request.body)
+    const patch = parseBody(aiIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
 
     db.update(tenantIntegrations)
       .set({
-        geminiProvider: patch.provider,
+        aiProvider: patch.provider,
         googleCloudProject: patch.googleCloudProject,
-        ...(patch.apiKey === undefined ? {} : { geminiApiKeyEnc: encryptField(patch.apiKey) }),
-        geminiModelFast: patch.modelFast,
-        geminiModelDeep: patch.modelDeep,
-        geminiMonthlyBudgetEurMicro: eurToMicroEur(patch.budgetEur),
+        ...(patch.apiKey === undefined ? {} : { aiApiKeyEnc: encryptField(patch.apiKey) }),
+        aiModelFast: patch.modelFast,
+        aiModelDeep: patch.modelDeep,
+        aiMonthlyBudgetEurMicro: eurToMicroEur(patch.budgetEur),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
+    resetAiClients()
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
@@ -1145,8 +1147,8 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       entity: 'tenant_integrations',
       entityRef: tenantId,
       actorId: user.id,
-      before: before.gemini,
-      after: after.gemini,
+      before: before.ai,
+      after: after.ai,
     })
 
     return buildSettings(db, request)
@@ -1213,7 +1215,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   )
 
   /**
-   * Whether a candidate Gemini key/project actually work (#369).
+   * Whether a candidate native Gemini key/project actually works (#369, #422).
    *
    * `models.list()` is the cheapest call that proves the credential is live —
    * never `generateContent`, so testing a key spends no part of the tenant's own
@@ -1222,16 +1224,16 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * running at the same time.
    */
   app.post(
-    '/api/settings/integrations/gemini/test',
+    '/api/settings/integrations/ai/test',
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
       const user = requireOwner(request)
-      const candidate = parseBody(geminiIntegrationTestRequest, request.body)
+      const candidate = parseBody(aiIntegrationTestRequest, request.body)
       const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
 
       let options: GoogleGenAIOptions
       let testUrl: string
-      if (candidate.provider === 'vertex') {
+      if (candidate.provider === 'gemini-vertex') {
         const project = candidate.googleCloudProject
         if (project === undefined) {
           throw badRequest('A Google Cloud project is required to test a Vertex connection.')
@@ -1239,7 +1241,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         options = { vertexai: true, project, location }
         testUrl = `https://${location}-aiplatform.googleapis.com`
       } else {
-        const stored = integrationsRow(db, user.tenantId).geminiApiKeyEnc
+        const stored = integrationsRow(db, user.tenantId).aiApiKeyEnc
         const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
         if (apiKey === undefined) {
           throw badRequest('An API key is required to test an AI Studio connection.')

@@ -20,7 +20,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { eq } from 'drizzle-orm'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { aiFindings, aiRuns, proposals, tenantIntegrations } from '../../src/db/schema.ts'
@@ -411,13 +411,13 @@ describe('with the model unavailable', () => {
       seedTwoMonths()
       if (clearKey) {
         db.update(tenantIntegrations)
-          .set({ geminiApiKeyEnc: null })
+          .set({ aiApiKeyEnc: null })
           .where(eq(tenantIntegrations.tenantId, TENANT_ID))
           .run()
       }
       if (zeroBudget) {
         db.update(tenantIntegrations)
-          .set({ geminiMonthlyBudgetEurMicro: 0 })
+          .set({ aiMonthlyBudgetEurMicro: 0 })
           .where(eq(tenantIntegrations.tenantId, TENANT_ID))
           .run()
       }
@@ -440,7 +440,7 @@ describe('with the model unavailable', () => {
   it('still does the local housekeeping', async () => {
     seedTwoMonths()
     db.update(tenantIntegrations)
-      .set({ geminiMonthlyBudgetEurMicro: 0 })
+      .set({ aiMonthlyBudgetEurMicro: 0 })
       .where(eq(tenantIntegrations.tenantId, TENANT_ID))
       .run()
     db.insert(proposals)

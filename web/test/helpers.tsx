@@ -389,8 +389,8 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
         e2ePasswordConfigured: false,
       },
       ghostfolio: { url: 'https://ghostfolio.example.test', tokenConfigured: true },
-      gemini: {
-        provider: 'aistudio',
+      ai: {
+        provider: 'gemini-aistudio',
         apiKeyConfigured: true,
         googleCloudProject: null,
         modelFast: 'gemini-3.7-flash',

@@ -1039,6 +1039,7 @@ describe('GET /api/insights', () => {
   it('filters the ledger to the month, plus the calls about no month at all (#158)', async () => {
     const augustRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
@@ -1048,6 +1049,7 @@ describe('GET /api/insights', () => {
     })
     const julyRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
@@ -1057,6 +1059,7 @@ describe('GET /api/insights', () => {
     })
     const chatRun = recordRun(ctx.db, TENANT_ID, {
       kind: 'clarify',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { categories: [] },
@@ -1145,6 +1148,7 @@ describe('GET /api/insights', () => {
     storeNarrative(ctx.db, TENANT_ID, {
       runId: recordRun(ctx.db, TENANT_ID, {
         kind: 'narrative',
+        provider: 'gemini-aistudio',
         model: 'gemini-3.1-pro-preview',
         locale: 'en',
         payload: { categories: [] },
@@ -1182,6 +1186,7 @@ describe('GET /api/insights', () => {
     storeNarrative(ctx.db, TENANT_ID, {
       runId: recordRun(ctx.db, TENANT_ID, {
         kind: 'narrative',
+        provider: 'gemini-aistudio',
         model: 'gemini-3.1-pro-preview',
         locale: 'en',
         payload: { categories: [], note: 'The boiler was replaced.' },
@@ -1205,16 +1210,18 @@ describe('the AI ledger', () => {
   function ledger(): { ok: string; capped: string } {
     const ok = recordRun(ctx.db, TENANT_ID, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { month: MONTH, categories: [{ label: 'c1', spentCents: 72_000 }] },
       payloadHash: 'ok-hash',
       status: 'ok',
-      usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0 },
+      usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0, cacheWriteTokens: 0 },
       durationMs: 1_400,
     })
     const capped = recordRun(ctx.db, TENANT_ID, {
       kind: 'narrative',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.1-pro-preview',
       locale: 'nl',
       payload: { month: MONTH, categories: [] },

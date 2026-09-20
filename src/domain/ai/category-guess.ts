@@ -19,14 +19,15 @@
  * refuses a no-op with `ProposalError`, caught per item exactly as
  * `generateCategoryProposals` already catches it.
  */
-import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
-import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
+import { callAi } from '../../adapters/ai/client.ts'
+import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { AiError } from '../../adapters/ai/types.ts'
 import {
   guessJsonSchema,
   groundGuessResponse,
   parseGuessResponse,
   type DroppedGuess,
-} from '../../adapters/gemini/schemas.ts'
+} from './schemas.ts'
 import { fetchCategories } from '../../adapters/actual/queries.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -200,7 +201,8 @@ export async function estimateCategoryGuess(
   options: { ids: readonly string[]; locale?: string; model?: string; now?: Date },
 ): Promise<CategoryGuessEstimate> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const prepared = await prepareGuessBatch(db, tenantId, options.ids, locale)
 
   if (prepared === null) {
@@ -215,7 +217,7 @@ export async function estimateCategoryGuess(
   }
 
   const payloadChars = JSON.stringify(prepared.redaction.payload).length
-  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
@@ -236,7 +238,7 @@ export async function estimateCategoryGuess(
  * whatever transactions were selected, not one month, so there is no single
  * period to attribute it to (see the `aiRuns` table's own doc comment).
  *
- * Never throws for a Gemini failure, same reason as `runAnalysis`/`runNarrative`:
+ * Never throws for a provider failure, same reason as `runAnalysis`/`runNarrative`:
  * the ledger row is the only trace that this was attempted at all.
  */
 export async function runCategoryGuess(
@@ -245,7 +247,8 @@ export async function runCategoryGuess(
   options: CategoryGuessOptions,
 ): Promise<CategoryGuessOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const now = options.now ?? new Date()
 
   const prepared = await prepareGuessBatch(db, tenantId, options.ids, locale)
@@ -275,11 +278,12 @@ export async function runCategoryGuess(
   const resultsFor = (reason: string): CategoryGuessItemResult[] =>
     options.ids.map((id) => ({ id, ok: false, reason: candidateIdSet.has(id) ? reason : 'no_candidate' }))
 
-  const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
+      provider: ai.provider,
       model,
       locale,
       payload,
@@ -303,7 +307,7 @@ export async function runCategoryGuess(
 
   let result
   try {
-    result = await callGemini(db, tenantId, {
+    result = await callAi(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(CATEGORY_GUESS_SYSTEM, locale),
       instruction: categoryGuessInstruction(payload),
@@ -312,9 +316,10 @@ export async function runCategoryGuess(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
-    const message = error instanceof GeminiError ? error.message : String(error)
+    const message = error instanceof AiError ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
+      provider: error instanceof AiError ? error.provider : ai.provider,
       model,
       locale,
       payload,
@@ -336,7 +341,7 @@ export async function runCategoryGuess(
     }
   }
 
-  const cost = costMicroEur(result.model, result.usage)
+  const cost = costMicroEur(result.provider, result.model, result.usage)
 
   let grounded
   try {
@@ -345,6 +350,7 @@ export async function runCategoryGuess(
     const message = error instanceof Error ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'category_guess',
+      provider: result.provider,
       model: result.model,
       locale,
       payload,
@@ -370,6 +376,7 @@ export async function runCategoryGuess(
 
   const runId = recordRun(db, tenantId, {
     kind: 'category_guess',
+    provider: result.provider,
     model: result.model,
     locale,
     payload,

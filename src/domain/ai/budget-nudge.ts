@@ -25,15 +25,16 @@
  * this is what guarantees "empty note → no AI path taken at all") and a month
  * with no pending budget-amount proposal to adjust (`no_candidates`).
  */
-import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
-import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
+import { callAi } from '../../adapters/ai/client.ts'
+import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { AiError } from '../../adapters/ai/types.ts'
 import {
   groundNudgeResponse,
   nudgeJsonSchema,
   NUDGE_REASON_MAX_CHARS,
   parseNudgeResponse,
   type DroppedNudge,
-} from '../../adapters/gemini/schemas.ts'
+} from './schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
@@ -104,9 +105,8 @@ function budgetNudgeInstruction(payload: NudgeRedaction['payload']): string {
   return [
     `The household's note is below, alongside ${payload.candidates.length} candidate`,
     'budgets for', payload.month, '. Adjust only the ones the note speaks to.',
-    // Said in words rather than sent as a schema bound: `toGeminiSchema` drops
-    // length keywords, and #96 settled that a quantity is stated in prose here
-    // and enforced locally in `groundNudgeResponse`.
+    // Also said in words because the Gemini adapter drops length keywords; the
+    // provider-neutral schema and `groundNudgeResponse` still enforce the bound.
     `Keep each reason under ${NUDGE_REASON_MAX_CHARS} characters.`,
   ].join(' ')
 }
@@ -234,7 +234,8 @@ export function estimateBudgetNudge(
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): BudgetNudgeEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const refused = (reason: string): BudgetNudgeEstimate => ({
     month: options.month,
     model,
@@ -250,7 +251,7 @@ export function estimateBudgetNudge(
   if (redaction === null) return refused('no_candidates')
 
   const payloadChars = JSON.stringify(redaction.payload).length
-  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
@@ -267,7 +268,7 @@ export function estimateBudgetNudge(
  * Adjusts however many of this month's pending budget-amount proposals the
  * note actually speaks to, or explains why it could not.
  *
- * Never throws for a Gemini failure, same reason as `runCategoryGuess`: the
+ * Never throws for a provider failure, same reason as `runCategoryGuess`: the
  * ledger row is the only trace that this was attempted at all. A stale
  * candidate does not fail the batch — `createProposal`'s `ProposalError` is
  * caught per item, exactly as `runCategoryGuess` catches it.
@@ -278,7 +279,8 @@ export async function runBudgetNudge(
   options: BudgetNudgeOptions,
 ): Promise<BudgetNudgeOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const now = options.now ?? new Date()
   const month = options.month
 
@@ -316,11 +318,12 @@ export async function runBudgetNudge(
   const { payload, categoryIdFor } = redaction
   const payloadHash = hashPayload(payload)
 
-  const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
+      provider: ai.provider,
       model,
       locale,
       period: month,
@@ -346,7 +349,7 @@ export async function runBudgetNudge(
 
   let result
   try {
-    result = await callGemini(db, tenantId, {
+    result = await callAi(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(BUDGET_NUDGE_SYSTEM, locale),
       instruction: budgetNudgeInstruction(payload),
@@ -355,9 +358,10 @@ export async function runBudgetNudge(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
-    const message = error instanceof GeminiError ? error.message : String(error)
+    const message = error instanceof AiError ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
+      provider: error instanceof AiError ? error.provider : ai.provider,
       model,
       locale,
       period: month,
@@ -381,7 +385,7 @@ export async function runBudgetNudge(
     }
   }
 
-  const cost = costMicroEur(result.model, result.usage)
+  const cost = costMicroEur(result.provider, result.model, result.usage)
 
   let grounded
   try {
@@ -390,6 +394,7 @@ export async function runBudgetNudge(
     const message = error instanceof Error ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind: 'budget_nudge',
+      provider: result.provider,
       model: result.model,
       locale,
       period: month,
@@ -417,6 +422,7 @@ export async function runBudgetNudge(
 
   const runId = recordRun(db, tenantId, {
     kind: 'budget_nudge',
+    provider: result.provider,
     model: result.model,
     locale,
     period: month,
