@@ -49,6 +49,22 @@ export class EgressDeniedError extends Error {
   }
 }
 
+/** A redirect chain that cannot be followed safely or deterministically. */
+export class EgressRedirectError extends Error {
+  constructor(reason: 'invalid_location' | 'loop' | 'too_many') {
+    const detail = {
+      invalid_location: 'the redirect target is not a valid URL',
+      loop: 'the redirect chain contains a loop',
+      too_many: 'the redirect chain exceeds the 5-hop limit',
+    }[reason]
+    super(`egress redirect refused: ${detail}`)
+    this.name = 'EgressRedirectError'
+  }
+}
+
+/** Deliberately smaller than fetch's usual 20-hop ceiling. */
+export const MAX_EGRESS_REDIRECTS = 5
+
 const AI_STUDIO_HOST = 'generativelanguage.googleapis.com'
 
 /**
@@ -213,6 +229,22 @@ export function isAllowed(target: string, allowed: ReadonlySet<string>): boolean
   return LOOPBACK.has(host) || allowed.has(host)
 }
 
+/**
+ * Redirects do not inherit the initial request's loopback exception.
+ *
+ * Loopback is useful for Balancr's own health check when it is the URL the caller
+ * deliberately requested. It is not a safe implicit destination for a server's
+ * `Location` header. Configured private hosts still work: like every other redirect
+ * target, they must be present in the explicit allowlist.
+ */
+function isRedirectAllowed(target: string, allowed: ReadonlySet<string>): boolean {
+  try {
+    return allowed.has(new URL(target).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 /** The URL of anything `fetch` accepts as its first argument. */
 function targetOf(input: Parameters<typeof fetch>[0]): string {
   if (typeof input === 'string') return input
@@ -221,6 +253,62 @@ function targetOf(input: Parameters<typeof fetch>[0]): string {
 }
 
 export type EgressMode = 'enforce' | 'warn' | 'off'
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+const BODY_HEADERS = [
+  'content-encoding',
+  'content-language',
+  'content-length',
+  'content-location',
+  'content-type',
+]
+const CREDENTIAL_HEADERS = ['authorization', 'proxy-authorization', 'cookie', 'cookie2', 'host']
+
+/** A URL key for loop detection. Fragments never reach the server. */
+function redirectKey(url: URL): string {
+  const key = new URL(url)
+  key.hash = ''
+  return key.href
+}
+
+/**
+ * Reproduces fetch's redirect request rules while keeping every hop visible to the
+ * guard. 301/302 turn POST into GET, 303 turns every non-GET/HEAD request into GET,
+ * and 307/308 preserve the method and body. Credentials never cross an origin.
+ */
+function redirectedRequest(request: Request, target: URL, status: number): Request {
+  const headers = new Headers(request.headers)
+  const becomesGet =
+    ((status === 301 || status === 302) && request.method === 'POST') ||
+    (status === 303 && request.method !== 'GET' && request.method !== 'HEAD')
+
+  if (becomesGet) {
+    for (const name of BODY_HEADERS) headers.delete(name)
+  }
+  if (new URL(request.url).origin !== target.origin) {
+    for (const name of CREDENTIAL_HEADERS) headers.delete(name)
+  }
+
+  const body = becomesGet || request.method === 'GET' || request.method === 'HEAD' ? null : request.body
+  const init: RequestInit & { duplex?: 'half' } = {
+    method: becomesGet ? 'GET' : request.method,
+    headers,
+    cache: request.cache,
+    credentials: request.credentials,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    mode: request.mode,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    signal: request.signal,
+  }
+  if (body !== null) {
+    init.body = body
+    init.duplex = 'half'
+  }
+  return new Request(target, init)
+}
 
 /**
  * Wraps `globalThis.fetch` for the rest of the process's life.
@@ -252,24 +340,64 @@ export function installEgressGuard(mode: EgressMode = config.EGRESS_MODE, db?: D
   log.info({ hosts: [...allowedHosts(db)].sort(), mode }, 'egress allowlist installed')
 
   globalThis.fetch = async (input, init) => {
-    const target = targetOf(input)
-    if (isAllowed(target, allowedHosts(db)) || isTestAllowed(target)) return original(input, init)
+    const requestedTarget = targetOf(input)
 
-    // The host, never the path: a denied URL can carry a query string, and a query
-    // string on an exfiltration attempt is the data being exfiltrated. Logging it
-    // would copy the thing this is trying to protect into the log file.
-    let host: string
-    try {
-      host = new URL(target).hostname
-    } catch {
-      host = '<unparseable>'
+    /**
+     * The host, never the path: a denied URL can carry a query string, and a query
+     * string on an exfiltration attempt is the data being exfiltrated. Logging it
+     * would copy the thing this is trying to protect into the log file.
+     */
+    const permit = (target: string, redirect: boolean): void => {
+      const allowed = redirect
+        ? isRedirectAllowed(target, allowedHosts(db))
+        : isAllowed(target, allowedHosts(db))
+      if (allowed || isTestAllowed(target)) return
+
+      let host: string
+      try {
+        host = new URL(target).hostname
+      } catch {
+        host = '<unparseable>'
+      }
+      if (mode === 'warn') {
+        log.warn({ host }, 'egress to an unconfigured host, allowed because EGRESS_MODE=warn')
+        return
+      }
+      log.error({ host }, 'egress denied: host is not in the allowlist')
+      throw new EgressDeniedError(host)
     }
 
-    if (mode === 'warn') {
-      log.warn({ host }, 'egress to an unconfigured host, allowed because EGRESS_MODE=warn')
-      return original(input, init)
+    permit(requestedTarget, false)
+    let request = new Request(input, init)
+    const redirectMode = request.redirect
+    const visited = new Set([redirectKey(new URL(request.url))])
+    let redirects = 0
+
+    for (;;) {
+      // Keep the canonical request unconsumed so a 307/308 can replay its body.
+      const response = await original(request.clone(), { redirect: 'manual' })
+      if (!REDIRECT_STATUSES.has(response.status)) return response
+
+      const location = response.headers.get('location')
+      if (location === null) return response
+      if (redirectMode === 'manual') return response
+      if (redirectMode === 'error') throw new TypeError('fetch redirect mode is set to error')
+
+      let target: URL
+      try {
+        target = new URL(location, request.url)
+      } catch {
+        throw new EgressRedirectError('invalid_location')
+      }
+
+      redirects += 1
+      if (redirects > MAX_EGRESS_REDIRECTS) throw new EgressRedirectError('too_many')
+      const key = redirectKey(target)
+      if (visited.has(key)) throw new EgressRedirectError('loop')
+      visited.add(key)
+
+      permit(target.href, true)
+      request = redirectedRequest(request, target, response.status)
     }
-    log.error({ host }, 'egress denied: host is not in the allowlist')
-    throw new EgressDeniedError(host)
   }
 }

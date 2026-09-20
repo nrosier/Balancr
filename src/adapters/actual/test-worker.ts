@@ -15,7 +15,9 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import * as api from '@actual-app/api'
+import { pathToFileURL } from 'node:url'
+import { config } from '../../config.ts'
+import { installEgressGuard, withTestHost } from '../../egress.ts'
 
 export interface ActualTestCandidate {
   serverUrl: string
@@ -58,6 +60,9 @@ function explain(error: unknown): string {
 
 /** Never touches `config.ACTUAL_DATA_DIR` — a scratch directory, removed however it ends. */
 async function run(candidate: ActualTestCandidate): Promise<ActualTestResult> {
+  // Loaded only after `testCandidate` installs the guard. A dependency that captures
+  // global fetch during module initialisation must capture the guarded function too.
+  const api = await import('@actual-app/api')
   const dataDir = await mkdtemp(join(tmpdir(), 'balancr-actual-test-'))
   let inited = false
   try {
@@ -89,15 +94,27 @@ async function run(candidate: ActualTestCandidate): Promise<ActualTestResult> {
   }
 }
 
-process.once('message', (candidate: ActualTestCandidate) => {
-  run(candidate)
-    .then((result) => {
-      process.send?.(result)
-    })
-    .catch((error: unknown) => {
-      process.send?.({ ok: false, message: error instanceof Error ? error.message : String(error) })
-    })
-    .finally(() => {
-      process.exit(0)
-    })
-})
+/**
+ * Installs the same process-local guard as the server, then permits only the
+ * submitted candidate host for this one connection test. A redirect still has to
+ * remain on that host or land on another explicitly configured host.
+ */
+export async function testCandidate(candidate: ActualTestCandidate): Promise<ActualTestResult> {
+  installEgressGuard(config.EGRESS_MODE)
+  return await withTestHost(candidate.serverUrl, async () => await run(candidate))
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.once('message', (candidate: ActualTestCandidate) => {
+    testCandidate(candidate)
+      .then((result) => {
+        process.send?.(result)
+      })
+      .catch((error: unknown) => {
+        process.send?.({ ok: false, message: error instanceof Error ? error.message : String(error) })
+      })
+      .finally(() => {
+        process.exit(0)
+      })
+  })
+}
