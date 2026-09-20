@@ -57,6 +57,7 @@ export function registerMonthNoteRoutes(app: FastifyInstance, db: Db): void {
     }
 
     recordAudit(db, {
+      tenantId: user.tenantId,
       action: 'budget.monthNote',
       entity: 'settings',
       entityRef: `${MONTH_NOTE_KEY}:${month}`,

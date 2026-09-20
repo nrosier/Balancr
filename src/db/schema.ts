@@ -1153,7 +1153,7 @@ export const auditLog = sqliteTable(
      * `actorId` has none: an audit row must survive whatever it points at
      * being pruned or deleted.
      */
-    tenantId: text('tenant_id'),
+    tenantId: text('tenant_id').notNull(),
     /** The table the change landed in, e.g. `category_meta`. */
     entity: text().notNull(),
     /** Which row: a category id, an account id, a proposal id. */
@@ -1165,8 +1165,8 @@ export const auditLog = sqliteTable(
     afterJson: text('after_json'),
   },
   (t) => [
-    index('audit_log_at_idx').on(t.at),
-    index('audit_log_entity_idx').on(t.entity, t.entityRef, t.at),
+    index('audit_log_at_idx').on(t.tenantId, t.at),
+    index('audit_log_entity_idx').on(t.tenantId, t.entity, t.entityRef, t.at),
   ],
 )
 
