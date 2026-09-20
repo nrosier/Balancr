@@ -446,7 +446,7 @@ describe('PATCH /api/settings/categories/:id/custody-shared', () => {
     patch(`/api/settings/categories/${id}/custody-shared`, body, options)
 
   const flagOf = (id: string): boolean | undefined =>
-    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.custodyShared
+    loadMapping(ctx.db, tenantId, null).find((row) => row.categoryId === id)?.custodyShared
 
   it('flags a category as shared, and answers with the list saying so (#44)', async () => {
     // The point of the route: before it, this column had no writer a person could reach
@@ -512,7 +512,7 @@ describe('PATCH /api/settings/categories/:id/nature', () => {
     patch(`/api/settings/categories/${id}/nature`, body, options)
 
   const natureOf = (id: string): string | null | undefined =>
-    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.nature
+    loadMapping(ctx.db, tenantId, null).find((row) => row.categoryId === id)?.nature
 
   it('tags a category as savings, and answers with the list saying so (#252)', async () => {
     const res = await send_('cat-groceries', { nature: 'savings' })
@@ -569,7 +569,7 @@ describe('PATCH /api/settings/categories/:id/ai-visibility', () => {
     patch(`/api/settings/categories/${id}/ai-visibility`, body, options)
 
   const visibilityOf = (id: string): string | undefined =>
-    loadMapping(ctx.db, null).find((row) => row.categoryId === id)?.aiVisibility
+    loadMapping(ctx.db, tenantId, null).find((row) => row.categoryId === id)?.aiVisibility
 
   it('withholds an envelope entirely, and answers with the list saying so (#278)', async () => {
     const res = await send_('cat-groceries', { aiVisibility: 'absent' })
