@@ -5,6 +5,7 @@ export const AI_PROVIDERS = [
   'openai',
   'xai',
   'openai-compatible',
+  'anthropic',
 ] as const
 
 export type AiProvider = (typeof AI_PROVIDERS)[number]

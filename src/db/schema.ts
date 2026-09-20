@@ -903,7 +903,9 @@ export const aiRuns = sqliteTable(
     kind: text({
       enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
     }).notNull(),
-    provider: text({ enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible'] })
+    provider: text({
+      enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible', 'anthropic'],
+    })
       .notNull()
       .default('gemini-aistudio'),
     model: text().notNull(),
@@ -1331,7 +1333,7 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
   ghostfolioUrl: text('ghostfolio_url').notNull(),
   ghostfolioSecurityTokenEnc: text('ghostfolio_security_token_enc').notNull(),
   aiProvider: text('ai_provider', {
-    enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible'],
+    enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible', 'anthropic'],
   }).notNull(),
   aiApiKeyEnc: text('ai_api_key_enc'),
   googleCloudProject: text('google_cloud_project'),

@@ -2200,7 +2200,7 @@ describe('integrations', () => {
     expect(saveButton('AI provider').disabled).toBe(true)
   })
 
-  it('shows certified OpenAI settings separately from best-effort compatible endpoints', async () => {
+  it('shows certified OpenAI and Anthropic settings separately from best-effort compatible endpoints', async () => {
     await open(READS)
 
     fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai' } })
@@ -2218,6 +2218,44 @@ describe('integrations', () => {
     expect(custom.readOnly).toBe(false)
     expect(within(panel('AI provider')).getByText(/Best-effort compatibility/)).toBeTruthy()
     expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    const anthropic = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(anthropic.value).toBe('https://api.anthropic.com/v1')
+    expect(anthropic.readOnly).toBe(true)
+    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('claude-sonnet-5')
+    expect((screen.getByLabelText('Narrative model') as HTMLInputElement).value).toBe('claude-opus-5')
+    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
+    expect(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    })).toBeTruthy()
+  })
+
+  it('tests Anthropic with the native preset candidate shown on screen', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/integrations/ai/test': json({ ok: true, message: null }),
+    })
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: 'candidate-claude-key' } })
+    fireEvent.click(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    }))
+
+    await screen.findByText('Connected successfully.')
+    expect(writes(calls)).toEqual([
+      {
+        path: '/api/settings/integrations/ai/test',
+        method: 'POST',
+        body: {
+          provider: 'anthropic',
+          apiKey: 'candidate-claude-key',
+          baseUrl: null,
+          model: 'claude-sonnet-5',
+        },
+      },
+    ])
   })
 
   it('saves only what changed, and sends no password at all rather than a blank one', async () => {

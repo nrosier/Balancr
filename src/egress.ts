@@ -68,6 +68,7 @@ export const MAX_EGRESS_REDIRECTS = 5
 const AI_STUDIO_HOST = 'generativelanguage.googleapis.com'
 const OPENAI_HOST = 'api.openai.com'
 const XAI_HOST = 'api.x.ai'
+const ANTHROPIC_HOST = 'api.anthropic.com'
 
 /**
  * Vertex's hosts, which are the one part of the list that is not in `.env`.
@@ -118,6 +119,7 @@ function aiHosts(db?: Db): string[] {
   if (providers.has('gemini-vertex')) hosts.push(...vertexHosts())
   if (providers.has('openai')) hosts.push(OPENAI_HOST)
   if (providers.has('xai')) hosts.push(XAI_HOST)
+  if (providers.has('anthropic')) hosts.push(ANTHROPIC_HOST)
   // Custom endpoints are deliberately absent: only EGRESS_EXTRA_HOSTS may
   // approve them, so a tenant setting can never widen process egress.
   return hosts

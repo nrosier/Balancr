@@ -251,6 +251,7 @@
       "pricesHint": "Elk geselecteerd model zonder gecertificeerde prijs heeft een expliciete prijs nodig. Voer nul in voor een gratis lokaal model.",
       "provider": {
         "aistudio": "Google AI Studio",
+        "anthropic": "Anthropic Claude",
         "compatible": "Aangepast OpenAI-compatibel",
         "openai": "OpenAI",
         "vertex": "Vertex AI",
