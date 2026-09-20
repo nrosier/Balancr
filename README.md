@@ -101,8 +101,15 @@ half-English, and costs a fraction of what shipping raw transactions would.
 
 Actual, Ghostfolio and the OIDC issuer normally sit on your own network. The selected
 AI provider is the only additional destination, and only if the AI layer is configured
-at all. The [egress allowlist](#egress) includes the certified provider preset or an
+at all. The [egress allowlist](#egress) includes the built-in provider preset or an
 operator-approved custom host; an unapproved host is refused rather than reviewed.
+
+> **Live-provider testing status:** only Google Gemini through AI Studio has been
+> tested end to end against a live provider. Vertex AI, OpenAI, xAI/Grok, custom
+> OpenAI-compatible endpoints and Anthropic Claude are implemented and covered by
+> automated contract tests, but have not been validated against their live APIs.
+> Treat those integrations as preview functionality and run the settings panel's
+> connection or structured-output capability test before using them with financial data.
 
 - **Which Google.** `GEMINI_PROVIDER=vertex`, the recommended setting, sends to Vertex
   AI in `GOOGLE_CLOUD_LOCATION` (`europe-west1` by default), which keeps the request in
@@ -110,7 +117,7 @@ operator-approved custom host; an unapproved host is refused rather than reviewe
   plain API key with none of that, and a **free-tier** key is the one configuration to
   avoid outright: its terms allow Google to use prompts to improve its products, and
   these prompts are your budget.
-- **Other providers.** Settings offers certified presets for OpenAI and xAI/Grok with
+- **Other providers.** Settings offers built-in presets for OpenAI and xAI/Grok with
   fixed official HTTPS endpoints. The custom OpenAI-compatible option covers gateways
   and local runtimes on a best-effort basis: Chat Completions compatibility alone does
   not prove strict JSON-schema support, so saving credentials and models is separate
@@ -946,7 +953,7 @@ docker build -t balancr:test . && scripts/verify-image.sh balancr:test
 
 Balancr refuses to connect to a host nobody configured. The allowlist is derived from
 `.env` and tenant integration rows — Actual, Ghostfolio, the OIDC issuer and the fixed
-host for each selected certified AI provider — so there is no second list to keep in
+host for each selected built-in AI provider — so there is no second list to keep in
 step: moving Ghostfolio to a new hostname needs no edit here.
 
 | | |
