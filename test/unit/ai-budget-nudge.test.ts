@@ -14,7 +14,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -60,6 +60,7 @@ beforeEach(() => {
   importEnvIntegrationsOnce(db)
   runId = recordRun(db, tenantId, {
     kind: 'findings',
+    provider: 'gemini-aistudio',
     model: 'gemini-3.7-flash',
     locale: 'en',
     payload: {},
@@ -147,6 +148,7 @@ describe('estimateBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     recordRun(db, tenantId, {
       kind: 'budget_nudge',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},
@@ -196,6 +198,7 @@ describe('runBudgetNudge', () => {
     await seedBudgetProposal('food', MONTH, 15_000)
     recordRun(db, tenantId, {
       kind: 'budget_nudge',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},

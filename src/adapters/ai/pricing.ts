@@ -1,7 +1,7 @@
 /**
- * What a call costs, in micro-euros.
+ * What an AI call costs, in micro-euros.
  *
- * Google publishes per-million-token prices in dollars; this table is in
+ * Providers publish per-million-token prices in dollars; this table is in
  * micro-euros per million tokens because every figure downstream — `ai_runs`,
  * the spend view, the budget guard — is an integer of micro-euros, and one
  * conversion done here beats four done later at different rates.
@@ -12,21 +12,23 @@
  *     becomes a fiction, and a cost guard reading a fiction is worse than no
  *     guard: it reports a comfortable number while the bill grows.
  *  2. **An unknown model is priced at the most expensive tier** (`FALLBACK_PRICE`).
- *     A model swapped in via `GEMINI_MODEL_DEEP` must make the guard cautious,
+ *     A model swapped in through settings must make the guard cautious,
  *     not blind — overstating spend costs a banner, understating it costs money.
  */
+
+import type { AiProvider, TokenUsage } from './types.ts'
 
 /** Per million tokens, in micro-euros. */
 export interface ModelPrice {
   input: number
   output: number
   /**
-   * Cached input tokens, billed at a fraction of the input rate. Only the
-   * *hit* is discounted; cache storage is billed per hour and is not modelled
-   * here, which is one more reason the fallback overstates rather than under.
+   * Cached input tokens, billed at a fraction of the ordinary input rate.
    */
   cachedInput: number
-  /** ISO date these figures were last checked against Google's price list. */
+  /** Tokens written to a cache when the provider bills writes separately. */
+  cacheWriteInput: number
+  /** ISO date these figures were last checked against the provider's price list. */
   verified: string
 }
 
@@ -38,11 +40,16 @@ export interface ModelPrice {
  * through to the fallback the day Google appends a date suffix.
  */
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  'gemini-3.7-flash': { input: 278_000, output: 2_315_000, cachedInput: 69_000, verified: '2026-09-02' },
-  'gemini-3.7-flash-lite': { input: 93_000, output: 370_000, cachedInput: 23_000, verified: '2026-09-02' },
-  'gemini-3.1-pro': { input: 1_157_000, output: 9_259_000, cachedInput: 289_000, verified: '2026-09-02' },
-  'gemini-2.5-flash': { input: 278_000, output: 2_315_000, cachedInput: 69_000, verified: '2026-09-02' },
-  'gemini-2.5-pro': { input: 1_157_000, output: 9_259_000, cachedInput: 289_000, verified: '2026-09-02' },
+  'gemini-3.7-flash': { input: 278_000, output: 2_315_000, cachedInput: 69_000, cacheWriteInput: 278_000, verified: '2026-09-02' },
+  'gemini-3.7-flash-lite': { input: 93_000, output: 370_000, cachedInput: 23_000, cacheWriteInput: 93_000, verified: '2026-09-02' },
+  'gemini-3.1-pro': { input: 1_157_000, output: 9_259_000, cachedInput: 289_000, cacheWriteInput: 1_157_000, verified: '2026-09-02' },
+  'gemini-2.5-flash': { input: 278_000, output: 2_315_000, cachedInput: 69_000, cacheWriteInput: 278_000, verified: '2026-09-02' },
+  'gemini-2.5-pro': { input: 1_157_000, output: 9_259_000, cachedInput: 289_000, cacheWriteInput: 1_157_000, verified: '2026-09-02' },
+}
+
+export const PROVIDER_PRICES: Record<AiProvider, Record<string, ModelPrice>> = {
+  'gemini-aistudio': MODEL_PRICES,
+  'gemini-vertex': MODEL_PRICES,
 }
 
 /**
@@ -56,27 +63,8 @@ export const FALLBACK_PRICE: ModelPrice = {
   input: 1_157_000,
   output: 9_259_000,
   cachedInput: 289_000,
+  cacheWriteInput: 1_157_000,
   verified: '2026-09-02',
-}
-
-/** Tokens as Gemini reports them, already read off `usageMetadata`. */
-export interface TokenUsage {
-  /** `promptTokenCount` — includes `cachedTokens`, as Google counts it. */
-  inputTokens: number
-  outputTokens: number
-  /** The part of `inputTokens` served from a context cache. */
-  cachedTokens: number
-}
-
-export const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }
-
-/** Tokens spent across two calls (e.g. a retry) — both were billed, so both count. */
-export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-    cachedTokens: a.cachedTokens + b.cachedTokens,
-  }
 }
 
 /**
@@ -87,16 +75,17 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
  * `gemini-3.7-flash-lite` starts with `gemini-3.7-flash` and is a tenth of the
  * price — shortest-match would quietly overcharge the cheap model.
  */
-export function priceFor(model: string): { price: ModelPrice; known: boolean } {
+export function priceFor(provider: AiProvider, model: string): { price: ModelPrice; known: boolean } {
   const id = model.trim().toLowerCase()
-  const exact = MODEL_PRICES[id]
+  const prices = PROVIDER_PRICES[provider]
+  const exact = prices[id]
   if (exact !== undefined) return { price: exact, known: true }
 
   let bestKey = ''
-  for (const key of Object.keys(MODEL_PRICES)) {
+  for (const key of Object.keys(prices)) {
     if (id.startsWith(key) && key.length > bestKey.length) bestKey = key
   }
-  const matched = bestKey === '' ? undefined : MODEL_PRICES[bestKey]
+  const matched = bestKey === '' ? undefined : prices[bestKey]
   if (matched !== undefined) return { price: matched, known: true }
 
   return { price: FALLBACK_PRICE, known: false }
@@ -105,22 +94,19 @@ export function priceFor(model: string): { price: ModelPrice; known: boolean } {
 /**
  * Micro-euros for one call.
  *
- * `inputTokens` includes the cached ones, so the billable input is the
- * difference; clamped at zero because the two counters come from the API
- * separately and a mismatch must not turn into a negative cost that eats
- * another run's spend.
- *
  * Rounded up. A call always costs something, and the whole point of the ledger
- * is that the sum of what we recorded is never less than what Google charged.
+ * is that the sum of what we recorded is never less than what the provider charged.
  */
-export function costMicroEur(model: string, usage: TokenUsage): number {
-  const { price } = priceFor(model)
+export function costMicroEur(provider: AiProvider, model: string, usage: TokenUsage): number {
+  const { price } = priceFor(provider, model)
   const cached = Math.max(0, usage.cachedTokens)
-  const billableInput = Math.max(0, usage.inputTokens - cached)
+  const cacheWrite = Math.max(0, usage.cacheWriteTokens)
+  const billableInput = Math.max(0, usage.inputTokens)
 
   const micro =
     (billableInput * price.input) / 1_000_000 +
     (cached * price.cachedInput) / 1_000_000 +
+    (cacheWrite * price.cacheWriteInput) / 1_000_000 +
     (Math.max(0, usage.outputTokens) * price.output) / 1_000_000
 
   return Math.ceil(micro)
@@ -136,14 +122,16 @@ export function costMicroEur(model: string, usage: TokenUsage): number {
  * than a hopeful one.
  */
 export function estimateCostMicroEur(
+  provider: AiProvider,
   model: string,
   promptChars: number,
   expectedOutputTokens = 2_000,
 ): number {
-  return costMicroEur(model, {
+  return costMicroEur(provider, model, {
     inputTokens: Math.ceil(promptChars / 4),
     outputTokens: expectedOutputTokens,
     cachedTokens: 0,
+    cacheWriteTokens: 0,
   })
 }
 

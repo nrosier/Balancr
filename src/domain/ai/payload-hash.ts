@@ -1,5 +1,5 @@
 /**
- * A hash of the exact payload a Gemini call sends (or would send), so a later
+ * A hash of the exact payload an AI call sends (or would send), so a later
  * attempt can tell whether anything has actually changed since a past one
  * without re-reading it byte for byte (#160).
  */

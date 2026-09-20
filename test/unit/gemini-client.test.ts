@@ -28,7 +28,7 @@ import {
 } from '../../src/adapters/gemini/client.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { tenants } from '../../src/db/schema.ts'
+import { tenantIntegrations, tenants } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 
@@ -240,7 +240,7 @@ describe('systemInstruction', () => {
 
 describe('readUsage', () => {
   it('reads zeroes when the API reported nothing', () => {
-    expect(readUsage(undefined)).toEqual({ inputTokens: 0, outputTokens: 0, cachedTokens: 0 })
+    expect(readUsage(undefined)).toEqual({ inputTokens: 0, outputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0 })
   })
 
   it('bills thinking tokens as output', () => {
@@ -253,7 +253,7 @@ describe('readUsage', () => {
         thoughtsTokenCount: 1_200,
         cachedContentTokenCount: 2_400,
       }),
-    ).toEqual({ inputTokens: 3_000, outputTokens: 2_000, cachedTokens: 2_400 })
+    ).toEqual({ inputTokens: 600, outputTokens: 2_000, cachedTokens: 2_400, cacheWriteTokens: 0 })
   })
 
   it('treats each missing counter as zero rather than NaN', () => {
@@ -261,6 +261,7 @@ describe('readUsage', () => {
       inputTokens: 10,
       outputTokens: 0,
       cachedTokens: 0,
+      cacheWriteTokens: 0,
     })
   })
 })
@@ -277,7 +278,8 @@ describe('callGemini', () => {
     const result = await callGemini(db, tenantId, call)
 
     expect(result.text).toBe('{"findings":[],"clarifications":[]}')
-    expect(result.usage).toEqual({ inputTokens: 2_500, outputTokens: 300, cachedTokens: 0 })
+    expect(result.usage).toEqual({ inputTokens: 2_500, outputTokens: 300, cachedTokens: 0, cacheWriteTokens: 0 })
+    expect(result.provider).toBe('gemini-aistudio')
     // The model that answered, not the one asked for: the ledger prices what ran.
     expect(result.model).toBe('gemini-3.7-flash-002')
     expect(result.durationMs).toBeGreaterThanOrEqual(0)
@@ -586,6 +588,30 @@ describe('per-tenant client and cache isolation (#371)', () => {
     expect(resultB.text).toBe('from-b')
     expect(recordedA.generate).toHaveLength(1)
     expect(recordedB.generate).toHaveLength(1)
+  })
+
+  it("keeps one tenant's AI Studio and Vertex clients isolated", async () => {
+    const { client: studioClient, recorded: studioRecorded } = fakeClient({ text: 'studio' })
+    setGeminiClient(studioClient)
+    await callGemini(db, tenantId, call)
+
+    db.update(tenantIntegrations)
+      .set({ aiProvider: 'gemini-vertex', googleCloudProject: 'vertex-project' })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+    const { client: vertexClient, recorded: vertexRecorded } = fakeClient({ text: 'vertex' })
+    setGeminiClient(vertexClient)
+    expect((await callGemini(db, tenantId, call)).provider).toBe('gemini-vertex')
+
+    db.update(tenantIntegrations)
+      .set({ aiProvider: 'gemini-aistudio' })
+      .where(eq(tenantIntegrations.tenantId, tenantId))
+      .run()
+    studioRecorded.generate.length = 0
+    vertexRecorded.generate.length = 0
+    expect((await callGemini(db, tenantId, call)).text).toBe('studio')
+    expect(studioRecorded.generate).toHaveLength(1)
+    expect(vertexRecorded.generate).toHaveLength(0)
   })
 
   it("caches per tenant, so one tenant's cache name is never handed to another tenant's client", async () => {

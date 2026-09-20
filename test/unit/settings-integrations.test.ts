@@ -1,5 +1,5 @@
 /**
- * The Actual/Ghostfolio/Gemini connection screen (#369) — the one settings page whose
+ * The Actual/Ghostfolio/AI connection screen (#369, #422) — the one settings page whose
  * fields are secrets.
  *
  * Three claims matter here, none of which is "the form saves":
@@ -158,8 +158,8 @@ describe('GET /api/settings', () => {
         e2ePasswordConfigured: false,
       },
       ghostfolio: { url: 'http://ghostfolio.test:3333', tokenConfigured: true },
-      gemini: {
-        provider: 'aistudio',
+      ai: {
+        provider: 'gemini-aistudio',
         apiKeyConfigured: true,
         googleCloudProject: null,
         modelFast: 'gemini-3.7-flash',
@@ -302,40 +302,40 @@ describe('PATCH /api/settings/integrations/ghostfolio', () => {
   })
 })
 
-describe('PATCH /api/settings/integrations/gemini', () => {
+describe('PATCH /api/settings/integrations/ai', () => {
   const modelFields = { modelFast: 'gemini-3.7-flash', modelDeep: 'gemini-3.1-pro-preview', budgetEur: 15 }
 
   it('replaces the stored API key only when one is typed', async () => {
-    const res = await patch('/api/settings/integrations/gemini', {
-      provider: 'aistudio',
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
       googleCloudProject: null,
       apiKey: 'new-key',
       ...modelFields,
     })
 
     expect(res.statusCode).toBe(200)
-    expect(decryptField(row(ctx.db).geminiApiKeyEnc as string)).toBe('new-key')
+    expect(decryptField(row(ctx.db).aiApiKeyEnc as string)).toBe('new-key')
   })
 
   it('leaves the stored API key untouched when omitted', async () => {
-    await patch('/api/settings/integrations/gemini', {
-      provider: 'aistudio',
+    await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
       googleCloudProject: null,
       ...modelFields,
     })
-    expect(decryptField(row(ctx.db).geminiApiKeyEnc as string)).toBe('test-key')
+    expect(decryptField(row(ctx.db).aiApiKeyEnc as string)).toBe('test-key')
   })
 
   it('sends null, not an empty string, to clear the Google Cloud project', async () => {
-    await patch('/api/settings/integrations/gemini', {
-      provider: 'vertex',
+    await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-vertex',
       googleCloudProject: 'my-project',
       ...modelFields,
     })
     expect(row(ctx.db).googleCloudProject).toBe('my-project')
 
-    await patch('/api/settings/integrations/gemini', {
-      provider: 'aistudio',
+    await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
       googleCloudProject: null,
       ...modelFields,
     })
@@ -343,8 +343,8 @@ describe('PATCH /api/settings/integrations/gemini', () => {
   })
 
   it('refuses an empty-string Google Cloud project rather than storing a blank one', async () => {
-    const res = await patch('/api/settings/integrations/gemini', {
-      provider: 'vertex',
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-vertex',
       googleCloudProject: '',
       ...modelFields,
     })
@@ -353,8 +353,8 @@ describe('PATCH /api/settings/integrations/gemini', () => {
   })
 
   it('updates the model names and the monthly budget', async () => {
-    const res = await patch('/api/settings/integrations/gemini', {
-      provider: 'aistudio',
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
       googleCloudProject: null,
       modelFast: 'gemini-flash-lite',
       modelDeep: 'gemini-pro',
@@ -362,24 +362,24 @@ describe('PATCH /api/settings/integrations/gemini', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json<Settings>().integrations.gemini).toMatchObject({
+    expect(res.json<Settings>().integrations.ai).toMatchObject({
       modelFast: 'gemini-flash-lite',
       modelDeep: 'gemini-pro',
       budgetEurMicro: 42_000_000,
     })
-    expect(row(ctx.db).geminiModelFast).toBe('gemini-flash-lite')
-    expect(row(ctx.db).geminiModelDeep).toBe('gemini-pro')
-    expect(row(ctx.db).geminiMonthlyBudgetEurMicro).toBe(42_000_000)
+    expect(row(ctx.db).aiModelFast).toBe('gemini-flash-lite')
+    expect(row(ctx.db).aiModelDeep).toBe('gemini-pro')
+    expect(row(ctx.db).aiMonthlyBudgetEurMicro).toBe(42_000_000)
   })
 
   it('is refused for a viewer', async () => {
     const res = await patch(
-      '/api/settings/integrations/gemini',
-      { provider: 'vertex', googleCloudProject: 'my-project', ...modelFields },
+      '/api/settings/integrations/ai',
+      { provider: 'gemini-vertex', googleCloudProject: 'my-project', ...modelFields },
       { token: viewer },
     )
     expect(res.statusCode).toBe(403)
-    expect(row(ctx.db).geminiProvider).toBe('aistudio')
+    expect(row(ctx.db).aiProvider).toBe('gemini-aistudio')
   })
 })
 
@@ -624,12 +624,12 @@ describe('POST /api/settings/integrations/ghostfolio/test', () => {
   })
 })
 
-describe('POST /api/settings/integrations/gemini/test', () => {
+describe('POST /api/settings/integrations/ai/test', () => {
   it('reports success for a working AI Studio key', async () => {
     genai.behavior = 'ok'
 
-    const res = await post('/api/settings/integrations/gemini/test', {
-      provider: 'aistudio',
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'gemini-aistudio',
       apiKey: 'candidate-key',
     })
 
@@ -642,8 +642,8 @@ describe('POST /api/settings/integrations/gemini/test', () => {
     genai.behavior = 'fail'
     genai.failMessage = 'The API key is not valid.'
 
-    const res = await post('/api/settings/integrations/gemini/test', {
-      provider: 'aistudio',
+    const res = await post('/api/settings/integrations/ai/test', {
+      provider: 'gemini-aistudio',
       apiKey: 'bad-key',
     })
 
@@ -652,25 +652,25 @@ describe('POST /api/settings/integrations/gemini/test', () => {
   })
 
   it('requires a project to test a Vertex connection', async () => {
-    const res = await post('/api/settings/integrations/gemini/test', { provider: 'vertex' })
+    const res = await post('/api/settings/integrations/ai/test', { provider: 'gemini-vertex' })
     expect(res.statusCode).toBe(400)
   })
 
   it('requires an API key to test an AI Studio connection when none is stored either', async () => {
     ctx.db
       .update(tenantIntegrations)
-      .set({ geminiApiKeyEnc: null })
+      .set({ aiApiKeyEnc: null })
       .where(eq(tenantIntegrations.tenantId, getSoleTenantId(ctx.db)))
       .run()
 
-    const res = await post('/api/settings/integrations/gemini/test', { provider: 'aistudio' })
+    const res = await post('/api/settings/integrations/ai/test', { provider: 'gemini-aistudio' })
     expect(res.statusCode).toBe(400)
   })
 
   it('falls back to the stored API key when none is typed (#382)', async () => {
     genai.behavior = 'ok'
 
-    const res = await post('/api/settings/integrations/gemini/test', { provider: 'aistudio' })
+    const res = await post('/api/settings/integrations/ai/test', { provider: 'gemini-aistudio' })
 
     expect(res.statusCode).toBe(200)
     expect(genai.calls).toContainEqual({ apiKey: 'test-key' })
@@ -678,8 +678,8 @@ describe('POST /api/settings/integrations/gemini/test', () => {
 
   it('builds a Vertex client from the candidate project, not the stored one', async () => {
     genai.behavior = 'ok'
-    await post('/api/settings/integrations/gemini/test', {
-      provider: 'vertex',
+    await post('/api/settings/integrations/ai/test', {
+      provider: 'gemini-vertex',
       googleCloudProject: 'candidate-project',
     })
     expect(genai.calls).toContainEqual(
@@ -689,8 +689,8 @@ describe('POST /api/settings/integrations/gemini/test', () => {
 
   it('is refused for a viewer', async () => {
     const res = await post(
-      '/api/settings/integrations/gemini/test',
-      { provider: 'aistudio', apiKey: 'candidate-key' },
+      '/api/settings/integrations/ai/test',
+      { provider: 'gemini-aistudio', apiKey: 'candidate-key' },
       { token: viewer },
     )
     expect(res.statusCode).toBe(403)

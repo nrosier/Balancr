@@ -428,7 +428,7 @@ describe('POST /api/ai/refresh', () => {
     const tenantB = createSecondTenant(ctx.db)
     ctx.db
       .update(tenantIntegrations)
-      .set({ geminiApiKeyEnc: encryptField('tenant-b-key'), geminiMonthlyBudgetEurMicro: 5_000_000 })
+      .set({ aiApiKeyEnc: encryptField('tenant-b-key'), aiMonthlyBudgetEurMicro: 5_000_000 })
       .where(eq(tenantIntegrations.tenantId, tenantB))
       .run()
     const ownerB = signIn(ctx.db, 'owner', tenantB)

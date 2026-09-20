@@ -27,7 +27,7 @@
  *  - **The category table carries the co-parent flag too, and is titled for the list
  *    rather than for the benchmark (#44).** `custody_shared` decides which envelopes the
  *    shared-cost split counts, and until it had a control here its only writers needed a
- *    Gemini key — a feature unreachable without AI, which is the one thing the
+ *    AI credential — a feature unreachable without AI, which is the one thing the
  *    requirements say a feature may not be. It belongs in this table because it is the
  *    same question asked of the same fifty rows, and somebody going through them should
  *    do it once.

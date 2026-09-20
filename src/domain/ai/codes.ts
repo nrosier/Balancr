@@ -7,7 +7,7 @@
  * model from inventing a claim we have no computed number to back.
  *
  * These lists are therefore load-bearing in three places:
- *  1. the Gemini response schema restricts `code` to `FINDING_CODES`,
+ *  1. the structured-response schema restricts `code` to `FINDING_CODES`,
  *  2. `scripts/check-i18n.ts` fails if a code lacks a sentence in any locale,
  *  3. the same check fails if a translation drops an interpolation variable —
  *     a missing `{{delta}}` would otherwise ship a sentence with a hole in it.

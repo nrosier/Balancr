@@ -233,16 +233,16 @@
       "title": "Actual"
     },
     "configured": "Ingesteld",
-    "gemini": {
+    "ai": {
       "apiKey": "API-sleutel",
       "googleCloudProject": "Google Cloud-project",
-      "hint": "Het Gemini-account waarop de AI-assistent draait.",
+      "hint": "Het leveranciersaccount waarop de AI-assistent draait.",
       "provider": {
         "aistudio": "Google AI Studio",
         "vertex": "Vertex AI"
       },
       "providerLabel": "Leverancier",
-      "title": "Gemini"
+      "title": "AI-leverancier"
     },
     "ghostfolio": {
       "hint": "De Ghostfolio-instantie waarvan Balancr portefeuilleposities leest.",

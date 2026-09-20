@@ -1,9 +1,9 @@
 /**
- * The only path from Balancr's data to Gemini.
+ * The only path from Balancr's data to an AI provider.
  *
  * `redact` is a pure function from everything the aggregation layer computed to
  * the exact object that will be serialised and sent. Nothing else in the codebase
- * may construct a Gemini payload — the value of a single boundary is that a
+ * may construct an AI payload — the value of a single boundary is that a
  * review of this one file, plus `test/unit/ai-redact.test.ts`, is a review of
  * everything that ever leaves the machine.
  *

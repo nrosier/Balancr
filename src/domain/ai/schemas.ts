@@ -9,7 +9,7 @@
  *
  * Two layers, and both are needed:
  *
- *  1. **The wire schema** (`z.toJSONSchema` → Gemini's `responseJsonSchema`)
+ *  1. **The wire schema** (`z.toJSONSchema`, narrowed by each provider adapter)
  *     restricts `code` to the vocabulary, so a made-up code is a parse failure
  *     rather than a rendered claim.
  *  2. **`selectFindings`** then requires every finding to match a signal that is
@@ -23,15 +23,14 @@
  * shows the previous one.
  */
 import { z } from 'zod'
-import { toGeminiSchema } from './json-schema.ts'
-import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from '../../domain/ai/codes.ts'
-import type { ClarificationCode, FindingCode, Severity } from '../../domain/ai/codes.ts'
+import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from './codes.ts'
+import type { ClarificationCode, FindingCode, Severity } from './codes.ts'
 import type {
   RedactedGuessBatch,
   RedactedNudgeBatch,
   RedactedPayload,
   RedactedSignal,
-} from '../../domain/ai/redact.ts'
+} from './redact.ts'
 
 /**
  * The label a household-level finding carries.
@@ -107,30 +106,30 @@ export const CLARIFICATION_GUESS_VALUES: Partial<Record<ClarificationCode, reado
 }
 
 /**
- * The JSON schema handed to Gemini as `responseJsonSchema`.
+ * Standard JSON Schema handed to the selected provider adapter.
  *
- * Emitted as draft-7 and then narrowed to the keywords Gemini accepts. Without
- * that second step every structured call is rejected outright — see
- * `json-schema.ts` for which four keywords do it and why dropping them is free.
+ * Provider-specific dialect conversion belongs in the adapter. Keeping the
+ * source schema here means every provider is constrained by the same contract
+ * and every response is still validated by the same Zod schema on return.
  */
 export function analysisJsonSchema(): unknown {
-  return toGeminiSchema(z.toJSONSchema(analysisResponseSchema, { target: 'draft-7' }))
+  return z.toJSONSchema(analysisResponseSchema, { target: 'draft-7' })
 }
 
-export class GeminiResponseError extends Error {
+export class AiResponseError extends Error {
   constructor(
     message: string,
     readonly raw: string,
   ) {
     super(message)
-    this.name = 'GeminiResponseError'
+    this.name = 'AiResponseError'
   }
 }
 
 /**
  * Model text → a validated response, or an error.
  *
- * Gemini in JSON mode returns a bare JSON document, but a model can still wrap
+ * Structured-output modes return a bare JSON document, but a model can still wrap
  * it in a fenced block; that one tolerance is the only leniency here, because it
  * is a formatting habit rather than a content claim. Everything else — a missing
  * field, an unknown code, a confidence of 200 — is an error.
@@ -142,7 +141,7 @@ export function parseAnalysisResponse(text: string): AnalysisResponse {
   try {
     raw = JSON.parse(trimmed)
   } catch (error) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
       text,
     )
@@ -150,7 +149,7 @@ export function parseAnalysisResponse(text: string): AnalysisResponse {
 
   const result = analysisResponseSchema.safeParse(raw)
   if (!result.success) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response did not match the analysis schema:\n${z.prettifyError(result.error)}`,
       text,
     )
@@ -300,7 +299,7 @@ export type GuessResponse = z.infer<typeof guessResponseSchema>
 
 /** Same two-layer contract as `analysisJsonSchema` — see its own comment. */
 export function guessJsonSchema(): unknown {
-  return toGeminiSchema(z.toJSONSchema(guessResponseSchema, { target: 'draft-7' }))
+  return z.toJSONSchema(guessResponseSchema, { target: 'draft-7' })
 }
 
 /** Model text → a validated guess response, or an error. Same leniency as `parseAnalysisResponse`. */
@@ -311,7 +310,7 @@ export function parseGuessResponse(text: string): GuessResponse {
   try {
     raw = JSON.parse(trimmed)
   } catch (error) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
       text,
     )
@@ -319,7 +318,7 @@ export function parseGuessResponse(text: string): GuessResponse {
 
   const result = guessResponseSchema.safeParse(raw)
   if (!result.success) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response did not match the category-guess schema:\n${z.prettifyError(result.error)}`,
       text,
     )
@@ -441,7 +440,7 @@ export type NudgeResponse = z.infer<typeof nudgeResponseSchema>
 
 /** Same two-layer contract as `guessJsonSchema` — see its own comment. */
 export function nudgeJsonSchema(): unknown {
-  return toGeminiSchema(z.toJSONSchema(nudgeResponseSchema, { target: 'draft-7' }))
+  return z.toJSONSchema(nudgeResponseSchema, { target: 'draft-7' })
 }
 
 /** Model text → a validated nudge response, or an error. Same leniency as `parseGuessResponse`. */
@@ -452,7 +451,7 @@ export function parseNudgeResponse(text: string): NudgeResponse {
   try {
     raw = JSON.parse(trimmed)
   } catch (error) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
       text,
     )
@@ -460,7 +459,7 @@ export function parseNudgeResponse(text: string): NudgeResponse {
 
   const result = nudgeResponseSchema.safeParse(raw)
   if (!result.success) {
-    throw new GeminiResponseError(
+    throw new AiResponseError(
       `model response did not match the budget-nudge schema:\n${z.prettifyError(result.error)}`,
       text,
     )

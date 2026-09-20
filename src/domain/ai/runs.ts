@@ -18,9 +18,11 @@
  * instead of just being absent.
  */
 import { and, desc, eq, isNull, like, or, sql } from 'drizzle-orm'
+import { costMicroEur } from '../../adapters/ai/pricing.ts'
+import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
 import { aiRuns } from '../../db/schema.ts'
-import { costMicroEur, ZERO_USAGE, type TokenUsage } from '../../adapters/gemini/pricing.ts'
+import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 
 export type AiRunRow = typeof aiRuns.$inferSelect
 export type RunKind = AiRunRow['kind']
@@ -28,6 +30,8 @@ export type RunStatus = AiRunRow['status']
 
 export interface RecordRun {
   kind: RunKind
+  /** The provider selected for a refusal/reuse, or the one that answered a call. */
+  provider: AiProvider
   model: string
   locale: string
   /** The redacted payload. Serialised here, so no caller can store a summary. */
@@ -75,13 +79,14 @@ export function recordRun(db: Db, tenantId: string, run: RecordRun): string {
   const usage = run.usage ?? ZERO_USAGE
   // A call that never went out has no tokens, so this is zero for `capped` and
   // `blocked` without a status check.
-  const cost = run.costMicroEurOverride ?? costMicroEur(run.model, usage)
+  const cost = run.costMicroEurOverride ?? costMicroEur(run.provider, run.model, usage)
 
   const rows = db
     .insert(aiRuns)
     .values({
       tenantId,
       kind: run.kind,
+      provider: run.provider,
       model: run.model,
       promptId: run.promptId ?? null,
       locale: run.locale,
@@ -92,6 +97,7 @@ export function recordRun(db: Db, tenantId: string, run: RecordRun): string {
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       cachedTokens: usage.cachedTokens,
+      cacheWriteTokens: usage.cacheWriteTokens,
       costMicroEur: cost,
       status: run.status,
       error: run.error ?? null,
@@ -163,12 +169,14 @@ export interface ReuseKey {
  * already treats the two as the same model for billing.
  */
 export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunRow | null {
+  const provider = resolvedIntegrations(db, tenantId).ai.provider
   const candidates = db
     .select()
     .from(aiRuns)
     .where(
       and(
         eq(aiRuns.tenantId, tenantId),
+        eq(aiRuns.provider, provider),
         eq(aiRuns.kind, key.kind),
         eq(aiRuns.period, key.period),
         eq(aiRuns.locale, key.locale),

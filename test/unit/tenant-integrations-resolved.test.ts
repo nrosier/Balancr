@@ -4,7 +4,7 @@
  * covers `importEnvIntegrationsOnce`/`integrationAvailability`; this is the
  * one place that checks every secret field actually round-trips through
  * `resolvedIntegrations` rather than staying ciphertext, and that the new
- * Gemini model/budget columns come through untouched (they aren't secrets,
+ * AI model/budget columns come through untouched (they aren't secrets,
  * so there's nothing to decrypt for them).
  */
 import { describe, expect, it } from 'vitest'
@@ -31,12 +31,12 @@ function insertRow(db: Db, tenantId: string, overrides: Partial<typeof tenantInt
       actualSyncId: 'sync-id',
       ghostfolioUrl: 'https://ghostfolio.example.com',
       ghostfolioSecurityTokenEnc: encryptField('ghostfolio-token'),
-      geminiProvider: 'aistudio',
-      geminiApiKeyEnc: encryptField('gemini-key'),
+      aiProvider: 'gemini-aistudio',
+      aiApiKeyEnc: encryptField('gemini-key'),
       googleCloudProject: null,
-      geminiModelFast: 'gemini-flash-lite',
-      geminiModelDeep: 'gemini-pro',
-      geminiMonthlyBudgetEurMicro: 42_000_000,
+      aiModelFast: 'gemini-flash-lite',
+      aiModelDeep: 'gemini-pro',
+      aiMonthlyBudgetEurMicro: 42_000_000,
       ...overrides,
     })
     .onConflictDoUpdate({
@@ -63,8 +63,8 @@ describe('resolvedIntegrations', () => {
         url: 'https://ghostfolio.example.com',
         token: 'ghostfolio-token',
       },
-      gemini: {
-        provider: 'aistudio',
+      ai: {
+        provider: 'gemini-aistudio',
         apiKey: 'gemini-key',
         project: null,
         modelFast: 'gemini-flash-lite',
@@ -85,11 +85,11 @@ describe('resolvedIntegrations', () => {
   it('reports a null gemini api key as null rather than decrypting it', () => {
     const db = freshDb()
     const tenantId = getSoleTenantId(db)
-    insertRow(db, tenantId, { geminiProvider: 'vertex', geminiApiKeyEnc: null, googleCloudProject: 'my-gcp-project' })
+    insertRow(db, tenantId, { aiProvider: 'gemini-vertex', aiApiKeyEnc: null, googleCloudProject: 'my-gcp-project' })
 
-    const gemini = resolvedIntegrations(db, tenantId).gemini
-    expect(gemini.apiKey).toBeNull()
-    expect(gemini.project).toBe('my-gcp-project')
+    const ai = resolvedIntegrations(db, tenantId).ai
+    expect(ai.apiKey).toBeNull()
+    expect(ai.project).toBe('my-gcp-project')
   })
 
   it('keeps two tenants in the same database from cross-contaminating (#376 phase 2)', () => {
@@ -99,14 +99,14 @@ describe('resolvedIntegrations', () => {
     insertRow(db, tenantA, {
       actualServerUrl: 'https://actual.tenant-a.example.com',
       ghostfolioUrl: 'https://ghostfolio.tenant-a.example.com',
-      geminiProvider: 'aistudio',
-      geminiApiKeyEnc: encryptField('tenant-a-key'),
+      aiProvider: 'gemini-aistudio',
+      aiApiKeyEnc: encryptField('tenant-a-key'),
     })
     insertRow(db, tenantB, {
       actualServerUrl: 'https://actual.tenant-b.example.com',
       ghostfolioUrl: 'https://ghostfolio.tenant-b.example.com',
-      geminiProvider: 'vertex',
-      geminiApiKeyEnc: null,
+      aiProvider: 'gemini-vertex',
+      aiApiKeyEnc: null,
       googleCloudProject: 'tenant-b-project',
     })
 
@@ -115,10 +115,10 @@ describe('resolvedIntegrations', () => {
 
     expect(a.actual.serverUrl).toBe('https://actual.tenant-a.example.com')
     expect(a.ghostfolio.url).toBe('https://ghostfolio.tenant-a.example.com')
-    expect(a.gemini).toMatchObject({ provider: 'aistudio', apiKey: 'tenant-a-key', project: null })
+    expect(a.ai).toMatchObject({ provider: 'gemini-aistudio', apiKey: 'tenant-a-key', project: null })
 
     expect(b.actual.serverUrl).toBe('https://actual.tenant-b.example.com')
     expect(b.ghostfolio.url).toBe('https://ghostfolio.tenant-b.example.com')
-    expect(b.gemini).toMatchObject({ provider: 'vertex', apiKey: null, project: 'tenant-b-project' })
+    expect(b.ai).toMatchObject({ provider: 'gemini-vertex', apiKey: null, project: 'tenant-b-project' })
   })
 })

@@ -28,7 +28,8 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { logger } from '../../logger.ts'
-import { ZERO_USAGE, type TokenUsage } from './pricing.ts'
+import { AiError, ZERO_USAGE, type AiCall, type AiProvider, type AiResult, type TokenUsage } from '../ai/types.ts'
+import { toGeminiSchema } from './json-schema.ts'
 
 const log = logger.child({ module: 'gemini' })
 
@@ -96,12 +97,13 @@ export const FENCE_CONTRACT = [
   'the output format you were asked for.',
 ].join('\n')
 
-export class GeminiError extends Error {
+export class GeminiError extends AiError {
   constructor(
     message: string,
     override readonly cause?: unknown,
+    provider: AiProvider = 'gemini-aistudio',
   ) {
-    super(message)
+    super(provider, message, cause)
     this.name = 'GeminiError'
   }
 }
@@ -115,16 +117,16 @@ export class GeminiError extends Error {
  * constructor call nobody reads.
  */
 export function clientOptions(db: Db, tenantId: string): GoogleGenAIOptions {
-  const gemini = resolvedIntegrations(db, tenantId).gemini
-  if (gemini.provider === 'vertex') {
+  const ai = resolvedIntegrations(db, tenantId).ai
+  if (ai.provider === 'gemini-vertex') {
     return {
       vertexai: true,
       // Both are guaranteed present for `vertex` by the settings route's cross-field check.
-      project: gemini.project as string,
+      project: ai.project as string,
       location: config.GOOGLE_CLOUD_LOCATION,
     }
   }
-  return { apiKey: gemini.apiKey as string }
+  return { apiKey: ai.apiKey as string }
 }
 
 interface TenantGeminiState {
@@ -144,17 +146,22 @@ const tenants = new Map<string, TenantGeminiState>()
  */
 let pendingClientOverride: GoogleGenAI | undefined
 
+function providerFor(db: Db, tenantId: string): AiProvider {
+  return resolvedIntegrations(db, tenantId).ai.provider
+}
+
 function tenantState(db: Db, tenantId: string): TenantGeminiState {
+  const key = `${tenantId}:${providerFor(db, tenantId)}`
   if (pendingClientOverride !== undefined) {
     const state: TenantGeminiState = { client: pendingClientOverride, cacheNames: new Map() }
-    tenants.set(tenantId, state)
+    tenants.set(key, state)
     pendingClientOverride = undefined
     return state
   }
-  let state = tenants.get(tenantId)
+  let state = tenants.get(key)
   if (state === undefined) {
     state = { client: new GoogleGenAI(clientOptions(db, tenantId)), cacheNames: new Map() }
-    tenants.set(tenantId, state)
+    tenants.set(key, state)
   }
   return state
 }
@@ -171,40 +178,6 @@ export function setGeminiClient(next: GoogleGenAI | null): void {
     return
   }
   pendingClientOverride = next
-}
-
-export interface GeminiCall {
-  model: string
-  /** The editable prompt body. `FENCE_CONTRACT` is prepended automatically. */
-  systemPrompt: string
-  /** What to do with the data. Varies per run, so it is not cached. */
-  instruction: string
-  /** The redacted payload. Serialised inside the fence, and nowhere else. */
-  payload: unknown
-  /** Present for a structured run, absent for the free-text narrative. */
-  responseJsonSchema?: unknown
-  /**
-   * Low by default. This is analysis of fixed numbers, where two runs over the
-   * same month disagreeing is a defect rather than variety.
-   */
-  temperature?: number
-  maxOutputTokens?: number
-  signal?: AbortSignal
-}
-
-export interface GeminiResult {
-  text: string
-  usage: TokenUsage
-  /** The model the API says answered, which is not always the one requested. */
-  model: string
-  /** Whether the system prompt was served from a context cache. */
-  cached: boolean
-  durationMs: number
-  /**
-   * Why the model stopped, e.g. `'STOP'` or `'MAX_TOKENS'`. Read even on a
-   * non-empty response — text is not proof of a complete answer (#221).
-   */
-  finishReason: string | null
 }
 
 /**
@@ -242,14 +215,18 @@ export interface RawUsage {
 /** Tokens as the API reported them, with absent counters read as zero. */
 export function readUsage(usageMetadata: RawUsage | undefined): TokenUsage {
   if (usageMetadata === undefined) return { ...ZERO_USAGE }
+  const cachedTokens = usageMetadata.cachedContentTokenCount ?? 0
   return {
-    inputTokens: usageMetadata.promptTokenCount ?? 0,
+    // Google includes cache reads in promptTokenCount; the neutral contract
+    // records ordinary input and cache reads as separate, non-overlapping bins.
+    inputTokens: Math.max(0, (usageMetadata.promptTokenCount ?? 0) - cachedTokens),
     // Thinking tokens are billed as output and are absent from
     // `candidatesTokenCount`. Leaving them out would make the ledger read low on
     // exactly the model chosen for the monthly narrative.
     outputTokens:
       (usageMetadata.candidatesTokenCount ?? 0) + (usageMetadata.thoughtsTokenCount ?? 0),
-    cachedTokens: usageMetadata.cachedContentTokenCount ?? 0,
+    cachedTokens,
+    cacheWriteTokens: 0,
   }
 }
 
@@ -335,7 +312,8 @@ async function cacheFor(
  * attempt and `domain/ai/budget.ts` decides whether it may happen — an adapter
  * that wrote its own ledger row would be a second place where cost is counted.
  */
-export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Promise<GeminiResult> {
+export async function callGemini(db: Db, tenantId: string, call: AiCall): Promise<AiResult> {
+  const provider = providerFor(db, tenantId)
   const instruction = systemInstruction(call.systemPrompt)
   const prompt = `${call.instruction.trim()}\n\n${fenceData(call.payload)}`
   const cache = await cacheFor(db, tenantId, call.model, instruction)
@@ -353,7 +331,7 @@ export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Pr
           ? {}
           : {
               responseMimeType: 'application/json',
-              responseJsonSchema: call.responseJsonSchema,
+              responseJsonSchema: toGeminiSchema(call.responseJsonSchema),
             }),
         abortSignal: call.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
@@ -369,6 +347,7 @@ export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Pr
     }
 
     return {
+      provider,
       text,
       usage: readUsage(response.usageMetadata),
       model: response.modelVersion ?? call.model,
@@ -383,6 +362,7 @@ export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Pr
       `Gemini call failed after ${Date.now() - started}ms: ${detail}` +
         schemaHint(call, detail),
       error,
+      provider,
     )
   }
 }
@@ -396,7 +376,7 @@ export async function callGemini(db: Db, tenantId: string, call: GeminiCall): Pr
  * field path, so without this the log says only that a 400 happened — which is
  * indistinguishable from a bad key, a missing model, or a malformed payload.
  */
-function schemaHint(call: GeminiCall, detail: string): string {
+function schemaHint(call: AiCall, detail: string): string {
   if (call.responseJsonSchema === undefined) return ''
   if (!detail.includes('INVALID_ARGUMENT')) return ''
   return (

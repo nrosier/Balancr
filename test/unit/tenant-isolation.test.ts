@@ -314,6 +314,7 @@ describe('AI runs', () => {
   it('never loads, reads, or lists another tenant\'s run (#377)', () => {
     const runId = recordRun(db, tenantA, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: { month: MONTH },

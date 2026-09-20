@@ -889,7 +889,7 @@ export const prompts = sqliteTable(
 )
 
 /**
- * One row per Gemini call: the audit log and the cost ledger in one place.
+ * One row per AI call: the audit log and the cost ledger in one place.
  * `payloadJson` is exactly what left the machine — it is the record that lets
  * you verify by hand that no payee name was ever sent.
  */
@@ -903,6 +903,9 @@ export const aiRuns = sqliteTable(
     kind: text({
       enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
     }).notNull(),
+    provider: text({ enum: ['gemini-aistudio', 'gemini-vertex'] })
+      .notNull()
+      .default('gemini-aistudio'),
     model: text().notNull(),
     promptId: text('prompt_id').references(() => prompts.id, {
       onDelete: 'set null',
@@ -951,6 +954,7 @@ export const aiRuns = sqliteTable(
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
     cachedTokens: integer('cached_tokens').notNull().default(0),
+    cacheWriteTokens: integer('cache_write_tokens').notNull().default(0),
     /** Micro-euros: cents are too coarse for a single Flash call. */
     costMicroEur: integer('cost_micro_eur').notNull().default(0),
     status: text({ enum: ['ok', 'error', 'blocked', 'capped', 'reused'] }).notNull(),
@@ -967,7 +971,7 @@ export const aiRuns = sqliteTable(
     // `findReusableRun`'s own lookup: tenant first, since a cached answer must
     // never cross tenants, then the two most selective columns, narrowed
     // further from there by the equality checks on kind/locale/promptId/model.
-    index('ai_runs_reuse_idx').on(t.tenantId, t.period, t.payloadHash),
+    index('ai_runs_reuse_idx').on(t.tenantId, t.provider, t.period, t.payloadHash),
   ],
 )
 
@@ -996,6 +1000,7 @@ export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
   inputTokens: integer('input_tokens').notNull(),
   outputTokens: integer('output_tokens').notNull(),
   cachedTokens: integer('cached_tokens').notNull(),
+  cacheWriteTokens: integer('cache_write_tokens').notNull(),
   costMicroEur: integer('cost_micro_eur').notNull(),
 }).as(
   // Declared with explicit columns and raw SQL rather than built from the query
@@ -1014,6 +1019,7 @@ export const aiSpendMonthly = sqliteView('ai_spend_monthly', {
     coalesce(sum(ai_runs.input_tokens), 0) as input_tokens,
     coalesce(sum(ai_runs.output_tokens), 0) as output_tokens,
     coalesce(sum(ai_runs.cached_tokens), 0) as cached_tokens,
+    coalesce(sum(ai_runs.cache_write_tokens), 0) as cache_write_tokens,
     coalesce(sum(ai_runs.cost_micro_eur), 0) as cost_micro_eur
   from ai_runs
   group by ai_runs.tenant_id, strftime('%Y-%m', ai_runs.created_at / 1000, 'unixepoch')`,
@@ -1305,7 +1311,7 @@ export const settings = sqliteTable(
 )
 
 /**
- * One row per tenant: the Actual/Ghostfolio/Gemini credentials that used to
+ * One row per tenant: the Actual/Ghostfolio/AI credentials that used to
  * live only in `.env` (#369). `*Enc` columns are AES-256-GCM via
  * `db/field-crypto.ts`; everything else here is the non-secret half of the
  * same credential (a URL, a sync id, a provider name) — see that module and
@@ -1324,12 +1330,12 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
   actualE2ePasswordEnc: text('actual_e2e_password_enc'),
   ghostfolioUrl: text('ghostfolio_url').notNull(),
   ghostfolioSecurityTokenEnc: text('ghostfolio_security_token_enc').notNull(),
-  geminiProvider: text('gemini_provider', { enum: ['aistudio', 'vertex'] }).notNull(),
-  geminiApiKeyEnc: text('gemini_api_key_enc'),
+  aiProvider: text('ai_provider', { enum: ['gemini-aistudio', 'gemini-vertex'] }).notNull(),
+  aiApiKeyEnc: text('ai_api_key_enc'),
   googleCloudProject: text('google_cloud_project'),
-  geminiModelFast: text('gemini_model_fast').notNull().default('gemini-3.7-flash'),
-  geminiModelDeep: text('gemini_model_deep').notNull().default('gemini-3.1-pro-preview'),
-  geminiMonthlyBudgetEurMicro: integer('gemini_monthly_budget_eur_micro').notNull().default(15_000_000),
+  aiModelFast: text('ai_model_fast').notNull().default('gemini-3.7-flash'),
+  aiModelDeep: text('ai_model_deep').notNull().default('gemini-3.1-pro-preview'),
+  aiMonthlyBudgetEurMicro: integer('ai_monthly_budget_eur_micro').notNull().default(15_000_000),
   updatedAt: createdAt(),
 })
 

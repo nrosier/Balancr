@@ -142,7 +142,7 @@ export const hygieneSchema = z.object({
  *
  * `payeeName` is display only. It is on this wire so the row can say who the
  * candidate is, but it is never part of what `category-guess.ts` sends to
- * Gemini — the model sees only an opaque candidate and its own category
+ * the AI provider — the model sees only an opaque candidate and its own category
  * history, never a name.
  */
 export const categoryGuessCandidateSchema = z.object({
@@ -1485,7 +1485,7 @@ export const benchmarkSettingSchema = z.object({
        * In the same list as the mapping because it is the same table and the same
        * screen, and because until this field was on the wire the flag had no control
        * anywhere: it could only be set by approving a proposal or answering a
-       * clarification, both of which need a Gemini key. The split is the one feature
+       * clarification, both of which need an AI credential. The split is the one feature
        * that would otherwise have been unreachable without AI.
        */
       custodyShared: z.boolean(),
@@ -1545,7 +1545,7 @@ export const propertiesSettingSchema = z.object({
 })
 
 /**
- * The Actual/Ghostfolio/Gemini connection this tenant uses (#369).
+ * The Actual/Ghostfolio/AI connection this tenant uses (#369, #422).
  *
  * A secret is never on this wire, in either direction: `passwordConfigured` and
  * its siblings are booleans, not the value they describe, for the same reason a
@@ -1565,8 +1565,8 @@ export const integrationsSettingSchema = z.object({
     url: z.string(),
     tokenConfigured: z.boolean(),
   }),
-  gemini: z.object({
-    provider: z.enum(['aistudio', 'vertex']),
+  ai: z.object({
+    provider: z.enum(['gemini-aistudio', 'gemini-vertex']),
     apiKeyConfigured: z.boolean(),
     googleCloudProject: z.string().nullable(),
     modelFast: z.string(),
@@ -1576,7 +1576,7 @@ export const integrationsSettingSchema = z.object({
 })
 
 /**
- * `POST /api/settings/integrations/{actual,ghostfolio,gemini}/test` — thin like
+ * `POST /api/settings/integrations/{actual,ghostfolio,ai}/test` — thin like
  * `aiDryRunSchema`'s siblings, and for the same reason: nothing is persisted by a
  * test, so there is no settings payload to return, only whether the candidate
  * credential worked and, when it did not, a sentence a person can act on.
@@ -1650,7 +1650,7 @@ export const settingsSchema = z.object({
   benchmark: benchmarkSettingSchema,
   /** The owned properties and their mortgages, tracked by Balancr rather than Ghostfolio (#227). */
   property: propertiesSettingSchema,
-  /** The Actual/Ghostfolio/Gemini connection this tenant uses (#369). */
+  /** The Actual/Ghostfolio/AI connection this tenant uses (#369, #422). */
   integrations: integrationsSettingSchema,
   /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
   invites: z.array(inviteSettingSchema),

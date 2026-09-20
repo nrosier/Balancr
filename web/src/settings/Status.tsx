@@ -227,7 +227,7 @@ function Report({
         ) : (
           <AiUsage
             ai={settings.ai}
-            gemini={settings.integrations.gemini}
+            integration={settings.integrations.ai}
             state={state}
             owner={owner}
             estimate={estimate}
@@ -709,11 +709,11 @@ const count = (value: number): string => formatDecimal(value, 0)
  */
 function AiUsage({
   ai,
-  gemini,
+  integration,
   state,
   owner,
   estimate,
-}: { ai: Settings['ai']; gemini: Settings['integrations']['gemini'] } & Pick<
+}: { ai: Settings['ai']; integration: Settings['integrations']['ai'] } & Pick<
   SettingsPanelProps,
   'state' | 'owner' | 'estimate'
 >): ReactNode {
@@ -750,8 +750,8 @@ function AiUsage({
           rows={[
             { label: t('settings:ai.month'), value: formatMonth(ai.month, language) },
             { label: t('settings:ai.budget'), value: formatMicroEur(ai.budgetMicroEur) },
-            { label: t('settings:ai.model.fast'), value: gemini.modelFast },
-            { label: t('settings:ai.model.deep'), value: gemini.modelDeep },
+            { label: t('settings:ai.model.fast'), value: integration.modelFast },
+            { label: t('settings:ai.model.deep'), value: integration.modelDeep },
           ]}
         />
       </div>
@@ -807,7 +807,7 @@ function AiUsage({
  * place, and the warning line says what will happen instead.
  *
  * It does not join the refresh bar's polling. That bar waits on job rows, which is right
- * for four jobs that take a second each; an analysis takes as long as Gemini takes, and
+ * for four jobs that take a second each; an analysis takes as long as its provider takes, and
  * the honest thing to say is where the result will appear rather than to spin until it
  * does.
  */

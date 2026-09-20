@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import {
   analysisJsonSchema,
   groundResponse,
-  GeminiResponseError,
+  AiResponseError,
   groundNudgeResponse,
   GUESS_MAX_CHARS,
   nudgeJsonSchema,
@@ -23,7 +23,7 @@ import {
   type AnalysisResponse,
   type NudgeResponse,
   type NudgeSelection,
-} from '../../src/adapters/gemini/schemas.ts'
+} from '../../src/domain/ai/schemas.ts'
 import { FINDING_CODES } from '../../src/domain/ai/codes.ts'
 import {
   GEMINI_SCHEMA_KEYWORDS,
@@ -118,13 +118,13 @@ describe('analysisJsonSchema', () => {
    * does.
    */
   it('emits no keyword Gemini would reject (#96)', () => {
-    expect(unsupportedKeywords(analysisJsonSchema())).toEqual([])
+    expect(unsupportedKeywords(toGeminiSchema(analysisJsonSchema()))).toEqual([])
   })
 
   it('no longer carries the four keywords that broke it (#96)', () => {
     // Named explicitly as well as swept, so the diff that reintroduces one reads
     // as a deliberate act rather than a mysteriously red walker.
-    const json = JSON.stringify(analysisJsonSchema())
+    const json = JSON.stringify(toGeminiSchema(analysisJsonSchema()))
     for (const keyword of ['$schema', 'default', 'minLength', 'maxLength']) {
       expect(json).not.toContain(`"${keyword}":`)
     }
@@ -137,7 +137,7 @@ describe('analysisJsonSchema', () => {
    * 48` is a 400 on both flash and pro, `maxItems: 24` is not.
    */
   it('sends no array bounds, whatever Zod caps them at (#96)', () => {
-    const json = JSON.stringify(analysisJsonSchema())
+    const json = JSON.stringify(toGeminiSchema(analysisJsonSchema()))
     expect(json).not.toContain('maxItems')
     expect(json).not.toContain('minItems')
   })
@@ -154,7 +154,7 @@ describe('analysisJsonSchema', () => {
       })),
       clarifications: [],
     }
-    expect(() => parseAnalysisResponse(JSON.stringify(tooMany))).toThrow(GeminiResponseError)
+    expect(() => parseAnalysisResponse(JSON.stringify(tooMany))).toThrow(AiResponseError)
   })
 
   it('keeps the scalar bounds, which were verified to pass', () => {
@@ -275,7 +275,7 @@ describe('parseAnalysisResponse', () => {
   })
 
   it('errors on text that is not JSON, rather than rendering a guess', () => {
-    expect(() => parseAnalysisResponse('I looked at your budget and')).toThrow(GeminiResponseError)
+    expect(() => parseAnalysisResponse('I looked at your budget and')).toThrow(AiResponseError)
   })
 
   it('errors on an unknown finding code', () => {
@@ -286,7 +286,7 @@ describe('parseAnalysisResponse', () => {
           clarifications: [],
         }),
       ),
-    ).toThrow(GeminiResponseError)
+    ).toThrow(AiResponseError)
   })
 
   it('errors on an out-of-range confidence', () => {
@@ -297,12 +297,12 @@ describe('parseAnalysisResponse', () => {
           clarifications: [],
         }),
       ),
-    ).toThrow(GeminiResponseError)
+    ).toThrow(AiResponseError)
   })
 
   it('errors on a missing array rather than defaulting it', () => {
     expect(() => parseAnalysisResponse(JSON.stringify({ findings: [] }))).toThrow(
-      GeminiResponseError,
+      AiResponseError,
     )
   })
 
@@ -311,8 +311,8 @@ describe('parseAnalysisResponse', () => {
       parseAnalysisResponse('not json at all')
       expect.unreachable()
     } catch (error) {
-      expect(error).toBeInstanceOf(GeminiResponseError)
-      expect((error as GeminiResponseError).raw).toBe('not json at all')
+      expect(error).toBeInstanceOf(AiResponseError)
+      expect((error as AiResponseError).raw).toBe('not json at all')
     }
   })
 })
@@ -598,6 +598,6 @@ describe('groundNudgeResponse', () => {
   it('does not send the length bound to the model as a schema keyword', () => {
     // Same two-layer contract as every other pass: `toGeminiSchema` drops what the
     // provider does not support, so the bound is stated in the instruction instead.
-    expect(JSON.stringify(nudgeJsonSchema())).not.toMatch(/maxLength|default/)
+    expect(JSON.stringify(toGeminiSchema(nudgeJsonSchema()))).not.toMatch(/maxLength|default/)
   })
 })
