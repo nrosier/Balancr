@@ -16,7 +16,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -139,6 +139,7 @@ function labelOf(name: string): string {
 const someRun = (): string =>
   recordRun(db, tenantId, {
     kind: 'narrative',
+    provider: 'gemini-aistudio',
     model: config.GEMINI_MODEL_DEEP,
     locale: 'en',
     payload: {},
@@ -338,6 +339,7 @@ describe('noteChangedSince (#298)', () => {
     const narrative = loadNarrative(db, tenantId, MONTH, 'en')!
     const rewritten = { ...narrative, runId: recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: 'gemini-aistudio',
       model: 'gemini-test',
       locale: 'en',
       period: MONTH,
@@ -436,6 +438,7 @@ describe('runNarrative', () => {
     seedTypicalMonth()
     recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_DEEP,
       locale: 'en',
       payload: {},
@@ -600,6 +603,7 @@ describe('translateNarrative', () => {
     storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'english' })
     recordRun(db, tenantId, {
       kind: 'narrative',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},

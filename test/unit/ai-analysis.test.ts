@@ -20,7 +20,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { GoogleGenAI } from '@google/genai'
 import { DATA_OPEN, setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { aiFindings } from '../../src/db/schema.ts'
@@ -377,6 +377,7 @@ describe('runAnalysis when it cannot ask the model', () => {
     seedTypicalMonth([overspend('food', 8_000), backlog(4)])
     recordRun(db, tenantId, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: {},
@@ -517,6 +518,7 @@ describe('runAnalysis reuse (#160)', () => {
 
     recordRun(db, tenantId, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: {},
@@ -546,6 +548,7 @@ describe('estimateAnalysis reuse (#160)', () => {
 
     recordRun(db, tenantId, {
       kind: 'findings',
+      provider: 'gemini-aistudio',
       model: 'gemini-3.7-flash',
       locale: 'en',
       payload: {},

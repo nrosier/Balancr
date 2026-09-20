@@ -330,8 +330,8 @@ const PAYLOAD: Payload = {
       e2ePasswordConfigured: false,
     },
     ghostfolio: { url: 'https://ghostfolio.example.com', tokenConfigured: true },
-    gemini: {
-      provider: 'aistudio',
+    ai: {
+      provider: 'gemini-aistudio',
       apiKeyConfigured: true,
       googleCloudProject: null,
       modelFast: 'gemini-3.7-flash',
@@ -2195,7 +2195,7 @@ describe('integrations', () => {
 
     expect(saveButton('Actual').disabled).toBe(true)
     expect(saveButton('Ghostfolio').disabled).toBe(true)
-    expect(saveButton('Gemini').disabled).toBe(true)
+    expect(saveButton('AI provider').disabled).toBe(true)
   })
 
   it('saves only what changed, and sends no password at all rather than a blank one', async () => {
@@ -2319,18 +2319,18 @@ describe('integrations', () => {
   })
 
   it('sends null rather than an empty string once the Google Cloud project is cleared', async () => {
-    const calls = await open({ ...READS, '/api/settings/integrations/gemini': json(PAYLOAD) })
+    const calls = await open({ ...READS, '/api/settings/integrations/ai': json(PAYLOAD) })
 
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'vertex' } })
-    fireEvent.click(saveButton('Gemini'))
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'gemini-vertex' } })
+    fireEvent.click(saveButton('AI provider'))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
         {
-          path: '/api/settings/integrations/gemini',
+          path: '/api/settings/integrations/ai',
           method: 'PATCH',
           body: {
-            provider: 'vertex',
+            provider: 'gemini-vertex',
             googleCloudProject: null,
             modelFast: 'gemini-3.7-flash',
             modelDeep: 'gemini-3.1-pro-preview',

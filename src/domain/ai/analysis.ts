@@ -22,8 +22,9 @@
  * defensible order instead of showing an error.
  */
 import { eq } from 'drizzle-orm'
-import { callGemini, GeminiError } from '../../adapters/gemini/client.ts'
-import { costMicroEur, estimateCostMicroEur } from '../../adapters/gemini/pricing.ts'
+import { callAi } from '../../adapters/ai/client.ts'
+import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { AiError } from '../../adapters/ai/types.ts'
 import {
   analysisJsonSchema,
   RESPONSE_LIMITS,
@@ -33,7 +34,7 @@ import {
   type DroppedItem,
   type GroundedClarification,
   type GroundedFinding,
-} from '../../adapters/gemini/schemas.ts'
+} from './schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { aiFindings } from '../../db/schema.ts'
@@ -172,8 +173,8 @@ export function analysisInstruction(payload: RedactedPayload): string {
     'been computed. Return the ones a person should read first, in that order, using',
     'only code and label pairs that appear in that array. Ask for a clarification',
     'only where a category’s purpose cannot be inferred, and propose a guess.',
-    // Said in words because it cannot be said in the schema: Gemini refuses the
-    // request outright when an array bound is large enough to matter (#96).
+    // Also said in words because the Gemini adapter must drop array bounds that
+    // make its schema-complexity check reject the request (#96).
     `Return at most ${RESPONSE_LIMITS.findings} findings and`,
     `${RESPONSE_LIMITS.clarifications} clarifications.`,
   ].join(' ')
@@ -401,7 +402,7 @@ function resolveClarifications(
 /**
  * Runs the pass for one month.
  *
- * Never throws for a Gemini failure — a nightly job that dies on a socket error
+ * Never throws for a provider failure — a nightly job that dies on a socket error
  * leaves no trace of having tried, and the run row is the trace. It does throw for
  * a database failure, which is a different kind of problem and should be loud.
  */
@@ -435,7 +436,8 @@ export function estimateAnalysis(
   options: { month: string; locale?: string; model?: string; now?: Date },
 ): AnalysisEstimate {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const prepared = prepareMonth(db, tenantId, options.month, locale)
 
   if (prepared === null) {
@@ -463,7 +465,7 @@ export function estimateAnalysis(
     return { month: options.month, model, payloadChars, estimateMicroEur: 0, allowed: true, reason: 'reused' }
   }
 
-  const estimateMicroEur = estimateCostMicroEur(model, payloadChars, EXPECTED_OUTPUT_TOKENS)
+  const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimateMicroEur, options.now ?? new Date())
 
   return {
@@ -513,7 +515,8 @@ export async function runAnalysis(
   options: AnalysisOptions,
 ): Promise<AnalysisOutcome> {
   const locale = options.locale ?? config.DEFAULT_LOCALE
-  const model = options.model ?? resolvedIntegrations(db, tenantId).gemini.modelFast
+  const ai = resolvedIntegrations(db, tenantId).ai
+  const model = options.model ?? ai.modelFast
   const now = options.now ?? new Date()
   const month = options.month
   const persist = options.persist !== false
@@ -557,6 +560,7 @@ export async function runAnalysis(
     if (reused !== null) {
       const runId = recordRun(db, tenantId, {
         kind,
+        provider: ai.provider,
         model,
         locale,
         period: month,
@@ -580,13 +584,14 @@ export async function runAnalysis(
     }
   }
 
-  const estimate = estimateCostMicroEur(model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
+  const estimate = estimateCostMicroEur(ai.provider, model, JSON.stringify(payload).length, EXPECTED_OUTPUT_TOKENS)
   const decision = checkBudget(db, tenantId, estimate, now)
   if (!decision.allowed) {
     // Recorded at zero cost: nothing was sent. The payload is stored anyway, so
     // the audit view shows what *would* have gone out.
     const runId = recordRun(db, tenantId, {
       kind,
+      provider: ai.provider,
       model,
       locale,
       period: month,
@@ -610,7 +615,7 @@ export async function runAnalysis(
 
   let result
   try {
-    result = await callGemini(db, tenantId, {
+    result = await callAi(db, tenantId, {
       model,
       systemPrompt: composeSystemPrompt(prompt.body, locale),
       instruction: analysisInstruction(payload),
@@ -619,9 +624,10 @@ export async function runAnalysis(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
   } catch (error) {
-    const message = error instanceof GeminiError ? error.message : String(error)
+    const message = error instanceof AiError ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind,
+      provider: error instanceof AiError ? error.provider : ai.provider,
       model,
       locale,
       period: month,
@@ -644,7 +650,7 @@ export async function runAnalysis(
     }
   }
 
-  const cost = costMicroEur(result.model, result.usage)
+  const cost = costMicroEur(result.provider, result.model, result.usage)
 
   let grounded
   try {
@@ -653,6 +659,7 @@ export async function runAnalysis(
     const message = error instanceof Error ? error.message : String(error)
     const runId = recordRun(db, tenantId, {
       kind,
+      provider: result.provider,
       model: result.model,
       locale,
       period: month,
@@ -682,6 +689,7 @@ export async function runAnalysis(
   const findings = renderGrounded(grounded.findings, sources, locale)
   const runId = recordRun(db, tenantId, {
     kind,
+    provider: result.provider,
     model: result.model,
     locale,
     period: month,

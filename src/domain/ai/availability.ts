@@ -31,7 +31,7 @@
  * guard, which serves the cached answer with a banner — the layer is available, and
  * `insights.spend.exceeded` is what says the month has run out.
  */
-import { microEurToEur } from '../../adapters/gemini/pricing.ts'
+import { microEurToEur } from '../../adapters/ai/pricing.ts'
 import { config, type Config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { integrationAvailability, resolvedIntegrations } from '../../db/tenant-integrations.ts'
@@ -85,6 +85,6 @@ export function tenantAiAvailability(
   return aiAvailability({
     ...cfg,
     aiCredentialed: integrationAvailability(db, tenantId).ai,
-    GEMINI_MONTHLY_BUDGET_EUR: microEurToEur(resolvedIntegrations(db, tenantId).gemini.budgetEurMicro),
+    GEMINI_MONTHLY_BUDGET_EUR: microEurToEur(resolvedIntegrations(db, tenantId).ai.budgetEurMicro),
   })
 }

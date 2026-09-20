@@ -1,7 +1,7 @@
 /**
  * Where this process is allowed to connect.
  *
- * #39 asks for egress restricted to Actual, Ghostfolio and the Gemini endpoint. A
+ * #39 asks for egress restricted to Actual, Ghostfolio and approved AI endpoints. A
  * compose file cannot express that: Docker networks are all-or-nothing, so the
  * container either reaches the internet or it does not, and Balancr needs the
  * internet for exactly three hosts. The outer layer is still worth having — the README
@@ -10,7 +10,7 @@
  * are: they come from `.env`.
  *
  * What it defends against is a dependency, not a network. Balancr installs ~40 npm
- * packages into a process holding a Gemini key, a Ghostfolio token, an Actual password
+ * packages into a process holding an AI key, a Ghostfolio token, an Actual password
  * and a database of someone's finances. The realistic attack on that is a compromised
  * transitive dependency posting the lot somewhere; the realistic defence is that the
  * process refuses to open a connection to a host nobody configured, and says so loudly
@@ -42,8 +42,8 @@ const log = logger.child({ module: 'egress' })
 export class EgressDeniedError extends Error {
   constructor(readonly host: string) {
     super(
-      `egress to ${host} is not allowed: it is not Actual, Ghostfolio, the Gemini ` +
-        `endpoint or the OIDC issuer. Add it to EGRESS_EXTRA_HOSTS if it should be.`,
+      `egress to ${host} is not allowed: it is not Actual, Ghostfolio, an approved ` +
+        `AI endpoint or the OIDC issuer. Add it to EGRESS_EXTRA_HOSTS if it should be.`,
     )
     this.name = 'EgressDeniedError'
   }
@@ -92,7 +92,7 @@ function vertexHosts(): string[] {
 }
 
 /**
- * The Gemini hosts this deployment needs, static or tenant-aware.
+ * The active AI-provider hosts this deployment needs, static or tenant-aware.
  *
  * Without `db`, this is still the single, deployment-wide `.env` provider —
  * unchanged behavior for the many call sites that only ever check the static
@@ -100,20 +100,20 @@ function vertexHosts(): string[] {
  * tenant picked its own, so the allowlist has to union both host sets when a
  * mixed deployment has at least one tenant on each provider.
  */
-function geminiHosts(db?: Db): string[] {
+function aiHosts(db?: Db): string[] {
   if (db === undefined) {
     return config.GEMINI_PROVIDER === 'aistudio' ? [AI_STUDIO_HOST] : vertexHosts()
   }
   const providers = new Set(
     db
-      .select({ geminiProvider: tenantIntegrations.geminiProvider })
+      .select({ aiProvider: tenantIntegrations.aiProvider })
       .from(tenantIntegrations)
       .all()
-      .map((row) => row.geminiProvider),
+      .map((row) => row.aiProvider),
   )
   const hosts: string[] = []
-  if (providers.has('aistudio')) hosts.push(AI_STUDIO_HOST)
-  if (providers.has('vertex')) hosts.push(...vertexHosts())
+  if (providers.has('gemini-aistudio')) hosts.push(AI_STUDIO_HOST)
+  if (providers.has('gemini-vertex')) hosts.push(...vertexHosts())
   return hosts
 }
 
@@ -146,7 +146,7 @@ export function allowedHosts(db?: Db): ReadonlySet<string> {
     ...hostOf(config.ACTUAL_SERVER_URL),
     ...hostOf(config.GHOSTFOLIO_URL),
     ...hostOf(config.AUTH_OIDC_ISSUER),
-    ...geminiHosts(db),
+    ...aiHosts(db),
     ...config.EGRESS_EXTRA_HOSTS.map((host) => host.toLowerCase()),
   ]
   if (db !== undefined) {

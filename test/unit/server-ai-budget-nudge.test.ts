@@ -12,7 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { FastifyInstance } from 'fastify'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { eurToMicroEur } from '../../src/adapters/gemini/pricing.ts'
+import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { config } from '../../src/config.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiRuns, users } from '../../src/db/schema.ts'
@@ -120,6 +120,7 @@ beforeEach(async () => {
   viewer = signIn(ctx.db, 'viewer')
   runId = recordRun(ctx.db, tenantId, {
     kind: 'findings',
+    provider: 'gemini-aistudio',
     model: 'gemini-3.7-flash',
     locale: 'en',
     payload: {},
@@ -199,6 +200,7 @@ describe('POST /api/ai/budget-nudge', () => {
     await seedPendingProposal()
     recordRun(ctx.db, tenantId, {
       kind: 'budget_nudge',
+      provider: 'gemini-aistudio',
       model: config.GEMINI_MODEL_FAST,
       locale: 'en',
       payload: {},

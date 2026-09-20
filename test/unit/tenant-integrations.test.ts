@@ -41,11 +41,11 @@ describe('importEnvIntegrationsOnce', () => {
     expect(row.actualServerUrl).toBe('http://actual.test:5006')
     expect(row.actualSyncId).toBe('test-sync-id')
     expect(row.ghostfolioUrl).toBe('http://ghostfolio.test:3333')
-    expect(row.geminiProvider).toBe('aistudio')
+    expect(row.aiProvider).toBe('gemini-aistudio')
     expect(decryptField(row.actualPasswordEnc)).toBe('test-password')
     expect(decryptField(row.ghostfolioSecurityTokenEnc)).toBe('test-token')
-    expect(row.geminiApiKeyEnc).not.toBeNull()
-    expect(decryptField(row.geminiApiKeyEnc as string)).toBe('test-key')
+    expect(row.aiApiKeyEnc).not.toBeNull()
+    expect(decryptField(row.aiApiKeyEnc as string)).toBe('test-key')
   })
 
   it('is a no-op once tenant 1 already has a row, even if .env would say otherwise', () => {
@@ -92,8 +92,8 @@ describe('integrationAvailability', () => {
         actualSyncId: '',
         ghostfolioUrl: '',
         ghostfolioSecurityTokenEnc: '',
-        geminiProvider: 'aistudio',
-        geminiApiKeyEnc: null,
+        aiProvider: 'gemini-aistudio',
+        aiApiKeyEnc: null,
         googleCloudProject: null,
         ...overrides,
       })
@@ -136,41 +136,41 @@ describe('integrationAvailability', () => {
   it('reports ai unavailable for an aistudio row with no key, available once one is set', () => {
     const db = freshDb()
     const tenantId = getSoleTenantId(db)
-    insertRow(db, tenantId, { geminiProvider: 'aistudio', geminiApiKeyEnc: null })
+    insertRow(db, tenantId, { aiProvider: 'gemini-aistudio', aiApiKeyEnc: null })
     expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
     const tenantId2 = getSoleTenantId(db2)
-    insertRow(db2, tenantId2, { geminiProvider: 'aistudio', geminiApiKeyEnc: encryptField('key') })
+    insertRow(db2, tenantId2, { aiProvider: 'gemini-aistudio', aiApiKeyEnc: encryptField('key') })
     expect(integrationAvailability(db2, tenantId2).ai).toBe(true)
   })
 
   it('reports ai unavailable for a vertex row with no project, available once one is set', () => {
     const db = freshDb()
     const tenantId = getSoleTenantId(db)
-    insertRow(db, tenantId, { geminiProvider: 'vertex', googleCloudProject: null })
+    insertRow(db, tenantId, { aiProvider: 'gemini-vertex', googleCloudProject: null })
     expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
     const tenantId2 = getSoleTenantId(db2)
-    insertRow(db2, tenantId2, { geminiProvider: 'vertex', googleCloudProject: 'my-gcp-project' })
+    insertRow(db2, tenantId2, { aiProvider: 'gemini-vertex', googleCloudProject: 'my-gcp-project' })
     expect(integrationAvailability(db2, tenantId2).ai).toBe(true)
   })
 
-  it('ignores googleCloudProject for an aistudio row and geminiApiKeyEnc for a vertex row', () => {
+  it('ignores googleCloudProject for an aistudio row and aiApiKeyEnc for a vertex row', () => {
     const db = freshDb()
     const tenantId = getSoleTenantId(db)
     // An aistudio row with a leftover project value but no key: still unavailable.
-    insertRow(db, tenantId, { geminiProvider: 'aistudio', geminiApiKeyEnc: null, googleCloudProject: 'stale-project' })
+    insertRow(db, tenantId, { aiProvider: 'gemini-aistudio', aiApiKeyEnc: null, googleCloudProject: 'stale-project' })
     expect(integrationAvailability(db, tenantId).ai).toBe(false)
 
     const db2 = freshDb()
     const tenantId2 = getSoleTenantId(db2)
     // A vertex row with a leftover key but no project: still unavailable.
     insertRow(db2, tenantId2, {
-      geminiProvider: 'vertex',
+      aiProvider: 'gemini-vertex',
       googleCloudProject: null,
-      geminiApiKeyEnc: encryptField('stale-key'),
+      aiApiKeyEnc: encryptField('stale-key'),
     })
     expect(integrationAvailability(db2, tenantId2).ai).toBe(false)
   })
@@ -184,8 +184,8 @@ describe('integrationAvailability', () => {
       actualServerUrl: 'http://actual.test:5006',
       actualSyncId: 'sync-id',
       actualPasswordEnc: encryptField('password'),
-      geminiProvider: 'aistudio',
-      geminiApiKeyEnc: encryptField('key'),
+      aiProvider: 'gemini-aistudio',
+      aiApiKeyEnc: encryptField('key'),
     })
     // Tenant B is left with the all-empty placeholder `createSecondTenant` seeds —
     // everything unavailable — so a leak toward tenant A's row would show up as a

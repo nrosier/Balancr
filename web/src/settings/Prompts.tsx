@@ -291,7 +291,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
       ) : (
         // The editor stays usable without a model — writing and versioning the text costs
         // nothing and is worth doing before buying a key — but the one control that would
-        // call Gemini says why it cannot instead of failing when pressed (#165).
+        // call the provider says why it cannot instead of failing when pressed (#165).
         <DryRunOff availability={settings.ai.availability} />
       )}
 

@@ -20,7 +20,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { aiSpendMonthly } from '../../db/schema.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
-import { microEurToEur } from '../../adapters/gemini/pricing.ts'
+import { microEurToEur } from '../../adapters/ai/pricing.ts'
 
 /**
  * The month key the view groups by: a **UTC** month.
@@ -42,6 +42,7 @@ export interface SpendMonth {
   inputTokens: number
   outputTokens: number
   cachedTokens: number
+  cacheWriteTokens: number
   costMicroEur: number
 }
 
@@ -51,6 +52,7 @@ const EMPTY_MONTH = (month: string): SpendMonth => ({
   inputTokens: 0,
   outputTokens: 0,
   cachedTokens: 0,
+  cacheWriteTokens: 0,
   costMicroEur: 0,
 })
 
@@ -68,6 +70,7 @@ export function loadSpendMonth(db: Db, tenantId: string, month: string): SpendMo
     inputTokens: row.inputTokens,
     outputTokens: row.outputTokens,
     cachedTokens: row.cachedTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
     costMicroEur: row.costMicroEur,
   }
 }
@@ -107,7 +110,7 @@ export interface BudgetState {
 export function budgetState(db: Db, tenantId: string, now: Date = new Date()): BudgetState {
   const month = spendMonthOf(now)
   const spentMicroEur = loadSpendMonth(db, tenantId, month).costMicroEur
-  const budgetMicroEur = resolvedIntegrations(db, tenantId).gemini.budgetEurMicro
+  const budgetMicroEur = resolvedIntegrations(db, tenantId).ai.budgetEurMicro
 
   return {
     month,

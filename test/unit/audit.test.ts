@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { aiRuns, auditLog, proposals, tenantInvites, users } from '../../src/db/schema.ts'
+import { auditLog, proposals, tenantInvites, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import * as audit from '../../src/domain/audit.ts'
 import { auditValues, loadAuditTrail, recordAudit } from '../../src/domain/audit.ts'
@@ -153,24 +153,22 @@ describe('legacy audit tenant migration (#414)', () => {
     const legacy = createTestDb()
     seedPreMigrationDb(legacy.sqlite, '0029_overrated_slyde')
     const bootstrapTenantId = getSoleTenantId(legacy.db)
-    const otherTenantId = createSecondTenant(legacy.db)
+    const otherTenantId = 'legacy-second-tenant'
+    legacy.sqlite
+      .prepare('insert into tenants (id, label, created_at) values (?, ?, ?)')
+      .run(otherTenantId, 'Second', 1_789_566_155_324)
 
     legacy.db
       .insert(users)
       .values({ id: 'user-b', tenantId: otherTenantId, locale: 'en' })
       .run()
-    legacy.db
-      .insert(aiRuns)
-      .values({
-        id: 'run-b',
-        tenantId: otherTenantId,
-        kind: 'findings',
-        model: 'gemini-3.7-flash',
-        locale: 'en',
-        payloadJson: '{}',
-        status: 'ok',
-      })
-      .run()
+    legacy.sqlite
+      .prepare(
+        `insert into ai_runs
+          (id, tenant_id, kind, model, locale, payload_json, status, created_at)
+         values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run('run-b', otherTenantId, 'findings', 'gemini-3.7-flash', 'en', '{}', 'ok', 2)
     legacy.db
       .insert(proposals)
       .values({

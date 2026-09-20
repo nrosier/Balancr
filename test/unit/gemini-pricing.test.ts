@@ -13,23 +13,25 @@ import {
   MODEL_PRICES,
   microEurToEur,
   priceFor,
-} from '../../src/adapters/gemini/pricing.ts'
+} from '../../src/adapters/ai/pricing.ts'
+
+const PROVIDER = 'gemini-aistudio' as const
 
 describe('priceFor', () => {
   it('matches a known model exactly', () => {
-    const { price, known } = priceFor('gemini-3.7-flash')
+    const { price, known } = priceFor(PROVIDER, 'gemini-3.7-flash')
     expect(known).toBe(true)
     expect(price).toBe(MODEL_PRICES['gemini-3.7-flash'])
   })
 
   it('matches a dated or preview suffix to its family', () => {
-    const { price, known } = priceFor('gemini-3.1-pro-preview-04-01')
+    const { price, known } = priceFor(PROVIDER, 'gemini-3.1-pro-preview-04-01')
     expect(known).toBe(true)
     expect(price).toBe(MODEL_PRICES['gemini-3.1-pro'])
   })
 
   it('prefers the longest prefix, so lite is not priced as full flash', () => {
-    const lite = priceFor('gemini-3.7-flash-lite-preview')
+    const lite = priceFor(PROVIDER, 'gemini-3.7-flash-lite-preview')
     expect(lite.price).toBe(MODEL_PRICES['gemini-3.7-flash-lite'])
     expect(lite.price.input).toBeLessThan(
       (MODEL_PRICES['gemini-3.7-flash'] as { input: number }).input,
@@ -37,11 +39,11 @@ describe('priceFor', () => {
   })
 
   it('is case- and whitespace-insensitive', () => {
-    expect(priceFor('  Gemini-3.7-Flash  ').known).toBe(true)
+    expect(priceFor(PROVIDER, '  Gemini-3.7-Flash  ').known).toBe(true)
   })
 
   it('falls back to the most expensive tier for an unknown model', () => {
-    const { price, known } = priceFor('some-new-model-nobody-priced')
+    const { price, known } = priceFor(PROVIDER, 'some-new-model-nobody-priced')
     expect(known).toBe(false)
     expect(price).toBe(FALLBACK_PRICE)
     // The whole point: a model we cannot price must make the guard cautious.
@@ -68,67 +70,83 @@ describe('costMicroEur', () => {
   it('bills a million input tokens at the table rate', () => {
     const price = MODEL_PRICES['gemini-3.7-flash'] as { input: number }
     expect(
-      costMicroEur('gemini-3.7-flash', {
+      costMicroEur(PROVIDER, 'gemini-3.7-flash', {
         inputTokens: 1_000_000,
         outputTokens: 0,
         cachedTokens: 0,
+        cacheWriteTokens: 0,
       }),
     ).toBe(price.input)
   })
 
   it('bills the cached share of the input at the cached rate', () => {
     const price = MODEL_PRICES['gemini-3.7-flash'] as { input: number; cachedInput: number }
-    // 1M input of which 800k cached: the discount applies to the cached part only.
-    const cost = costMicroEur('gemini-3.7-flash', {
-      inputTokens: 1_000_000,
+    // 200k ordinary input plus 800k served from cache.
+    const cost = costMicroEur(PROVIDER, 'gemini-3.7-flash', {
+      inputTokens: 200_000,
       outputTokens: 0,
       cachedTokens: 800_000,
+      cacheWriteTokens: 0,
     })
     expect(cost).toBe(Math.ceil(0.2 * price.input + 0.8 * price.cachedInput))
     expect(cost).toBeLessThan(price.input)
   })
 
-  it('never returns a negative cost when the counters disagree', () => {
-    // cachedTokens > inputTokens should not turn into a credit against the month.
+  it('prices cache writes separately without billing them again as ordinary input', () => {
+    const price = MODEL_PRICES['gemini-3.7-flash'] as { input: number; cacheWriteInput: number }
+    const cost = costMicroEur(PROVIDER, 'gemini-3.7-flash', {
+      inputTokens: 200_000,
+      outputTokens: 0,
+      cachedTokens: 0,
+      cacheWriteTokens: 800_000,
+    })
+
+    expect(cost).toBe(Math.ceil(0.2 * price.input + 0.8 * price.cacheWriteInput))
+  })
+
+  it('never returns a negative cost when a provider reports a bad counter', () => {
     expect(
-      costMicroEur('gemini-3.7-flash', {
-        inputTokens: 100,
+      costMicroEur(PROVIDER, 'gemini-3.7-flash', {
+        inputTokens: -100,
         outputTokens: 0,
-        cachedTokens: 5_000,
+        cachedTokens: 0,
+        cacheWriteTokens: 0,
       }),
     ).toBeGreaterThanOrEqual(0)
   })
 
   it('rounds up, so the ledger never reads below what was charged', () => {
-    const cost = costMicroEur('gemini-3.7-flash', {
+    const cost = costMicroEur(PROVIDER, 'gemini-3.7-flash', {
       inputTokens: 1,
       outputTokens: 1,
       cachedTokens: 0,
+      cacheWriteTokens: 0,
     })
     expect(cost).toBe(3)
   })
 
   it('charges an unknown model at the fallback rate', () => {
-    const usage = { inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0 }
-    expect(costMicroEur('mystery-model', usage)).toBe(FALLBACK_PRICE.input)
+    const usage = { inputTokens: 1_000_000, outputTokens: 0, cachedTokens: 0, cacheWriteTokens: 0 }
+    expect(costMicroEur(PROVIDER, 'mystery-model', usage)).toBe(FALLBACK_PRICE.input)
   })
 })
 
 describe('estimateCostMicroEur', () => {
   it('is generous enough to exceed the same call measured', () => {
     const chars = 12_000
-    const estimate = estimateCostMicroEur('gemini-3.7-flash', chars)
-    const measured = costMicroEur('gemini-3.7-flash', {
+    const estimate = estimateCostMicroEur(PROVIDER, 'gemini-3.7-flash', chars)
+    const measured = costMicroEur(PROVIDER, 'gemini-3.7-flash', {
       inputTokens: chars / 4,
       outputTokens: 400,
       cachedTokens: 0,
+      cacheWriteTokens: 0,
     })
     expect(estimate).toBeGreaterThan(measured)
   })
 
   it('grows with the payload', () => {
-    expect(estimateCostMicroEur('gemini-3.7-flash', 40_000)).toBeGreaterThan(
-      estimateCostMicroEur('gemini-3.7-flash', 4_000),
+    expect(estimateCostMicroEur(PROVIDER, 'gemini-3.7-flash', 40_000)).toBeGreaterThan(
+      estimateCostMicroEur(PROVIDER, 'gemini-3.7-flash', 4_000),
     )
   })
 })

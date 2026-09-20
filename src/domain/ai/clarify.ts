@@ -27,7 +27,7 @@
  * *model's* and therefore does need one.
  */
 import { and, eq, inArray } from 'drizzle-orm'
-import { CLARIFICATION_GUESS_VALUES } from '../../adapters/gemini/schemas.ts'
+import { CLARIFICATION_GUESS_VALUES } from './schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, clarificationQueue } from '../../db/schema.ts'

@@ -233,16 +233,16 @@
       "title": "Actual"
     },
     "configured": "Configured",
-    "gemini": {
+    "ai": {
       "apiKey": "API key",
       "googleCloudProject": "Google Cloud project",
-      "hint": "The Gemini account the AI assistant runs on.",
+      "hint": "The provider account the AI assistant runs on.",
       "provider": {
         "aistudio": "Google AI Studio",
         "vertex": "Vertex AI"
       },
       "providerLabel": "Provider",
-      "title": "Gemini"
+      "title": "AI provider"
     },
     "ghostfolio": {
       "hint": "The Ghostfolio instance Balancr reads portfolio holdings from.",
