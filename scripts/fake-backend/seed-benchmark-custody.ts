@@ -52,6 +52,7 @@ for (const [categoryId, code] of Object.entries(COICOP)) {
       throw new Error(
         `${categoryId} has no category_meta row yet. Run the sync job first — start the app ` +
           'with ACTUAL_FAKE_BACKEND=true and JOBS_ENABLED=true, or POST /api/refresh once it is up.',
+        { cause: error },
       )
     }
     throw error

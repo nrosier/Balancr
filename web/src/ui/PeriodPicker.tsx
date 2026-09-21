@@ -131,7 +131,6 @@ export function PeriodPicker({
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   function select(next: Period): void {

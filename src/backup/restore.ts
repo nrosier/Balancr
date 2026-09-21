@@ -195,7 +195,9 @@ export async function restoreBackup(
       for (const completedMove of [...completed].reverse()) {
         try {
           if (await pathExists(completedMove.from)) {
-            throw new Error('original path is occupied; refusing to overwrite it')
+            throw new Error('original path is occupied; refusing to overwrite it', {
+              cause: originalError,
+            })
           }
           await move(completedMove.to, completedMove.from)
         } catch (error) {
