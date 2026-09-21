@@ -68,10 +68,13 @@ describe('routeFor', () => {
 describe('the pages', () => {
   it.each(ROUTES.map((route) => [route.labelKey, route] as const))(
     'gives %s one heading and a lede, both translated',
-    (_key, route) => {
+    async (_key, route) => {
       renderApp(<route.Page />, { path: route.path })
 
-      const headings = screen.getAllByRole('heading', { level: 1 })
+      // `findAll` rather than `getAll`: every page is its own chunk as of #435, so the
+      // first pass renders the `Suspense` fallback `renderApp` supplies and the page
+      // itself arrives a tick later.
+      const headings = await screen.findAllByRole('heading', { level: 1 })
       expect(headings).toHaveLength(1)
       expect(headings[0]?.textContent).toBeTruthy()
 
@@ -83,14 +86,13 @@ describe('the pages', () => {
     },
   )
 
-  it('heads each page with the same words as its nav link', () => {
+  it('heads each page with the same words as its nav link', async () => {
     // One catalogue key for both, so the sidebar and the heading cannot end up
     // calling the same page two different things.
     for (const route of ROUTES) {
       const { unmount } = renderApp(<route.Page />, { path: route.path })
-      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
-        i18next.t(route.labelKey),
-      )
+      const heading = await screen.findByRole('heading', { level: 1 })
+      expect(heading.textContent).toBe(i18next.t(route.labelKey))
       unmount()
     }
   })

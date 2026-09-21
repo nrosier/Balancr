@@ -28,8 +28,15 @@
  * do about it. `useResource` hands the 401 up to `load`, which re-asks and lands on
  * the sign-in screen through exactly the same path as a first visit. Wired once here
  * rather than per page, so #30 onwards inherit it.
+ *
+ * The `Suspense` boundary around the page is the other half of the route splitting in
+ * `routes.ts` (#435). It sits *inside* `AppShell` on purpose: the header and the
+ * navigation are already downloaded and already correct, so replacing only `<main>`
+ * while a page's chunk arrives keeps the frame — and the nav highlight the click just
+ * moved — on screen. A boundary wrapped around the shell would blank the whole window
+ * for the same few milliseconds.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError, type CsrfConfig } from './api/client.ts'
 import { CsrfProvider } from './api/csrf.tsx'
 import { SessionExpiryProvider } from './api/resource.tsx'
@@ -43,6 +50,7 @@ import { useRouter } from './router.tsx'
 import { routeFor } from './routes.ts'
 import type { BootstrapResponse } from './shared.ts'
 import { AppShell } from './shell/AppShell.tsx'
+import { Pending } from './ui/DataState.tsx'
 
 export interface AppProps {
   bootstrap: BootstrapResponse
@@ -142,7 +150,9 @@ export function App({ bootstrap }: AppProps): ReactNode {
     <SessionExpiryProvider onExpired={load}>
       <CsrfProvider csrf={csrf}>
         <AppShell user={session.user} csrf={csrf} version={bootstrap.version} onSignedOut={load}>
-          {route === undefined ? <NotFound /> : <route.Page />}
+          <Suspense fallback={<Pending />}>
+            {route === undefined ? <NotFound /> : <route.Page />}
+          </Suspense>
         </AppShell>
       </CsrfProvider>
     </SessionExpiryProvider>

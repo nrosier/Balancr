@@ -19,7 +19,7 @@
  * renderer is what makes even this much possible: canvas would need a native package
  * and would hand back pixels nobody can assert against.
  */
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { Chart } from '../src/charts/Chart.tsx'
 import { echarts, type EChartsCoreOption } from '../src/charts/echarts.ts'
@@ -64,20 +64,52 @@ beforeEach(resetTheme)
 
 const host = (): HTMLElement => screen.getByRole('img')
 
+/**
+ * The host element, once ECharts has actually drawn into it.
+ *
+ * `Chart` asks for the ECharts module with a dynamic `import()` in an effect (#435), so
+ * an instance exists a tick after the render rather than during it. The *box* — its
+ * role, its summary, its height — is there on the first pass, which is why the tests
+ * about those three are still synchronous, and is the behaviour the first test below
+ * pins down.
+ */
+async function drawn(): Promise<HTMLElement> {
+  const element = host()
+  await waitFor(() => {
+    expect(echarts.getInstanceByDom(element)).toBeDefined()
+  })
+  return element
+}
+
 describe('Chart', () => {
   it('is announced as an image with the summary as its text equivalent', () => {
     renderApp(<Chart option={OPTION} summary="Net worth rose 4% to € 48.200" />)
     expect(host().getAttribute('aria-label')).toBe('Net worth rose 4% to € 48.200')
   })
 
-  it('draws with the SVG renderer, so it renders at all outside a browser', () => {
+  it('has its box and its text equivalent before ECharts arrives, and is busy until it does', async () => {
     renderApp(<Chart option={OPTION} summary="two months" />)
+
+    // Synchronously, on the very first pass: nothing here waits on the chunk, which is
+    // what keeps the summary readable and the layout from shifting when it lands.
+    expect(host().getAttribute('aria-label')).toBe('two months')
+    expect(host().style.height).toBe('16rem')
+    expect(host().getAttribute('aria-busy')).toBe('true')
+    expect(host().querySelector('svg')).toBeNull()
+
+    await drawn()
+    expect(host().getAttribute('aria-busy')).toBeNull()
+  })
+
+  it('draws with the SVG renderer, so it renders at all outside a browser', async () => {
+    renderApp(<Chart option={OPTION} summary="two months" />)
+    await drawn()
     expect(host().querySelector('svg')).not.toBeNull()
   })
 
-  it('takes the option it was given', () => {
+  it('takes the option it was given', async () => {
     renderApp(<Chart option={OPTION} summary="two months" />)
-    const instance = echarts.getInstanceByDom(host())
+    const instance = echarts.getInstanceByDom(await drawn())
     expect(instance).toBeDefined()
     const series = (instance?.getOption() as { series?: { type?: string }[] }).series
     expect(series?.[0]?.type).toBe('line')
@@ -93,20 +125,19 @@ describe('Chart', () => {
     expect(host().style.height).toBe('30rem')
   })
 
-  it('disposes on unmount, so a navigation does not leak an instance', () => {
+  it('disposes on unmount, so a navigation does not leak an instance', async () => {
     const { unmount } = renderApp(<Chart option={OPTION} summary="two months" />)
     // Held onto: after unmount the node is out of the document and unreachable
     // through a query, and the registry is keyed by exactly this node.
-    const element = host()
-    expect(echarts.getInstanceByDom(element)).toBeDefined()
+    const element = await drawn()
 
     unmount()
     expect(echarts.getInstanceByDom(element)).toBeUndefined()
   })
 
-  it('keeps the same instance across a data change', () => {
+  it('keeps the same instance across a data change', async () => {
     const { rerender } = renderApp(<Chart option={OPTION} summary="two months" />)
-    const before = echarts.getInstanceByDom(host())?.id
+    const before = echarts.getInstanceByDom(await drawn())?.id
 
     rerender(
       <Chart
@@ -121,14 +152,16 @@ describe('Chart', () => {
     expect(series?.map((s) => s.type)).toEqual(['bar'])
   })
 
-  it('rebuilds on a theme change, because ECharts cannot be re-themed', () => {
+  it('rebuilds on a theme change, because ECharts cannot be re-themed', async () => {
     renderApp(
       <>
         <ThemeToggle />
         <Chart option={OPTION} summary="two months" />
       </>,
     )
-    const before = echarts.getInstanceByDom(host())?.id
+    // Only the first draw waits on the module; the rebuild below is synchronous, because
+    // by then the import has resolved and the effect re-runs inside the click's `act`.
+    const before = echarts.getInstanceByDom(await drawn())?.id
     expect(before).toBeDefined()
 
     clickLink(screen.getByRole('button', { name: 'Dark' }))
@@ -139,7 +172,7 @@ describe('Chart', () => {
     expect(host().querySelector('svg')).not.toBeNull()
   })
 
-  it('does not rebuild when the chosen mode resolves to the colour already on screen', () => {
+  it('does not rebuild when the chosen mode resolves to the colour already on screen', async () => {
     // `system` on a light machine and an explicit `light` are the same picture; tearing
     // the chart down between them would be visible as a flicker for no reason.
     renderApp(
@@ -148,7 +181,10 @@ describe('Chart', () => {
         <Chart option={OPTION} summary="two months" />
       </>,
     )
-    const before = echarts.getInstanceByDom(host())?.id
+    // Awaited, and not only for the sake of it: read before the module lands, both
+    // sides of the comparison would be `undefined` and the test would pass on nothing.
+    const before = echarts.getInstanceByDom(await drawn())?.id
+    expect(before).toBeDefined()
 
     clickLink(screen.getByRole('button', { name: 'Light' }))
     expect(echarts.getInstanceByDom(host())?.id).toBe(before)

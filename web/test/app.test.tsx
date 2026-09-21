@@ -168,7 +168,11 @@ describe('when someone is signed in', () => {
 
   it('renders the page inside the shell', async () => {
     await signedIn('/portfolio')
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Portfolio')
+    // The shell paints before the page does — its navigation is what `signedIn` waits
+    // for, and the page is a separate chunk as of #435 — so the heading is a `findBy`.
+    // That ordering is the point of the boundary sitting inside `AppShell`: the frame
+    // and the nav highlight are already on screen while the page arrives.
+    expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('Portfolio')
     expect(screen.getByText('Nick')).toBeTruthy()
     expect(screen.getByText('v0.5.1')).toBeTruthy()
   })
