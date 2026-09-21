@@ -4021,6 +4021,90 @@ describe('the prompt safety check (#454)', () => {
     expect(rows[1]?.textContent).toContain("Balancr's own")
   })
 
+  it('says which version a verdict is about, since the box may show other text', async () => {
+    // On a fresh page load with a saved-but-unactivated version, the textarea falls back to the
+    // body *in force* (the built-in) while the check targets the saved row. The client cannot
+    // compare the two — the version list deliberately ships no bodies — so it must not imply
+    // the text on screen is what was cleared. Naming the version is what makes that honest.
+    await open({
+      ...READS,
+      '/api/settings': json(saved()),
+      '/api/ai/prompt-validate': json(SAFE_RESULT),
+    })
+    selectNarrative()
+
+    // Said before the click, beside the button.
+    await screen.findByText(
+      'This checks saved version 4. The box above shows the instructions currently in force, which are not the same text.',
+    )
+    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(BUILT_IN)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
+    // And again on the result itself, unconditionally.
+    await screen.findByText('This is about version 4.')
+  })
+
+  it('retires a verdict when a newer version needs checking instead', async () => {
+    // A verdict belongs to a row. Once a newer save exists, the section is about that row and the
+    // old answer is no longer this section's answer — showing it would attribute one version's
+    // clearance to another.
+    await open({
+      ...READS,
+      '/api/settings': json(saved()),
+      '/api/ai/prompt-validate': json(SAFE_RESULT),
+    })
+    selectNarrative()
+    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
+    await screen.findByText('This is about version 4.')
+
+    // Editing the box is what a save starts from, and is enough on its own to retire the result.
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'A further thought.' },
+    })
+    await screen.findByText(
+      'The text has changed since this check. Save it as a new version and check that one.',
+    )
+    expect(screen.queryByText('This is about version 4.')).toBeNull()
+  })
+
+  it('points a language that only inherits the shared text at the shared tab', async () => {
+    // `buildSettings` emits an entry per supported locale, and one with no override of its own has
+    // an empty version list and the *shared* row as its `active`. There is nothing here to check,
+    // and describing that row as built-in would be a claim about text this tab does not own.
+    const inheriting: Payload = {
+      ...saved(),
+      prompts: [
+        ...saved().prompts,
+        {
+          key: 'narrative.system',
+          locale: 'nl',
+          active: {
+            id: 'n4',
+            version: 4,
+            locale: SHARED_LOCALE,
+            body: EDITED,
+            gate: 'unvalidated',
+            validatedAt: null,
+            rulesVersion: null,
+          },
+          versions: [],
+        },
+      ] as Payload['prompts'],
+    }
+    await open({ ...READS, '/api/settings': json(inheriting) })
+    selectNarrative()
+    fireEvent.change(screen.getByLabelText('Applies to'), { target: { value: 'nl' } })
+
+    await screen.findByText(
+      'This language uses the shared instructions, so there is nothing of its own to check — check them under “All languages”.',
+    )
+    expect(screen.queryByRole('button', { name: /^Check version/ })).toBeNull()
+    // And no badge: the gate belongs to the shared row, so claiming one here would be a
+    // statement about a row this tab does not own.
+    expect(screen.queryByText('Not checked')).toBeNull()
+    expect(screen.queryByText("Balancr's own")).toBeNull()
+  })
+
   it('draws no gate badge on a version of a key nothing gates', async () => {
     // `analysis.system` is not gated, so a warn-tone "Not checked" beside an edited findings
     // prompt would advertise a check the endpoint refuses (400) and a restriction that does not

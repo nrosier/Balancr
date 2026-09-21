@@ -392,6 +392,8 @@
     "body": "Instructies",
     "chars": "{{chars}} tekens",
     "check": {
+      "aboutSavedVersion": "Dit controleert bewaarde versie {{version}}. Het vak hierboven toont de instructies die nu gelden, en dat is niet dezelfde tekst.",
+      "aboutVersion": "Dit gaat over versie {{version}}.",
       "advisory": "Weggelaten stijlregels — die blokkeren niets",
       "builtIn": "Dit zijn de eigen instructies van Balancr, dus een controle is niet nodig.",
       "checkedAt": "Gecontroleerd op {{when}}.",
@@ -409,6 +411,7 @@
       "title": "Veiligheidscontrole",
       "unsafe": "Deze versie legt niet meer elke regel op en kan daarom niet actief worden.",
       "unvalidated": "Deze versie is nog niet gecontroleerd en kan daarom niet actief worden.",
+      "usesShared": "Deze taal gebruikt de gedeelde instructies, dus er is hier niets eigen om te controleren — controleer die onder ‘Alle talen’.",
       "weakened": "Regels die genoemd en daarna ondermijnd worden"
     },
     "created": "{{when}}",

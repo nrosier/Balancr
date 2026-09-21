@@ -823,7 +823,10 @@
 
 .badge--blocked,
 .badge--warn,
-.badge--capped {
+.badge--capped,
+/* A refusal that spent nothing — a daily cap reached, a key that needed no check (#454).
+   Same "nothing happened, and here is why" meaning as `blocked`. */
+.badge--skipped {
   background: var(--warn-soft);
   color: var(--warn);
 }

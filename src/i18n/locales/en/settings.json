@@ -392,6 +392,8 @@
     "body": "Instructions",
     "chars": "{{chars}} characters",
     "check": {
+      "aboutSavedVersion": "This checks saved version {{version}}. The box above shows the instructions currently in force, which are not the same text.",
+      "aboutVersion": "This is about version {{version}}.",
       "advisory": "Style rules it dropped — these do not block it",
       "builtIn": "These are Balancr's own instructions, so they need no check.",
       "checkedAt": "Checked {{when}}.",
@@ -409,6 +411,7 @@
       "title": "Safety check",
       "unsafe": "This version no longer imposes every rule, so it cannot be made active.",
       "unvalidated": "This version has not been checked yet, so it cannot be made active.",
+      "usesShared": "This language uses the shared instructions, so there is nothing of its own to check — check them under “All languages”.",
       "weakened": "Rules it states and then undercuts"
     },
     "created": "{{when}}",

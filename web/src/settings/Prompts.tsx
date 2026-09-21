@@ -36,11 +36,14 @@
  * deployment whose jobs have never run there is no month to price — a 409, not an error
  * worth a red box — and the Test button says so instead of failing when pressed.
  *
- * **The safety check is about a row, not about the box** (#454). It targets the *active
- * stored version*, so it is disabled until something has been saved — checking a draft that
- * exists only in this tab would produce a verdict with nothing to attach it to, which is
- * the gap the whole design closes. It is offered for gated keys only, and its result goes
- * stale the moment the textarea stops matching what was checked.
+ * **The safety check is about a row, not about the box** (#454). `POST /api/ai/prompt-validate`
+ * writes a verdict onto one stored version, so there is nothing a draft could be checked
+ * against — and the gap between "the text I checked" and "the text that runs" is exactly what
+ * the gate exists to close. The order is therefore save, check, activate: the check targets the
+ * newest *saved* version that still needs a verdict (see `target`), not the active one, because
+ * a gated body with no verdict cannot be active in the first place. Every control and every
+ * result names the version it is about, since the textarea may well be showing something else.
+ * Offered for gated keys only.
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { useT, type TFunction } from '../i18n.ts'
@@ -371,10 +374,15 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           estimateMicroEur={
             diff === null || diff.stamp !== stamp ? null : diff.diff.validationEstimateMicroEur
           }
-          result={check?.stamp === stamp ? check.result : null}
-          // A result whose stamp no longer matches is not discarded — it is the evidence
-          // that the box has moved on, which is exactly what the reader needs to be told.
-          stale={check !== null && check.stamp !== stamp}
+          // Shown only while it is still about the row the section is about. A verdict for a
+          // row that a newer save has superseded is not this section's answer any more.
+          result={check !== null && check.promptId === target?.id ? check.result : null}
+          // Two ways a result stops being current, and neither discards it — being told the
+          // answer has moved on is the point. The box has been edited since it was obtained,
+          // or a newer version now needs checking instead.
+          stale={
+            check !== null && (check.stamp !== stamp || check.promptId !== (target?.id ?? null))
+          }
           onChecked={(promptId, result) => setCheck({ promptId, stamp, result })}
         />
       )}
@@ -864,26 +872,51 @@ function Check({
   // while the button below names a different one is how a reader ends up reading "Balancr's
   // own" above a warning that their own text is unchecked.
   const targetGate = target === null ? gateOf(entry.active) : gateOf(target)
-  // Nothing needs checking: either nothing is stored, or what is stored is text this build
-  // ships, which never needs a paid verdict.
-  const nothingToCheck = target === null || targetGate === 'built_in'
-  // The box no longer holds what is in force. Only decisive when the row that would be
-  // checked *is* the active one (the grandfathered case) — a check would then answer about
-  // text that is not on screen. After a save the target is the new row, so this stops
-  // applying, which is what keeps save → check → activate from deadlocking.
+  /**
+   * This language has no rows of its own, so what runs for it is the shared text.
+   *
+   * `buildSettings` emits an entry per supported locale, and for a language nobody has
+   * written an override for that entry has an empty `versions` list and the *shared* row as
+   * its `active`. There is nothing here to check — the row belongs to the shared tab — and
+   * saying which tab to use beats a sentence about built-in text that may well be false.
+   */
+  const inheritsShared = target === null && entry.active.id !== null
+  // Nothing stored anywhere, or what is stored is text this build ships and never needs a
+  // paid verdict. Keyed off the gate rather than off `target === null`, so a language that
+  // merely inherits the shared row is not described as running a built-in.
+  const nothingToCheck = !inheritsShared && (target === null || targetGate === 'built_in')
+  /**
+   * Whether the box can be asserted to hold the target row's text.
+   *
+   * Only when the target *is* the active row and the box still matches it. `PromptVersionSetting`
+   * carries no `body` — the version list is deliberately shipped without one — so for any other
+   * row this is unknowable, and the honest move is to say which version is being checked rather
+   * than to imply it is what is on screen. Getting this wrong is how a reader concludes that the
+   * text in front of them was cleared when a different version was.
+   */
   const draftDiverged = body.trim() !== entry.active.body.trim()
+  const boxIsTarget = target !== null && target.active && !draftDiverged
+  // The one case worth *refusing*: the only checkable row is the one already in force, and the
+  // box has been typed over, so a check could only answer about text that is not on screen.
+  // Saving first is the next step — and after a save the target is the new row, which is what
+  // keeps save → check → activate from deadlocking.
   const unsavedDraft = target !== null && target.active && draftDiverged
   const running = state.pending === 'prompt-validate'
-  const canCheck = !nothingToCheck && !unsavedDraft
+  const canCheck = !nothingToCheck && !inheritsShared && !unsavedDraft
 
   return (
     <section className="prompt__check">
       <h3 className="panel__subtitle">
-        {t('settings:prompt.check.title')} <GateBadge gate={targetGate} />
+        {t('settings:prompt.check.title')}{' '}
+        {/* Suppressed for a language that only inherits: the gate belongs to the shared row,
+            and badging it here reads as a claim about this tab. */}
+        {inheritsShared ? null : <GateBadge gate={targetGate} />}
       </h3>
       <p className="muted">{t('settings:prompt.check.hint')}</p>
 
-      {nothingToCheck ? (
+      {inheritsShared ? (
+        <p className="muted">{t('settings:prompt.check.usesShared')}</p>
+      ) : nothingToCheck ? (
         // No button at all rather than a disabled one with nothing explaining it. Which
         // sentence depends on why: text has been written but not stored yet, or what is stored
         // is Balancr's own and needs no check.
@@ -896,13 +929,23 @@ function Check({
         </p>
       ) : (
         <>
-          {targetGate === 'unvalidated' && !stale ? (
+          {targetGate === 'unvalidated' ? (
             <p className="notice notice--warn" role="status">
               {t('settings:prompt.check.unvalidated')}
             </p>
           ) : null}
 
           {unsavedDraft ? <p className="muted">{t('settings:prompt.check.mustSaveFirst')}</p> : null}
+          {/* Not a warning, just the truth: the button is about a saved row, and the box is
+              showing the text currently in force rather than that row's. Said whenever it
+              cannot be asserted otherwise, which on a fresh page load is the normal case. */}
+          {boxIsTarget || unsavedDraft || target === null ? null : (
+            <p className="muted">
+              {t('settings:prompt.check.aboutSavedVersion', {
+                version: formatDecimal(target.version, 0),
+              })}
+            </p>
+          )}
           {estimateMicroEur === null ? null : (
             <p className="muted">
               {t('settings:prompt.check.estimate', {
@@ -959,6 +1002,14 @@ function CheckOutcome({ result }: { result: PromptValidation }): ReactNode {
       <p className="dryrun__head">
         <span className={`badge badge--${result.status}`}>{t(`status.${result.status}`)}</span>{' '}
         {t(`settings:ai.reason.${result.reason}`)}
+      </p>
+      {/* Which version this is about, always and unconditionally. A verdict belongs to a row,
+          and the textarea above may be showing something else entirely — naming the version is
+          what stops a reader concluding that the text in front of them is what was cleared. */}
+      <p className="muted">
+        {t('settings:prompt.check.aboutVersion', {
+          version: formatDecimal(result.version, 0),
+        })}
       </p>
       {result.costMicroEur === 0 ? null : (
         <p className="muted">
