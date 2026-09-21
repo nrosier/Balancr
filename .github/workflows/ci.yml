@@ -51,6 +51,15 @@ jobs:
       - name: Colour contrast
         run: npm run contrast:check
 
+      # A skipped or `.only`-focused test compiles clean and the suite still passes
+      # green, which is exactly why #429's `it.skip` sat unnoticed for weeks. This
+      # fails the build the moment one lands instead of waiting for a human to skim
+      # every test file. A genuine, time-bound exception doesn't need touching this
+      # workflow or the script: mark the line `// SKIP-ALLOWED: <reason>, see #<issue>`
+      # and scripts/check-test-skips.ts lets it through (and still prints it, every run).
+      - name: No skipped or focused tests
+        run: npm run skips:check
+
       - name: Tests
         run: npm test
 

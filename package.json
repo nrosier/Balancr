@@ -25,6 +25,7 @@
     "i18n:check": "tsx scripts/check-i18n.ts",
     "badges:check": "node scripts/check-badges.mjs",
     "contrast:check": "tsx scripts/check-contrast.ts",
+    "skips:check": "tsx scripts/check-test-skips.ts",
     "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
     "fake:ghostfolio": "tsx scripts/fake-backend/ghostfolio-server.ts",
     "fake:seed": "tsx --env-file-if-exists=.env scripts/fake-backend/seed-benchmark-custody.ts",
