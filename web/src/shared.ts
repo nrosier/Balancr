@@ -106,6 +106,7 @@ export type {
   JobRun,
   JobStatus,
   JobStep,
+  DebtSetting,
   LoanSetting,
   Overview,
   Portfolio,
@@ -207,6 +208,21 @@ export {
 export type { Loan, LoanKind } from '../../src/domain/loan/vocabulary.ts'
 export { monthsToPayoff, projectedPayoffDate } from '../../src/domain/loan/amortization.ts'
 export type { AmortizedLoan } from '../../src/domain/loan/amortization.ts'
+
+// The revolving-debt vocabulary (#442) — a credit card, a store card. Re-exported for
+// the same reason the loan vocabulary above is: the settings panel reads back an
+// estimated monthly interest figure before the row is saved, and a second
+// implementation of that arithmetic in the browser is how it could drift from the
+// portfolio page. Deliberately does not re-export anything from `amortization.ts` —
+// a revolving balance has no fixed schedule, so there is nothing here to project.
+export {
+  debtKinds,
+  estimatedMonthlyInterestCents,
+  MAX_DEBTS,
+  totalDebtBalanceCents,
+  totalMinimumPaymentCents,
+} from '../../src/domain/debt/vocabulary.ts'
+export type { Debt, DebtKind } from '../../src/domain/debt/vocabulary.ts'
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'

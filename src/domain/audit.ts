@@ -138,6 +138,15 @@ export const AUDIT_ACTIONS = [
    */
   'settings.loan',
   /**
+   * A revolving debt created, edited or deleted (#442) — a credit card, a store card.
+   *
+   * Same shape as `settings.loan`'s entry and for the same reason: one action for all
+   * three gestures, `before`/`after` already saying which happened, `entityRef` naming
+   * the debt either way. On this list because a card balance is the owner's own reading
+   * of a statement, which nothing in Actual or Ghostfolio can regenerate.
+   */
+  'settings.debt',
+  /**
    * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
    *
    * `before`/`after` never carry a secret — only the same `*Configured` shape the

@@ -55,6 +55,19 @@
     "valueSummary": "Market value between {{from}} and {{to}}: {{start}} at the start, {{end}} at the end.",
     "valueTitle": "Market value over time"
   },
+  "debt": {
+    "caption_one": "One card.",
+    "caption_other": "{{value}} cards.",
+    "column": {
+      "balance": "Owed",
+      "estimatedInterest": "Est. interest",
+      "kind": "Type",
+      "minimumPayment": "Minimum",
+      "name": "Card",
+      "rate": "Rate"
+    },
+    "title": "Credit cards"
+  },
   "dedupe": {
     "hint": "This account exists in both tools; only the source of truth counts toward net worth.",
     "title": "Counted once"
@@ -102,6 +115,7 @@
     "offBudget": "Off budget",
     "onBudget": "On budget",
     "propertyValue": "Property value",
+    "revolvingDebtBalance": "Credit card balance",
     "ter": "Annual costs",
     "twr": "Time-weighted return",
     "twrHint": "Return on the money while it was invested, unaffected by when you paid in.",

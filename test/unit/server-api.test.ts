@@ -51,6 +51,7 @@ import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accou
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
+import { createDebt } from '../../src/domain/debt/debts.ts'
 import { createLoan } from '../../src/domain/loan/loans.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
@@ -175,6 +176,7 @@ describe('GET /api/overview', () => {
       propertyValueCents: null,
       mortgageBalanceCents: null,
       loanBalanceCents: null,
+      revolvingDebtBalanceCents: null,
       liquidOffBudgetCents: null,
     })
     expect(body.month).toBe(MONTH)
@@ -834,6 +836,81 @@ describe('fixed-schedule loans, subtracted from net worth (#441)', () => {
     // 1 500 000 at 300 000 a month clears in five months instead of fifteen.
     expect(rows.get(withExtra.id)?.payoffDate).toBe('2025-08-01')
     expect(rows.get(withExtra.id)?.monthlyPaymentCents).toBe(300_000)
+  })
+})
+
+describe('revolving debt, subtracted from net worth (#442)', () => {
+  const CARD = {
+    kind: 'creditCard' as const,
+    label: 'Card',
+    balanceCents: 200_000,
+    minimumPaymentCents: 10_000,
+    aprBp: 1_800,
+  }
+
+  it("subtracts every debt's balance from the overview total and reports it on its own", async () => {
+    createDebt(ctx.db, TENANT_ID, CARD)
+    createDebt(ctx.db, TENANT_ID, { ...CARD, kind: 'other', label: 'Store card', balanceCents: 50_000 })
+
+    const body = (await get('/api/overview')).json()
+
+    expect(body.netWorth.totalCents).toBe(4_820_000 - 250_000)
+    expect(body.netWorth.revolvingDebtBalanceCents).toBe(250_000)
+    // Account-derived and left alone: a hand-entered card balance is not something the
+    // Actual/Ghostfolio balances said.
+    expect(body.netWorth.debtCents).toBe(120_000)
+  })
+
+  it('reports null rather than zero when no debt is tracked', async () => {
+    const body = (await get('/api/overview')).json()
+
+    expect(body.netWorth.revolvingDebtBalanceCents).toBeNull()
+    expect(body.netWorth.totalCents).toBe(4_820_000)
+  })
+
+  it('leaves the net-worth history untouched — no retroactive debt', async () => {
+    createDebt(ctx.db, TENANT_ID, CARD)
+    const body = (await get('/api/overview')).json()
+
+    expect(body.history).toEqual([{ date: SNAPSHOT_DATE, totalCents: 4_820_000 }])
+  })
+
+  it('reports the stored figures alongside an estimated monthly interest, never amortized', async () => {
+    const created = createDebt(ctx.db, TENANT_ID, CARD)
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.debts).toEqual([
+      {
+        id: created.id,
+        kind: 'creditCard',
+        label: 'Card',
+        balanceCents: 200_000,
+        minimumPaymentCents: 10_000,
+        aprBp: 1_800,
+        // 200 000 * 0.18 / 12 = 3 000.
+        estimatedMonthlyInterestCents: 3_000,
+      },
+    ])
+    expect(body.totalDebtBalanceCents).toBe(200_000)
+  })
+
+  it('answers an empty list and a zero total when nothing is tracked', async () => {
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.debts).toEqual([])
+    expect(body.totalDebtBalanceCents).toBe(0)
+  })
+
+  it('estimates no interest when no apr is on file, never zero', async () => {
+    const created = createDebt(ctx.db, TENANT_ID, { ...CARD, aprBp: null })
+
+    const body = (await get('/api/portfolio')).json()
+    const row = (body.debts as { id: string; estimatedMonthlyInterestCents: number | null }[]).find(
+      (candidate) => candidate.id === created.id,
+    )
+
+    expect(row?.estimatedMonthlyInterestCents).toBeNull()
   })
 })
 

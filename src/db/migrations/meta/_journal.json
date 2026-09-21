@@ -239,6 +239,13 @@
       "when": 1789980397093,
       "tag": "0033_outstanding_mad_thinker",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1789983973868,
+      "tag": "0034_keen_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

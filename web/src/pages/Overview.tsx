@@ -177,6 +177,18 @@ function Figures({
                   ...(netWorth.loanBalanceCents === 0 ? {} : { tone: 'negative' as const }),
                 },
               ]),
+          // Revolving debt — a credit card, a store card (#442) — already subtracted from
+          // the total above, for the same reason a loan gets its own row rather than
+          // folding into `debt`. Absent, not zero, for a household that tracks none.
+          ...(netWorth.revolvingDebtBalanceCents === null
+            ? []
+            : [
+                {
+                  label: t('portfolio:metric.revolvingDebtBalance'),
+                  value: euro(netWorth.revolvingDebtBalanceCents),
+                  ...(netWorth.revolvingDebtBalanceCents === 0 ? {} : { tone: 'negative' as const }),
+                },
+              ]),
         ]
 
   return (

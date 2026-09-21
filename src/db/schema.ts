@@ -1365,6 +1365,47 @@ export const loans = sqliteTable(
 )
 
 /**
+ * Revolving debt — a credit card, a store card, an overdraft (#442).
+ *
+ * Split from #408 alongside `loans` above, and deliberately not shaped like it. A loan
+ * amortizes from a principal, a rate and a term; a revolving balance has none of those —
+ * it is driven by statements and payments Balancr never sees, and the owner simply keeps
+ * `balance_cents` current against the latest one. There is no `anchor_date` and no
+ * `remaining_term_months` here for that reason: nothing in this table is ever amortized
+ * forward, so there is nothing to anchor away from.
+ *
+ * A real table rather than a settings blob for the same reason `loans` is one: a
+ * revolving debt has an identity that outlives one edit, and every query in
+ * `domain/debt/debts.ts` is a row operation.
+ *
+ * Tenant-scoped like everything else since #376: `tenant_id` is `NOT NULL`, a foreign
+ * key, indexed, and every query filters on it.
+ */
+export const revolvingDebts = sqliteTable(
+  'revolving_debts',
+  {
+    id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** `domain/debt/vocabulary.ts`'s `debtKinds`. */
+    kind: text({ enum: ['creditCard', 'other'] })
+      .notNull()
+      .default('creditCard'),
+    label: text().notNull().default(''),
+    /** What is owed right now, as of the owner's last update. Never amortized. */
+    balanceCents: integer('balance_cents').notNull(),
+    /** The minimum payment the statement asks for. */
+    minimumPaymentCents: integer('minimum_payment_cents').notNull(),
+    /** Annual percentage rate, basis points, or null when nobody has entered one. */
+    aprBp: integer('apr_bp'),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+  },
+  (t) => [index('revolving_debts_tenant_idx').on(t.tenantId, t.createdAt)],
+)
+
+/**
  * One row per tenant: the Actual/Ghostfolio/AI credentials that used to
  * live only in `.env` (#369). `*Enc` columns are AES-256-GCM via
  * `db/field-crypto.ts`; everything else here is the non-secret half of the
@@ -1438,6 +1479,7 @@ export const schema = {
   rateLimits,
   settings,
   loans,
+  revolvingDebts,
   tenantIntegrations,
   upstreamProbes,
 }

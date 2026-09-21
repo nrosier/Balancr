@@ -37,6 +37,13 @@ import {
   saveReferenceOverride,
 } from '../../src/domain/benchmark/reference.ts'
 import {
+  createDebt,
+  deleteDebt,
+  listDebts,
+  loadDebt,
+  updateDebt,
+} from '../../src/domain/debt/debts.ts'
+import {
   createLoan,
   deleteLoan,
   listLoans,
@@ -292,6 +299,33 @@ describe('loans', () => {
 
     expect(loadLoan(db, tenantA, loanA.id)?.principalCents).toBe(1_500_000)
     expect(listLoans(db, tenantB)).toHaveLength(1)
+  })
+})
+
+describe('debts', () => {
+  const input = {
+    kind: 'creditCard' as const,
+    label: 'Card',
+    balanceCents: 200_000,
+    minimumPaymentCents: 10_000,
+    aprBp: 1_800,
+  }
+
+  it("never reads, edits or deletes another tenant's debt by id (#442)", () => {
+    const debtA = createDebt(db, tenantA, input)
+    createDebt(db, tenantB, { ...input, label: 'B card', balanceCents: 90_000 })
+
+    expect(listDebts(db, tenantA).map((row) => row.label)).toEqual(['Card'])
+    expect(listDebts(db, tenantB).map((row) => row.label)).toEqual(['B card'])
+
+    // A's id supplied with B's tenant: no row to read, none to write, none to delete —
+    // and A's own row untouched by all three attempts.
+    expect(loadDebt(db, tenantB, debtA.id)).toBeNull()
+    expect(updateDebt(db, tenantB, debtA.id, { ...input, balanceCents: 1 })).toBeNull()
+    expect(deleteDebt(db, tenantB, debtA.id)).toBe(false)
+
+    expect(loadDebt(db, tenantA, debtA.id)?.balanceCents).toBe(200_000)
+    expect(listDebts(db, tenantB)).toHaveLength(1)
   })
 })
 
