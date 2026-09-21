@@ -70,6 +70,21 @@
     "title": "Holdings",
     "weight": "Weight"
   },
+  "loan": {
+    "balanceEstimate": "Estimated by amortizing forward from the balance last confirmed against a statement, on {{date}}.",
+    "caption_one": "One loan.",
+    "caption_other": "{{value}} loans.",
+    "column": {
+      "balance": "Owed",
+      "kind": "Type",
+      "name": "Loan",
+      "paidOff": "Paid off",
+      "payment": "Per month",
+      "payoff": "Paid off by",
+      "rate": "Rate"
+    },
+    "title": "Loans"
+  },
   "metric": {
     "cash": "Cash at broker",
     "cashHint": "Uninvested money sitting at the broker. It is the same balance your bank shows, counted once.",
@@ -80,6 +95,7 @@
     "invested": "Invested",
     "investedHint": "Positions only, which is what the allocation below is a picture of.",
     "liquid": "Directly available",
+    "loanBalance": "Loan balance",
     "mortgageBalance": "Mortgage balance",
     "mwr": "Money-weighted return",
     "netWorth": "Net worth",

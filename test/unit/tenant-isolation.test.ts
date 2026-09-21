@@ -36,6 +36,13 @@ import {
   loadReferenceOverride,
   saveReferenceOverride,
 } from '../../src/domain/benchmark/reference.ts'
+import {
+  createLoan,
+  deleteLoan,
+  listLoans,
+  loadLoan,
+  updateLoan,
+} from '../../src/domain/loan/loans.ts'
 import { loadProperties, saveProperties } from '../../src/domain/property/properties.ts'
 import { loadProfile, saveProfile } from '../../src/domain/advice/profile.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
@@ -253,6 +260,38 @@ describe('properties', () => {
 
     expect(loadProperties(db, tenantA).properties).toHaveLength(1)
     expect(loadProperties(db, tenantB).properties).toHaveLength(0)
+  })
+})
+
+describe('loans', () => {
+  const input = {
+    kind: 'car' as const,
+    label: 'Car',
+    openingDate: '2026-01-01',
+    principalCents: 1_500_000,
+    anchorDate: '2026-01-01',
+    rateBp: 0,
+    monthlyPaymentCents: 100_000,
+    remainingTermMonths: 60,
+    originalPrincipalCents: null,
+    extraMonthlyPaymentCents: null,
+  }
+
+  it("never reads, edits or deletes another tenant's loan by id (#441)", () => {
+    const loanA = createLoan(db, tenantA, input)
+    createLoan(db, tenantB, { ...input, label: 'B car', principalCents: 900_000 })
+
+    expect(listLoans(db, tenantA).map((row) => row.label)).toEqual(['Car'])
+    expect(listLoans(db, tenantB).map((row) => row.label)).toEqual(['B car'])
+
+    // A's id supplied with B's tenant: no row to read, none to write, none to delete —
+    // and A's own row untouched by all three attempts.
+    expect(loadLoan(db, tenantB, loanA.id)).toBeNull()
+    expect(updateLoan(db, tenantB, loanA.id, { ...input, principalCents: 1 })).toBeNull()
+    expect(deleteLoan(db, tenantB, loanA.id)).toBe(false)
+
+    expect(loadLoan(db, tenantA, loanA.id)?.principalCents).toBe(1_500_000)
+    expect(listLoans(db, tenantB)).toHaveLength(1)
   })
 })
 

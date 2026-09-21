@@ -105,6 +105,8 @@ const FULL: PortfolioPayload = {
   advice: null,
   properties: [],
   totalPropertyEquityCents: null,
+  loans: [],
+  totalLoanBalanceCents: 0,
   offBudgetAccounts: [],
   ghostfolioConfigured: true,
 }
@@ -123,6 +125,8 @@ const EMPTY: PortfolioPayload = {
   advice: null,
   properties: [],
   totalPropertyEquityCents: null,
+  loans: [],
+  totalLoanBalanceCents: 0,
   offBudgetAccounts: [],
   ghostfolioConfigured: true,
 }
@@ -989,6 +993,64 @@ describe('property', () => {
     expect(cells[3]).toContain('≈')
     expect(cells[3]).toContain('€ 180.000')
     expect(cells[4]).toBe('55%')
+  })
+})
+
+describe('loans (#441)', () => {
+  const CAR: PortfolioPayload['loans'][number] = {
+    id: 'loan-1',
+    kind: 'car',
+    label: 'Car',
+    openingDate: '2026-01-01',
+    balanceCents: 700_000,
+    anchorDate: '2026-01-01',
+    paidOffBp: 7_667,
+    monthlyPaymentCents: 100_000,
+    rateBp: 350,
+    payoffDate: '2026-08-01',
+  }
+
+  it('draws no card when nothing is owed', async () => {
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Loans' })).toBeNull()
+  })
+
+  it('shows the balance, the paid-off share, the rate, the payment and the payoff date', async () => {
+    serve(json({ ...FULL, loans: [CAR], totalLoanBalanceCents: 700_000 }))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Loans' })
+
+    const cells = row('Car')
+    expect(cells[0]).toBe('Car')
+    expect(cells[1]).toBe('Car loan')
+    // Always an estimate: the balance is amortized forward from the anchor, never read
+    // off a statement today.
+    expect(cells[2]).toContain('≈')
+    expect(cells[2]).toContain('€ 7.000')
+    expect(cells[3]).toBe('76,7%')
+    expect(cells[4]).toBe('3,5%')
+    expect(cells[5]).toBe('€ 1.000')
+    expect(cells[6]).toBe('01/08/2026')
+  })
+
+  it('dashes the payoff date and the paid-off share rather than inventing either', async () => {
+    serve(
+      json({
+        ...FULL,
+        loans: [{ ...CAR, label: 'Kitchen', kind: 'personal', paidOffBp: null, payoffDate: null }],
+        totalLoanBalanceCents: 700_000,
+      }),
+    )
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Loans' })
+
+    const cells = row('Kitchen')
+    expect(cells[1]).toBe('Personal loan')
+    expect(cells[3]).toBe('—')
+    expect(cells[6]).toBe('—')
   })
 })
 

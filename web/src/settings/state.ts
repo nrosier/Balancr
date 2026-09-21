@@ -25,8 +25,15 @@ import { useCsrf } from '../api/csrf.tsx'
 import { useResource, useSessionExpiry, type Resource } from '../api/resource.tsx'
 import type { AiEstimate, Settings } from '../shared.ts'
 
-/** The methods this page uses. `DELETE` is deliberately absent: nothing here deletes. */
-export type WriteMethod = 'POST' | 'PATCH'
+/**
+ * The methods this page uses.
+ *
+ * `DELETE` joined the list with the loans panel (#441) and is still the only thing that
+ * uses it. Every other list on this page is one settings blob replaced whole, where
+ * removing a row is a PATCH of what is left; a loan is a real table row with an id, so
+ * "remove this one" has no expression as a patch of a list that no longer contains it.
+ */
+export type WriteMethod = 'POST' | 'PATCH' | 'DELETE'
 
 export interface SettingsState {
   /**

@@ -995,6 +995,68 @@
   gap: var(--space-3);
 }
 
+/* ---------------------------------------------------------------------------
+   Fixed-schedule loans (#441)
+
+   The same proportions as `.property-form`/`.properties`/`.property` above — same kind
+   of form, one card per row — with one difference that is the table-versus-blob
+   distinction showing through in the layout: `.loans__actions` appears twice, once
+   inside each row (its own Save and Remove, because each row is its own request) and
+   once at the bottom (Add). The property panel needs only the second, since its rows
+   share one submit.
+   --------------------------------------------------------------------------- */
+
+.loans-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.loans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loan {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.loan__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+/* The balance/paid-off/payoff read-back, one line each rather than one sentence: a
+   balance today and a date years out are two different facts. */
+.loan__reads {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.loans__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .provenance {
   display: flex;
   flex-direction: column;

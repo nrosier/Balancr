@@ -106,6 +106,7 @@ export type {
   JobRun,
   JobStatus,
   JobStep,
+  LoanSetting,
   Overview,
   Portfolio,
   PromptBody,
@@ -185,6 +186,27 @@ export {
   totalEquityCents,
 } from '../../src/domain/property/vocabulary.ts'
 export type { Mortgage, Property, PropertyKind } from '../../src/domain/property/vocabulary.ts'
+
+// The loan vocabulary and the amortization it shares with the mortgage domain (#441).
+// Re-exported for the same reason the property arithmetic above is: the loans panel has to
+// read back what a balance and a payoff date come to *before* the row is saved, and a
+// second implementation of the amortization loop in the browser is how the settings screen
+// comes to promise a payoff date the portfolio page disagrees with. Pure by construction —
+// `amortization.ts` and `vocabulary.ts` reach nothing; `loans.ts`, which reaches Drizzle,
+// stays on the server.
+export {
+  effectiveMonthlyPaymentCents,
+  loanBalanceCents,
+  loanKinds,
+  loanPaidOffBp,
+  loanPayoffDate,
+  MAX_LOANS,
+  totalLoanBalanceCents,
+  totalMonthlyPaymentCents,
+} from '../../src/domain/loan/vocabulary.ts'
+export type { Loan, LoanKind } from '../../src/domain/loan/vocabulary.ts'
+export { monthsToPayoff, projectedPayoffDate } from '../../src/domain/loan/amortization.ts'
+export type { AmortizedLoan } from '../../src/domain/loan/amortization.ts'
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'

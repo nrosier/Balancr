@@ -378,6 +378,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     history: { months: 0, earliest: null, latest: null },
     profile: { email: null, displayName: null, locale: 'en', role: 'owner' },
     locales: { supported: ['en', 'nl'], default: 'en' },
+    loans: [],
     params,
     paramDefaults: params,
     advice: {

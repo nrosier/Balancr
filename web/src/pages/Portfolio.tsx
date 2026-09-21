@@ -35,6 +35,7 @@ import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { DriftTable } from '../portfolio/Drift.tsx'
+import { LoansTable } from '../portfolio/Loans.tsx'
 import { OffBudgetAccountsTable } from '../portfolio/OffBudgetAccounts.tsx'
 import { PropertyTable } from '../portfolio/Property.tsx'
 import { PORTFOLIO_SECTIONS, sectionFor } from '../portfolio/sections.ts'
@@ -121,7 +122,7 @@ function Figures({
 }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { advice, allocation, cashValueCents, date, history, holdings, offBudgetAccounts, properties } =
+  const { advice, allocation, cashValueCents, date, history, holdings, loans, offBudgetAccounts, properties } =
     data
   const { investedValueCents, totalValueCents, twrBp } = data
 
@@ -226,6 +227,21 @@ function Figures({
             <section className="card">
               <h2 className="card__title">{t('portfolio:property.title')}</h2>
               <PropertyTable properties={properties} />
+            </section>
+          )}
+
+          {/*
+            Fixed-schedule debt that isn't a mortgage (#441) — below Property, since a
+            mortgage's side of the same question is shown there with the equity it leaves.
+            Its balance is already subtracted from the net worth Overview shows; this card
+            is what stops that subtraction from being an unexplained number. No fallback
+            branch, same reasoning as Property: a household with no loans is not shown an
+            empty table.
+          */}
+          {loans.length === 0 ? null : (
+            <section className="card">
+              <h2 className="card__title">{t('portfolio:loan.title')}</h2>
+              <LoansTable loans={loans} />
             </section>
           )}
         </>

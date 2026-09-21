@@ -29,6 +29,7 @@ import {
 import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
+import { loanKinds } from '../../../domain/loan/vocabulary.ts'
 import { BENCHMARK_BASES, BENCHMARK_PERIODS } from '../../../domain/benchmark/compare.ts'
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
@@ -208,6 +209,18 @@ export const overviewSchema = z.object({
       propertyValueCents: cents().nullable(),
       /** Summed outstanding mortgage balance; null when no property has a mortgage. */
       mortgageBalanceCents: cents().nullable(),
+      /**
+       * Summed outstanding balance of every fixed-schedule non-mortgage loan — a car
+       * loan, a personal loan (#441) — or null when the household tracks none.
+       *
+       * Already subtracted from `totalCents`, the mirror image of what a property's
+       * equity is added into it. Reported on its own rather than folded into
+       * `debtCents`, which is derived from Actual/Ghostfolio account balances and would
+       * stop meaning "what the accounts say" the moment a hand-entered figure joined it.
+       * A loan whose payments come out of an Actual account is not double counted: the
+       * account holds the money left, not the debt.
+       */
+      loanBalanceCents: cents().nullable(),
       /**
        * How much of `liquidCents` above sits in an off-budget account, null when none
        * of it does (#353) — e.g. a savings pot Actual keeps off-budget that still
@@ -829,6 +842,33 @@ export const portfolioPropertySchema = z.object({
   grossYieldBp: basisPoints().nullable(),
 })
 
+/**
+ * One fixed-schedule non-mortgage loan, priced at request time (#441) — same treatment as
+ * `portfolioPropertySchema`, and for the same reason: a loan amortizes with the calendar,
+ * not with whatever night Ghostfolio's snapshot last ran.
+ */
+export const portfolioLoanSchema = z.object({
+  id: z.string(),
+  kind: z.enum(loanKinds),
+  label: z.string(),
+  openingDate: z.string(),
+  /** What is still owed today, extra payments and all. */
+  balanceCents: cents(),
+  /** The re-anchor point the balance above amortizes forward from (#392). */
+  anchorDate: z.string(),
+  /** Share of the original amount paid off, or null when nobody entered one (#392). */
+  paidOffBp: basisPoints().nullable(),
+  /** What leaves the account every month, contractual payment plus any voluntary extra. */
+  monthlyPaymentCents: cents(),
+  rateBp: basisPoints(),
+  /**
+   * When this schedule clears the loan, or null when it doesn't — a payment below the
+   * monthly interest, or a term that runs out with something still owed. See
+   * `monthsToPayoff` in `domain/loan/amortization.ts`.
+   */
+  payoffDate: z.string().nullable(),
+})
+
 /** One off-budget Actual account counted into net worth (#353). */
 export const offBudgetAccountSchema = z.object({
   id: z.string(),
@@ -881,6 +921,14 @@ export const portfolioSchema = z.object({
   properties: z.array(portfolioPropertySchema),
   /** Summed across every property with a tracked value; null when none of them are. */
   totalPropertyEquityCents: cents().nullable(),
+  /**
+   * Fixed-schedule non-mortgage loans — a car loan, a personal loan (#441). Outside
+   * `allocation`/`advice` for the same reason properties are: a car loan is not a
+   * position the drift table could sell to correct anything.
+   */
+  loans: z.array(portfolioLoanSchema),
+  /** Summed outstanding balance across every loan, 0 when there are none. */
+  totalLoanBalanceCents: cents(),
   /**
    * Off-budget Actual accounts already counted into net worth, named (#353) — a
    * mortgage or a house-value tracker, say, every kind included. See
@@ -1546,6 +1594,32 @@ export const propertiesSettingSchema = z.object({
 })
 
 /**
+ * One stored fixed-schedule loan, as `/api/settings` lists it (#441).
+ *
+ * The stored record, sent as-is — the same settings-echo-versus-derived split
+ * `propertySchema` above has with `portfolioLoanSchema`: a balance needs a date, and
+ * `today` is a fact about the request rather than about settings. `id` is the server's,
+ * because unlike a property (a row inside one settings blob) a loan is a real table row,
+ * so the form is handed an id rather than inventing one.
+ */
+export const loanSettingSchema = z.object({
+  id: z.string(),
+  kind: z.enum(loanKinds),
+  label: z.string(),
+  openingDate: z.string(),
+  principalCents: cents(),
+  /** The date `principalCents` was true. */
+  anchorDate: z.string(),
+  rateBp: basisPoints(),
+  monthlyPaymentCents: cents(),
+  remainingTermMonths: z.int(),
+  /** What the loan started at, or null when nobody has entered it (#392). */
+  originalPrincipalCents: cents().nullable(),
+  /** A voluntary amount paid on top every month, or null when none is. */
+  extraMonthlyPaymentCents: cents().nullable(),
+})
+
+/**
  * The Actual/Ghostfolio/AI connection this tenant uses (#369, #422).
  *
  * A secret is never on this wire, in either direction: `passwordConfigured` and
@@ -1658,6 +1732,12 @@ export const settingsSchema = z.object({
   benchmark: benchmarkSettingSchema,
   /** The owned properties and their mortgages, tracked by Balancr rather than Ghostfolio (#227). */
   property: propertiesSettingSchema,
+  /**
+   * Fixed-schedule non-mortgage loans — car, personal (#441), most recently taken out
+   * first. A flat array rather than `{ loans: [...] }` like `property`: there is no
+   * whole-list patch for these, so there is no patch body for the read shape to match.
+   */
+  loans: z.array(loanSettingSchema),
   /** The Actual/Ghostfolio/AI connection this tenant uses (#369, #422). */
   integrations: integrationsSettingSchema,
   /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
@@ -2075,6 +2155,7 @@ export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
+export type LoanSetting = z.infer<typeof loanSettingSchema>
 export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
 export type InviteSetting = z.infer<typeof inviteSettingSchema>
 export type InviteCreated = z.infer<typeof inviteCreatedSchema>

@@ -51,6 +51,7 @@ import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accou
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
+import { createLoan } from '../../src/domain/loan/loans.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -173,6 +174,7 @@ describe('GET /api/overview', () => {
       debtCents: 120_000,
       propertyValueCents: null,
       mortgageBalanceCents: null,
+      loanBalanceCents: null,
       liquidOffBudgetCents: null,
     })
     expect(body.month).toBe(MONTH)
@@ -713,6 +715,125 @@ describe('property tracking, out of the allocation and drift entirely (#227)', (
 
     const overview = (await get('/api/overview')).json()
     expect(overview.netWorth.mortgageBalanceCents).toBe(22_000_000)
+  })
+})
+
+describe('fixed-schedule loans, subtracted from net worth (#441)', () => {
+  // Zero rate and zero payment so the balance is exactly `principalCents` whatever day
+  // this runs on, for the same reason the property fixtures above are built that way:
+  // the route amortizes against the real clock.
+  const CAR = {
+    kind: 'car' as const,
+    label: 'Car',
+    openingDate: '2025-03-01',
+    principalCents: 1_500_000,
+    anchorDate: '2025-03-01',
+    rateBp: 0,
+    monthlyPaymentCents: 0,
+    remainingTermMonths: 600,
+    originalPrincipalCents: null,
+    extraMonthlyPaymentCents: null,
+  }
+
+  it("subtracts every loan's balance from the overview total and reports it on its own", async () => {
+    createLoan(ctx.db, TENANT_ID, CAR)
+    createLoan(ctx.db, TENANT_ID, {
+      ...CAR,
+      kind: 'personal',
+      label: 'Kitchen',
+      principalCents: 500_000,
+    })
+
+    const body = (await get('/api/overview')).json()
+
+    expect(body.netWorth.totalCents).toBe(4_820_000 - 2_000_000)
+    expect(body.netWorth.loanBalanceCents).toBe(2_000_000)
+    // Account-derived and left alone: a hand-entered loan is not something the
+    // Actual/Ghostfolio balances said.
+    expect(body.netWorth.debtCents).toBe(120_000)
+  })
+
+  it('reports null rather than zero when no loan is tracked', async () => {
+    const body = (await get('/api/overview')).json()
+
+    expect(body.netWorth.loanBalanceCents).toBeNull()
+    expect(body.netWorth.totalCents).toBe(4_820_000)
+  })
+
+  it('leaves the net-worth history untouched — no retroactive debt', async () => {
+    createLoan(ctx.db, TENANT_ID, CAR)
+    const body = (await get('/api/overview')).json()
+
+    expect(body.history).toEqual([{ date: SNAPSHOT_DATE, totalCents: 4_820_000 }])
+  })
+
+  it('adds a priced-as-of-today row per loan, alongside (never inside) the allocation', async () => {
+    const created = createLoan(ctx.db, TENANT_ID, {
+      ...CAR,
+      // A real schedule for this one: 100 000 a month against 1 500 000 at no interest
+      // clears in fifteen months, which is a date this test can name.
+      monthlyPaymentCents: 100_000,
+      remainingTermMonths: 60,
+      originalPrincipalCents: 3_000_000,
+    })
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.loans).toEqual([
+      {
+        id: created.id,
+        kind: 'car',
+        label: 'Car',
+        openingDate: '2025-03-01',
+        balanceCents: 0,
+        anchorDate: '2025-03-01',
+        paidOffBp: 10_000,
+        monthlyPaymentCents: 100_000,
+        rateBp: 0,
+        payoffDate: '2026-06-01',
+      },
+    ])
+    expect(body.totalLoanBalanceCents).toBe(0)
+    // Not a synthetic slice: what the drift table reads is what Ghostfolio reported,
+    // untouched by owing money on a car.
+    expect(body.allocation).toEqual([
+      { assetClass: 'EQUITY', valueCents: 382_143, shareBp: 10_000 },
+    ])
+  })
+
+  it('answers an empty list and a zero total when nothing is tracked', async () => {
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.loans).toEqual([])
+    expect(body.totalLoanBalanceCents).toBe(0)
+  })
+
+  it('counts a voluntary extra payment toward the balance and the payoff date', async () => {
+    const plain = createLoan(ctx.db, TENANT_ID, {
+      ...CAR,
+      monthlyPaymentCents: 100_000,
+      remainingTermMonths: 60,
+    })
+    const withExtra = createLoan(ctx.db, TENANT_ID, {
+      ...CAR,
+      label: 'Kitchen',
+      monthlyPaymentCents: 100_000,
+      remainingTermMonths: 60,
+      extraMonthlyPaymentCents: 200_000,
+    })
+
+    const body = (await get('/api/portfolio')).json()
+    const rows = new Map(
+      (body.loans as { id: string; payoffDate: string | null; monthlyPaymentCents: number }[]).map(
+        (row) => [row.id, row] as const,
+      ),
+    )
+
+    expect(rows.get(plain.id)?.payoffDate).toBe('2026-06-01')
+    expect(rows.get(plain.id)?.monthlyPaymentCents).toBe(100_000)
+    // 1 500 000 at 300 000 a month clears in five months instead of fifteen.
+    expect(rows.get(withExtra.id)?.payoffDate).toBe('2025-08-01')
+    expect(rows.get(withExtra.id)?.monthlyPaymentCents).toBe(300_000)
   })
 })
 

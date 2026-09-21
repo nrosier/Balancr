@@ -70,6 +70,21 @@
     "title": "Posities",
     "weight": "Gewicht"
   },
+  "loan": {
+    "balanceEstimate": "Geschat door verder af te bouwen vanaf het saldo dat laatst tegen een afrekening is bevestigd, op {{date}}.",
+    "caption_one": "Eén lening.",
+    "caption_other": "{{value}} leningen.",
+    "column": {
+      "balance": "Openstaand",
+      "kind": "Type",
+      "name": "Lening",
+      "paidOff": "Afgelost",
+      "payment": "Per maand",
+      "payoff": "Afgelost rond",
+      "rate": "Rente"
+    },
+    "title": "Leningen"
+  },
   "metric": {
     "cash": "Cash bij de broker",
     "cashHint": "Onbelegd geld dat bij de broker staat. Hetzelfde saldo als bij je bank, één keer geteld.",
@@ -80,6 +95,7 @@
     "invested": "Geïnvesteerd",
     "investedHint": "Alleen posities, en dat is waar de verdeling hieronder een beeld van geeft.",
     "liquid": "Direct beschikbaar",
+    "loanBalance": "Leningsaldo",
     "mortgageBalance": "Hypotheeksaldo",
     "mwr": "Geldgewogen rendement",
     "netWorth": "Nettovermogen",

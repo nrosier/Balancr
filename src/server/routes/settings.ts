@@ -86,6 +86,16 @@ import {
   loadHousehold,
   saveHousehold,
 } from '../../domain/benchmark/household.ts'
+import {
+  createLoan,
+  deleteLoan,
+  listLoans,
+  loadLoan,
+  loanKinds,
+  MAX_LOANS,
+  TooManyLoansError,
+  updateLoan,
+} from '../../domain/loan/loans.ts'
 import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
 import {
   AI_VISIBILITY_CHOICES,
@@ -355,6 +365,35 @@ const propertyPatchRequest = z.strictObject({
         .optional(),
     }),
   ),
+})
+
+/**
+ * One fixed-schedule non-mortgage loan — a car loan, a personal loan (#441).
+ *
+ * The whole loan, every time, on both the create and the edit: every field is on the form
+ * at once, so "leave this one alone" is not a gesture the screen can make, and a merge
+ * would leave an omitted `extraMonthlyPaymentCents` ambiguous between "unchanged" and
+ * "no longer paying extra". Loose on bounds on purpose, like `propertyPatchRequest` above
+ * — the rate ceiling, the term ceiling and the non-negative cents live in
+ * `loanInputSchema` and are enforced by `createLoan`/`updateLoan`, which is the same
+ * division every other patch on this page explains.
+ *
+ * Unlike the property list there is no whole-list route: a loan is a table row with an id
+ * of its own, so create, edit and delete are three requests naming one loan rather than
+ * one request replacing all of them. See `db/schema.ts` above the `loans` table for why
+ * it is a table at all.
+ */
+const loanRequest = z.strictObject({
+  kind: z.enum(loanKinds).optional(),
+  label: z.string().optional(),
+  openingDate: z.string(),
+  principalCents: z.number().int(),
+  anchorDate: z.string(),
+  rateBp: z.number().int(),
+  monthlyPaymentCents: z.number().int(),
+  remainingTermMonths: z.number().int(),
+  originalPrincipalCents: z.number().int().nullable().optional(),
+  extraMonthlyPaymentCents: z.number().int().nullable().optional(),
 })
 
 /**
@@ -837,6 +876,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     advice: riskProfileSetting(db, user.tenantId),
     benchmark: benchmarkSetting(db, user.tenantId),
     property: loadProperties(db, user.tenantId),
+    loans: listLoans(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
     // The shared text first, then only those languages someone has actually written
@@ -1143,6 +1183,123 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before,
       after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * A new fixed-schedule loan — car, personal (#441).
+   *
+   * Three routes rather than one whole-list PATCH, because a loan is a row with its own
+   * id (see `loanRequest`). Each still answers with the whole settings payload, like
+   * every other write on this page: the list the panel redraws and the loan it just
+   * touched come back together, with nothing for the screen to reconcile.
+   *
+   * Takes effect immediately — the balance is amortized from this row on every read of
+   * the overview or portfolio page, with no recompute step in between.
+   */
+  app.post('/api/settings/loans', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const body = parseBody(loanRequest, request.body)
+
+    let created
+    try {
+      created = createLoan(db, user.tenantId, body)
+    } catch (error) {
+      // The rate/term bounds can only be checked once parsed, so they fail here rather
+      // than in `parseBody` — same division as the property list above.
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      // Not a fact about the body: the same request would have been accepted one loan
+      // ago, which is what a 409 says and a 400 would not.
+      if (error instanceof TooManyLoansError) {
+        throw conflict(`A household may track at most ${String(MAX_LOANS)} loans.`)
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.loan',
+      entity: 'loans',
+      entityRef: created.id,
+      actorId: user.id,
+      // Null before, the loan after: the entry reads as "this came into being".
+      before: null,
+      after: { ...created },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Replaces one loan — a correction, or the re-anchor a new statement calls for.
+   *
+   * There is no rate-history table here any more than there is for a mortgage: when the
+   * rate, payment or remaining term changes, the owner sends today's real outstanding
+   * balance as the new `principalCents`/`anchorDate`. The audit entry is what remembers
+   * what it said before.
+   */
+  app.patch('/api/settings/loans/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+    const body = parseBody(loanRequest, request.body)
+
+    // Read first, so a loan belonging to another tenant is a 404 rather than an update
+    // that silently matches nothing and answers 200.
+    const before = loadLoan(db, user.tenantId, id)
+    if (before === null) throw notFound('No such loan.')
+
+    let after
+    try {
+      after = updateLoan(db, user.tenantId, id, body)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+    if (after === null) throw notFound('No such loan.')
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.loan',
+      entity: 'loans',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      after: { ...after },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Drops a loan — paid off, refinanced, or entered by mistake.
+   *
+   * The only DELETE on this page, and it is one because a loan is a row: "remove this
+   * one" cannot be expressed as a patch of a list that no longer contains it. `before`
+   * carries the whole loan, since after this the row is the only place it existed.
+   */
+  app.delete('/api/settings/loans/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadLoan(db, user.tenantId, id)
+    if (before === null) throw notFound('No such loan.')
+    deleteLoan(db, user.tenantId, id)
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.loan',
+      entity: 'loans',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      // Null rather than the row: what was recorded is that this loan stopped existing.
+      after: null,
     })
 
     return buildSettings(db, request)
