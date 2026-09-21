@@ -1,5 +1,20 @@
 /**
- * The one place a chart is created, sized and torn down.
+ * The one place a chart is created, sized and torn down — and the one place ECharts is
+ * loaded.
+ *
+ * **ECharts arrives after the page does** (#435). It is by far the heaviest thing the
+ * frontend ships, and it is decoration for a dashboard whose subject is numbers: the
+ * figures, the metric cards and every chart's `summary` are all readable without it.
+ * So the module is behind a dynamic `import()` here rather than a static one, which
+ * leaves it in a chunk of its own that the entry never waits for, and which the two
+ * routes that draw nothing (settings, insights) never request at all.
+ *
+ * What that costs is one render with an empty box, and the box is deliberately the whole
+ * cost: the host element below — its `role="img"`, its `aria-label` and its height — is
+ * rendered on the first pass, before the module is asked for. So the chart's text
+ * equivalent is available to a screen reader immediately rather than when a network
+ * request finishes, and the layout does not shift when the picture lands. `aria-busy`
+ * says which of the two states the box is in.
  *
  * Everything a chart needs to behave correctly is easy to forget individually and
  * invisible when forgotten: it has to be disposed or the tab leaks an instance per
@@ -26,10 +41,34 @@
  * that. The height has to come from here rather than from a class because the caller
  * chooses it per chart, and a stylesheet cannot enumerate every height a page wants.
  */
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTheme } from '../theme/ThemeContext.tsx'
-import { echarts, type EChartsCoreOption } from './echarts.ts'
+import type { EChartsCoreOption } from './echarts.ts'
 import { echartsTheme } from './theme.ts'
+
+/** The hand-assembled build in `echarts.ts`, with its series types already registered. */
+type EchartsModule = typeof import('./echarts.ts')
+
+let loading: Promise<EchartsModule> | null = null
+
+/**
+ * The ECharts chunk, asked for once per page load.
+ *
+ * Memoised at module level rather than per component: a page draws up to eight charts,
+ * and although eight `import()` calls would be deduplicated by the loader, the *promise*
+ * is the thing worth sharing — the second chart to mount resolves off the first one's
+ * request instead of starting its own round trip.
+ *
+ * Deliberately not retried, and deliberately not caught. A chunk that fails to load
+ * means the browser and the server disagree about which build is deployed, which
+ * re-asking cannot fix; the charts stay empty boxes with their summaries intact, and the
+ * rejection surfaces in the console rather than being swallowed into a silence nobody
+ * can debug.
+ */
+function loadEcharts(): Promise<EchartsModule> {
+  loading ??= import('./echarts.ts')
+  return loading
+}
 
 export interface ChartProps {
   option: EChartsCoreOption
@@ -54,7 +93,7 @@ export interface ChartProps {
   blurWhenPrivate?: boolean
 }
 
-type ChartInstance = ReturnType<typeof echarts.init>
+type ChartInstance = ReturnType<EchartsModule['echarts']['init']>
 
 export function Chart({
   option,
@@ -66,6 +105,7 @@ export function Chart({
   const host = useRef<HTMLDivElement | null>(null)
   const instance = useRef<ChartInstance | null>(null)
   const { resolved } = useTheme()
+  const [loaded, setLoaded] = useState<EchartsModule | null>(null)
 
   // The latest option, readable by the init effect without becoming one of its
   // dependencies — otherwise every data change would tear the chart down and rebuild
@@ -74,10 +114,22 @@ export function Chart({
   latest.current = option
 
   useEffect(() => {
-    const element = host.current
-    if (element === null) return
+    let live = true
+    void loadEcharts().then((module) => {
+      // The guard is for the chart that unmounts while its chunk is in flight — a
+      // navigation away from the overview within the first few hundred milliseconds.
+      if (live) setLoaded(module)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
 
-    const chart = echarts.init(element, echartsTheme(resolved), { renderer: 'svg' })
+  useEffect(() => {
+    const element = host.current
+    if (element === null || loaded === null) return
+
+    const chart = loaded.echarts.init(element, echartsTheme(resolved), { renderer: 'svg' })
     instance.current = chart
     chart.setOption(latest.current)
 
@@ -93,7 +145,7 @@ export function Chart({
       chart.dispose()
       instance.current = null
     }
-  }, [resolved])
+  }, [loaded, resolved])
 
   useEffect(() => {
     // `notMerge` because a new option is a new picture: merging leaves the previous
@@ -108,6 +160,9 @@ export function Chart({
       style={{ height, width: '100%' }}
       role="img"
       aria-label={summary}
+      // The box is the right size and says the right thing before ECharts has arrived;
+      // this is what distinguishes "still drawing" from "drawn".
+      aria-busy={loaded === null ? 'true' : undefined}
       data-private={blurWhenPrivate ? '' : undefined}
     />
   )

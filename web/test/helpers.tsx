@@ -24,7 +24,7 @@
  * tests would fail on a machine with no server and pass on one with a server running.
  */
 import { fireEvent, render, type RenderResult } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import type { CsrfConfig } from '../src/api/client.ts'
 import { CsrfProvider } from '../src/api/csrf.tsx'
 import type { Resource } from '../src/api/resource.tsx'
@@ -35,6 +35,7 @@ import { RouterProvider } from '../src/router.tsx'
 import type { SettingsState } from '../src/settings/state.ts'
 import type { AiAvailabilityWire, Settings } from '../src/shared.ts'
 import { ThemeProvider } from '../src/theme/ThemeContext.tsx'
+import { Pending } from '../src/ui/DataState.tsx'
 
 /** What a test deployment supports. Both catalogues exist on disk. */
 export const SUPPORTED = ['en', 'nl'] as const
@@ -78,13 +79,22 @@ export interface RenderAppOptions {
  * context, because pages are rendered by the route table as `<route.Page />` and take
  * no props. Every test rendering the settings page — including `pages.test.tsx`, which
  * renders all five to count their headings — needs it, and `useCsrf` throws without it.
+ *
+ * `Suspense` joins them from #435, mirroring the boundary `App.tsx` puts around the
+ * page: the route table's pages are `React.lazy` now, so rendering one directly — which
+ * `pages.test.tsx` does — needs a boundary or React throws rather than waits. It is
+ * inert for every other test, since nothing else below it suspends. What it does mean
+ * is that a test rendering a route's `Page` sees the fallback on the first pass and has
+ * to `findBy*` rather than `getBy*` — exactly what a browser paints.
  */
 function Providers({ children }: { children: ReactNode }): ReactNode {
   return (
     <ThemeProvider>
       <PrivacyProvider>
         <CsrfProvider csrf={CSRF}>
-          <RouterProvider>{children}</RouterProvider>
+          <RouterProvider>
+            <Suspense fallback={<Pending />}>{children}</Suspense>
+          </RouterProvider>
         </CsrfProvider>
       </PrivacyProvider>
     </ThemeProvider>
@@ -125,6 +135,11 @@ const EMPTY_READS: Record<string, unknown> = {
   },
   '/api/settings': {
     build: { version: null, revision: null },
+    // Nothing aggregated yet, which is what the rest of this payload says too. Needed
+    // rather than optional: the general section reads `history.months` straight out,
+    // and a page that now has time to render its payload before a test ends — the
+    // route chunks of #435 made every page test await something — throws without it.
+    history: { months: 0, earliest: null, latest: null },
     profile: { email: null, displayName: null, locale: 'en', role: 'owner' },
     locales: { supported: ['en', 'nl'], default: 'en' },
     // Deliberately empty rather than the real default grid: these are not job output,

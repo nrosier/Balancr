@@ -27,6 +27,32 @@ import type { ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import type { Resource } from '../api/resource.tsx'
 
+/**
+ * "Nothing yet", on its own.
+ *
+ * Exported because a route's chunk arriving is the same non-answer as a payload
+ * arriving (#435): `App.tsx` hands this to the `Suspense` boundary the lazy pages
+ * render inside, so a navigation that has to fetch a chunk says what a page waiting on
+ * its endpoint says, in the same words and the same box. A second spinner invented for
+ * the occasion would be the only loading state in the application that looks different
+ * from the others.
+ *
+ * The live region is the part that is easy to leave out. Against a local server this
+ * state lasts a few milliseconds, so the visible text is almost never read — while a
+ * screen reader, which is told nothing by a silently replaced `<main>`, needs it.
+ */
+export function Pending(): ReactNode {
+  const { t } = useT()
+  return (
+    <div className="state" aria-busy="true">
+      <p className="sr-only" role="status">
+        {t('shell.loading')}
+      </p>
+      <p className="muted">{t('shell.loading')}</p>
+    </div>
+  )
+}
+
 export interface DataStateProps<T> {
   resource: Resource<T>
   children: (data: T) => ReactNode
@@ -58,14 +84,7 @@ export function DataState<T>({ resource, children, isEmpty }: DataStateProps<T>)
 
     // `loading` is false here only in a state that cannot happen — no request, no
     // data, no error — and saying "loading" is the least wrong thing to say about it.
-    return (
-      <div className="state" aria-busy="true">
-        <p className="sr-only" role="status">
-          {t('shell.loading')}
-        </p>
-        <p className="muted">{t('shell.loading')}</p>
-      </div>
-    )
+    return <Pending />
   }
 
   if (isEmpty?.(data) === true) {

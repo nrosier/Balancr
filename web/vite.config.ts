@@ -17,6 +17,11 @@ import { defineConfig } from 'vite'
  *
  * `root` is set explicitly because Vite resolves it from the working directory, not
  * from the config file, and this config is invoked from the repository root.
+ *
+ * Nothing here configures the code splitting (#435) — the split is expressed where it
+ * belongs, as `import()` in `routes.ts` and `charts/Chart.tsx`, and Rolldown derives the
+ * chunks from that. A `manualChunks` table would be a second, silent opinion about which
+ * module goes where, and it goes stale the first time an import moves.
  */
 const here = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -36,6 +41,15 @@ export default defineConfig({
     assetsInlineLimit: 0,
     sourcemap: false,
     modulePreload: { polyfill: false },
+    // Raised from 500 kB for exactly one chunk: ECharts, at around 640 kB even with
+    // only the five series types this application draws registered (see
+    // `charts/echarts.ts`). It is no longer in the entry and no longer on the critical
+    // path — `charts/Chart.tsx` imports it dynamically — so the default warning's
+    // advice ("consider dynamic import to code-split") is advice already taken, and
+    // leaving it firing would train everyone to ignore the one warning that would
+    // matter if a *page* chunk ever grew to this size. Every other chunk is under
+    // 100 kB, so the new limit still has room to catch that.
+    chunkSizeWarningLimit: 700,
   },
   server: {
     port: 5173,

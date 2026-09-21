@@ -13,6 +13,17 @@
  * anchored here for wide. `shell.css` styles it as the trailing item of the tab bar
  * on narrow and pushes it to the bottom of the sidebar on wide, but it is always the
  * same button in the same place in the DOM.
+ *
+ * Each link also asks for its page's chunk on hover or focus (#435), which is what makes
+ * route splitting free rather than a tax on every navigation: the pointer reaches a tab
+ * some hundreds of milliseconds before the click does, and a keyboard user tabbing onto
+ * a link has the same head start. `preload` is idempotent and fire-and-forget — the
+ * `Suspense` fallback in `App.tsx` is still what covers the click that arrives first.
+ *
+ * `onPointerEnter` rather than `onMouseEnter`: on a touch device the pointer event fires
+ * on the tap itself, a few milliseconds before the click, instead of never — so the
+ * prefetch is at worst harmless there and at best a head start, whereas `mouseenter` is
+ * synthesised late and inconsistently.
  */
 import type { ReactNode } from 'react'
 import type { CsrfConfig } from '../api/client.ts'
@@ -36,8 +47,8 @@ export function Nav({ account }: NavProps): ReactNode {
 
   return (
     <nav className="nav" aria-label={t('nav.label')}>
-      {ROUTES.map(({ path, labelKey, Icon }) => (
-        <Link key={path} to={path} className="nav__link">
+      {ROUTES.map(({ path, labelKey, Icon, preload }) => (
+        <Link key={path} to={path} className="nav__link" onPreload={preload}>
           <Icon />
           <span className="nav__label">{t(labelKey)}</span>
         </Link>

@@ -13,6 +13,7 @@
  * `TooltipView.js`'s `_showAxisTooltip`, which builds exactly this array before handing
  * it to a custom `formatter`.
  */
+import { waitFor } from '@testing-library/react'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { BudgetBullet } from '../src/charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../src/charts/CategoryTrend.tsx'
@@ -28,9 +29,17 @@ beforeAll(async () => {
 
 type Formatter = (params: unknown) => string
 
-function formatterOf(container: HTMLElement): Formatter {
+/**
+ * Awaited because `Chart` loads ECharts with a dynamic `import()` in an effect (#435):
+ * the host element is in the DOM on the first pass, but the instance carrying the
+ * option — and with it the formatter under test — is created a tick later.
+ */
+async function formatterOf(container: HTMLElement): Promise<Formatter> {
   const host = container.querySelector('[role="img"]')
   if (host === null) throw new Error('chart host not found')
+  await waitFor(() => {
+    expect(echarts.getInstanceByDom(host as HTMLElement)).toBeDefined()
+  })
   const instance = echarts.getInstanceByDom(host as HTMLElement)
   const tooltip = instance?.getOption().tooltip as { formatter?: Formatter } | { formatter?: Formatter }[]
   const formatter = (Array.isArray(tooltip) ? tooltip[0]?.formatter : tooltip?.formatter) as
@@ -41,13 +50,13 @@ function formatterOf(container: HTMLElement): Formatter {
 }
 
 describe('axis-trigger chart tooltips', () => {
-  it('BudgetBullet renders a real <span data-private>, not its escaped text', () => {
+  it('BudgetBullet renders a real <span data-private>, not its escaped text', async () => {
     const { container } = renderApp(
       <BudgetBullet
         categories={[{ name: 'Rent', spentCents: 80000, assignedCents: 90000, baselineCents: 85000 }]}
       />,
     )
-    const formatter = formatterOf(container)
+    const formatter = await formatterOf(container)
 
     const html = formatter([
       { marker: '<span class="dot"></span>', seriesName: 'Assigned', axisValueLabel: 'Rent', value: 90000 },
@@ -64,11 +73,11 @@ describe('axis-trigger chart tooltips', () => {
     expect(html).not.toContain('&lt;span')
   })
 
-  it('CategoryTrend renders a real <span data-private>, not its escaped text', () => {
+  it('CategoryTrend renders a real <span data-private>, not its escaped text', async () => {
     const { container } = renderApp(
       <CategoryTrend name="Groceries" months={['2026-08']} series={[42000]} baselineCents={null} />,
     )
-    const formatter = formatterOf(container)
+    const formatter = await formatterOf(container)
 
     const html = formatter([
       { marker: '<span class="dot"></span>', seriesName: 'Groceries', axisValueLabel: 'August 2026', value: 42000 },
@@ -78,11 +87,11 @@ describe('axis-trigger chart tooltips', () => {
     expect(html).not.toContain('&lt;span')
   })
 
-  it('NetWorthChart renders a real <span data-private>, not its escaped text', () => {
+  it('NetWorthChart renders a real <span data-private>, not its escaped text', async () => {
     const { container } = renderApp(
       <NetWorthChart history={[{ date: '2026-08-31', totalCents: 4820000 }]} />,
     )
-    const formatter = formatterOf(container)
+    const formatter = await formatterOf(container)
 
     const html = formatter([
       {

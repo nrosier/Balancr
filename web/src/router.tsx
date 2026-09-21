@@ -79,6 +79,13 @@ export interface LinkProps {
   /** Fires only on an in-app navigation — closing a mobile menu, for instance. */
   onNavigate?: () => void
   /**
+   * Fires when the pointer or the keyboard arrives at the link, ahead of any click —
+   * the hook for fetching what that click will need. `Nav` uses it to request a lazy
+   * page's chunk (#435). Called on every hover, so an implementation has to be cheap
+   * and idempotent; a dynamic `import()` is both.
+   */
+  onPreload?: () => void
+  /**
    * Highlight only on an exact match, not on a descendant path. The primary nav wants
    * prefix matching — a detail path still lights the section it sits under — but a
    * flat tab strip whose own base path (e.g. `/settings`) is a literal prefix of every
@@ -96,7 +103,15 @@ export interface LinkProps {
   active?: boolean
 }
 
-export function Link({ to, children, className, onNavigate, exact = false, active }: LinkProps): ReactNode {
+export function Link({
+  to,
+  children,
+  className,
+  onNavigate,
+  onPreload,
+  exact = false,
+  active,
+}: LinkProps): ReactNode {
   const { path, navigate } = useRouter()
   const isCurrent = active ?? (exact ? path === to : isActive(path, to))
 
@@ -123,6 +138,8 @@ export function Link({ to, children, className, onNavigate, exact = false, activ
     <a
       href={to}
       onClick={onClick}
+      onPointerEnter={onPreload}
+      onFocus={onPreload}
       className={className}
       // Announced by screen readers as the current page, and the hook the nav styles
       // its active item with — one source of truth for "where am I".
