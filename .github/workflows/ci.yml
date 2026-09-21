@@ -55,6 +55,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # This is a CI-side backstop independent of the Harbor scan tracked in
+      # #395: it checks the production dependency tree on every push/PR,
+      # regardless of whether Harbor's replication scan is reachable.
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

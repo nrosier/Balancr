@@ -67,3 +67,14 @@ jobs:
       # for (#39). The script runs by hand too; that is why it is a script.
       - name: Verify the image
         run: scripts/verify-image.sh balancr:ci
+
+      # This is a CI-side backstop independent of the Harbor scan tracked in
+      # #395: it scans the same image that verify-image.sh just hardened,
+      # without depending on Harbor or the homelab network being reachable.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "balancr:ci"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
