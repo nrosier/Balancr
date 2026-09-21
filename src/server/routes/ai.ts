@@ -101,6 +101,7 @@ import { aiRateLimit } from '../rate-limit.ts'
 import { parseBody } from '../validate.ts'
 import { resolveMonth } from './api/budget.ts'
 import { auditRefresh, busyError, requireJobsEnabled } from './refresh.ts'
+import { requirePromptEditable } from './settings.ts'
 import {
   aiBudgetNudgeRunSchema,
   aiDryRunSchema,
@@ -248,6 +249,15 @@ function monthToRun(db: Db, tenantId: string, asked: unknown): string {
  * only ever load an `analysis.system` prompt, and that is what makes prompt
  * *activation* the only path that puts an unvalidated narrative body into use.
  * See that test for why the export exists.
+ *
+ * **An explicit id is refused where `PROMPT_EDITING` has locked the key (#455).** Without
+ * this the read-time pin would have one door left open: `resolvePrompt` answers with the
+ * built-in text for a locked key, but this branch reads a stored row directly, so an owner
+ * of a `locked` deployment could still send their own instructions to a model — just not
+ * as the prompt that runs. A `403` rather than a silent substitution, because a dry run is
+ * a question about one specific version and quietly answering about a different text would
+ * be worse than declining: "what would this version do" has no answer on a deployment
+ * where no stored version can be what runs.
  */
 export function dryRunPrompt(
   db: Db,
@@ -265,6 +275,7 @@ export function dryRunPrompt(
   if (row.key !== 'analysis.system') {
     throw badRequest('That is not an analysis prompt.', { key: row.key })
   }
+  requirePromptEditable(config.PROMPT_EDITING, 'analysis.system')
   return { id: row.id, version: row.version }
 }
 

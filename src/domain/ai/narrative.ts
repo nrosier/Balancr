@@ -245,20 +245,70 @@ export function noteChangedSince(db: Db, tenantId: string, narrative: NarrativeR
  * comparison the gate itself uses; see `isBuiltInBody`'s own comment for why the historical
  * bodies get no free pass.
  *
- * False for a run with no `promptId` — a narrative written before the ledger recorded one,
- * or one produced from the built-in fallback, which has no row. "We cannot tell" must not
- * print as "somebody edited this", the same way `noteChangedSince` refuses to call a
- * pre-#298 review stale.
+ * **A translation is followed back to the review it translated.** `translateNarrative` sends
+ * the code-owned `TRANSLATION_SYSTEM` and therefore records no `promptId` of its own — but
+ * the *prose* is the source review's, edited instructions and all, so a Dutch reader of a
+ * translated review has exactly the same reason to be told as the English reader who has the
+ * original in front of them. Dropping the disclosure at the language switch would be a hole
+ * in the promise this field makes to "every reader". The walk is bounded by the locales it
+ * has already visited, because a pair of reviews each translated from the other is reachable
+ * (translate `en`→`nl`, later rewrite `en` by translating `nl` back) and would otherwise
+ * loop.
+ *
+ * One imprecision worth naming: the source is found by `(period, locale)`, and a narrative is
+ * stored one row per pair — so if the English review is *rewritten* after the Dutch
+ * translation was made, the Dutch disclosure follows the new English text rather than the
+ * text that was actually translated. Recording the source run on the translation row would
+ * fix it; carrying a `promptId` the translation call did not use would not, because it would
+ * make the ledger claim a prompt version was sent when it was not.
+ *
+ * False for a run with no `promptId` and no translation source — a narrative written before
+ * the ledger recorded one, or one produced from the built-in fallback, which has no row. "We
+ * cannot tell" must not print as "somebody edited this", the same way `noteChangedSince`
+ * refuses to call a pre-#298 review stale.
  */
 export function usedEditedPrompt(db: Db, tenantId: string, narrative: NarrativeRow): boolean {
-  const run = loadRun(db, tenantId, narrative.runId)
-  if (run?.promptId == null) return false
+  const visited = new Set<string>()
+  let row: NarrativeRow | null = narrative
 
-  const prompt = loadPrompt(db, tenantId, run.promptId)
-  if (prompt === null) return false
-  // `narrative.system` by construction: this is the only key `runNarrative` resolves, and it
-  // is the key whose text the disclosure is about.
-  return !isBuiltInBody('narrative.system', prompt.body)
+  while (row !== null && !visited.has(row.locale)) {
+    visited.add(row.locale)
+    const run = loadRun(db, tenantId, row.runId)
+    if (run === null) return false
+
+    if (run.promptId !== null) {
+      const prompt = loadPrompt(db, tenantId, run.promptId)
+      if (prompt === null) return false
+      // `narrative.system` by construction: this is the only key `runNarrative` resolves, and
+      // it is the key whose text the disclosure is about.
+      return !isBuiltInBody('narrative.system', prompt.body)
+    }
+
+    row = translationSource(db, tenantId, row, run.id)
+  }
+  return false
+}
+
+/**
+ * The review a translation was made from, or null when this run is not a translation.
+ *
+ * Read out of the stored payload rather than from a column, because the payload is where
+ * `translateNarrative` already records the source language — `{ period, from, to, bodyMd }`.
+ * Null for anything that does not carry a usable `from`, which covers every non-translation
+ * run and every payload that will not parse.
+ */
+function translationSource(
+  db: Db,
+  tenantId: string,
+  narrative: NarrativeRow,
+  runId: string,
+): NarrativeRow | null {
+  const payload = loadRunPayload(db, tenantId, runId)
+  if (payload === null || typeof payload !== 'object') return null
+  const from = (payload as { from?: unknown }).from
+  if (typeof from !== 'string' || from === narrative.locale) return null
+
+  return loadNarrative(db, tenantId, narrative.period, from)
 }
 
 /**

@@ -994,6 +994,54 @@ describe('usedEditedPrompt (#455, Q3 of #452)', () => {
     expect(usedEditedPrompt(db, tenantId, row as NarrativeRow)).toBe(true)
   })
 
+  it('follows a translation back to the review it translated', async () => {
+    // `translateNarrative` sends the code-owned `TRANSLATION_SYSTEM` and records no prompt of
+    // its own, but the prose is the English review's — edited instructions and all. A Dutch
+    // reader has the same reason to be told, so the disclosure must not be lost at the
+    // language switch.
+    seedTypicalMonth()
+    activateOwnWording('My own wording for the monthly review.')
+    fakeGemini('A month in my own words.')
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
+
+    fakeGemini('Een maand in mijn eigen woorden.')
+    await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
+
+    const dutch = loadNarrative(db, tenantId, MONTH, 'nl')
+    expect(dutch).not.toBeNull()
+    expect(usedEditedPrompt(db, tenantId, dutch as NarrativeRow)).toBe(true)
+  })
+
+  it('says nothing about a translation of a built-in review', async () => {
+    seedTypicalMonth()
+    fakeGemini('A quiet month.')
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
+
+    fakeGemini('Een rustige maand.')
+    await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
+
+    const dutch = loadNarrative(db, tenantId, MONTH, 'nl')
+    expect(usedEditedPrompt(db, tenantId, dutch as NarrativeRow)).toBe(false)
+  })
+
+  it('does not loop on two reviews each translated from the other', async () => {
+    // Reachable: translate en→nl, then rewrite en by translating nl back. Neither run carries
+    // a prompt id, so the walk has to stop on its own rather than chase the pair for ever.
+    seedTypicalMonth()
+    fakeGemini('A quiet month.')
+    await runNarrative(db, tenantId, { period: MONTH, locale: 'en' })
+    fakeGemini('Een rustige maand.')
+    await translateNarrative(db, tenantId, { period: MONTH, from: 'en', to: 'nl' })
+    fakeGemini('A quiet month, again.')
+    await translateNarrative(db, tenantId, { period: MONTH, from: 'nl', to: 'en', force: true })
+
+    const english = loadNarrative(db, tenantId, MONTH, 'en')
+    const dutch = loadNarrative(db, tenantId, MONTH, 'nl')
+    // The answer is "we cannot tell", reported as false — and, crucially, reported at all.
+    expect(usedEditedPrompt(db, tenantId, english as NarrativeRow)).toBe(false)
+    expect(usedEditedPrompt(db, tenantId, dutch as NarrativeRow)).toBe(false)
+  })
+
   it('is false for a run with no prompt id, rather than guessing', () => {
     // "We cannot tell" must not print as "somebody edited this" — the same choice
     // `noteChangedSince` makes for a review written before #298.
