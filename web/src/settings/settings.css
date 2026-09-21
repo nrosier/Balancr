@@ -387,6 +387,25 @@
   gap: var(--space-3);
 }
 
+.prompt__builtin {
+  margin-bottom: var(--space-4);
+}
+
+.prompt__builtin summary {
+  cursor: pointer;
+  font-weight: var(--weight-medium);
+}
+
+.prompt__builtin-body {
+  margin-top: var(--space-2);
+  max-height: 18rem;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  white-space: pre-wrap;
+}
+
 .prompt__diff,
 .prompt__dryrun,
 .prompt__check {

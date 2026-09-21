@@ -1352,6 +1352,18 @@ export const promptSchema = z.object({
     validatedAt: z.string().nullable(),
     rulesVersion: z.int().nonnegative().nullable(),
   }),
+  /**
+   * The body of whichever stored version is flagged active, independent of `active`
+   * above (#459).
+   *
+   * `active.id` is null under a `PROMPT_EDITING` lock even when a version is stored
+   * and flagged active in the database — that is `resolvePrompt` correctly refusing
+   * to run it, not evidence that nothing is there. Without this field the editor
+   * cannot tell "nothing was ever saved" from "something is saved but the lock keeps
+   * it from running", and would show the built-in constant identically in both cases.
+   * Null only for the first of those two.
+   */
+  storedBody: z.string().nullable(),
   versions: z.array(promptVersionSchema),
 })
 

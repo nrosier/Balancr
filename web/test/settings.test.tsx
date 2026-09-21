@@ -265,6 +265,7 @@ const PAYLOAD: Payload = {
         validatedAt: null,
         rulesVersion: null,
       },
+      storedBody: 'Judge the signals.',
       versions: [
         {
           id: 'p2',
@@ -307,6 +308,7 @@ const PAYLOAD: Payload = {
         validatedAt: null,
         rulesVersion: null,
       },
+      storedBody: null,
       versions: [],
     },
   ],
@@ -3368,6 +3370,7 @@ describe('prompts', () => {
       validatedAt: null,
       rulesVersion: null,
     },
+    storedBody: 'Beoordeel de signalen.',
     versions: [
       {
         id: 'p3',
@@ -3723,6 +3726,7 @@ describe('the prompt safety check (#454)', () => {
               validatedAt: null,
               rulesVersion: null,
             },
+            storedBody: active.body,
             versions,
           }
         : entry,
@@ -4160,6 +4164,67 @@ describe('the prompt safety check (#454)', () => {
     // exists rather than only `locked`.
     expect(screen.queryByText('Editing is switched off here')).toBeNull()
     expect(screen.getByLabelText('Instructions').getAttribute('disabled')).toBeNull()
+  })
+
+  /**
+   * A locked deployment shaped the way the server actually answers one (#459): `active` pinned
+   * to the built-in text with no id, and `storedBody` carrying whatever is really saved —
+   * independently of it, since that is the distinction the box below has to draw.
+   */
+  const lockedWith = (storedBody: string | null): Payload => {
+    const base = saved()
+    return {
+      ...base,
+      promptEditing: 'locked',
+      prompts: base.prompts.map((entry) =>
+        entry.key === 'narrative.system'
+          ? {
+              ...entry,
+              active: { ...entry.active, id: null, version: 0, gate: 'built_in', body: BUILT_IN },
+              storedBody,
+            }
+          : entry,
+      ) as Payload['prompts'],
+    }
+  }
+
+  it('shows the stored text, not the built-in constant, under a lock (#459)', async () => {
+    // The bug this closes: `active.body` is the built-in text here regardless of what is
+    // saved, so the box has to read `storedBody` instead or a real customization would look
+    // exactly like there being nothing there.
+    await open({ ...READS, '/api/settings': json(lockedWith(EDITED)) })
+    selectNarrative()
+
+    await screen.findByText('Editing is switched off here')
+    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(EDITED)
+  })
+
+  it('shows an empty box with a placeholder when nothing was ever saved under a lock', async () => {
+    await open({ ...READS, '/api/settings': json(lockedWith(null)) })
+    selectNarrative()
+
+    await screen.findByText('Editing is switched off here')
+    const box = screen.getByLabelText('Instructions') as HTMLTextAreaElement
+    expect(box.value).toBe('')
+    expect(box.getAttribute('placeholder')).toBe('Nothing has been stored here.')
+  })
+
+  it('folds the built-in instructions away until asked for, under a lock', async () => {
+    await open({ ...READS, '/api/settings': json(lockedWith(EDITED)) })
+    selectNarrative()
+
+    await screen.findByText('Editing is switched off here')
+    const summary = await screen.findByText('Show the built-in instructions')
+    const details = summary.closest('details')
+    // Collapsed on load: `open` is the one signal jsdom gives for this, since it renders a
+    // closed `<details>`'s content into the DOM the same as an open one (no UA stylesheet).
+    expect(details?.open).toBeFalsy()
+
+    fireEvent.click(summary)
+
+    expect(details?.open).toBe(true)
+    expect(screen.getByText(BUILT_IN)).toBeTruthy()
+    expect(screen.getByText(/it is what actually runs for this key/)).toBeTruthy()
   })
 })
 
