@@ -4131,6 +4131,23 @@ describe('the prompt safety check (#454)', () => {
     expect(
       screen.getByRole('button', { name: 'Save as a new version' }).getAttribute('disabled'),
     ).not.toBeNull()
+    // Activation too: it is a write, and the server answers 403 for it under a lock. A button
+    // that stayed clickable would be offering a gesture that cannot succeed.
+    for (const button of screen.getAllByRole('button', { name: 'Make active' })) {
+      expect(button.getAttribute('disabled')).not.toBeNull()
+    }
+    expect(screen.queryByRole('button', { name: /^Check version/ })?.getAttribute('disabled'))
+      .not.toBeNull()
+  })
+
+  it('leaves activation clickable when editing is not locked', async () => {
+    // The other half, or the assertion above would pass with every button disabled always.
+    await open({ ...READS, '/api/settings': json(saved()) })
+    selectNarrative()
+
+    const activate = screen.getAllByRole('button', { name: 'Make active' })
+    expect(activate.length).toBeGreaterThan(0)
+    for (const button of activate) expect(button.getAttribute('disabled')).toBeNull()
   })
 
   it('leaves the analysis prompt editable under analysis_only', async () => {

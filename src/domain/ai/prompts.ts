@@ -20,7 +20,7 @@
  * least want drifting between two translations. A per-locale row is written only
  * when someone deliberately overrides one language. See `prompt-locale.ts`.
  */
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { prompts } from '../../db/schema.ts'
 import { diffLines, type Diff } from '../../util/diff.ts'
@@ -409,21 +409,36 @@ export function asPromptKey(key: string): PromptKey | null {
 
 /**
  * True if `body` is byte-identical — after the same trim `createPromptVersion` applies
- * before storing — to `DEFAULT_PROMPTS[key]` or any entry of `SUPERSEDED_PROMPTS[key]`.
+ * before storing — to `DEFAULT_PROMPTS[key]`. **The current default only.**
  *
  * Load-bearing for `seedPrompts`, which creates and activates exactly such a row on every
  * boot with no HTTP request behind it and nobody to show a refusal to. Without this
  * exemption a fresh database would boot with an active, unvalidated narrative prompt, and
  * the very first thing a new installation did would be to refuse its own built-in text.
+ * `seedPrompts` only ever writes `DEFAULT_PROMPTS[key]`, so the current default is the whole
+ * of what that exemption needs.
+ *
+ * **`SUPERSEDED_PROMPTS` is deliberately *not* included, and that is a fix rather than an
+ * omission.** Exempting the historical bodies looked harmless — they are Balancr's own text —
+ * but it was the widest hole in this feature. `NARRATIVE_SYSTEM_V1`–`V3` predate rule 9
+ * (`note_is_context`) and `V1`–`V4` predate rule 10 (`excluded_is_choice`), and both of those
+ * are in `REQUIRED_NARRATIVE_RULE_IDS`: those bodies genuinely do not impose two of the four
+ * rules the gate exists to require. Since this repository is public, their exact text can be
+ * copied out of git history and pasted in as somebody's "own" prompt, where it would have
+ * activated instantly with no check — permanently, and surviving a `VALIDATION_RULES_VERSION`
+ * bump, which is strictly more than the exemption was ever meant to allow.
+ *
+ * Nothing is cut off by this. A historical body can still be checked like any other, and
+ * `inheritableValidation` means it is paid for once per tenant however many rows carry it —
+ * it simply stops getting a free pass. `supersededBuiltIn` still recognises those bodies for
+ * the entirely separate question `seedPrompts` asks: "has anybody edited this?"
  *
  * Byte-identical, never normalised, for the reason `SUPERSEDED_PROMPTS` states about its
  * own comparison: the guarantee is that a single character of somebody's own wording stops
  * the exemption, and no whitespace-tolerant comparison can promise that.
  */
 export function isBuiltInBody(key: PromptKey, body: string): boolean {
-  const current = body.trim()
-  if (DEFAULT_PROMPTS[key].trim() === current) return true
-  return SUPERSEDED_PROMPTS[key].some((old) => old.trim() === current)
+  return DEFAULT_PROMPTS[key].trim() === body.trim()
 }
 
 /**
@@ -814,11 +829,24 @@ export function supersededBuiltIn(key: PromptKey, body: string): boolean {
 }
 
 /**
- * Writes a verdict onto one row.
+ * Writes a verdict onto one row, never downgrading a sticky `unsafe`.
  *
  * Tenant-scoped like every other function in this file, and by id rather than by body:
  * the row is the key (see the `prompts` table's own comment on why), so there is nothing
  * to match on and nothing that could write a verdict onto a second row by accident.
+ *
+ * **The `unsafe` carve-out is a concurrency guard, and it lives in the `WHERE` clause
+ * because that is the only place it can be atomic.** `validatePrompt` reads a row's verdict,
+ * awaits a provider, then writes — so two checks of the same unvalidated row started at once
+ * both see `unvalidated`, both call the judge, and both write. Last-write-wins would let a
+ * `safe` answer land on top of an `unsafe` one, which is precisely the ordering someone would
+ * arrange on purpose to shake a refusal loose, and it would defeat the stickiness the
+ * single-threaded path is careful about. Refusing the downgrade in SQL closes it, and it is
+ * how every other ambiguity in this feature resolves: `inheritableValidation`'s tie prefers
+ * `unsafe`, `decideJudgeVerdict` folds duplicate reports worst-wins.
+ *
+ * Scoped to the *same* rules version, so a bump still retires an old `unsafe` and a re-check
+ * under the new rubric can legitimately come back `safe`. Writing `unsafe` is never blocked.
  *
  * Takes `PromptDb` rather than `Db` so a caller inside a transaction can use it — the
  * fence-marker refusal in `validatePrompt` does not need one, but the symmetry is worth
@@ -841,7 +869,23 @@ export function storePromptValidation(
       validatedBy: validation.validatedBy,
       validatedAt: validation.validatedAt,
     })
-    .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
+    .where(
+      and(
+        eq(prompts.tenantId, tenantId),
+        eq(prompts.id, id),
+        // Not a downgrade of a refusal reached under the same rubric.
+        //
+        // Written with `coalesce` rather than as `not(verdict = 'unsafe' and version = ?)`
+        // because of SQL's three-valued logic: on the ordinary row these columns are NULL,
+        // `NULL = 'unsafe'` is NULL, and `NOT NULL` is NULL — which is not true, so the
+        // predicate would silently match nothing and the *first* verdict would never be
+        // stored. The sentinels make the comparison total.
+        validation.verdict === 'unsafe'
+          ? undefined
+          : sql`(coalesce(${prompts.validationVerdict}, '') <> 'unsafe'
+                 or coalesce(${prompts.validationRulesVersion}, -1) <> ${validation.rulesVersion})`,
+      ),
+    )
     .run()
 }
 

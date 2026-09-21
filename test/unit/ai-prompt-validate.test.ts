@@ -40,6 +40,7 @@ import {
   createPromptVersion,
   DEFAULT_PROMPTS,
   promptGateState,
+  storePromptValidation,
   VALIDATION_RULES_VERSION,
 } from '../../src/domain/ai/prompts.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
@@ -758,6 +759,110 @@ describe('validatePrompt — when it goes wrong', () => {
     await expect(validatePrompt(db, tenantId, { promptId: 'nope' })).rejects.toThrow(
       /does not exist/,
     )
+  })
+})
+
+describe('validatePrompt — concurrency (#454)', () => {
+  it('serialises two simultaneous checks of one row into a single model call', () => {
+    // Every guard in `validatePrompt` is a check-then-act across an await: both calls would
+    // otherwise see `unvalidated`, both pay the judge, and both write. Firing calls
+    // concurrently instead of sequentially would then be a way around the stickiness that
+    // exists so a probabilistic judge cannot be re-rolled.
+    const fake = fakeGemini(SAFE_REPLY)
+    const row = saveNarrative('One body, two simultaneous checks.')
+
+    return Promise.all([
+      validatePrompt(db, tenantId, { promptId: row.id }),
+      validatePrompt(db, tenantId, { promptId: row.id }),
+    ]).then(([first, second]) => {
+      expect(fake.calls).toBe(1)
+      // One real answer and one free one, in whichever order they were queued.
+      expect([first.status, second.status].sort()).toEqual(['cached', 'safe'])
+      expect(runRows()).toHaveLength(1)
+    })
+  })
+
+  it('does not let concurrent checks oversell the daily cap', async () => {
+    // The count is read before the call and the row written after it, so without serialisation
+    // N in flight at once would each see the same count and overshoot the day by N.
+    const ledger = (): void => {
+      recordRun(db, tenantId, {
+        kind: 'prompt_validation',
+        provider: 'gemini-aistudio',
+        model: config.GEMINI_MODEL_FAST,
+        locale: SHARED_LOCALE,
+        payload: {},
+        payloadHash: `hash-${crypto.randomUUID()}`,
+        status: 'ok',
+      })
+    }
+    for (let index = 0; index < PROMPT_VALIDATIONS_PER_DAY - 1; index += 1) ledger()
+
+    const fake = fakeGemini(SAFE_REPLY)
+    // Three different rows, so stickiness cannot be what stops the second and third.
+    const rows = ['first body', 'second body', 'third body'].map((body) => saveNarrative(body))
+
+    const outcomes = await Promise.all(
+      rows.map((row) => validatePrompt(db, tenantId, { promptId: row.id })),
+    )
+
+    // Exactly one allowance was left, so exactly one call goes out.
+    expect(fake.calls).toBe(1)
+    expect(outcomes.filter((outcome) => outcome.status === 'safe')).toHaveLength(1)
+    expect(outcomes.filter((outcome) => outcome.reason === 'daily_cap_reached')).toHaveLength(2)
+  })
+
+  it('never downgrades a sticky unsafe to safe, whichever write lands last', async () => {
+    // The invariant behind the queue, asserted directly against the store so it holds even if
+    // the queue is ever bypassed: `storePromptValidation` refuses the downgrade in SQL.
+    const row = saveNarrative('Refused once, and it stays refused.')
+    storePromptValidation(db, tenantId, row.id, {
+      verdict: 'unsafe',
+      json: '{"verdict":"unsafe"}',
+      rulesVersion: VALIDATION_RULES_VERSION,
+      runId: null,
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      validatedBy: null,
+      validatedAt: new Date(),
+    })
+
+    storePromptValidation(db, tenantId, row.id, {
+      verdict: 'safe',
+      json: '{"verdict":"safe"}',
+      rulesVersion: VALIDATION_RULES_VERSION,
+      runId: null,
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      validatedBy: null,
+      validatedAt: new Date(),
+    })
+
+    expect(rowOf(row.id).validationVerdict).toBe('unsafe')
+
+    // A rules-version bump is the one thing that *does* retire it, or a bump could never
+    // clear a body the new rubric considers fine.
+    storePromptValidation(db, tenantId, row.id, {
+      verdict: 'safe',
+      json: '{"verdict":"safe"}',
+      rulesVersion: VALIDATION_RULES_VERSION + 1,
+      runId: null,
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      validatedBy: null,
+      validatedAt: new Date(),
+    })
+    expect(rowOf(row.id).validationVerdict).toBe('safe')
+  })
+
+  it('still writes the first verdict onto a row that has none', async () => {
+    // The NULL trap the downgrade guard has to avoid: `NOT (NULL = 'unsafe' AND ...)` is NULL,
+    // not true, so a naive predicate would match no rows and never store anything at all.
+    fakeGemini(SAFE_REPLY)
+    const row = saveNarrative('A first verdict must land.')
+
+    expect((await validatePrompt(db, tenantId, { promptId: row.id })).status).toBe('safe')
+    expect(rowOf(row.id).validationVerdict).toBe('safe')
   })
 })
 

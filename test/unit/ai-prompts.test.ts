@@ -112,6 +112,23 @@ function activateChecked(database: TestDb, input: Omit<NewPromptVersion, 'activa
   activatePrompt(database, row.id)
 }
 
+/**
+ * An active row as an *older build* left it: inserted directly, no verdict, no gate.
+ *
+ * The state every `seedPrompts` upgrade test needs — an installation sitting on a built-in
+ * that has since been improved. It cannot be built with `createPromptVersion(activate: true)`
+ * any more, and that is correct rather than inconvenient: since #454 a superseded body is no
+ * longer exempt from needing a verdict (see `isBuiltInBody`), so *today's* code would refuse
+ * to activate one. History did not have that rule, so the fixture writes the row the way
+ * history wrote it. This is also the shape of the legacy row #455's use-time check exists for.
+ */
+function seedLegacyActive(database: TestDb, key: PromptKey, locale: string, body: string): void {
+  database
+    .insert(prompts)
+    .values({ tenantId: tenantOf(database), key, locale, version: 1, body, active: true })
+    .run()
+}
+
 beforeEach(() => {
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
@@ -302,7 +319,7 @@ describe('seedPrompts', () => {
     for (const key of PROMPT_KEYS) {
       const previous = SUPERSEDED_PROMPTS[key][0]
       if (previous === undefined) continue
-      createPromptVersion(db, { key, locale: SHARED_LOCALE, body: previous, activate: true })
+      seedLegacyActive(db, key, SHARED_LOCALE, previous)
     }
 
     const written = seedPrompts(db)
@@ -317,12 +334,7 @@ describe('seedPrompts', () => {
   it('adds a version rather than rewriting one, so the old text stays readable', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
-    createPromptVersion(db, {
-      key: 'narrative.system',
-      locale: SHARED_LOCALE,
-      body: previous,
-      activate: true,
-    })
+    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, previous)
 
     seedPrompts(db)
     const versions = listPromptVersions(db, 'narrative.system', SHARED_LOCALE)
@@ -340,12 +352,7 @@ describe('seedPrompts', () => {
   it('upgrades once and then stops', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
-    createPromptVersion(db, {
-      key: 'narrative.system',
-      locale: SHARED_LOCALE,
-      body: previous,
-      activate: true,
-    })
+    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, previous)
 
     expect(seedPrompts(db)).toBeGreaterThan(0)
     // Every startup calls this. A second version of the same text on every boot would
@@ -375,12 +382,7 @@ describe('seedPrompts', () => {
     // running that text today, not just a database nobody has ever started.
     const previous = SUPERSEDED_PROMPTS['narrative.system'][1]
     if (previous === undefined) throw new Error('expected a second superseded narrative body')
-    createPromptVersion(db, {
-      key: 'narrative.system',
-      locale: SHARED_LOCALE,
-      body: previous,
-      activate: true,
-    })
+    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, previous)
 
     expect(seedPrompts(db)).toBeGreaterThan(0)
     expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(
@@ -397,7 +399,17 @@ describe('seedPrompts', () => {
       for (const [index, previous] of SUPERSEDED_PROMPTS[key].entries()) {
         const fresh = createTestDb()
         applyMigrations(fresh.db as never)
-        createPromptVersion(fresh.db, { key, locale: SHARED_LOCALE, body: previous, activate: true })
+        fresh.db
+          .insert(prompts)
+          .values({
+            tenantId: getSoleTenantId(fresh.db),
+            key,
+            locale: SHARED_LOCALE,
+            version: 1,
+            body: previous,
+            active: true,
+          })
+          .run()
 
         expect(seedPrompts(fresh.db), `${key}[${index}]`).toBeGreaterThan(0)
         expect(loadActivePrompt(fresh.db, key, SHARED_LOCALE)?.body, `${key}[${index}]`).toBe(
@@ -435,14 +447,9 @@ describe('seedPrompts', () => {
   it('does not touch a language override when it upgrades the shared row', () => {
     const previous = SUPERSEDED_PROMPTS['narrative.system'][0]
     if (previous === undefined) throw new Error('no superseded narrative prompt to test with')
-    // `previous` is a built-in Balancr shipped, so it needs no verdict to be activated —
-    // the override beside it is somebody's own wording and does.
-    createPromptVersion(db, {
-      key: 'narrative.system',
-      locale: SHARED_LOCALE,
-      body: previous,
-      activate: true,
-    })
+    // The shared row is a *superseded* built-in, which since #454 is no longer exempt from
+    // needing a verdict — so it is written the way the older build that shipped it wrote it.
+    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, previous)
     activateChecked(db, { key: 'narrative.system', locale: 'nl', body: 'een eigen versie' })
 
     seedPrompts(db)
@@ -1152,13 +1159,53 @@ describe('diffAgainstActive', () => {
 // ---------------------------------------------------------------------------
 
 describe('isBuiltInBody (#454)', () => {
-  it('recognises the current default and every superseded body, for every key', () => {
+  it('recognises the current default, for every key', () => {
     for (const key of PROMPT_KEYS) {
       expect(isBuiltInBody(key, DEFAULT_PROMPTS[key]), `${key} default`).toBe(true)
-      for (const [index, old] of SUPERSEDED_PROMPTS[key].entries()) {
-        expect(isBuiltInBody(key, old), `${key}[${String(index)}]`).toBe(true)
-      }
     }
+  })
+
+  it('does NOT exempt a historical built-in, which is what closes the copy-paste bypass', () => {
+    // The widest hole this feature had. `NARRATIVE_SYSTEM_V1`–`V3` predate rule 9
+    // (`note_is_context`) and `V1`–`V4` predate rule 10 (`excluded_is_choice`), and both are
+    // in `REQUIRED_NARRATIVE_RULE_IDS` — so those bodies genuinely fail two of the four rules
+    // the gate exists to require. This repository is public, so their exact text can be lifted
+    // out of git history and pasted in as somebody's own prompt; exempting them meant it
+    // activated instantly with no check, permanently, surviving a rules-version bump.
+    for (const [index, old] of SUPERSEDED_PROMPTS['narrative.system'].entries()) {
+      expect(isBuiltInBody('narrative.system', old), `narrative[${String(index)}]`).toBe(false)
+    }
+    // `supersededBuiltIn` still recognises them, because `seedPrompts` asks an entirely
+    // different question of that list: "has anybody edited this?"
+    for (const old of SUPERSEDED_PROMPTS['narrative.system']) {
+      expect(supersededBuiltIn('narrative.system', old)).toBe(true)
+    }
+  })
+
+  it('refuses to activate a historical built-in body without a verdict', () => {
+    // The end-to-end form of the case above: pasting `NARRATIVE_SYSTEM_V1` in verbatim is a
+    // save like any other, and activating it needs a verdict like any other.
+    const historical = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (historical === undefined) throw new Error('no superseded narrative body')
+
+    expect(() =>
+      createPromptVersion(db, {
+        key: 'narrative.system',
+        locale: SHARED_LOCALE,
+        body: historical,
+        activate: true,
+      }),
+    ).toThrow(PromptGateError)
+
+    // And it is not cut off from ever being used — it just has to be checked, and
+    // `inheritableValidation` means that is paid for once however many rows carry the text.
+    const row = createPromptVersion(db, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: historical,
+    })
+    storeValidation(db, row.id, 'safe')
+    expect(() => activatePrompt(db, row.id)).not.toThrow()
   })
 
   it('trims like storage does, so a pasted body with stray newlines still counts', () => {
@@ -1454,21 +1501,21 @@ describe('assertActivatable (#454)', () => {
     expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.id).toBe(row.id)
   })
 
-  it('always allows a built-in body, which is what makes seeding and rollback work', () => {
-    for (const body of [
-      DEFAULT_PROMPTS['narrative.system'],
-      ...SUPERSEDED_PROMPTS['narrative.system'],
-    ]) {
-      const fresh = createTestDb()
-      applyMigrations(fresh.db as never)
+  it('always allows the current default, which is what makes boot-time seeding work', () => {
+    // The whole of what the exemption has to cover: `seedPrompts` only ever writes
+    // `DEFAULT_PROMPTS[key]`, and it does so on every boot with no request behind it.
+    const fresh = createTestDb()
+    applyMigrations(fresh.db as never)
+    try {
       expect(() =>
         createPromptVersionForTenant(fresh.db, getSoleTenantId(fresh.db), {
           key: 'narrative.system',
           locale: SHARED_LOCALE,
-          body,
+          body: DEFAULT_PROMPTS['narrative.system'],
           activate: true,
         }),
       ).not.toThrow()
+    } finally {
       fresh.sqlite.close()
     }
   })

@@ -78,8 +78,56 @@ const log = logger.child({ module: 'ai.prompt-validate' })
  * overspent — it is the number of attempts against a probabilistic judge. Twenty is far
  * more than honest prompt-writing needs (the ordinary session is one or two checks) and far
  * fewer than re-rolling a borderline body until it passes would want.
+ *
+ * Counted rather than reserved, which is only sound because checks for one tenant are
+ * serialised — see `runExclusively`. Without that, N requests in flight could each read the
+ * same count and oversell the day by N.
  */
 export const PROMPT_VALIDATIONS_PER_DAY = 20
+
+/**
+ * One check at a time per tenant.
+ *
+ * `validatePrompt` reads a row's verdict and the day's count, *awaits a provider*, and only
+ * then writes. Every one of its guards is therefore a check-then-act across an await, and two
+ * concurrent calls defeat all of them at once: both see `unvalidated` so both pay the judge,
+ * both see the same count so the daily cap oversells, and both write — so a `safe` answer can
+ * land on top of an `unsafe` one. That last ordering is the serious one, because it is what
+ * someone would arrange deliberately to shake a refusal loose, and it turns "verdicts are
+ * sticky, so there are no free retries against a probabilistic judge" back into a lie.
+ *
+ * An in-process queue is the whole fix here: this is a single-process application over a local
+ * SQLite file, so there is no second instance to coordinate with. Keyed on the tenant rather
+ * than on the prompt id because the daily cap is a per-tenant quantity — a per-id lock would
+ * still let two different rows oversell it. The cost is that one owner's two simultaneous
+ * checks run in sequence, which is what they should do anyway: the second then finds the first
+ * one's stored verdict and returns it for free.
+ *
+ * `storePromptValidation` additionally refuses an `unsafe` → `safe` downgrade in SQL. That is
+ * deliberate belt-and-braces: this queue is the mechanism, and that clause is the invariant.
+ */
+const inFlightByTenant = new Map<string, Promise<unknown>>()
+
+async function runExclusively<T>(tenantId: string, work: () => Promise<T>): Promise<T> {
+  const previous = inFlightByTenant.get(tenantId) ?? Promise.resolve()
+  // Chained off the previous call's *settlement*, not its value: one tenant's failed check
+  // must not reject the next one, and `validatePrompt` does throw for an unknown id.
+  const mine = previous.then(work, work)
+  // The value stored is the swallowed form, so the next caller chains off a promise that
+  // cannot reject — and the identity check below compares against that same object.
+  const slot = mine.then(
+    () => undefined,
+    () => undefined,
+  )
+  inFlightByTenant.set(tenantId, slot)
+  try {
+    return await mine
+  } finally {
+    // Only the last caller in the queue clears the slot, so a drained queue does not leak an
+    // entry per tenant for the life of the process.
+    if (inFlightByTenant.get(tenantId) === slot) inFlightByTenant.delete(tenantId)
+  }
+}
 
 /** The window the cap is measured over. */
 const CAP_WINDOW_MS = 24 * 60 * 60 * 1_000
@@ -291,6 +339,16 @@ export function estimatePromptValidation(db: Db, tenantId: string, body: string)
  * a thrown error would turn a billed call into a 500 with no record of what it cost.
  */
 export async function validatePrompt(
+  db: Db,
+  tenantId: string,
+  options: ValidateOptions,
+): Promise<ValidateOutcome> {
+  // Serialised per tenant, because every guard below is a check-then-act across an await.
+  // See `runExclusively`.
+  return runExclusively(tenantId, () => validateOnce(db, tenantId, options))
+}
+
+async function validateOnce(
   db: Db,
   tenantId: string,
   options: ValidateOptions,

@@ -422,6 +422,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         gateOf={gateOf}
         state={state}
         owner={owner}
+        locked={locked}
         onOpen={(loaded) =>
           setDraft({ for: selection, body: loaded.body, note: loaded.note ?? '' })
         }
@@ -1094,10 +1095,20 @@ interface VersionsProps {
   gateOf: (version: { id: string | null; gate: PromptGate }) => PromptGate
   state: SettingsPanelProps['state']
   owner: boolean
+  /** True when `PROMPT_EDITING` forbids changing this key (#454). */
+  locked: boolean
   onOpen: (loaded: PromptBody) => void
 }
 
-function Versions({ entry, gated, gateOf, state, owner, onOpen }: VersionsProps): ReactNode {
+function Versions({
+  entry,
+  gated,
+  gateOf,
+  state,
+  owner,
+  locked,
+  onOpen,
+}: VersionsProps): ReactNode {
   const { t } = useT()
 
   if (entry.versions.length === 0) {
@@ -1120,6 +1131,7 @@ function Versions({ entry, gated, gateOf, state, owner, onOpen }: VersionsProps)
             gate={gated ? gateOf(version) : null}
             busy={state.busy}
             owner={owner}
+            locked={locked}
             onOpen={() => {
               state.ask<PromptBody>(
                 `open:${version.id}`,
@@ -1150,11 +1162,20 @@ interface VersionProps {
   gate: PromptGate | null
   busy: boolean
   owner: boolean
+  locked: boolean
   onOpen: () => void
   onActivate: () => void
 }
 
-function Version({ version, gate, busy, owner, onOpen, onActivate }: VersionProps): ReactNode {
+function Version({
+  version,
+  gate,
+  busy,
+  owner,
+  locked,
+  onOpen,
+  onActivate,
+}: VersionProps): ReactNode {
   const { t } = useT()
 
   return (
@@ -1187,7 +1208,9 @@ function Version({ version, gate, busy, owner, onOpen, onActivate }: VersionProp
           <button
             type="button"
             className="button button--quiet"
-            disabled={!owner || busy}
+            // Activation is a write, and a locked deployment answers 403 — so the control is
+            // disabled rather than offered and refused, like every other write above.
+            disabled={!owner || busy || locked}
             onClick={onActivate}
           >
             {t('settings:prompt.activate')}

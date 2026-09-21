@@ -1376,26 +1376,52 @@ describe('the narrative activation gate (#454)', () => {
     expect(entry?.active.validatedAt).not.toBeNull()
   })
 
-  it('always activates a byte-identical built-in body — the exemption', async () => {
-    // What makes rollback and boot-time seeding work: a body this build ships needs no
-    // verdict, so there is no state in which Balancr refuses its own text.
-    for (const body of [
-      DEFAULT_PROMPTS['narrative.system'],
-      ...SUPERSEDED_PROMPTS['narrative.system'],
-    ]) {
-      const res = await post('/api/settings/prompts', {
-        key: 'narrative.system',
-        locale: SHARED_LOCALE,
-        body,
-        activate: true,
-      })
-      expect(res.statusCode, `${body.slice(0, 40)}…`).toBe(200)
-    }
+  it('always activates the current built-in body — the exemption', async () => {
+    // What makes boot-time seeding work: `seedPrompts` writes exactly this text and activates
+    // it on every start, with no request behind it, so there must be no state in which Balancr
+    // refuses its own current default.
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: DEFAULT_PROMPTS['narrative.system'],
+      activate: true,
+    })
+    expect(res.statusCode).toBe(200)
 
     const entry = (await get('/api/settings'))
       .json<Settings>()
       .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
     expect(entry?.active.gate).toBe('built_in')
+  })
+
+  it('answers 409 for a historical built-in body, which is not exempt', async () => {
+    // The copy-paste bypass this closes: the repository is public, so `NARRATIVE_SYSTEM_V1`'s
+    // exact text can be lifted out of git history — and it genuinely does not impose
+    // `note_is_context` or `excluded_is_choice`, two of the four rules that block. Exempting it
+    // let it activate with no check at all, permanently.
+    const historical = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (historical === undefined) throw new Error('no superseded narrative body')
+
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: historical,
+      activate: true,
+    })
+    expect(res.statusCode).toBe(409)
+
+    // Saving it is still fine, and it reads as needing a check rather than as Balancr's own.
+    const saved = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: historical,
+    })
+    expect(saved.statusCode).toBe(200)
+    const version = saved
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
+      ?.versions.find((v) => !v.active)
+    expect(version?.gate).toBe('unvalidated')
   })
 
   it('leaves the analysis prompt ungated, however rewritten', async () => {
