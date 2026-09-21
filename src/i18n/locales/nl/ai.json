@@ -150,6 +150,8 @@
     "hidePayload": "Verberg de verzonden gegevens",
     "hint": "Enkel categorienamen en bedragen. Geen tegenpartijen, geen verrichtingen.",
     "kind": {
+      "budget_nudge": "Budgetbijstelling",
+      "category_guess": "Categorievermoeden",
       "chat": "Gesprek",
       "clarify": "Vraag",
       "dryrun": "Testrun",

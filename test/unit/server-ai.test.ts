@@ -36,6 +36,8 @@ import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
+import { HttpError } from '../../src/server/errors.ts'
+import { dryRunPrompt } from '../../src/server/routes/ai.ts'
 import type { AiDryRun, AiEstimate, AiNarrativeRun } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture, MONTH } from '../helpers/api-fixture.ts'
 
@@ -316,6 +318,45 @@ describe('POST /api/ai/dry-run', () => {
     const res = await dryRun({ promptId: narrative.id })
     expect(res.statusCode).toBe(400)
     expect(fake.calls).toBe(0)
+  })
+
+  /**
+   * A pin, not an ordinary regression test.
+   *
+   * `dryRunPrompt` is the only thing standing between "the prompt editor can run a
+   * dry run" and "the prompt editor can run a dry run against the one prompt with
+   * no output-grounding and, as of #453, no code-owned backstop appended in this
+   * code path at all" — a dry run calls `runAnalysis`, not `runNarrative`, so it
+   * never goes near `composeNarrativeSystemPrompt`. That gap is exactly why prompt
+   * *activation* has to stay the only path that puts an unvalidated narrative body
+   * into use: `runNarrative` is where the backstop and (per #452) the future
+   * use-time refusal live, and a dry run that could exercise a narrative body would
+   * let an owner preview it without ever going through either.
+   *
+   * If a future "narrative dry run" feature needs this to change, that is a
+   * deliberate product decision requiring its own guardrail story — delete this
+   * test on purpose, with that reasoning in the commit, rather than letting a
+   * refactor of `dryRunPrompt` silently widen what it accepts.
+   */
+  it('pins that a narrative prompt can never be dry-run — see the comment above (#453)', () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    const narrative = createPromptVersion(ctx.db, tenantId, {
+      key: 'narrative.system',
+      locale: 'en',
+      body: 'Write the month up.',
+    })
+
+    let thrown: unknown
+    try {
+      dryRunPrompt(ctx.db, tenantId, 'en', narrative.id)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(HttpError)
+    const error = thrown as HttpError
+    expect(error.statusCode).toBe(400)
+    expect(error.details).toEqual({ key: 'narrative.system' })
   })
 
   it('reports a failed call with its cost instead of a bare error', async () => {

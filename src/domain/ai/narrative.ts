@@ -43,7 +43,7 @@ import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
 import { checkBudget, spendMonthOf } from './budget.ts'
 import { hashPayload } from './payload-hash.ts'
 import { loadMonthNote } from './month-note.ts'
-import { composeSystemPrompt, resolvePrompt } from './prompts.ts'
+import { composeNarrativeSystemPrompt, composeSystemPrompt, resolvePrompt } from './prompts.ts'
 import type { RedactedPayload } from './redact.ts'
 import { loadRunPayload, recordRun } from './runs.ts'
 
@@ -585,7 +585,11 @@ export async function runNarrative(
   try {
     call = await callNarrativeModel(db, tenantId, {
       model,
-      systemPrompt: composeSystemPrompt(prompt.body, locale),
+      // The one call site that hands an editable prompt body to a model: the code-owned
+      // backstop (#453) is appended after the language directive, unconditionally, so an
+      // edited (or maliciously "disclaimed") body never gets the last word. Every other
+      // caller of `composeSystemPrompt` in this file passes a code-owned constant instead.
+      systemPrompt: composeNarrativeSystemPrompt(prompt.body, locale),
       instruction: narrativeInstruction(payload),
       payload,
       temperature: NARRATIVE_TEMPERATURE,

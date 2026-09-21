@@ -1,6 +1,10 @@
 /**
- * The six endpoints that can spend money, and the only ones in the HTTP layer that
- * reach Gemini at all.
+ * The seven endpoints that can spend money, and the only ones in the HTTP layer that
+ * reach Gemini at all: `GET /api/ai/estimate`, `POST /api/ai/dry-run`,
+ * `POST /api/ai/refresh`, `POST /api/ai/narrative`, `POST /api/ai/category-guess/estimate`,
+ * `POST /api/ai/category-guess`, `POST /api/ai/budget-nudge`. This count was already
+ * stale at "six" before this comment was corrected (#453); #452's design adds an eighth
+ * for the judge call in #454, so it will need correcting again then.
  *
  * Everything else Balancr serves comes out of SQLite, written by the nightly job —
  * which is what makes the monthly budget a limit rather than a hope. This file is
@@ -202,7 +206,13 @@ function monthToRun(db: Db, tenantId: string, asked: unknown): string {
  * a 404, and a narrative prompt sent to the analysis pass is a 400 — the caller can
  * act on either.
  */
-function dryRunPrompt(
+/**
+ * Exported for `test/unit/server-ai.test.ts`'s own regression pin: a dry run can
+ * only ever load an `analysis.system` prompt, and that is what makes prompt
+ * *activation* the only path that puts an unvalidated narrative body into use.
+ * See that test for why the export exists.
+ */
+export function dryRunPrompt(
   db: Db,
   tenantId: string,
   locale: string,
