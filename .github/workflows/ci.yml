@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
       # Catalogue drift is silent by nature: a missing Dutch key renders as the
       # key itself, which nobody notices until a screenshot.
       - name: i18n parity

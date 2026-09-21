@@ -232,7 +232,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
     edit(index, { mortgages: row.mortgages.filter((_, at) => at !== mortgageIndex) })
   }
 
-  const useStandardPayment = (index: number, mortgageIndex: number): void => {
+  const applyStandardPayment = (index: number, mortgageIndex: number): void => {
     const mortgage = rows[index]?.mortgages[mortgageIndex]
     if (mortgage === undefined) return
     const principalCents = parseMoneyToCents(mortgage.principalCents)
@@ -515,7 +515,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                             type="button"
                             className="button button--quiet"
                             disabled={locked || !canUseStandardPayment}
-                            onClick={() => useStandardPayment(index, mortgageIndex)}
+                            onClick={() => applyStandardPayment(index, mortgageIndex)}
                           >
                             {t('settings:property.mortgage.useStandardPayment')}
                           </button>

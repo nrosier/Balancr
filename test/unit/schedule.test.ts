@@ -124,7 +124,7 @@ describe('nextRunAt', () => {
   it('counts the remaining interval', () => {
     const now = at('2026-01-15T10:10:00Z')
     const next = nextRunAt(hourly, now, at('2026-01-15T10:00:00Z'), TZ)
-    expect(next?.getTime()! - now.getTime()).toBe(50 * 60_000)
+    expect(next!.getTime() - now.getTime()).toBe(50 * 60_000)
   })
 
   it('finds tomorrow at the local hour for a daily job', () => {
