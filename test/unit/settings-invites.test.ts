@@ -164,20 +164,7 @@ describe('POST /api/settings/invites/:id/revoke', () => {
 })
 
 describe('the invite list on GET /api/settings', () => {
-  // A genuine second tenant now breaks on a *narrower* set of fields than when
-  // this test was written for #373: `budgetState` → `resolvedIntegrations` (#376
-  // phase 2) is fixed and correctly demands a real tenantId with its own
-  // `tenantIntegrations` row, but `loadParams` (`domain/aggregate/params.ts`,
-  // #376 phase 4, not yet landed) still calls `getSoleTenantId(db)` internally
-  // and throws the moment a second tenant row exists at all — regardless of which
-  // `user.tenantId` is asked with. So `buildSettings` cannot be exercised
-  // end-to-end with a genuine second tenant present until phase 4 lands, and the
-  // original fake-tenantId trick (asking with an id that has no row) no longer
-  // works either, since phase 2 correctly makes that throw too. Skipped rather
-  // than weakened, per the same "don't force a two-tenant test past an unfixed
-  // downstream function" judgment phase 1 used for jobs. `tenant-invites.test.ts`
-  // already covers the invites-scoping claim at the domain layer in the meantime.
-  it.skip('uses the requester\'s own tenantId, not the sole tenant', () => {
+  it('uses the requester\'s own tenantId, not the sole tenant', () => {
     const tenantId = getSoleTenantId(ctx.db)
     const ownerId = signIn(ctx.db, 'owner').userId
     createInvite(ctx.db, { tenantId, createdBy: ownerId, label: 'Real' })
