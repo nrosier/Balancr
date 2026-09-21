@@ -1,5 +1,24 @@
 # Code Review
 
+Archived 2026-09-21. All findings and recommended improvements below were
+actioned and tracked to closure:
+
+- Findings 1–3 (cross-tenant category disclosure, global AI prompts, unscoped
+  AI spending) — #409, #410, and the broader #376 multi-tenant hardening pass.
+- Finding 4 (egress bypasses) — #412.
+- Finding 5 (backup restore rollback safety) — #413.
+- Finding 6 (audit tenant metadata) — covered by #376.
+- Recommendations 4–7 (stale skipped test, CI skip/lint gates, dependency and
+  image scanning, pinned digests + provenance) — #429, #431–#434.
+- Recommendation 8 (bundle splitting, lazy ECharts) — #435 (code merged; one
+  manual browser-verification checkbox deferred to the next release pass, per
+  convention).
+- Recommendations 9–10 (backup rollback, egress) — #413, #412 (see above).
+
+Kept for historical reference; not a live tracking document.
+
+---
+
 ## Verdict
 
 The application has strong single-tenant security, but it is **not safe for mutually untrusted multi-tenant use yet**. The code quality is generally high, with excellent validation, documentation, and tests, but several tenant filters were missed.
