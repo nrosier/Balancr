@@ -336,6 +336,37 @@ const EnvSchema = z.object({
    */
   EGRESS_EXTRA_HOSTS: csv(''),
 
+  // Prompts
+  /**
+   * Which prompts a tenant owner may still write to (#454, Q1 of #452).
+   *
+   *  - `full` — today's behaviour and the default, so no existing deployment changes.
+   *    Every key is editable, and an edited `narrative.system` has to pass the judge
+   *    before it can be activated.
+   *  - `analysis_only` — writes to `narrative.system` are refused and it is pinned to its
+   *    built-in text. `analysis.system` stays editable, because its output is grounded
+   *    against the signal table and an edit there cannot invent a finding.
+   *  - `locked` — the same, for every key.
+   *
+   * **This is the only control in the whole design that binds an owner who *wants* a
+   * weakened prompt.** Everything else — the judge, the activation gate, the code-owned
+   * backstop — assumes the owner is careless rather than adversarial, or that the operator
+   * is a different person. The judge is a genuinely real check against an owner, because a
+   * custom AI base URL has to be allowlisted in `EGRESS_EXTRA_HOSTS`, which only the
+   * operator sets: an owner cannot point the judge at an endpoint that always answers
+   * "safe". But the judge still runs through that owner's own configured provider and one
+   * layer down from their own prompt, and on today's typical single-tenant deployment the
+   * owner *is* the operator. For that case this variable is the guarantee and nothing else
+   * is.
+   *
+   * Deployment-wide rather than per tenant, and in `.env` rather than in the settings
+   * panel, for exactly that reason: a lock an owner could unlock is not a lock. It is
+   * printed in `configSummary()` and shown in the settings panel because pinning the
+   * narrative prompt to built-in text is a deliberate operator-level substitution, and the
+   * loud kind is the opposite of what this design exists to prevent.
+   */
+  PROMPT_EDITING: z.enum(['full', 'analysis_only', 'locked']).default('full'),
+
   // Locale
   SUPPORTED_LOCALES: csv('en,nl'),
   DEFAULT_LOCALE: z.string().min(2).default('en'),
@@ -576,6 +607,11 @@ export function configSummary(): Record<string, unknown> {
     BENCHMARK_DIR: config.BENCHMARK_DIR,
     EGRESS_MODE: config.EGRESS_MODE,
     EGRESS_EXTRA_HOSTS: config.EGRESS_EXTRA_HOSTS,
+    // Printed unconditionally rather than only when it is not `full`: "the narrative
+    // prompt is pinned to its built-in text" is a substitution an operator chose, and a
+    // startup log that only mentioned the interesting case would make its absence
+    // ambiguous.
+    PROMPT_EDITING: config.PROMPT_EDITING,
     SUPPORTED_LOCALES: config.SUPPORTED_LOCALES,
     DEFAULT_LOCALE: config.DEFAULT_LOCALE,
     FORMAT_LOCALE: config.FORMAT_LOCALE,

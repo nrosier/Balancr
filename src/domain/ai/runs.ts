@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, isNull, like, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, like, or, sql } from 'drizzle-orm'
 import { costMicroEur } from '../../adapters/ai/pricing.ts'
 import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
@@ -138,6 +138,45 @@ export function latestSuccessfulRun(db: Db, tenantId: string, kind: RunKind): Ai
       .limit(1)
       .get() ?? null
   )
+}
+
+/**
+ * How many runs of one kind this tenant has recorded since a point in time.
+ *
+ * The counter behind `PROMPT_VALIDATIONS_PER_DAY` (#454), and a ledger query rather than a
+ * rate-limit bucket on purpose. `aiRateLimit()` buckets per route per IP, which is the
+ * right shape for a burst guard and the wrong shape for a daily allowance: an IP rotation
+ * defeats it, and the thing being limited here is how many times one tenant may ask a
+ * probabilistic judge the same question. The run ledger is the one place a tenant's calls
+ * are already all counted regardless of which address made them.
+ *
+ * `statuses` narrows it to what actually spent something. Omitted, every status counts.
+ *
+ * `SELECT count(*)` rather than reading the rows: this runs before a model call on a table
+ * that grows without bound, and `ai_runs_kind_idx` serves it.
+ */
+export function countRunsSince(
+  db: Db,
+  tenantId: string,
+  kind: RunKind,
+  since: Date,
+  statuses?: readonly RunStatus[],
+): number {
+  const row = db
+    .select({ count: sql<number>`count(*)` })
+    .from(aiRuns)
+    .where(
+      and(
+        eq(aiRuns.tenantId, tenantId),
+        eq(aiRuns.kind, kind),
+        gte(aiRuns.createdAt, since),
+        statuses === undefined || statuses.length === 0
+          ? undefined
+          : inArray(aiRuns.status, [...statuses]),
+      ),
+    )
+    .get()
+  return row?.count ?? 0
 }
 
 export interface ReuseKey {

@@ -806,26 +806,34 @@
 }
 
 .badge--truth,
-.badge--ok {
+.badge--ok,
+.badge--safe {
   background: var(--positive-soft);
   color: var(--positive);
 }
 
 .badge--info,
-.badge--reused {
+.badge--reused,
+/* An answer served from a stored verdict rather than bought again (#454) — the same
+   "nothing was spent" meaning `reused` already carries, so the same colour. */
+.badge--cached {
   background: var(--info-soft);
   color: var(--info);
 }
 
 .badge--blocked,
 .badge--warn,
-.badge--capped {
+.badge--capped,
+/* A refusal that spent nothing — a daily cap reached, a key that needed no check (#454).
+   Same "nothing happened, and here is why" meaning as `blocked`. */
+.badge--skipped {
   background: var(--warn-soft);
   color: var(--warn);
 }
 
 .badge--alert,
-.badge--error {
+.badge--error,
+.badge--unsafe {
   background: var(--negative-soft);
   color: var(--negative);
 }

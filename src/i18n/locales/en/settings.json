@@ -42,16 +42,23 @@
     "month": "Month",
     "reason": {
       "bad_response": "The model's answer did not match the schema, so nothing from it was used.",
+      "built_in": "These are Balancr's own instructions, so no check is needed.",
+      "cached": "Already checked — no charge.",
       "call_failed": "The model could not be reached.",
+      "contains_fence_markers": "The text contains Balancr's own data markers, which no instructions may ever do.",
+      "daily_cap_reached": "Today's safety checks are used up. Try again tomorrow.",
       "estimate_exceeds_remaining": "A run would cost more than this month has left.",
       "month_budget_exceeded": "This month's budget is already spent.",
       "no_candidate": "This transaction was never cached as a guess candidate.",
       "no_candidates": "None of the selected transactions is a cached guess candidate.",
       "no_facts": "That month has no aggregated figures to analyse.",
       "not_confident": "The model was not confident enough about this one to guess.",
+      "not_gated": "These instructions need no safety check.",
       "ok": "Completed.",
       "reused": "Answered from a past run with nothing new to check — no charge.",
-      "truncated": "The model's answer was cut off, even after retrying — showing the last one instead."
+      "safe": "Checked: the instructions still impose every rule.",
+      "truncated": "The model's answer was cut off, even after retrying — showing the last one instead.",
+      "unsafe": "Checked: the instructions no longer impose every rule."
     },
     "remaining": "Left this month",
     "rerun": {
@@ -384,6 +391,29 @@
     "active": "Active",
     "body": "Instructions",
     "chars": "{{chars}} characters",
+    "check": {
+      "aboutSavedVersion": "This checks saved version {{version}}. The box above shows the instructions currently in force, which are not the same text.",
+      "aboutVersion": "This is about version {{version}}.",
+      "advisory": "Style rules it dropped — these do not block it",
+      "builtIn": "These are Balancr's own instructions, so they need no check.",
+      "checkedAt": "Checked {{when}}.",
+      "conflicts": "Working against the assistant",
+      "estimate": "A check costs about {{cost}}.",
+      "hint": "The monthly narrative is the one thing the assistant writes in its own words, so the rules inside these instructions — no arithmetic, no advice — are all that stands between an edit and a figure nobody calculated. A check has a model read the saved version and report which of those rules it still imposes. It costs a small amount, because it is a real model call.",
+      "missing": "Rules it no longer imposes",
+      "mustSaveFirst": "Save the text as a version first. A check reads a saved version, never the box above — there would be nothing to attach the result to.",
+      "notes": "What the model said",
+      "notesWarning": "The model's own words, about text written here. Read it as a hint and not as the verdict: the lists above are the finding.",
+      "run": "Check version {{version}}",
+      "running": "Checking…",
+      "safe": "This version still imposes every rule the monthly narrative depends on.",
+      "stale": "The text has changed since this check. Save it as a new version and check that one.",
+      "title": "Safety check",
+      "unsafe": "This version no longer imposes every rule, so it cannot be made active.",
+      "unvalidated": "This version has not been checked yet, so it cannot be made active.",
+      "usesShared": "This language uses the shared instructions, so there is nothing of its own to check — check them under “All languages”.",
+      "weakened": "Rules it states and then undercuts"
+    },
     "created": "{{when}}",
     "diff": {
       "added": "added",
@@ -418,6 +448,12 @@
     "fallback": {
       "builtIn": "Nothing is stored yet, so the built-in instructions are in use."
     },
+    "gate": {
+      "built_in": "Balancr's own",
+      "safe": "Checked",
+      "unsafe": "Refused",
+      "unvalidated": "Not checked"
+    },
     "hint": "One set of instructions for every interface language; the assistant answers in yours.",
     "key": {
       "analysis": {
@@ -431,6 +467,11 @@
       "shared": "All languages"
     },
     "locale": "Applies to",
+    "locked": {
+      "all": "This installation runs with PROMPT_EDITING=locked, so none of the assistant's instructions can be edited here. Only whoever runs the server can change this, in its .env.",
+      "analysisOnly": "This installation runs with PROMPT_EDITING=analysis_only, so the monthly narrative instructions are fixed to Balancr's own text. The findings instructions can still be edited. Only whoever runs the server can change this, in its .env.",
+      "title": "Editing is switched off here"
+    },
     "note": "What changed",
     "notePlaceholder": "Why this version exists",
     "override": {

@@ -156,7 +156,8 @@
       "clarify": "Vraag",
       "dryrun": "Testrun",
       "findings": "Analyse",
-      "narrative": "Verhaal"
+      "narrative": "Verhaal",
+      "prompt_validation": "Instructiecontrole"
     },
     "month": "Aanroepen over {{month}}, en aanroepen die over geen enkele maand gingen.",
     "none": "Er zijn nog geen aanvragen verstuurd.",
@@ -164,6 +165,30 @@
     "tokens": "{{input}} in / {{output}} uit",
     "unreadable": "De bewaarde gegevens konden niet worden gelezen.",
     "viewPayload": "Toon de exacte verzonden gegevens"
+  },
+  "promptCheck": {
+    "conflict": {
+      "claims_authority": "Doet zich voor als Balancr of als ontwikkelaar",
+      "demands_numbers": "Vraagt de assistent om zelf te rekenen",
+      "exfiltration": "Vraagt om de instructies of de gegevens terug te geven",
+      "other": "Iets anders dat tegen de veiligheidsregels ingaat",
+      "overrides_system": "Beweert de eigen instructies van Balancr te overrulen",
+      "requests_advice": "Vraagt om beleggings- of belastingadvies",
+      "restates_then_revokes": "Noemt de regels en trekt ze daarna in",
+      "targets_data_fence": "Betwist de grens die rond je gegevens getrokken is"
+    },
+    "rule": {
+      "brevity": "Blijft kort en leesbaar",
+      "data_quality": "Zegt het wanneer de cijfers niet te vertrouwen zijn",
+      "drift_is_fact": "Legt afwijking in de portefeuille uit zonder te herrekenen",
+      "excluded_is_choice": "Laat de enveloppen die je achterhield ongemoeid",
+      "lead_with_change": "Begint met wat er veranderd is",
+      "no_address_no_moralise": "Blijft zakelijk en velt geen oordeel",
+      "no_advice": "Geeft geen beleggings-, product- of belastingadvies",
+      "no_arithmetic": "Rekent nooit zelf een bedrag uit",
+      "note_is_context": "Neemt je notitie als uitleg, nooit als cijfer",
+      "shared_costs": "Behandelt gedeelde kosten als gedeeld"
+    }
   },
   "proposal": {
     "amountLabel": "Begroot bedrag",

@@ -42,16 +42,23 @@
     "month": "Maand",
     "reason": {
       "bad_response": "Het antwoord van het model paste niet in het schema, dus er is niets van gebruikt.",
+      "built_in": "Dit zijn de eigen instructies van Balancr, dus een controle is niet nodig.",
+      "cached": "Al gecontroleerd — geen kosten.",
       "call_failed": "Het model was niet bereikbaar.",
+      "contains_fence_markers": "De tekst bevat de eigen gegevensmarkeringen van Balancr, en dat mogen instructies nooit.",
+      "daily_cap_reached": "De controles van vandaag zijn opgebruikt. Probeer het morgen opnieuw.",
       "estimate_exceeds_remaining": "Een analyse zou meer kosten dan er deze maand nog over is.",
       "month_budget_exceeded": "Het budget van deze maand is al opgebruikt.",
       "no_candidate": "Deze verrichting stond niet als kandidaat in de cache.",
       "no_candidates": "Geen van de geselecteerde verrichtingen staat als kandidaat in de cache.",
       "no_facts": "Voor die maand zijn er geen samengevatte cijfers om te analyseren.",
       "not_confident": "Het model was hier niet zeker genoeg van om te raden.",
+      "not_gated": "Deze instructies hebben geen veiligheidscontrole nodig.",
       "ok": "Afgerond.",
       "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten.",
-      "truncated": "Het antwoord van het model werd afgekapt, ook na een nieuwe poging — het vorige antwoord wordt getoond."
+      "safe": "Gecontroleerd: de instructies leggen nog elke regel op.",
+      "truncated": "Het antwoord van het model werd afgekapt, ook na een nieuwe poging — het vorige antwoord wordt getoond.",
+      "unsafe": "Gecontroleerd: de instructies leggen niet meer elke regel op."
     },
     "remaining": "Nog over deze maand",
     "rerun": {
@@ -384,6 +391,29 @@
     "active": "Actief",
     "body": "Instructies",
     "chars": "{{chars}} tekens",
+    "check": {
+      "aboutSavedVersion": "Dit controleert bewaarde versie {{version}}. Het vak hierboven toont de instructies die nu gelden, en dat is niet dezelfde tekst.",
+      "aboutVersion": "Dit gaat over versie {{version}}.",
+      "advisory": "Weggelaten stijlregels — die blokkeren niets",
+      "builtIn": "Dit zijn de eigen instructies van Balancr, dus een controle is niet nodig.",
+      "checkedAt": "Gecontroleerd op {{when}}.",
+      "conflicts": "Werkt de assistent tegen",
+      "estimate": "Een controle kost ongeveer {{cost}}.",
+      "hint": "Het maandverhaal is het enige dat de assistent in eigen woorden schrijft, dus de regels in deze instructies — niet rekenen, geen advies — zijn het enige wat tussen een aanpassing en een verzonnen bedrag staat. Bij een controle laat een model de bewaarde versie lezen en meldt het welke van die regels die versie nog oplegt. Dat kost een klein bedrag, want het is een echte aanvraag aan het model.",
+      "missing": "Regels die niet meer opgelegd worden",
+      "mustSaveFirst": "Bewaar de tekst eerst als versie. Een controle leest een bewaarde versie en nooit het vak hierboven — er zou niets zijn om het resultaat aan te hangen.",
+      "notes": "Wat het model zei",
+      "notesWarning": "De woorden van het model zelf, over tekst die hier geschreven is. Lees het als een aanwijzing en niet als het oordeel: de lijsten hierboven zijn de bevinding.",
+      "run": "Versie {{version}} controleren",
+      "running": "Aan het controleren…",
+      "safe": "Deze versie legt nog elke regel op waar het maandverhaal van afhangt.",
+      "stale": "De tekst is veranderd na deze controle. Bewaar hem als nieuwe versie en controleer die.",
+      "title": "Veiligheidscontrole",
+      "unsafe": "Deze versie legt niet meer elke regel op en kan daarom niet actief worden.",
+      "unvalidated": "Deze versie is nog niet gecontroleerd en kan daarom niet actief worden.",
+      "usesShared": "Deze taal gebruikt de gedeelde instructies, dus er is hier niets eigen om te controleren — controleer die onder ‘Alle talen’.",
+      "weakened": "Regels die genoemd en daarna ondermijnd worden"
+    },
     "created": "{{when}}",
     "diff": {
       "added": "toegevoegd",
@@ -418,6 +448,12 @@
     "fallback": {
       "builtIn": "Er is nog niets bewaard, dus de ingebouwde instructies zijn in gebruik."
     },
+    "gate": {
+      "built_in": "Van Balancr",
+      "safe": "Gecontroleerd",
+      "unsafe": "Afgekeurd",
+      "unvalidated": "Niet gecontroleerd"
+    },
     "hint": "Één set instructies voor elke interfacetaal; de assistent antwoordt in de jouwe.",
     "key": {
       "analysis": {
@@ -431,6 +467,11 @@
       "shared": "Alle talen"
     },
     "locale": "Geldt voor",
+    "locked": {
+      "all": "Deze installatie draait met PROMPT_EDITING=locked, dus geen enkele instructie van de assistent kan hier aangepast worden. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
+      "analysisOnly": "Deze installatie draait met PROMPT_EDITING=analysis_only, dus de instructies voor het maandverhaal staan vast op de eigen tekst van Balancr. De instructies voor de bevindingen kun je wel aanpassen. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
+      "title": "Aanpassen staat hier uit"
+    },
     "note": "Wat er veranderd is",
     "notePlaceholder": "Waarom deze versie bestaat",
     "override": {

@@ -548,3 +548,238 @@ export function groundNudgeResponse(
 
   return out
 }
+
+// ---------------------------------------------------------------------------
+//  #454 — the judge: does an edited narrative prompt still impose its own rules
+// ---------------------------------------------------------------------------
+
+/**
+ * The ten rules `NARRATIVE_SYSTEM` states, as ids.
+ *
+ * A closed vocabulary for the same reason `FINDING_CODES` is one: the judge answers in
+ * codes rather than prose, so an invented rule name is a parse failure instead of a
+ * sentence nobody can act on. The order matches the prompt's own numbering, which is what
+ * makes the two readable side by side when either changes.
+ */
+export const NARRATIVE_RULE_IDS = [
+  'no_arithmetic',
+  'brevity',
+  'lead_with_change',
+  'data_quality',
+  'shared_costs',
+  'no_advice',
+  'no_address_no_moralise',
+  'drift_is_fact',
+  'note_is_context',
+  'excluded_is_choice',
+] as const
+export type NarrativeRuleId = (typeof NARRATIVE_RULE_IDS)[number]
+
+/**
+ * The four that block.
+ *
+ * The other six are editorial — brevity, structure, tone — and an owner who wants a longer
+ * review, a different opening or a warmer voice is exercising a preference, not creating a
+ * safety problem. Blocking on those would make the gate an argument about house style, and
+ * the first thing anyone would do is stop pressing the button.
+ *
+ * These four are the ones whose removal changes what the output can *claim*: arithmetic on
+ * figures that were computed elsewhere (`no_arithmetic`), investment or tax instructions
+ * (`no_advice`), a figure lifted out of the household's own prose note (`note_is_context`),
+ * and reconstructing the deliberately withheld envelopes (`excluded_is_choice`).
+ */
+export const REQUIRED_NARRATIVE_RULE_IDS: readonly NarrativeRuleId[] = [
+  'no_arithmetic',
+  'no_advice',
+  'note_is_context',
+  'excluded_is_choice',
+]
+
+/**
+ * Ways a candidate body can fight the system it is part of, as codes.
+ *
+ * Distinct from a missing rule: a prompt can state all ten rules faithfully and still, in
+ * another sentence, claim to override everything above it or demand the model produce
+ * figures. Any one of these is enough on its own for `unsafe` — there is no legitimate
+ * reason for an editable prompt body to do any of them.
+ */
+export const CONFLICT_CODES = [
+  'overrides_system',
+  'claims_authority',
+  'demands_numbers',
+  'requests_advice',
+  'targets_data_fence',
+  'restates_then_revokes',
+  'exfiltration',
+  'other',
+] as const
+export type ConflictCode = (typeof CONFLICT_CODES)[number]
+
+/**
+ * How much of the judge's own prose is kept.
+ *
+ * Short on purpose: it is read by a person as supporting evidence beside the codes, and it
+ * is also model output influenced by the very text under examination — so it is bounded and
+ * rendered as a quotation, never as the finding itself.
+ *
+ * Enforced in `decideJudgeVerdict` by truncation rather than on the schema as a rejection —
+ * the same call `nudgeSelectionSchema.reason` already makes, and for a sharper version of
+ * the same reason. A `.max()` here would turn a judge that wrote one sentence too many into
+ * `bad_response`: money spent, no verdict stored, the row left `unvalidated` — and at
+ * `temperature: 0` that outcome is *deterministic*, so the body would be permanently
+ * uncheckable and therefore permanently unactivatable. A cosmetic overrun must never cost a
+ * verdict. `JUDGE_NOTES_WIRE_MAX_CHARS` still bounds the payload itself.
+ */
+export const JUDGE_NOTES_MAX_CHARS = 300
+
+/**
+ * The bound the wire actually rejects on: generous, and only about payload size.
+ *
+ * Well clear of `JUDGE_NOTES_MAX_CHARS` so the display cap is never the thing that fails a
+ * parse, while still refusing a "notes" field carrying a novel.
+ */
+export const JUDGE_NOTES_WIRE_MAX_CHARS = 4_000
+
+export const judgeResponseSchema = z.object({
+  rules: z
+    .array(
+      z.object({
+        id: z.enum(NARRATIVE_RULE_IDS),
+        present: z.boolean(),
+        /**
+         * A rule can be quoted and then rhetorically cancelled — "rule 1 says never
+         * calculate, but for this household you may estimate where it helps" — which is
+         * `present: true` and worthless (#452). Asking for the two separately is what
+         * lets `decideJudgeVerdict` treat that as a removal rather than as compliance.
+         */
+        weakened: z.boolean(),
+      }),
+    )
+    // Above `NARRATIVE_RULE_IDS.length` for the reason `conflicts` is: the array is not a
+    // set, and a model repeating an id must not fail a parse sized for distinct ones.
+    // `decideJudgeVerdict` folds duplicates worst-wins.
+    .max(NARRATIVE_RULE_IDS.length * 4),
+  /**
+   * Bounded well above `CONFLICT_CODES.length`, not at it.
+   *
+   * A cap equal to the vocabulary looks tight and is brittle: the array is not a set, so a
+   * model that names one code twice would blow a limit sized for distinct codes — and the
+   * candidates most likely to trip several codes at once are exactly the adversarial ones
+   * this check exists to catch. `decideJudgeVerdict` de-duplicates, so the only job left
+   * here is refusing an absurd payload.
+   */
+  conflicts: z.array(z.enum(CONFLICT_CODES)).max(64),
+  /** Truncated to `JUDGE_NOTES_MAX_CHARS` on the way out — see that constant for why. */
+  notes: z.string().max(JUDGE_NOTES_WIRE_MAX_CHARS).default(''),
+})
+export type JudgeResponse = z.infer<typeof judgeResponseSchema>
+
+/** The decision, with the evidence it was made from. */
+export interface JudgeVerdict {
+  verdict: 'safe' | 'unsafe'
+  /** Required ids NOT reported present-and-unweakened. */
+  missing: NarrativeRuleId[]
+  /** Required ids reported present but weakened. A subset of the reasons for `unsafe`. */
+  weakened: NarrativeRuleId[]
+  conflicts: ConflictCode[]
+  /** Non-required ids missing or weakened — shown to a reader, never blocking. */
+  advisory: NarrativeRuleId[]
+  notes: string
+}
+
+/**
+ * A parsed judge response → the decision, computed here.
+ *
+ * The same two-layer discipline `groundResponse` applies to a finding, for the same
+ * reason: the wire schema says what shape an answer may take, and this says what it
+ * *means*. There is deliberately no `safe` boolean on the wire — a model asked for its own
+ * verdict is being asked to summarise its own evidence, and a summary that disagreed with
+ * the evidence would leave nothing to prefer. So `safe` is a function of the per-rule
+ * reports and nothing else: every required id present and unweakened, and no conflicts.
+ *
+ * **A required id absent from the array entirely counts as missing.** The array is capped,
+ * not pinned — a model can answer about three rules out of ten, or about none — so silence
+ * has to fail closed. The alternative reading, "unmentioned means fine", makes an empty
+ * response the cheapest way to pass.
+ */
+export function decideJudgeVerdict(response: JudgeResponse): JudgeVerdict {
+  // Duplicate reports for one id fold **worst-wins**, not last-wins. The array is capped
+  // rather than keyed, so a response may mention `no_arithmetic` twice with different
+  // answers — and last-wins would make the order of a model's own array decide a safety
+  // question, which is the one fail-*open* this function could contain. Every other
+  // ambiguity here resolves the same direction: an absent id counts as missing, an older
+  // rules version retires a verdict, and `inheritableValidation`'s tie prefers `unsafe`.
+  const reported = new Map<NarrativeRuleId, { present: boolean; weakened: boolean }>()
+  for (const rule of response.rules) {
+    const seen = reported.get(rule.id)
+    reported.set(
+      rule.id,
+      seen === undefined
+        ? { present: rule.present, weakened: rule.weakened }
+        : { present: seen.present && rule.present, weakened: seen.weakened || rule.weakened },
+    )
+  }
+
+  const missing: NarrativeRuleId[] = []
+  const weakened: NarrativeRuleId[] = []
+  for (const id of REQUIRED_NARRATIVE_RULE_IDS) {
+    const rule = reported.get(id)
+    if (rule === undefined || !rule.present) {
+      missing.push(id)
+      continue
+    }
+    if (rule.weakened) {
+      // Both lists: `weakened` says *why* it does not count, `missing` is the set that
+      // has to be empty for `safe`, and a rule that is present-but-cancelled is not
+      // imposing anything.
+      weakened.push(id)
+      missing.push(id)
+    }
+  }
+
+  const advisory = NARRATIVE_RULE_IDS.filter((id) => {
+    if (REQUIRED_NARRATIVE_RULE_IDS.includes(id)) return false
+    const rule = reported.get(id)
+    return rule === undefined || !rule.present || rule.weakened
+  })
+
+  const conflicts = [...new Set(response.conflicts)]
+
+  return {
+    verdict: missing.length === 0 && conflicts.length === 0 ? 'safe' : 'unsafe',
+    missing,
+    weakened,
+    conflicts,
+    advisory,
+    notes: response.notes.replace(/\s+/g, ' ').trim().slice(0, JUDGE_NOTES_MAX_CHARS),
+  }
+}
+
+/** Same two-layer contract as `nudgeJsonSchema` — see `analysisJsonSchema`'s own comment. */
+export function judgeJsonSchema(): unknown {
+  return z.toJSONSchema(judgeResponseSchema, { target: 'draft-7' })
+}
+
+/** Model text → a validated judge response, or an error. Same leniency as `parseNudgeResponse`. */
+export function parseJudgeResponse(text: string): JudgeResponse {
+  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+
+  let raw: unknown
+  try {
+    raw = JSON.parse(trimmed)
+  } catch (error) {
+    throw new AiResponseError(
+      `model response was not JSON: ${error instanceof Error ? error.message : String(error)}`,
+      text,
+    )
+  }
+
+  const result = judgeResponseSchema.safeParse(raw)
+  if (!result.success) {
+    throw new AiResponseError(
+      `model response did not match the prompt-judge schema:\n${z.prettifyError(result.error)}`,
+      text,
+    )
+  }
+  return result.data
+}

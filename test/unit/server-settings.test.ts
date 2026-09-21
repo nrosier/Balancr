@@ -26,7 +26,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
-import { auditLog, users } from '../../src/db/schema.ts'
+import { HttpError } from '../../src/server/errors.ts'
+import { config } from '../../src/config.ts'
+import { auditLog, prompts, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadHousehold } from '../../src/domain/benchmark/household.ts'
@@ -35,14 +37,27 @@ import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
-import { createPromptVersion, loadActivePrompt, resolvePrompt } from '../../src/domain/ai/prompts.ts'
+import {
+  createPromptVersion,
+  DEFAULT_PROMPTS,
+  PROMPT_KEYS,
+  loadActivePrompt,
+  resolvePrompt,
+  storePromptValidation,
+  SUPERSEDED_PROMPTS,
+  VALIDATION_RULES_VERSION,
+} from '../../src/domain/ai/prompts.ts'
+import {
+  promptEditingBlocks,
+  requirePromptEditable,
+} from '../../src/server/routes/settings.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, LOCALE_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
-import type { Settings } from '../../src/server/routes/api/schemas.ts'
+import type { PromptDiff, Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
 
@@ -1254,5 +1269,224 @@ describe('the prompt editor', () => {
     )
     expect(deactivateB.statusCode).toBe(409)
     expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')?.id).toBe(overrideA.id)
+  })
+})
+
+describe('the narrative activation gate (#454)', () => {
+  const EDITED = 'Write the month up in my own words, and never calculate anything.'
+
+  /** A safe verdict at the current rules version, as a passing check would leave one. */
+  const clear = (id: string): void => {
+    storePromptValidation(ctx.db, tenantId, id, {
+      verdict: 'safe',
+      json: JSON.stringify({
+        verdict: 'safe',
+        missing: [],
+        weakened: [],
+        conflicts: [],
+        advisory: [],
+        notes: '',
+      }),
+      rulesVersion: VALIDATION_RULES_VERSION,
+      runId: null,
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      validatedBy: null,
+      validatedAt: new Date('2026-09-01T10:00:00.000Z'),
+    })
+  }
+
+  it('answers 409 when activating an edited narrative body with no verdict', async () => {
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: EDITED,
+    })
+
+    const res = await post(`/api/settings/prompts/${row.id}/activate`)
+    expect(res.statusCode).toBe(409)
+    // A `409` rather than a `403`: nothing here is about permission, and the state is
+    // fixable — press the check. The message names which state it is in, so the editor can
+    // tell "not checked yet" from "checked and refused".
+    expect(res.json<{ error: { message: string } }>().error.message).toMatch(/safety check/i)
+    // The flag did not move, and the previous active version still runs.
+    expect(loadActivePrompt(ctx.db, tenantId, 'narrative.system', SHARED_LOCALE)?.id).not.toBe(
+      row.id,
+    )
+  })
+
+  it('answers 409 for save-and-activate in one gesture, storing nothing', async () => {
+    const before = ctx.db
+      .select()
+      .from(prompts)
+      .all()
+      .filter((row) => row.key === 'narrative.system').length
+
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: EDITED,
+      activate: true,
+    })
+
+    expect(res.statusCode).toBe(409)
+    // The insert lives inside the refused transaction, so there is no orphan draft either.
+    expect(
+      ctx.db.select().from(prompts).all().filter((row) => row.key === 'narrative.system').length,
+    ).toBe(before)
+  })
+
+  it('stores an edited narrative body happily as long as it is not activated', async () => {
+    // Save and activate are separate gestures, and only the second one is gated: the point of
+    // versioning a prompt is that writing a draft changes nothing about tonight's output.
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: EDITED,
+    })
+    expect(res.statusCode).toBe(200)
+
+    const entry = res
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
+    const saved = entry?.versions.find((version) => !version.active)
+    expect(saved).toBeDefined()
+    expect(saved?.gate).toBe('unvalidated')
+    expect(saved?.validatedAt).toBeNull()
+    expect(saved?.rulesVersion).toBeNull()
+  })
+
+  it('activates the same body once a safe verdict is stored', async () => {
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: EDITED,
+    })
+    clear(row.id)
+
+    const res = await post(`/api/settings/prompts/${row.id}/activate`)
+    expect(res.statusCode).toBe(200)
+    expect(loadActivePrompt(ctx.db, tenantId, 'narrative.system', SHARED_LOCALE)?.id).toBe(row.id)
+
+    const entry = res
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
+    expect(entry?.active.gate).toBe('safe')
+    expect(entry?.active.rulesVersion).toBe(VALIDATION_RULES_VERSION)
+    expect(entry?.active.validatedAt).not.toBeNull()
+  })
+
+  it('always activates the current built-in body — the exemption', async () => {
+    // What makes boot-time seeding work: `seedPrompts` writes exactly this text and activates
+    // it on every start, with no request behind it, so there must be no state in which Balancr
+    // refuses its own current default.
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: DEFAULT_PROMPTS['narrative.system'],
+      activate: true,
+    })
+    expect(res.statusCode).toBe(200)
+
+    const entry = (await get('/api/settings'))
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
+    expect(entry?.active.gate).toBe('built_in')
+  })
+
+  it('answers 409 for a historical built-in body, which is not exempt', async () => {
+    // The copy-paste bypass this closes: the repository is public, so `NARRATIVE_SYSTEM_V1`'s
+    // exact text can be lifted out of git history — and it genuinely does not impose
+    // `note_is_context` or `excluded_is_choice`, two of the four rules that block. Exempting it
+    // let it activate with no check at all, permanently.
+    const historical = SUPERSEDED_PROMPTS['narrative.system'][0]
+    if (historical === undefined) throw new Error('no superseded narrative body')
+
+    const res = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: historical,
+      activate: true,
+    })
+    expect(res.statusCode).toBe(409)
+
+    // Saving it is still fine, and it reads as needing a check rather than as Balancr's own.
+    const saved = await post('/api/settings/prompts', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: historical,
+    })
+    expect(saved.statusCode).toBe(200)
+    const version = saved
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
+      ?.versions.find((v) => !v.active)
+    expect(version?.gate).toBe('unvalidated')
+  })
+
+  it('leaves the analysis prompt ungated, however rewritten', async () => {
+    const res = await post('/api/settings/prompts', {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Completely rewritten analysis instructions with nothing of mine left.',
+      activate: true,
+    })
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('prices a safety check on the free diff endpoint, spending nothing', async () => {
+    const res = await post('/api/settings/prompts/diff', {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body: EDITED,
+    })
+    expect(res.statusCode).toBe(200)
+    // The price a button shows before it is pressed. Local arithmetic — this endpoint
+    // reaches no model, which is why it lives outside `routes/ai.ts`.
+    expect(res.json<PromptDiff>().validationEstimateMicroEur).toBeGreaterThan(0)
+  })
+})
+
+describe('PROMPT_EDITING (#454, Q1 of #452)', () => {
+  it('blocks nothing on full, the default every existing deployment runs', () => {
+    for (const key of PROMPT_KEYS) {
+      expect(promptEditingBlocks('full', key), key).toBe(false)
+      expect(() => requirePromptEditable('full', key)).not.toThrow()
+    }
+  })
+
+  it('blocks only the narrative prompt on analysis_only', () => {
+    // `analysis.system` stays editable because its output is grounded against the signal
+    // table: an edit there cannot invent a finding, so locking it buys nothing.
+    expect(promptEditingBlocks('analysis_only', 'narrative.system')).toBe(true)
+    expect(promptEditingBlocks('analysis_only', 'analysis.system')).toBe(false)
+  })
+
+  it('blocks every key on locked', () => {
+    for (const key of PROMPT_KEYS) {
+      expect(promptEditingBlocks('locked', key), key).toBe(true)
+    }
+  })
+
+  it('refuses with a 403 naming the mode, because nothing about the request can fix it', () => {
+    // Unlike the gate's `409`, there is no state a caller can reach to make this succeed.
+    // The deployment does not permit it, and only its operator can change that.
+    try {
+      requirePromptEditable('locked', 'narrative.system')
+      throw new Error('expected a refusal')
+    } catch (error) {
+      if (!(error instanceof HttpError)) throw error
+      expect(error.statusCode).toBe(403)
+      expect(error.message).toContain('PROMPT_EDITING=locked')
+    }
+  })
+
+  it('is on the settings payload so the panel can explain itself', async () => {
+    // The editor has to disable the box and say why, rather than offering a textarea whose
+    // save comes back 403. Deployment-wide and read from `.env`, so there is nothing on the
+    // page that could change it — which is the point of it.
+    expect((await get('/api/settings')).json<Settings>().promptEditing).toBe(
+      config.PROMPT_EDITING,
+    )
   })
 })

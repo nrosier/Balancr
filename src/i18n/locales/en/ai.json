@@ -156,7 +156,8 @@
       "clarify": "Question",
       "dryrun": "Test run",
       "findings": "Analysis",
-      "narrative": "Narrative"
+      "narrative": "Narrative",
+      "prompt_validation": "Instruction check"
     },
     "month": "Calls about {{month}}, and any that were about no month at all.",
     "none": "No calls have been made yet.",
@@ -164,6 +165,30 @@
     "tokens": "{{input}} in / {{output}} out",
     "unreadable": "The stored payload could not be read.",
     "viewPayload": "Show the exact payload"
+  },
+  "promptCheck": {
+    "conflict": {
+      "claims_authority": "Pretends to speak for Balancr or a developer",
+      "demands_numbers": "Asks the assistant to calculate figures",
+      "exfiltration": "Asks for the instructions or the data to be repeated back",
+      "other": "Something else that works against the safety rules",
+      "overrides_system": "Claims to override Balancr's own instructions",
+      "requests_advice": "Asks for investment or tax advice",
+      "restates_then_revokes": "States the rules and then withdraws them",
+      "targets_data_fence": "Argues with the boundary drawn around your data"
+    },
+    "rule": {
+      "brevity": "Stays short and readable",
+      "data_quality": "Says when the figures cannot be trusted",
+      "drift_is_fact": "Explains portfolio drift without recalculating it",
+      "excluded_is_choice": "Leaves the envelopes you withheld alone",
+      "lead_with_change": "Leads with what changed",
+      "no_address_no_moralise": "Stays impersonal and passes no judgement",
+      "no_advice": "Gives no investment, product or tax advice",
+      "no_arithmetic": "Never works out a figure of its own",
+      "note_is_context": "Takes your note as an explanation, never as a figure",
+      "shared_costs": "Treats shared costs as shared"
+    }
   },
   "proposal": {
     "amountLabel": "Budget amount",

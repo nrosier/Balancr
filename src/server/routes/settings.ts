@@ -133,6 +133,7 @@ import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
 import {
   activatePrompt,
+  asPromptKey,
   createPromptVersion,
   deactivateOverride,
   diffAgainstActive,
@@ -140,16 +141,19 @@ import {
   loadActivePrompt,
   PROMPT_KEYS,
   loadPrompt,
+  promptGateState,
+  PromptGateError,
   resolvePrompt,
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
+import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
-import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
+import { badRequest, conflict, forbidden, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
 import { integrationsTestRateLimit } from '../rate-limit.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
@@ -739,11 +743,38 @@ const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, E
  */
 function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string): PromptSetting {
   const active = resolvePrompt(db, tenantId, key, locale)
+  const versions = listPromptVersions(db, tenantId, key, locale)
+  // Fetched by id rather than found in `versions`, because the two are not the same set:
+  // for a language with no override of its own, `resolvePrompt` answers with the *shared*
+  // row, which this locale's version list does not contain. The verdict columns live on
+  // that row, so looking in the wrong list would badge a cleared shared prompt as
+  // unchecked under every language that inherits it.
+  const activeRow = active.id === null ? null : loadPrompt(db, tenantId, active.id)
+  const activeGate =
+    activeRow === null
+      ? // No row means the built-in constant. Asked through the same function rather than
+        // hard-coded to `built_in`, so the fallback and a stored copy of the same text can
+        // never end up badged differently.
+        promptGateState(key, {
+          body: active.body,
+          validationVerdict: null,
+          validationRulesVersion: null,
+        })
+      : promptGateState(key, activeRow)
+
   return promptSchema.parse({
     key,
     locale,
-    active: { id: active.id, version: active.version, locale: active.locale, body: active.body },
-    versions: listPromptVersions(db, tenantId, key, locale).map((row) => ({
+    active: {
+      id: active.id,
+      version: active.version,
+      locale: active.locale,
+      body: active.body,
+      gate: activeGate,
+      validatedAt: activeRow?.validatedAt?.toISOString() ?? null,
+      rulesVersion: activeRow?.validationRulesVersion ?? null,
+    },
+    versions: versions.map((row) => ({
       id: row.id,
       version: row.version,
       active: row.active,
@@ -751,6 +782,9 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       chars: row.body.length,
+      gate: promptGateState(key, row),
+      validatedAt: row.validatedAt?.toISOString() ?? null,
+      rulesVersion: row.validationRulesVersion,
     })),
   })
 }
@@ -952,6 +986,10 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     // A switched-off override keeps its entry, because its versions still exist and
     // reactivating one is the rollback gesture. `active.locale` is what distinguishes
     // the two states, and it is already on the wire.
+    // Deployment-wide and read straight from `.env` (#454): there is nothing on this page
+    // that can change it, which is exactly what makes it the one control an owner who is
+    // also the operator is still bound by.
+    promptEditing: config.PROMPT_EDITING,
     prompts: PROMPT_KEYS.flatMap((key) => [
       promptSetting(db, user.tenantId, key, SHARED_LOCALE),
       ...config.SUPPORTED_LOCALES.map((locale) =>
@@ -991,6 +1029,84 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
 function touchedGroups(params: unknown, patch: object): Record<string, unknown> {
   const all = params as Record<string, unknown>
   return Object.fromEntries(Object.keys(patch).map((group) => [group, all[group]]))
+}
+
+/** What `PROMPT_EDITING` can be. Mirrors the enum in `config.ts`. */
+export type PromptEditing = 'full' | 'analysis_only' | 'locked'
+
+/**
+ * Whether this mode forbids writing to this key (#454, Q1 of #452).
+ *
+ * `locked` blocks every key; `analysis_only` blocks `narrative.system` alone, because the
+ * analysis pass's output is grounded against the signal table and an edit there cannot
+ * invent a finding. `full` — the default, and every existing deployment — blocks nothing.
+ *
+ * Takes the mode rather than reading `config`, for the reason `requireAiAvailable` and
+ * `requireJobsEnabled` already do: a branch that reads the module-level config can only be
+ * tested by rebuilding the module graph, and a guard nobody can test cheaply is a guard that
+ * quietly stops firing.
+ */
+export function promptEditingBlocks(mode: PromptEditing, key: PromptKey): boolean {
+  if (mode === 'full') return false
+  if (mode === 'locked') return true
+  return key === 'narrative.system'
+}
+
+/**
+ * Refuses a prompt write this deployment has switched off.
+ *
+ * **What this PR does and does not do, so #455's implementer knows where the line is.**
+ * This stops *new writes*: no version is created and none is activated for a locked key.
+ * It does **not** make an already-locked deployment's narrative pass use the built-in text
+ * — a row that was active before `PROMPT_EDITING` was set keeps being resolved and keeps
+ * running. That read-time pinning is #455's, deliberately: it is the same
+ * enforcement-boundary decision as the use-time refusal, it belongs in the same place
+ * (`resolvePrompt`/`narrative.ts`), and splitting one decision across two PRs is how two
+ * answers to it end up coexisting. So after this PR a `locked` deployment is one an owner
+ * cannot change; after #455 it is one whose narrative demonstrably uses code-owned text.
+ *
+ * `403` rather than `409`: unlike the gate refusal below, nothing about the request or the
+ * stored state can be fixed to make it succeed. The deployment does not permit it.
+ */
+export function requirePromptEditable(mode: PromptEditing, key: PromptKey): void {
+  if (!promptEditingBlocks(mode, key)) return
+  throw forbidden(`This deployment has PROMPT_EDITING=${mode}, so ${key} cannot be changed here.`)
+}
+
+/** The sentence each gate state deserves. Named states, because the fix differs. */
+const GATE_REFUSAL: Readonly<Record<string, string>> = {
+  unvalidated:
+    'This version of the narrative instructions has not passed a safety check yet, so it ' +
+    'cannot be made active. Run the check on it first.',
+  unsafe:
+    'A safety check found that this version of the narrative instructions no longer ' +
+    'imposes the rules the monthly review depends on, so it cannot be made active. Edit ' +
+    'the text and save it as a new version.',
+}
+
+/**
+ * `PromptGateError` → a `409`, with the gate state named.
+ *
+ * `409` rather than `403`: nothing here is about permission, and the state *is* fixable —
+ * press the check, or rewrite the text — which is what `409` means. The wrapper exists
+ * because the throw happens inside `createPromptVersion`/`activatePrompt`'s transactions,
+ * two call sites deep, and the alternative is the error handler turning a deliberate
+ * refusal into a `500`.
+ *
+ * The message names the state rather than quoting the judge: the judge's own words are
+ * model output shaped by the text being judged, and this response is read by a person who
+ * has just pressed a button. The per-rule detail is on the validate endpoint's own answer.
+ */
+function promptGateGuard<T>(write: () => T): T {
+  try {
+    return write()
+  } catch (error) {
+    if (!(error instanceof PromptGateError)) throw error
+    throw conflict(
+      GATE_REFUSAL[error.state] ??
+        `These instructions cannot be made active: their safety state is ${error.state}.`,
+    )
+  }
 }
 
 /**
@@ -2205,6 +2321,15 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       chars: row.body.length,
+      gate:
+        // `promptKeyOf` would 400 on a stored key this build does not read, and reading a
+        // version back is not the place to refuse one. An unknown key is not gated, so its
+        // body is reported as the built-in state it effectively has.
+        asPromptKey(row.key) === null
+          ? 'built_in'
+          : promptGateState(promptKeyOf(row.key), row),
+      validatedAt: row.validatedAt?.toISOString() ?? null,
+      rulesVersion: row.validationRulesVersion,
       body: row.body,
     })
   })
@@ -2225,6 +2350,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       active: { id: active.id, version: active.version, locale: active.locale },
       stat: diff.stat,
       lines: diff.lines,
+      // Priced on the same free request that already has the candidate in hand (#454), so
+      // the editor can show what a safety check would cost before offering the button.
+      // Local arithmetic: no call, no ledger row.
+      validationEstimateMicroEur: estimatePromptValidation(db, user.tenantId, body),
     })
   })
 
@@ -2239,19 +2368,22 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.post('/api/settings/prompts', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const input = parseBody(promptCreateRequest, request.body)
+    requirePromptEditable(config.PROMPT_EDITING, input.key)
 
     const previous =
       input.activate === true
         ? loadActivePrompt(db, user.tenantId, input.key, input.locale)
         : null
-    const row = createPromptVersion(db, user.tenantId, {
-      key: input.key,
-      locale: input.locale,
-      body: input.body,
-      createdBy: user.id,
-      ...(input.note === undefined ? {} : { note: input.note }),
-      ...(input.activate === undefined ? {} : { activate: input.activate }),
-    })
+    const row = promptGateGuard(() =>
+      createPromptVersion(db, user.tenantId, {
+        key: input.key,
+        locale: input.locale,
+        body: input.body,
+        createdBy: user.id,
+        ...(input.note === undefined ? {} : { note: input.note }),
+        ...(input.activate === undefined ? {} : { activate: input.activate }),
+      }),
+    )
 
     recordAudit(db, {
       tenantId: user.tenantId,
@@ -2295,9 +2427,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     const row = loadPrompt(db, user.tenantId, id)
     if (row === null) throw notFound('No such prompt version.')
+    const key = promptKeyOf(row.key)
+    requirePromptEditable(config.PROMPT_EDITING, key)
 
-    const previous = loadActivePrompt(db, user.tenantId, promptKeyOf(row.key), row.locale)
-    const activated = activatePrompt(db, user.tenantId, id)
+    const previous = loadActivePrompt(db, user.tenantId, key, row.locale)
+    const activated = promptGateGuard(() => activatePrompt(db, user.tenantId, id))
 
     recordAudit(db, {
       tenantId: user.tenantId,
@@ -2324,6 +2458,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const params = request.params as { key: string; locale: string }
     const key = promptKeyOf(params.key)
+    // Guarded like the other two write routes (#454), and it genuinely needs to be: switching
+    // an override off changes which body `resolvePrompt` returns for that language — this
+    // route even records `prompt.activate` in the audit trail, because that is what it does.
+    // Without this, `PROMPT_EDITING=locked` would still let an owner change the narrative
+    // instructions in force for a language, just by retiring the override above them.
+    requirePromptEditable(config.PROMPT_EDITING, key)
     if (params.locale === SHARED_LOCALE) {
       throw badRequest('The shared prompt is what the others fall back to.')
     }
