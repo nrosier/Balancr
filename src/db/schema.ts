@@ -889,6 +889,27 @@ export const prompts = sqliteTable(
 )
 
 /**
+ * Every kind of AI run there is, as a plain array rather than only the enum below.
+ *
+ * `scripts/check-i18n.ts` needs this list to guard `ai:privacy.kind.*` — every kind
+ * the ledger can show must have a sentence in every language, or the ledger prints
+ * the raw identifier. That script deliberately does not import `src/config.ts` (no
+ * `.env` in CI), so the list has to come from a module that does not reach it either.
+ * `schema.ts` never has, which is why it lives here rather than in a config-adjacent
+ * vocabulary file — one array, read by both the table definition and the CI check,
+ * so the two cannot drift the way a hand-copied second list would.
+ */
+export const AI_RUN_KINDS = [
+  'findings',
+  'narrative',
+  'clarify',
+  'chat',
+  'dryrun',
+  'category_guess',
+  'budget_nudge',
+] as const
+
+/**
  * One row per AI call: the audit log and the cost ledger in one place.
  * `payloadJson` is exactly what left the machine — it is the record that lets
  * you verify by hand that no payee name was ever sent.
@@ -901,7 +922,7 @@ export const aiRuns = sqliteTable(
       .notNull()
       .references(() => tenants.id),
     kind: text({
-      enum: ['findings', 'narrative', 'clarify', 'chat', 'dryrun', 'category_guess', 'budget_nudge'],
+      enum: AI_RUN_KINDS,
     }).notNull(),
     provider: text({
       enum: ['gemini-aistudio', 'gemini-vertex', 'openai', 'xai', 'openai-compatible', 'anthropic'],

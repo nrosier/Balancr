@@ -150,6 +150,8 @@
     "hidePayload": "Hide the payload",
     "hint": "Category names and amounts only. No payees, no transactions.",
     "kind": {
+      "budget_nudge": "Budget nudge",
+      "category_guess": "Category guess",
       "chat": "Chat",
       "clarify": "Question",
       "dryrun": "Test run",

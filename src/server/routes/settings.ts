@@ -32,6 +32,7 @@ import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { resetAiClients } from '../../adapters/ai/client.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { eurToMicroEur, priceFor, type ModelPrice, type ModelPrices } from '../../adapters/ai/pricing.ts'
+import { DATA_CLOSE, DATA_OPEN } from '../../adapters/ai/prompt.ts'
 import { AI_PROVIDERS, type AiProvider } from '../../adapters/ai/types.ts'
 import {
   ANTHROPIC_BASE_URL,
@@ -490,17 +491,50 @@ const inviteCreateRequest = z.strictObject({
 })
 
 /**
- * A prompt body: not empty once trimmed, and not so long the diff refuses it.
+ * How long a prompt body may be (#453, part of #452).
  *
- * Both limits exist because the alternative is a 500. `createPromptVersion` throws
- * on an empty body and `diffLines` throws above `MAX_LINES`, and a form that
- * pasted the wrong thing deserves to be told which.
+ * Exported because a later PR (#454, the judge call) imports it — the same ceiling
+ * that keeps a save request small enough to answer quickly is also the size a
+ * candidate body is fenced as data for that call. Not chosen to be generous or
+ * strict on its own merits: 20,000 characters is comfortably above every built-in
+ * prompt in `prompts.ts` (a few thousand characters each) and comfortably below
+ * what would turn a single save into a meaningful fraction of a model's context.
+ */
+export const PROMPT_BODY_MAX_CHARS = 20_000
+
+/**
+ * A prompt body: not empty once trimmed, not so long the diff refuses it, not so
+ * long the model call after it does, and never carrying the adapter's own data-fence
+ * markers.
+ *
+ * The line-count and emptiness checks exist because the alternative is a 500:
+ * `createPromptVersion` throws on an empty body and `diffLines` throws above
+ * `MAX_LINES`, and a form that pasted the wrong thing deserves to be told which.
+ *
+ * The two added here are about what leaves the machine rather than what breaks the
+ * diff. `PROMPT_BODY_MAX_CHARS` bounds the one editable free-text field this
+ * application sends to a model in full, unredacted, on every narrative run — every
+ * other free-text field crossing the AI boundary (`purpose`, a category name, the
+ * month note) is capped in `redact.ts`, and this was the one left uncapped. The fence
+ * check is the more pointed of the two: `DATA_OPEN`/`DATA_CLOSE` are what `fenceData`
+ * (`src/adapters/ai/prompt.ts`) wraps around the untrusted payload so the model can
+ * tell data from instructions, and a prompt body that already contains one of those
+ * markers could close that fence early and have the rest of the payload read as
+ * instructions — the exact failure `fenceData` itself refuses to send. Refusing it
+ * at save time means an owner is told immediately, in the editor, rather than having
+ * every subsequent run of that prompt quietly refuse at call time instead.
  */
 const promptBodyRequest = z
   .string()
   .refine((body) => body.trim().length > 0, { message: 'the prompt cannot be empty' })
+  .refine((body) => body.length <= PROMPT_BODY_MAX_CHARS, {
+    message: `a prompt cannot be longer than ${String(PROMPT_BODY_MAX_CHARS)} characters`,
+  })
   .refine((body) => body.split('\n').length <= MAX_LINES, {
     message: `a prompt of more than ${String(MAX_LINES)} lines cannot be diffed`,
+  })
+  .refine((body) => !body.includes(DATA_OPEN) && !body.includes(DATA_CLOSE), {
+    message: "a prompt cannot contain Balancr's own data-fence markers",
   })
 
 const promptCreateRequest = z.strictObject({

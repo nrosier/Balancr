@@ -55,6 +55,17 @@ export type CategoryMetaRow = typeof categoryMeta.$inferSelect
  */
 export const PURPOSE_MAX_CHARS = 200
 
+/**
+ * A category name is the household's own wording, same as a purpose — just shorter in
+ * the ordinary case, which is exactly why it had no cap until now (#453, found while
+ * researching #452): nothing stopped someone from renaming a category to a paragraph,
+ * and unlike `purpose`, a name reaches three different payloads (`toCategory`,
+ * `redactCategoryGuessBatch`, `redactBudgetNudgeBatch`), all three unbounded the same
+ * way. 120 characters is generous for a name and short of a sentence, the same
+ * reasoning `inviteCreateRequest`'s label cap uses for the same shape of field.
+ */
+export const CATEGORY_NAME_MAX_CHARS = 120
+
 /** Everything the analysis has, before anything is taken away. */
 export interface AnalysisBundle {
   /** The month being analysed, `YYYY-MM`. */
@@ -379,6 +390,20 @@ function purpose(text: string): string | null {
   return clean.length <= PURPOSE_MAX_CHARS ? clean : `${clean.slice(0, PURPOSE_MAX_CHARS)}…`
 }
 
+/**
+ * Collapses whitespace and cuts to `CATEGORY_NAME_MAX_CHARS`. Same shape as
+ * `purpose()`, minus the null case: unlike a user description, a name a category is
+ * actually sent under is never "nothing was written" — the caller decides whether to
+ * send a name at all (the `sensitive` check at each of the three call sites), and by
+ * the time this runs that decision is already made.
+ */
+function categoryName(name: string): string {
+  const clean = name.replace(/\s+/g, ' ').trim()
+  return clean.length <= CATEGORY_NAME_MAX_CHARS
+    ? clean
+    : `${clean.slice(0, CATEGORY_NAME_MAX_CHARS)}…`
+}
+
 function toTotals(totals: MonthTotals): RedactedMonthTotals {
   return {
     month: totals.month,
@@ -419,7 +444,7 @@ function toCategory(entry: BundleCategory, label: string): RedactedCategory {
   // The whole point of the flag: a sensitive category keeps its amounts and its
   // shape, and loses everything that says what it is.
   if (!sensitive) {
-    out.name = fact.categoryName
+    out.name = categoryName(fact.categoryName)
     if (meta?.userDescription != null) {
       const described = purpose(meta.userDescription)
       if (described !== null) out.purpose = described
@@ -740,7 +765,7 @@ export function redactCategoryGuessBatch(
     const out: RedactedGuessCategory = { label }
     if (!sensitive) {
       const name = categoryNameById.get(categoryId)
-      if (name !== undefined) out.name = name
+      if (name !== undefined) out.name = categoryName(name)
     }
     if (meta !== null) {
       if (meta.coicopCode !== null) out.coicop = meta.coicopCode
@@ -965,7 +990,7 @@ export function redactBudgetNudgeBatch(
       suggestedCents: candidate.suggestedCents,
       currentCents: candidate.currentCents,
     }
-    if (!sensitive && meta !== null) out.name = meta.nameSnapshot
+    if (!sensitive && meta !== null) out.name = categoryName(meta.nameSnapshot)
     if (candidate.baselineCents !== null) out.baselineCents = candidate.baselineCents
     return out
   })

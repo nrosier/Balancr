@@ -23,6 +23,7 @@ import {
   COICOP_DIVISIONS,
   OUTSIDE_CONSUMPTION,
 } from '../src/domain/benchmark/vocabulary.ts'
+import { AI_RUN_KINDS } from '../src/db/schema.ts'
 
 const localesDir = fileURLToPath(new URL('../src/i18n/locales', import.meta.url))
 const SOURCE = 'en'
@@ -196,6 +197,12 @@ const vocabularies: Array<[string, readonly string[], string]> = [
   // catalogue.
   ['budget:benchmark.unavailable.', BENCHMARK_UNAVAILABLE, 'benchmark unavailable reason'],
   ['budget:benchmark.unavailable.hint.', BENCHMARK_UNAVAILABLE, 'benchmark unavailable hint'],
+  // Every kind an `ai_runs` row can carry, which is also every kind the insights
+  // ledger (`web/src/insights/Ledger.tsx`) has to render a label for. Without this
+  // guard a kind added to the enum in `schema.ts` ships with no sentence anywhere and
+  // the ledger prints the raw identifier — which is exactly how `category_guess` and
+  // `budget_nudge` went unnoticed before this check existed (#453).
+  ['ai:privacy.kind.', AI_RUN_KINDS, 'AI run kind'],
 ]
 for (const [prefix, ids, what] of vocabularies) {
   for (const id of ids) {
