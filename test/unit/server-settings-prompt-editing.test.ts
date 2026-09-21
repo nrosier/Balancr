@@ -28,6 +28,8 @@ interface Harness {
   post: (url: string, body?: object) => Promise<LightMyRequestResponse>
   promptEditing: string
   narrativeVersionId: () => string
+  analysisVersionId: () => string
+  activateLegacyNarrative: (body: string) => void
 }
 
 /**
@@ -47,7 +49,7 @@ async function harnessWith(mode: string): Promise<Harness> {
   const { createSession } = await import('../../src/server/auth/sessions.ts')
   const { CSRF_COOKIE, SESSION_COOKIE } = await import('../../src/server/cookies.ts')
   const { CSRF_HEADER, newCsrfToken } = await import('../../src/server/csrf.ts')
-  const { users } = await import('../../src/db/schema.ts')
+  const { prompts, users } = await import('../../src/db/schema.ts')
   const { getSoleTenantId } = await import('../../src/db/tenant.ts')
   const { createPromptVersion } = await import('../../src/domain/ai/prompts.ts')
   const { apiFixture } = await import('../helpers/api-fixture.ts')
@@ -100,6 +102,27 @@ async function harnessWith(mode: string): Promise<Harness> {
         locale: SHARED,
         body: `My own narrative instructions ${crypto.randomUUID()}.`,
       }).id,
+    // A stored analysis version, for the dry-run route's own refusal under `locked` (#455).
+    analysisVersionId: () =>
+      createPromptVersion(ctx.db, tenantId, {
+        key: 'analysis.system',
+        locale: SHARED,
+        body: `You rank precomputed signals ${crypto.randomUUID()}.`,
+      }).id,
+    // An *active*, edited, unchecked narrative row, inserted the way a build before #454 left
+    // one — which is the state the read-time pin (#455) exists for and the only state in
+    // which the pin is observable. `createPromptVersion(activate: true)` cannot produce it:
+    // the save-time gate refuses, correctly.
+    activateLegacyNarrative: (body: string) => {
+      ctx.db.insert(prompts).values({
+        tenantId,
+        key: 'narrative.system',
+        locale: SHARED,
+        version: 900,
+        body,
+        active: true,
+      }).run()
+    },
     close: async () => {
       await app.close()
       ctx.sqlite.close()
@@ -194,11 +217,71 @@ describe('PROMPT_EDITING=analysis_only', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  it('reports the lock on the insights payload, so the review card can say why (#455)', async () => {
+    // The banner slot in `Narrative.tsx` reads this. The active narrative row here is
+    // somebody's own unchecked wording, and `gate` comes back `built_in` anyway — which is the
+    // read-time pin working end to end: `resolvePrompt` answered with `DEFAULT_PROMPTS`, so
+    // "written from the built-in instructions" is a true sentence about what will run rather
+    // than a claim the UI makes on the deployment's behalf.
+    harness.activateLegacyNarrative('My own unchecked narrative instructions.')
+
+    const res = await harness.get('/api/insights')
+
+    expect(res.statusCode).toBe(200)
+    expect(
+      res.json<{ narrativePrompt: { gate: string; locked: boolean } }>().narrativePrompt,
+    ).toEqual({ gate: 'built_in', locked: true })
+  })
+
   it('reports the mode on the settings payload, so the panel can disable the box', async () => {
     // The editor has to say why it is read-only. A panel that learned this only from a 403
     // would offer a textarea, accept typing into it, and refuse on save.
     const res = await harness.get('/api/settings')
     expect(res.statusCode).toBe(200)
     expect(res.json<{ promptEditing: string }>().promptEditing).toBe('analysis_only')
+  })
+
+  it('still dry-runs a named analysis version, because this mode has not touched that key', async () => {
+    // The mirror of the `locked` case below. A `409` here is the fresh-fixture answer — no
+    // aggregated month to price a run against — and what matters is that it is not a `403`.
+    const res = await harness.post('/api/ai/dry-run', { promptId: harness.analysisVersionId() })
+    expect(res.statusCode).not.toBe(403)
+  })
+})
+
+/**
+ * `locked`, which after #455 has behaviour of its own rather than being `analysis_only` with
+ * one more comparison: both keys are pinned at read time, and the one route that reaches a
+ * stored prompt without going through `resolvePrompt` has to refuse.
+ */
+describe('PROMPT_EDITING=locked', () => {
+  beforeEach(async () => {
+    harness = await harnessWith('locked')
+  })
+
+  it('loads with the mode the environment asked for', () => {
+    expect(harness.promptEditing).toBe('locked')
+  })
+
+  it('refuses a dry run of a named analysis version (#455)', async () => {
+    // The last door the read-time pin would otherwise leave open: `/api/ai/dry-run` accepts a
+    // `promptId` and loads that row directly, so without this an owner of a locked deployment
+    // could still send their own instructions to a model. `403`, naming the setting, rather
+    // than silently answering about the built-in text — a dry run is a question about one
+    // specific version, and quietly answering about a different one would be worse.
+    const res = await harness.post('/api/ai/dry-run', { promptId: harness.analysisVersionId() })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json<{ error: { message: string } }>().error.message).toContain(
+      'PROMPT_EDITING=locked',
+    )
+  })
+
+  it('pins the analysis prompt too, not only the narrative one', async () => {
+    // `locked` means every key, and the dry run with no `promptId` asks what the nightly job
+    // would do — which is now the built-in text. A `409` for having no month is fine; a `403`
+    // would mean the unnamed form had been caught by the guard above, which it must not be.
+    const res = await harness.post('/api/ai/dry-run', {})
+    expect(res.statusCode).not.toBe(403)
   })
 })

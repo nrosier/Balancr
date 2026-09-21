@@ -55,6 +55,7 @@
       "not_confident": "The model was not confident enough about this one to guess.",
       "not_gated": "These instructions need no safety check.",
       "ok": "Completed.",
+      "prompt_unvalidated": "The narrative instructions have not passed a safety check, so no review was written.",
       "reused": "Answered from a past run with nothing new to check — no charge.",
       "safe": "Checked: the instructions still impose every rule.",
       "truncated": "The model's answer was cut off, even after retrying — showing the last one instead.",

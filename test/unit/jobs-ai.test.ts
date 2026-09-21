@@ -23,12 +23,13 @@ import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
 import { eurToMicroEur } from '../../src/adapters/ai/pricing.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { aiFindings, aiRuns, proposals, tenantIntegrations } from '../../src/db/schema.ts'
+import { aiFindings, aiRuns, prompts, proposals, tenantIntegrations } from '../../src/db/schema.ts'
 import { importEnvIntegrationsOnce } from '../../src/db/tenant-integrations.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import { openQuestionCount } from '../../src/domain/ai/clarify.ts'
 import { loadNarrative } from '../../src/domain/ai/narrative.ts'
+import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { logger } from '../../src/logger.ts'
 import { aiJob, CATCHUP_NIGHTS, monthsToAnalyse, narrativePeriod } from '../../src/jobs/ai.ts'
@@ -365,6 +366,54 @@ describe('the nightly pass', () => {
 
     expect(run.status).toBe('error')
     expect(run.error).toContain('bad_response')
+  })
+
+  it('reports an unchecked narrative prompt without failing, and still analyses (#455)', async () => {
+    // A configuration refusal, not a provider fault: a retry cannot fix it, somebody has to
+    // check the text or roll back. So the job stays green, the analysis half still runs, and
+    // the reason is on the detail — the loud part is the insights banner, not a red ops row
+    // every night for a setting only a person can change.
+    seedTwoMonths()
+    db.insert(prompts)
+      .values({
+        tenantId: TENANT_ID,
+        key: 'narrative.system',
+        locale: SHARED_LOCALE,
+        version: 1,
+        body: 'Write whatever you like about the month.',
+        active: true,
+      })
+      .run()
+    const recorded = fakeGemini(
+      response([
+        { code: 'over_available', label: labelOf(MONTH, 'food'), severity: 'alert', confidence: 70 },
+      ]),
+    )
+
+    const run = await night()
+
+    expect(run.status).toBe('ok')
+    expect(run.error ?? null).toBeNull()
+    expect(run.detail).toMatchObject({
+      analysisStatus: 'ok',
+      narrativeStatus: 'skipped',
+      narrativeReason: 'prompt_unvalidated',
+    })
+    // The analysis half landed; only the narrative refused, and it was never sent.
+    expect(recorded).toEqual({ analysis: 1, narrative: 0 })
+    expect(db.select().from(aiFindings).all()).toHaveLength(1)
+    expect(loadNarrative(db, TENANT_ID, LAST, 'en')).toBeNull()
+    expect(runsOf('narrative')[0]?.status).toBe('blocked')
+  })
+
+  it('names the narrative reason on an ordinary night too', async () => {
+    // Beside `analysisReason`, so the ops row reads the same way for both halves.
+    seedTwoMonths()
+    fakeGemini(response())
+
+    const run = await night()
+
+    expect(run.detail['narrativeReason']).toBe('ok')
   })
 })
 

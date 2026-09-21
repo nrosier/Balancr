@@ -24,6 +24,15 @@
  * text cannot be checked against a signal table — which is why the narrative gets
  * the prompt's strongest wording and the smallest payload that still explains the
  * month.
+ *
+ * **That missing grounding step is why this file holds the enforcement boundary for #452.**
+ * `narrative.system` is editable, and an edit can remove the very rules above. Since #455
+ * `runNarrative` refuses outright when the active body has no safe verdict, and it **never
+ * substitutes `DEFAULT_PROMPTS` for it**. A silent substitution would be the worst possible
+ * bug in this module: the household would read prose written under rules they did not write
+ * while believing it came from the text in their editor, and the unchecked body would sit
+ * there indefinitely with nothing ever forcing the question. Refusing is loud, free, and has
+ * one fix.
  */
 import { and, desc, eq } from 'drizzle-orm'
 import { callAi } from '../../adapters/ai/client.ts'
@@ -43,9 +52,15 @@ import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
 import { checkBudget, spendMonthOf } from './budget.ts'
 import { hashPayload } from './payload-hash.ts'
 import { loadMonthNote } from './month-note.ts'
-import { composeNarrativeSystemPrompt, composeSystemPrompt, resolvePrompt } from './prompts.ts'
+import {
+  composeNarrativeSystemPrompt,
+  composeSystemPrompt,
+  isBuiltInBody,
+  loadPrompt,
+  resolvePrompt,
+} from './prompts.ts'
 import type { RedactedPayload } from './redact.ts'
-import { loadRunPayload, recordRun } from './runs.ts'
+import { loadRun, loadRunPayload, recordRun } from './runs.ts'
 
 const log = logger.child({ module: 'ai.narrative' })
 
@@ -207,6 +222,96 @@ export function noteChangedSince(db: Db, tenantId: string, narrative: NarrativeR
 }
 
 /**
+ * True when *this* review was written from instructions the household had edited (#455,
+ * Q3 of #452).
+ *
+ * The disclosure every reader gets, owner and viewer alike: prose produced under rules
+ * somebody rewrote is not the same artefact as prose produced under Balancr's own, and a
+ * reader who cannot tell the two apart has no way to weigh what they are reading.
+ *
+ * **Read from the run's own prompt row, never from `resolvePrompt`.** `ai_narratives.runId`
+ * → `ai_runs.promptId` → the `prompts` row that was actually used, which is immutable by
+ * design (an edit is a new row, see `prompts.ts`). Asking what is active *now* would get
+ * both directions wrong: a prompt rolled back after this review was written would un-flag
+ * it, and an edit made this morning would retroactively flag every review ever produced
+ * from the built-in text. The row that produced the words is the only thing that can answer
+ * the question about those words.
+ *
+ * Compared with `isBuiltInBody`, so the four states collapse to the one a reader cares
+ * about — was this Balancr's text or somebody's own — and a `safe` verdict does not make an
+ * edited prompt read as unedited. Note that `isBuiltInBody` matches the *current* default
+ * only, so a review written from an older built-in reads as edited. That is the honest
+ * answer to "was this written from the instructions this build ships", and it is the same
+ * comparison the gate itself uses; see `isBuiltInBody`'s own comment for why the historical
+ * bodies get no free pass.
+ *
+ * **A translation is followed back to the review it translated.** `translateNarrative` sends
+ * the code-owned `TRANSLATION_SYSTEM` and therefore records no `promptId` of its own — but
+ * the *prose* is the source review's, edited instructions and all, so a Dutch reader of a
+ * translated review has exactly the same reason to be told as the English reader who has the
+ * original in front of them. Dropping the disclosure at the language switch would be a hole
+ * in the promise this field makes to "every reader". The walk is bounded by the locales it
+ * has already visited, because a pair of reviews each translated from the other is reachable
+ * (translate `en`→`nl`, later rewrite `en` by translating `nl` back) and would otherwise
+ * loop.
+ *
+ * One imprecision worth naming: the source is found by `(period, locale)`, and a narrative is
+ * stored one row per pair — so if the English review is *rewritten* after the Dutch
+ * translation was made, the Dutch disclosure follows the new English text rather than the
+ * text that was actually translated. Recording the source run on the translation row would
+ * fix it; carrying a `promptId` the translation call did not use would not, because it would
+ * make the ledger claim a prompt version was sent when it was not.
+ *
+ * False for a run with no `promptId` and no translation source — a narrative written before
+ * the ledger recorded one, or one produced from the built-in fallback, which has no row. "We
+ * cannot tell" must not print as "somebody edited this", the same way `noteChangedSince`
+ * refuses to call a pre-#298 review stale.
+ */
+export function usedEditedPrompt(db: Db, tenantId: string, narrative: NarrativeRow): boolean {
+  const visited = new Set<string>()
+  let row: NarrativeRow | null = narrative
+
+  while (row !== null && !visited.has(row.locale)) {
+    visited.add(row.locale)
+    const run = loadRun(db, tenantId, row.runId)
+    if (run === null) return false
+
+    if (run.promptId !== null) {
+      const prompt = loadPrompt(db, tenantId, run.promptId)
+      if (prompt === null) return false
+      // `narrative.system` by construction: this is the only key `runNarrative` resolves, and
+      // it is the key whose text the disclosure is about.
+      return !isBuiltInBody('narrative.system', prompt.body)
+    }
+
+    row = translationSource(db, tenantId, row, run.id)
+  }
+  return false
+}
+
+/**
+ * The review a translation was made from, or null when this run is not a translation.
+ *
+ * Read out of the stored payload rather than from a column, because the payload is where
+ * `translateNarrative` already records the source language — `{ period, from, to, bodyMd }`.
+ * Null for anything that does not carry a usable `from`, which covers every non-translation
+ * run and every payload that will not parse.
+ */
+function translationSource(
+  db: Db,
+  tenantId: string,
+  narrative: NarrativeRow,
+  runId: string,
+): NarrativeRow | null {
+  const payload = loadRunPayload(db, tenantId, runId)
+  if (payload === null || typeof payload !== 'object') return null
+  const from = (payload as { from?: unknown }).from
+  if (typeof from !== 'string' || from === narrative.locale) return null
+
+  return loadNarrative(db, tenantId, narrative.period, from)
+}
+
+/**
  * The languages this period has been written in.
  *
  * What the translate control is built from: offering "write this in Dutch" for a
@@ -343,6 +448,13 @@ export type NarrativeReason =
   | 'call_failed'
   | 'empty_response'
   | 'truncated'
+  /**
+   * The active `narrative.system` body has no safe verdict, so no narrative was written
+   * (#455, part of #452). A configuration refusal, not a fault: nothing was called,
+   * nothing was billed, and a retry cannot fix it — somebody has to check the text or
+   * roll back to one that passed. See the refusal in `runNarrative`.
+   */
+  | 'prompt_unvalidated'
 
 export interface NarrativeOutcome {
   status: NarrativeStatus
@@ -436,7 +548,7 @@ export function monthHasEnded(period: string, now = new Date()): boolean {
  * price is what a button must show before it is pressed, because the key is pre-paid and
  * a click is the only thing in this application that spends money.
  *
- * Three of the four refusals cost nothing to discover and are worth saying rather than
+ * Four of the five refusals cost nothing to discover and are worth saying rather than
  * pricing:
  *
  *  - `month_not_ended` — see `monthHasEnded`. Not a budget decision, so it is answered
@@ -446,9 +558,14 @@ export function monthHasEnded(period: string, now = new Date()): boolean {
  *    would be charging for the scroll.
  *  - `no_facts` — nothing was aggregated for the month, which is also when a run would
  *    have nothing to describe.
+ *  - `prompt_unvalidated` — the active instructions have no safe verdict, so `runNarrative`
+ *    will refuse (#455). This is the mirror of that refusal and the reason it is here: the
+ *    estimate is what a button shows before it is pressed, and quoting a price for a run
+ *    that is going to refuse is the same mistake `requireAiAvailable` refuses to make on
+ *    the endpoint next door.
  *
- * `allowed: false` for all three, because in none of them would pressing the button
- * produce a new narrative. Only the fourth (over budget) carries a real estimate, and
+ * `allowed: false` for all four, because in none of them would pressing the button
+ * produce a new narrative. Only the fifth (over budget) carries a real estimate, and
  * only that one is a judgement the guard makes.
  */
 export function estimateNarrative(
@@ -474,6 +591,14 @@ export function estimateNarrative(
 
   const prepared = prepareMonth(db, tenantId, options.period, locale)
   if (prepared === null) return refused('no_facts')
+
+  // After the free checks and before anything is priced, mirroring `runNarrative` (#455).
+  // Resolving costs one indexed read, and pricing a run whose prompt cannot be used would
+  // put a figure in front of somebody for a button that is going to refuse.
+  const prompt = resolvePrompt(db, tenantId, 'narrative.system', locale)
+  if (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe') {
+    return refused('prompt_unvalidated')
+  }
 
   const payloadChars = JSON.stringify(prepared.narrativePayload).length
   const estimateMicroEur = estimateCostMicroEur(ai.provider, model, payloadChars, EXPECTED_OUTPUT_TOKENS, ai.modelPrices)
@@ -554,6 +679,46 @@ export async function runNarrative(
   const { narrativePayload: payload, nameForLabel } = prepared
   const payloadHash = hashPayload(payload)
 
+  // ---------------------------------------------------------------------------
+  //  The enforcement boundary (#455, part of #452)
+  // ---------------------------------------------------------------------------
+  //
+  // Resolved *before* the budget guard, which is a reorder rather than a coincidence: a run
+  // that cannot use its own instructions must refuse for free, and reporting `capped` for
+  // it would name the wrong problem and hide this one behind whichever came first in the
+  // month. Refusing is also the cheaper answer, so there is no reason to buy the budget
+  // decision first.
+  //
+  // **Never substitute `DEFAULT_PROMPTS` here.** Falling back to Balancr's own text would
+  // look like the forgiving choice and would be the worst bug in this file: the household
+  // would read a review written under rules they did not write, believing it came from the
+  // instructions they can see in the editor, and the edited body would sit there
+  // permanently unchecked with nothing ever forcing the question. Refusing is loud, costs
+  // nothing, and has exactly one fix — check the text, or activate a version that passed.
+  //
+  // `blocked` rather than `capped` or `error`: nothing was called and nothing was billed,
+  // so a cost-shaped status would be a lie, and `error` is what a retry can fix. The
+  // prepared payload goes on the row anyway, because "what would have been sent" is the
+  // audit question this ledger exists to answer.
+  const prompt = resolvePrompt(db, tenantId, 'narrative.system', locale)
+  if (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe') {
+    const runId = recordRun(db, tenantId, {
+      kind: 'narrative',
+      provider: ai.provider,
+      model,
+      locale,
+      period,
+      payload,
+      payloadHash,
+      status: 'blocked',
+      promptId: prompt.id,
+      error: 'prompt_unvalidated',
+      userId: options.userId ?? null,
+    })
+    log.warn({ period, gate: prompt.gate }, 'narrative prompt has no safe verdict; refusing to run')
+    return failed(period, locale, 'skipped', 'prompt_unvalidated', runId)
+  }
+
   const estimate = estimateCostMicroEur(
     ai.provider,
     model,
@@ -578,8 +743,6 @@ export async function runNarrative(
     log.warn({ period, reason: decision.reason }, 'narrative capped by the monthly AI budget')
     return failed(period, locale, 'capped', decision.reason, runId)
   }
-
-  const prompt = resolvePrompt(db, tenantId, 'narrative.system', locale)
 
   let call: NarrativeCall
   try {
@@ -773,6 +936,9 @@ export async function translateNarrative(
   try {
     call = await callNarrativeModel(db, tenantId, {
       model,
+      // No gate check here, and none is missing (#455): `TRANSLATION_SYSTEM` is a code-owned
+      // constant that was never a `PROMPT_KEYS` entry, so there is no editable body to check
+      // and nothing an owner could have edited away.
       systemPrompt: composeSystemPrompt(TRANSLATION_SYSTEM, to),
       instruction: translationInstruction(from, to),
       payload,

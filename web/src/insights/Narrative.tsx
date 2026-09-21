@@ -22,6 +22,13 @@
  * has been pruned, which the schema's cascade prevents — the fallback prints the date
  * alone rather than the word "null" or an em dash nobody can interpret.
  *
+ * **Two things about the instructions behind the prose, since #455.** A review that already
+ * exists says so when it was written from instructions the household had edited — a
+ * disclosure every reader gets, not only the owner, because rules somebody rewrote change
+ * what the paragraph above is. And where the instructions in force now have no safety
+ * verdict, the priced offer is replaced by the reason no review will be written: see
+ * `PromptState`.
+ *
  * **The heading names the month, since #158.** It used to say "this month in words" over
  * whichever narrative was newest in this language, which on the 3rd of September was
  * August's — correct prose under a wrong heading, and no way to ask for July's at all.
@@ -46,6 +53,12 @@ import { Private } from '../ui/Money.tsx'
 
 export interface NarrativeProps {
   narrative: Insights['narrative']
+  /**
+   * What a review *would* be written from right now (#455) — not what the one above it
+   * was. Decides whether this card offers a price or explains why no review will be
+   * written; see `PromptState`.
+   */
+  narrativePrompt: Insights['narrativePrompt']
   /** The month on screen, or null on a deployment with nothing aggregated. */
   month: string | null
   /** True once `month` is over. The server's clock decided this, not the browser's. */
@@ -66,6 +79,7 @@ export interface NarrativeProps {
 
 export function Narrative({
   narrative,
+  narrativePrompt,
   month,
   ended,
   owner,
@@ -74,6 +88,12 @@ export function Narrative({
   onWritten,
 }: NarrativeProps): ReactNode {
   const { t, language } = useT()
+  // `runNarrative` will refuse outright for either of these (#455), so every priced control
+  // in this card is suppressed and `PromptState` says why instead. Three mount points, one
+  // predicate: the first write, the stale re-run and the plain rewrite would otherwise each
+  // put a price in front of somebody for a run that cannot happen.
+  const promptRefuses =
+    narrativePrompt.gate === 'unvalidated' || narrativePrompt.gate === 'unsafe'
   // ISO timestamps from the same server clock, both in `Z` form, so this is a
   // correct ordering and not just a string comparison that happens to work.
   const factsMoved =
@@ -101,12 +121,17 @@ export function Narrative({
             offer has anything to say. Its estimate is a request, so a component that
             rendered beside an existing review would price a run nobody can start.
           */}
-          {month === null || !aiEnabled ? null : ended ? (
-            <Offer month={month} owner={owner} onWritten={onWritten} />
-          ) : (
-            <p className="muted">
-              {t('ai:narrative.offer.notEnded', { month: formatMonth(month, language) })}
-            </p>
+          {month === null || !aiEnabled ? null : (
+            <>
+              <PromptState prompt={narrativePrompt} />
+              {promptRefuses ? null : ended ? (
+                <Offer month={month} owner={owner} onWritten={onWritten} />
+              ) : (
+                <p className="muted">
+                  {t('ai:narrative.offer.notEnded', { month: formatMonth(month, language) })}
+                </p>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -121,6 +146,16 @@ export function Narrative({
                   model: narrative.model,
                 })}
           </p>
+          {/*
+            Q3 of #452: every reader, owner and viewer alike, is told when *this* review was
+            written from instructions the household had edited. Beside the byline because it
+            is the same kind of fact as the model's name — what produced these words — and
+            the server derived it from the run's own prompt row, so rolling the prompt back
+            afterwards does not quietly un-say it.
+          */}
+          {narrative.promptCustom ? (
+            <p className="muted">{t('ai:narrative.promptCustom')}</p>
+          ) : null}
           {/*
             An edit landed in this month after this review was written (#162). The
             review itself is still shown above — it is not wrong, just about facts
@@ -142,7 +177,10 @@ export function Narrative({
                 offered a rewrite that returned the very paragraph it was complaining about.
                 Both reasons for being stale need the same thing: the row replaced.
               */}
-              <Offer month={month} owner={owner} onWritten={onWritten} force />
+              <PromptState prompt={narrativePrompt} />
+              {promptRefuses ? null : (
+                <Offer month={month} owner={owner} onWritten={onWritten} force />
+              )}
             </>
           ) : null}
           {/*
@@ -155,12 +193,52 @@ export function Narrative({
             there is a row, and it has to be replaced.
           */}
           {!stale && month !== null && aiEnabled && ended ? (
-            <Offer month={month} owner={owner} onWritten={onWritten} force rewriteCopy />
+            <>
+              <PromptState prompt={narrativePrompt} />
+              {promptRefuses ? null : (
+                <Offer month={month} owner={owner} onWritten={onWritten} force rewriteCopy />
+              )}
+            </>
           ) : null}
         </>
       )}
     </section>
   )
+}
+
+/**
+ * What stands where a priced button would otherwise be (#455, part of #452).
+ *
+ * Two states, and only one of them can be true at a time:
+ *
+ *  - **The instructions have no safe verdict** (`unvalidated`/`unsafe`). `runNarrative`
+ *    refuses outright and spends nothing, so the caller drops the `Offer` and this says why.
+ *    A price beside a run that is going to refuse is the failure `requireAiAvailable`
+ *    already argues against for the endpoint itself — "answering with a number for a run
+ *    that cannot be started is what puts a priced button on a page that has no model behind
+ *    it" — and it is worse here, because the reader would press it and be charged nothing
+ *    while learning nothing. `notice--warn` rather than `muted`: this is the one state where
+ *    no review will be written at all until somebody acts, and the sentence names who can.
+ *  - **`PROMPT_EDITING` has pinned the key** to Balancr's own text. Nothing is broken and
+ *    the `Offer` stays — a run works fine — but the reader is told which instructions it
+ *    will use, because the server genuinely substitutes the built-in body in that case
+ *    (`resolvePrompt`) and saying so is what makes the sentence true rather than decorative.
+ *
+ * Rendered in all three of the card's offer slots rather than once at the top, so the
+ * explanation sits where the missing button was.
+ */
+function PromptState({ prompt }: { prompt: Insights['narrativePrompt'] }): ReactNode {
+  const { t } = useT()
+
+  if (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe') {
+    return (
+      <p className="notice notice--warn" role="status">
+        {t('ai:narrative.promptUnvalidated')}
+      </p>
+    )
+  }
+  if (prompt.locked) return <p className="muted">{t('ai:narrative.promptLocked')}</p>
+  return null
 }
 
 /**

@@ -261,6 +261,7 @@ function Sections({
           ) : data.ai.enabled || data.narrative !== null ? (
             <Narrative
               narrative={data.narrative}
+              narrativePrompt={data.narrativePrompt}
               month={data.month}
               ended={ended}
               owner={data.owner}

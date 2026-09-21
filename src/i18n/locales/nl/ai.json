@@ -107,6 +107,9 @@
       "starting": "Bezig met schrijven…",
       "written": "Geschreven, voor {{cost}}. De pagina is opnieuw geladen."
     },
+    "promptCustom": "Geschreven met instructies die dit huishouden zelf heeft aangepast.",
+    "promptLocked": "Geschreven met de ingebouwde instructies; aanpassen staat uit op deze installatie.",
+    "promptUnvalidated": "De instructies voor het maandverhaal zijn niet door hun veiligheidscontrole gekomen, dus er wordt geen verhaal geschreven zolang dat niet gebeurt. De eigenaar kan ze nakijken bij de instellingen.",
     "rewrite": {
       "lede": "Er is niets veranderd aan deze maand, maar je kunt toch een nieuw verhaal aanvragen — dezelfde prijs als elke andere run.",
       "start": "Toch herschrijven"

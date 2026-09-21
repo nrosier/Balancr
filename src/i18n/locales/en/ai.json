@@ -107,6 +107,9 @@
       "starting": "Writing…",
       "written": "Written, for {{cost}}. The page has been reloaded."
     },
+    "promptCustom": "Written from instructions this household has edited.",
+    "promptLocked": "Written from the built-in instructions; editing is switched off on this deployment.",
+    "promptUnvalidated": "The instructions for the monthly review have not passed their safety check, so no review will be written until they do. The owner can check them under Settings.",
     "rewrite": {
       "lede": "Nothing about this month has changed, but you can ask for a new review anyway — same price as any other run.",
       "start": "Rewrite it anyway"

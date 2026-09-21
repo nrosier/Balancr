@@ -47,7 +47,13 @@ import { collectBundle } from './bundle.ts'
 import { enqueueClarifications } from './clarify.ts'
 import { DEFAULT_CAPS, rankSignals, type RankCaps } from './findings.ts'
 import { hashPayload } from './payload-hash.ts'
-import { composeSystemPrompt, loadPrompt, resolvePrompt, type ResolvedPrompt } from './prompts.ts'
+import {
+  composeSystemPrompt,
+  loadPrompt,
+  promptGateState,
+  resolvePrompt,
+  type ResolvedPrompt,
+} from './prompts.ts'
 import { redact, type AnalysisBundle, type RedactedPayload } from './redact.ts'
 import { renderSignals, type RenderedFinding } from './render.ts'
 import { findReusableRun, recordRun } from './runs.ts'
@@ -506,6 +512,12 @@ function resolvePromptFor(
     locale: row.locale,
     version: row.version,
     body: row.body,
+    // Computed from the row rather than assumed (#455). `analysis.system` is not in
+    // `GATED_PROMPT_KEYS` — its output is grounded against the signal table, so an edit
+    // cannot invent a finding — and nothing in this pass reads `gate`; it is answered
+    // honestly anyway, so a future decision to gate this key finds a real value here
+    // instead of a hard-coded `built_in` that would quietly exempt every named version.
+    gate: promptGateState('analysis.system', row),
   }
 }
 

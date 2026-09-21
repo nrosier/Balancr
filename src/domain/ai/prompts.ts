@@ -21,6 +21,7 @@
  * when someone deliberately overrides one language. See `prompt-locale.ts`.
  */
 import { and, desc, eq, sql } from 'drizzle-orm'
+import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { prompts } from '../../db/schema.ts'
 import { diffLines, type Diff } from '../../util/diff.ts'
@@ -392,6 +393,34 @@ export const GATED_PROMPT_KEYS: readonly PromptKey[] = ['narrative.system']
 
 export function isGatedKey(key: PromptKey): boolean {
   return GATED_PROMPT_KEYS.includes(key)
+}
+
+/** What `PROMPT_EDITING` can be. Mirrors the enum in `config.ts`. */
+export type PromptEditing = 'full' | 'analysis_only' | 'locked'
+
+/**
+ * Whether this deployment mode takes this key out of an owner's hands (#454, Q1 of #452).
+ *
+ * `locked` blocks every key; `analysis_only` blocks `narrative.system` alone, because the
+ * analysis pass's output is grounded against the signal table and an edit there cannot
+ * invent a finding. `full` — the default, and every existing deployment — blocks nothing.
+ *
+ * Takes the mode rather than reading `config`, for the reason `requireAiAvailable` and
+ * `requireJobsEnabled` already do: a branch that reads the module-level config can only be
+ * tested by rebuilding the module graph, and a guard nobody can test cheaply is a guard that
+ * quietly stops firing.
+ *
+ * **It lives here rather than beside the `403` it produces**, which is where #454 first put
+ * it. Two things consult it now and they are in different layers: `requirePromptEditable`
+ * in `src/server/routes/settings.ts` refuses a *write*, and `resolvePrompt` below pins a
+ * *read* to the built-in text. "Which keys has this deployment taken away" has to be one
+ * answer for both, or a deployment could refuse the edit and still run the edited row —
+ * which is exactly the state #454's own comment promised #455 would close.
+ */
+export function promptEditingBlocks(mode: PromptEditing, key: PromptKey): boolean {
+  if (mode === 'full') return false
+  if (mode === 'locked') return true
+  return key === 'narrative.system'
 }
 
 /**
@@ -1067,6 +1096,16 @@ export interface ResolvedPrompt {
   /** 0 for the built-in fallback, so a stored version is never mistaken for it. */
   version: number
   body: string
+  /**
+   * What this body is cleared for (#455, part of #452).
+   *
+   * On the resolved prompt rather than left to the caller, because the caller that has to
+   * act on it — `runNarrative` — holds a `ResolvedPrompt` and nothing else, and a second
+   * query to ask "and was that row checked?" is a second place the answer could differ
+   * from the body it belongs to. `built_in` for the fallback constant and for the
+   * `PROMPT_EDITING` pin below, both of which are text this build ships.
+   */
+  gate: PromptGateState
 }
 
 /**
@@ -1080,13 +1119,46 @@ export interface ResolvedPrompt {
  * The old middle step read `DEFAULT_LOCALE`'s active version, which was standing in
  * for the shared row and could never be reached, because seeding gave every locale
  * an active row of its own.
+ *
+ * Since #455 it also answers `gate` — see `ResolvedPrompt.gate` — and honours
+ * `PROMPT_EDITING`, which is the one branch in this module worth reading twice.
+ *
+ * `promptEditing` is a parameter with a `config` default, the way `installEgressGuard`
+ * takes its mode: every caller gets the deployment's real setting for free, and a test can
+ * prove the pin without rebuilding the module graph.
  */
 export function resolvePrompt(
   db: PromptDb,
   tenantId: string,
   key: PromptKey,
   locale: string,
+  promptEditing: PromptEditing = config.PROMPT_EDITING,
 ): ResolvedPrompt {
+  // ---------------------------------------------------------------------------
+  //  The one place this module substitutes text for what is actually stored.
+  // ---------------------------------------------------------------------------
+  //
+  // This file's header says an edit is never overwritten and `seedPrompts`' own comment
+  // calls a deploy that silently replaced somebody's wording "the worst bug in this file".
+  // Both still hold: nothing here writes, nothing here destroys a row, and every version
+  // stays in the editor's history exactly as saved.
+  //
+  // What differs from the mistake those comments warn about is *who decided and where they
+  // can see it*. This is an operator's `PROMPT_EDITING` line in `.env`, printed at startup
+  // by `configSummary()` and reported on `GET /api/settings` so the editor can say why it
+  // is read-only — not a per-run swap the code made on somebody's behalf and told nobody
+  // about. And it is precisely what has to be true for the insights page's "written from
+  // the built-in instructions; editing is switched off on this deployment" banner (#455) to
+  // be an honest sentence rather than a claim the UI makes on the deployment's behalf while
+  // a stored row quietly keeps running — which is the state #454 shipped and flagged.
+  //
+  // Read-time and unconditional, so it covers what a write-time `403` structurally cannot:
+  // a row that was already active before the variable was set, and an edit made straight
+  // in SQLite.
+  if (promptEditingBlocks(promptEditing, key)) {
+    return { id: null, key, locale, version: 0, body: DEFAULT_PROMPTS[key], gate: 'built_in' }
+  }
+
   for (const candidate of locale === SHARED_LOCALE ? [SHARED_LOCALE] : [locale, SHARED_LOCALE]) {
     const active = loadActivePrompt(db, tenantId, key, candidate)
     if (active !== null) {
@@ -1096,11 +1168,14 @@ export function resolvePrompt(
         locale: active.locale,
         version: active.version,
         body: active.body,
+        // The row's own body and verdict columns, so the gate cannot disagree with the text
+        // it was computed from.
+        gate: promptGateState(key, active),
       }
     }
   }
 
-  return { id: null, key, locale, version: 0, body: DEFAULT_PROMPTS[key] }
+  return { id: null, key, locale, version: 0, body: DEFAULT_PROMPTS[key], gate: 'built_in' }
 }
 
 /**
