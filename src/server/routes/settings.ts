@@ -141,9 +141,11 @@ import {
   loadActivePrompt,
   PROMPT_KEYS,
   loadPrompt,
+  promptEditingBlocks,
   promptGateState,
   PromptGateError,
   resolvePrompt,
+  type PromptEditing,
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
@@ -1031,39 +1033,25 @@ function touchedGroups(params: unknown, patch: object): Record<string, unknown> 
   return Object.fromEntries(Object.keys(patch).map((group) => [group, all[group]]))
 }
 
-/** What `PROMPT_EDITING` can be. Mirrors the enum in `config.ts`. */
-export type PromptEditing = 'full' | 'analysis_only' | 'locked'
-
 /**
- * Whether this mode forbids writing to this key (#454, Q1 of #452).
+ * Re-exported rather than defined here, which is where #454 put them.
  *
- * `locked` blocks every key; `analysis_only` blocks `narrative.system` alone, because the
- * analysis pass's output is grounded against the signal table and an edit there cannot
- * invent a finding. `full` — the default, and every existing deployment — blocks nothing.
- *
- * Takes the mode rather than reading `config`, for the reason `requireAiAvailable` and
- * `requireJobsEnabled` already do: a branch that reads the module-level config can only be
- * tested by rebuilding the module graph, and a guard nobody can test cheaply is a guard that
- * quietly stops firing.
+ * `resolvePrompt` needs the same answer at read time (#455) and `src/domain/` cannot import
+ * a route module, so the predicate moved to `domain/ai/prompts.ts` beside the keys it is
+ * about. Kept exported from here because this is the module whose `403` it produces, and
+ * because the tests that exercise the guard import it from this path.
  */
-export function promptEditingBlocks(mode: PromptEditing, key: PromptKey): boolean {
-  if (mode === 'full') return false
-  if (mode === 'locked') return true
-  return key === 'narrative.system'
-}
+export { promptEditingBlocks, type PromptEditing }
 
 /**
  * Refuses a prompt write this deployment has switched off.
  *
- * **What this PR does and does not do, so #455's implementer knows where the line is.**
- * This stops *new writes*: no version is created and none is activated for a locked key.
- * It does **not** make an already-locked deployment's narrative pass use the built-in text
- * — a row that was active before `PROMPT_EDITING` was set keeps being resolved and keeps
- * running. That read-time pinning is #455's, deliberately: it is the same
- * enforcement-boundary decision as the use-time refusal, it belongs in the same place
- * (`resolvePrompt`/`narrative.ts`), and splitting one decision across two PRs is how two
- * answers to it end up coexisting. So after this PR a `locked` deployment is one an owner
- * cannot change; after #455 it is one whose narrative demonstrably uses code-owned text.
+ * **Writes only, and `resolvePrompt` is the other half.** This stops a version being
+ * created or activated for a locked key; since #455 `resolvePrompt` additionally pins a
+ * locked key's *reads* to `DEFAULT_PROMPTS`, which is what covers the cases a route guard
+ * structurally cannot — a row that was already active before `PROMPT_EDITING` was set, and
+ * an edit made straight in SQLite. Both consult `promptEditingBlocks`, so a deployment
+ * cannot refuse the edit and still run the edited row.
  *
  * `403` rather than `409`: unlike the gate refusal below, nothing about the request or the
  * stored state can be fixed to make it succeed. The deployment does not permit it.

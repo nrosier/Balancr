@@ -1031,6 +1031,21 @@ export const aiRunSchema = z.object({
   createdAt: z.string(),
 })
 
+/**
+ * What a prompt row's text is cleared for (#454).
+ *
+ * Four states rather than a boolean, because "not checked" and "checked and refused" call
+ * for different words on screen and a different next action: one is a button to press, the
+ * other is text to rewrite. `built_in` is its own state for the same reason — a body this
+ * build ships needs no check at all, and showing it as "unchecked" would put a paid button
+ * next to every fresh installation's own default.
+ *
+ * Declared here rather than beside the prompt schemas below, because two payloads need it:
+ * the settings editor's version list, and `insightsSchema.narrativePrompt` (#455), which is
+ * what decides whether the insights page offers a priced review or explains why it cannot.
+ */
+export const promptGateSchema = z.enum(['built_in', 'safe', 'unvalidated', 'unsafe'])
+
 export const insightsSchema = z.object({
   freshness: freshnessSchema,
   /**
@@ -1135,8 +1150,42 @@ export const insightsSchema = z.object({
        * before #298, whose payload has no note to compare against.
        */
       noteChanged: z.boolean(),
+      /**
+       * This review was written from instructions the household had edited (#455, Q3 of
+       * #452) — the disclosure every reader gets, viewer as well as owner.
+       *
+       * Provenance, beside `model`, and for the same reason: what a reader needs to weigh a
+       * paragraph is what produced it. A swapped model already gets named here; rules
+       * somebody rewrote are the larger of the two facts.
+       *
+       * Derived from *this run's own* prompt row, never from what is active now — see
+       * `usedEditedPrompt`. A prompt rolled back after this review was written does not
+       * un-flag it and an edit made afterwards does not retroactively flag it, which is the
+       * only reading under which the sentence is true of the words above it.
+       */
+      promptCustom: z.boolean(),
     })
     .nullable(),
+  /**
+   * The state of the narrative instructions a run *would* use right now (#455).
+   *
+   * Separate from `narrative` above and deliberately never null: `narrative` is a review
+   * that exists, and this is about whether writing one is even possible — which is exactly
+   * the question the page has to answer when `narrative` is null and it is about to draw a
+   * priced button. `gate` outside `built_in`/`safe` means `runNarrative` will refuse, so the
+   * page shows why instead of a price; `locked` means `PROMPT_EDITING` has pinned the key to
+   * Balancr's own text, which runs fine and is worth saying out loud.
+   *
+   * The two cannot both be interesting at once — a pinned key resolves as `built_in` — but
+   * both are on the wire rather than folded into one code, because the pin is a property of
+   * the deployment and the gate is a property of a stored row, and a single field would
+   * make the page guess which it was looking at.
+   */
+  narrativePrompt: z.object({
+    gate: promptGateSchema,
+    /** `PROMPT_EDITING` takes `narrative.system` out of this deployment's hands. */
+    locked: z.boolean(),
+  }),
   /**
    * The clarification cards, which are the one place the server does render text.
    *
@@ -1246,17 +1295,6 @@ export const aiRunPayloadSchema = aiRunSchema.extend({
  * that renders as a list of dates. The body arrives from
  * `GET /api/settings/prompts/:id` when a version is opened.
  */
-/**
- * What a prompt row's text is cleared for (#454).
- *
- * Four states rather than a boolean, because "not checked" and "checked and refused" call
- * for different words on screen and a different next action: one is a button to press, the
- * other is text to rewrite. `built_in` is its own state for the same reason — a body this
- * build ships needs no check at all, and showing it as "unchecked" would put a paid button
- * next to every fresh installation's own default.
- */
-export const promptGateSchema = z.enum(['built_in', 'safe', 'unvalidated', 'unsafe'])
-
 export const promptVersionSchema = z.object({
   id: z.string(),
   version: z.int().positive(),

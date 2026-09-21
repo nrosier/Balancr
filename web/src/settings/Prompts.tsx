@@ -276,7 +276,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         </div>
       </div>
 
-      <Fallback entry={entry} locale={locale} />
+      <Fallback entry={entry} locale={locale} locked={locked} />
       {locked ? <LockedNotice promptEditing={settings.promptEditing} /> : null}
 
       <div className="field">
@@ -440,10 +440,25 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
  * otherwise edit without noticing: nothing is stored anywhere, so the box holds a
  * constant compiled into the build; or this language has versions but none of them is
  * active, so what runs for it is the shared text and not what is on screen above.
+ *
+ * Silent when `PROMPT_EDITING` has pinned this key (#455). `resolvePrompt` answers with the
+ * built-in text in that case however many versions are stored, so "nothing is stored
+ * anywhere" would be the wrong reason for the right box — and `LockedNotice`, rendered
+ * immediately below this, gives the right one.
  */
-function Fallback({ entry, locale }: { entry: PromptSetting; locale: string }): ReactNode {
+function Fallback({
+  entry,
+  locale,
+  locked,
+}: {
+  entry: PromptSetting
+  locale: string
+  locked: boolean
+}): ReactNode {
   const { t } = useT()
   const { active } = entry
+
+  if (locked) return null
 
   if (active.id === null) {
     return (

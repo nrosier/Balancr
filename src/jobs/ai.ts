@@ -141,6 +141,18 @@ async function run({ db, tenantId, now, log, force }: JobContext): Promise<JobDe
     degraded: current?.degraded ?? false,
     narrativePeriod: narrative.period,
     narrativeStatus: narrative.status,
+    /**
+     * Why the narrative half ended the way it did, beside `analysisReason` (#455).
+     *
+     * On the row because `prompt_unvalidated` is otherwise invisible to whoever reads this
+     * table: `skipped` is what a month with no facts reports too, and "the instructions have
+     * not passed a safety check" is the one narrative outcome that needs somebody to act. It
+     * is deliberately **not** in `PROVIDER_FAULTS` — a retry cannot fix a configuration
+     * refusal, the analysis half of the pass ran fine, and a red job row every night for a
+     * setting the owner has to change on the settings screen would train them to ignore the
+     * column. The loud part is the insights banner; this is the ops trail.
+     */
+    narrativeReason: narrative.reason,
     costMicroEur:
       analyses.reduce((sum, outcome) => sum + outcome.costMicroEur, 0) + narrative.costMicroEur,
   }

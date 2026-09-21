@@ -17,6 +17,11 @@
  *
  * Everything else is codes and integers.
  *
+ * `narrativePrompt` (#455) is the same kind of field one level down: `ai` says whether a
+ * model can run at all, and this says whether the *narrative* pass can — its instructions
+ * may be somebody's own wording with no safety verdict, in which case `runNarrative` refuses
+ * and a priced button on the page would be an offer to buy a refusal.
+ *
  * `ai` says whether a model can run here at all. Three of the five sections below it
  * are the AI layer's output, and on a deployment with no key they are empty arrays that
  * look exactly like "nothing to report" — so the flag is what lets the page explain
@@ -70,7 +75,13 @@ import {
 import { tenantAiAvailability } from '../../../domain/ai/availability.ts'
 import { budgetState } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
-import { loadNarrative, noteChangedSince, renderNarrative } from '../../../domain/ai/narrative.ts'
+import {
+  loadNarrative,
+  noteChangedSince,
+  renderNarrative,
+  usedEditedPrompt,
+} from '../../../domain/ai/narrative.ts'
+import { promptEditingBlocks, resolvePrompt } from '../../../domain/ai/prompts.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
 import type { Signal } from '../../../domain/aggregate/overspend.ts'
@@ -144,7 +155,18 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
             generatedAt: narrative.createdAt.toISOString(),
             model: loadRun(db, tenantId, narrative.runId)?.model ?? null,
             noteChanged: noteChangedSince(db, tenantId, narrative),
+            // From the run's own prompt row, not from what is active now — see
+            // `usedEditedPrompt` for why that distinction is the whole field.
+            promptCustom: usedEditedPrompt(db, tenantId, narrative),
           },
+    // What a review *would* be written from, which is a different question from what the
+    // review above was written from, and the one the page needs before it prices a button.
+    // Asked through `resolvePrompt` so the answer is the same object `runNarrative` will act
+    // on, rather than a second derivation that could disagree with it (#455).
+    narrativePrompt: {
+      gate: resolvePrompt(db, tenantId, 'narrative.system', locale).gate,
+      locked: promptEditingBlocks(config.PROMPT_EDITING, 'narrative.system'),
+    },
     questions: openQuestions(db, tenantId, locale).map((card) => ({
       id: card.id,
       categoryId: card.categoryId,

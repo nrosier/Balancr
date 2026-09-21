@@ -28,6 +28,7 @@ interface Harness {
   post: (url: string, body?: object) => Promise<LightMyRequestResponse>
   promptEditing: string
   narrativeVersionId: () => string
+  activateLegacyNarrative: (body: string) => void
 }
 
 /**
@@ -47,7 +48,7 @@ async function harnessWith(mode: string): Promise<Harness> {
   const { createSession } = await import('../../src/server/auth/sessions.ts')
   const { CSRF_COOKIE, SESSION_COOKIE } = await import('../../src/server/cookies.ts')
   const { CSRF_HEADER, newCsrfToken } = await import('../../src/server/csrf.ts')
-  const { users } = await import('../../src/db/schema.ts')
+  const { prompts, users } = await import('../../src/db/schema.ts')
   const { getSoleTenantId } = await import('../../src/db/tenant.ts')
   const { createPromptVersion } = await import('../../src/domain/ai/prompts.ts')
   const { apiFixture } = await import('../helpers/api-fixture.ts')
@@ -100,6 +101,20 @@ async function harnessWith(mode: string): Promise<Harness> {
         locale: SHARED,
         body: `My own narrative instructions ${crypto.randomUUID()}.`,
       }).id,
+    // An *active*, edited, unchecked narrative row, inserted the way a build before #454 left
+    // one — which is the state the read-time pin (#455) exists for and the only state in
+    // which the pin is observable. `createPromptVersion(activate: true)` cannot produce it:
+    // the save-time gate refuses, correctly.
+    activateLegacyNarrative: (body: string) => {
+      ctx.db.insert(prompts).values({
+        tenantId,
+        key: 'narrative.system',
+        locale: SHARED,
+        version: 900,
+        body,
+        active: true,
+      }).run()
+    },
     close: async () => {
       await app.close()
       ctx.sqlite.close()
@@ -192,6 +207,22 @@ describe('PROMPT_EDITING=analysis_only', () => {
       activate: true,
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  it('reports the lock on the insights payload, so the review card can say why (#455)', async () => {
+    // The banner slot in `Narrative.tsx` reads this. The active narrative row here is
+    // somebody's own unchecked wording, and `gate` comes back `built_in` anyway — which is the
+    // read-time pin working end to end: `resolvePrompt` answered with `DEFAULT_PROMPTS`, so
+    // "written from the built-in instructions" is a true sentence about what will run rather
+    // than a claim the UI makes on the deployment's behalf.
+    harness.activateLegacyNarrative('My own unchecked narrative instructions.')
+
+    const res = await harness.get('/api/insights')
+
+    expect(res.statusCode).toBe(200)
+    expect(
+      res.json<{ narrativePrompt: { gate: string; locked: boolean } }>().narrativePrompt,
+    ).toEqual({ gate: 'built_in', locked: true })
   })
 
   it('reports the mode on the settings payload, so the panel can disable the box', async () => {

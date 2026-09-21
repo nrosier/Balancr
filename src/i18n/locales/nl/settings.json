@@ -55,6 +55,7 @@
       "not_confident": "Het model was hier niet zeker genoeg van om te raden.",
       "not_gated": "Deze instructies hebben geen veiligheidscontrole nodig.",
       "ok": "Afgerond.",
+      "prompt_unvalidated": "De instructies voor het verhaal zijn niet door een veiligheidscontrole gekomen, dus er is geen verhaal geschreven.",
       "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten.",
       "safe": "Gecontroleerd: de instructies leggen nog elke regel op.",
       "truncated": "Het antwoord van het model werd afgekapt, ook na een nieuwe poging — het vorige antwoord wordt getoond.",

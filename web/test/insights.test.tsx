@@ -132,6 +132,13 @@ const RUNS: AiRun[] = [
 /** The configured-and-on answer, which is what every fixture but one carries. */
 const AI_ON = { enabled: true, reason: null } as const
 
+/**
+ * Narrative instructions nothing is wrong with: the built-in text, on a deployment that
+ * still lets an owner edit it (#455). What every fixture below carries unless it is about
+ * the gate itself.
+ */
+const PROMPT_CLEARED = { gate: 'built_in', locked: false } as const
+
 /** A month the AI layer has been all the way through. */
 const FULL: InsightsPayload = {
   freshness: FRESH,
@@ -151,7 +158,11 @@ const FULL: InsightsPayload = {
     // The default state, and the one most reviews are in: the note it was written from is
     // still the note there is. The cases that set it true say so at the call site (#298).
     noteChanged: false,
+    // Written from Balancr's own instructions, which is what a deployment nobody has edited
+    // reports. The disclosure case sets it true at its own call site (#455).
+    promptCustom: false,
   },
+  narrativePrompt: PROMPT_CLEARED,
   questions: [
     {
       id: 'q-nature',
@@ -241,6 +252,7 @@ const EMPTY: InsightsPayload = {
   signals: [],
   signalsHistory: [],
   narrative: null,
+  narrativePrompt: PROMPT_CLEARED,
   questions: [],
   proposals: [],
   categoryGuessCandidates: [],
@@ -717,6 +729,7 @@ const NARRATIVE_ESTIMATE: AiEstimate = {
 
 /** Every prop `Narrative` needs besides `narrative`, for a test that renders it in isolation. */
 const NARRATIVE_PROPS = {
+  narrativePrompt: PROMPT_CLEARED as InsightsPayload['narrativePrompt'],
   month: '2026-08',
   ended: true,
   owner: true,
@@ -971,6 +984,134 @@ describe('the narrative', () => {
       '/api/ai/narrative',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ period: '2026-08' }) }),
     )
+  })
+
+  /**
+   * #455 — what the card does when a run would refuse, or when the deployment has pinned the
+   * instructions.
+   *
+   * The assertion that matters in the refusal cases is that no button and no price are drawn.
+   * A priced control for a run that is going to refuse is the failure `requireAiAvailable`
+   * argues against on the server; on this side it would also mean `/api/ai/estimate` was
+   * called, which the `serve` stub would fail loudly on.
+   */
+  describe('the prompt safety gate', () => {
+    const gate = (state: 'unvalidated' | 'unsafe' | 'built_in', locked = false) =>
+      ({ gate: state, locked }) as InsightsPayload['narrativePrompt']
+
+    const UNVALIDATED =
+      'The instructions for the monthly review have not passed their safety check, so no ' +
+      'review will be written until they do. The owner can check them under Settings.'
+    const LOCKED =
+      'Written from the built-in instructions; editing is switched off on this deployment.'
+
+    it('says no review will be written, instead of pricing one', () => {
+      // No `serve` stub at all: if the offer mounted it would fetch an estimate and fail.
+      renderApp(
+        <Narrative narrative={null} {...NARRATIVE_PROPS} narrativePrompt={gate('unvalidated')} />,
+      )
+
+      expect(screen.getByText(UNVALIDATED)).toBeTruthy()
+      expect(screen.queryByRole('button')).toBeNull()
+      expect(document.body.textContent ?? '').not.toContain('would cost about')
+    })
+
+    it('does the same for an unsafe verdict', () => {
+      renderApp(
+        <Narrative narrative={null} {...NARRATIVE_PROPS} narrativePrompt={gate('unsafe')} />,
+      )
+
+      expect(screen.getByText(UNVALIDATED)).toBeTruthy()
+      expect(screen.queryByRole('button')).toBeNull()
+    })
+
+    it('draws it as a warning, not as a muted aside', () => {
+      // The one state where nothing will be produced at all until somebody acts.
+      renderApp(
+        <Narrative narrative={null} {...NARRATIVE_PROPS} narrativePrompt={gate('unvalidated')} />,
+      )
+
+      expect(document.querySelector('.notice--warn')?.textContent).toBe(UNVALIDATED)
+    })
+
+    it('suppresses the rewrite offer beside a review that already exists', () => {
+      // The same argument as the first write: the button would be priced and would refuse.
+      renderApp(
+        <Narrative
+          narrative={FULL.narrative}
+          {...NARRATIVE_PROPS}
+          narrativePrompt={gate('unvalidated')}
+        />,
+      )
+
+      expect(screen.getByText(UNVALIDATED)).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Rewrite it anyway' })).toBeNull()
+    })
+
+    it('suppresses the stale re-run offer too', () => {
+      renderApp(
+        <Narrative
+          narrative={FULL.narrative}
+          {...NARRATIVE_PROPS}
+          narrativePrompt={gate('unvalidated')}
+          factsChangedAt="2026-09-02T00:00:00Z"
+        />,
+      )
+
+      // The stale sentence still stands — the review is behind its month — but the offer to
+      // fix it is replaced by the reason it cannot be taken up.
+      expect(screen.getByText('Based on data from 02/09/2026, 02:00.')).toBeTruthy()
+      expect(screen.getByText(UNVALIDATED)).toBeTruthy()
+      expect(screen.queryByRole('button')).toBeNull()
+    })
+
+    it('says which instructions a locked deployment uses, and still offers a review', async () => {
+      // Nothing is broken here: the server pinned the key to Balancr's own text, so a run
+      // works. The sentence is a disclosure, not a refusal, so the priced control stays.
+      serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+      renderApp(
+        <Narrative
+          narrative={null}
+          {...NARRATIVE_PROPS}
+          narrativePrompt={gate('built_in', true)}
+        />,
+      )
+
+      expect(screen.getByText(LOCKED)).toBeTruthy()
+      await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+    })
+
+    it('says nothing about the prompt when there is nothing to say', async () => {
+      serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
+      renderApp(<Narrative narrative={null} {...NARRATIVE_PROPS} />)
+
+      await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
+      const text = document.body.textContent ?? ''
+      expect(text).not.toContain(UNVALIDATED)
+      expect(text).not.toContain(LOCKED)
+    })
+
+    it('discloses an edited prompt to every reader of an existing review', () => {
+      // Q3: derived by the server from the run's own prompt row, so this is true of the words
+      // above it whatever is active now — and a viewer sees it exactly as the owner does.
+      renderApp(
+        <Narrative
+          narrative={{ ...FULL.narrative!, promptCustom: true }}
+          {...NARRATIVE_PROPS}
+          owner={false}
+        />,
+      )
+
+      expect(
+        screen.getByText('Written from instructions this household has edited.'),
+      ).toBeTruthy()
+    })
+
+    it('says nothing about the prompt for a review written from the built-in text', () => {
+      renderApp(<Narrative narrative={FULL.narrative} {...NARRATIVE_PROPS} />)
+
+      expect(document.body.textContent ?? '').not.toContain('this household has edited')
+    })
   })
 })
 
