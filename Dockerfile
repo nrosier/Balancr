@@ -11,9 +11,17 @@
 # releases, so there is no equivalent of Dockerfile.alpine's
 # ARG NODE_VERSION=26.8.2-alpine pin here.
 #
+# Both stages below are pinned to the digest `latest-dev`/`latest` resolved
+# to on 2026-09-21 (`docker buildx imagetools inspect cgr.dev/chainguard/node:latest-dev`),
+# rather than the floating tag, so a rebuild doesn't silently pick up a new
+# base image. Because free-tier Chainguard doesn't keep point releases, the
+# only way to move this pin forward is to re-resolve the tag to whatever
+# digest it currently points at — see .github/dependabot.yml's docker
+# ecosystem entry, which watches this Dockerfile for that.
+#
 # amd64 only, matching Dockerfile.alpine's current scope. Dockerfile.alpine
 # is kept as a reference/fallback build; CI no longer builds it.
-FROM cgr.dev/chainguard/node:latest-dev AS deps
+FROM cgr.dev/chainguard/node@sha256:3eb79c0858f6d4c565323e64ac2dc8f3f1e3a6e5e0097bbe379de4a96963312f AS deps
 ARG TARGETARCH
 WORKDIR /app
 USER root
@@ -24,7 +32,7 @@ RUN npm ci --omit=dev \
  && node scripts/prune-runtime-deps.mjs node_modules --arch=${TARGETARCH} \
  && npm cache clean --force
 
-FROM cgr.dev/chainguard/node:latest-dev AS build
+FROM cgr.dev/chainguard/node@sha256:3eb79c0858f6d4c565323e64ac2dc8f3f1e3a6e5e0097bbe379de4a96963312f AS build
 WORKDIR /app
 USER root
 RUN apk add --no-cache build-base python3
@@ -41,7 +49,7 @@ RUN npm run build
 # Docker accepts a bare numeric USER/--chown.
 RUN mkdir -p /data && chown -R 1000:1000 /data
 
-FROM cgr.dev/chainguard/node:latest AS runtime
+FROM cgr.dev/chainguard/node@sha256:1f903d44fc11a6f6e74447fc2c6a3c141f112217576be5d96c283210116b5d25 AS runtime
 ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_PATH=/data/balancr.db \
