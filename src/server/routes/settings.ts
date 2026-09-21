@@ -746,6 +746,10 @@ const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, E
 function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string): PromptSetting {
   const active = resolvePrompt(db, tenantId, key, locale)
   const versions = listPromptVersions(db, tenantId, key, locale)
+  // Read off the raw row set, not off `active`: `resolvePrompt` answers `id: null` for a
+  // locked key even when this locale has a version flagged active, and that is the one
+  // case `storedBody` exists to cover (#459).
+  const storedActive = versions.find((row) => row.active) ?? null
   // Fetched by id rather than found in `versions`, because the two are not the same set:
   // for a language with no override of its own, `resolvePrompt` answers with the *shared*
   // row, which this locale's version list does not contain. The verdict columns live on
@@ -776,6 +780,7 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
       validatedAt: activeRow?.validatedAt?.toISOString() ?? null,
       rulesVersion: activeRow?.validationRulesVersion ?? null,
     },
+    storedBody: storedActive?.body ?? null,
     versions: versions.map((row) => ({
       id: row.id,
       version: row.version,

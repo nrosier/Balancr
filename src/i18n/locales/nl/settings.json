@@ -471,6 +471,11 @@
     "locked": {
       "all": "Deze installatie draait met PROMPT_EDITING=locked, dus geen enkele instructie van de assistent kan hier aangepast worden. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
       "analysisOnly": "Deze installatie draait met PROMPT_EDITING=analysis_only, dus de instructies voor het maandverhaal staan vast op de eigen tekst van Balancr. De instructies voor de bevindingen kun je wel aanpassen. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
+      "builtIn": {
+        "explain": "Dit is de tekst waarmee Balancr wordt geleverd. Zolang aanpassen uitstaat, is dit wat werkelijk gebruikt wordt voor deze instructie — wat hieronder ook opgeslagen staat.",
+        "show": "Toon de ingebouwde instructies"
+      },
+      "emptyPlaceholder": "Hier is niets opgeslagen.",
       "title": "Aanpassen staat hier uit"
     },
     "note": "Wat er veranderd is",

@@ -284,4 +284,30 @@ describe('PROMPT_EDITING=locked', () => {
     const res = await harness.post('/api/ai/dry-run', {})
     expect(res.statusCode).not.toBe(403)
   })
+
+  it('still reports a stored active version on the settings payload, not just the built-in text (#459)', async () => {
+    // `active.body` is the built-in constant here — the pin working as intended. `storedBody`
+    // is the separate fact the editor needs to avoid showing that as if it were the only thing
+    // there is: something genuinely was saved, the lock just keeps it from running.
+    harness.activateLegacyNarrative('My own unchecked narrative instructions.')
+
+    const res = await harness.get('/api/settings')
+    expect(res.statusCode).toBe(200)
+    const narrative = res
+      .json<{ prompts: { key: string; locale: string; active: { body: string }; storedBody: string | null }[] }>()
+      .prompts.find((entry) => entry.key === 'narrative.system' && entry.locale === SHARED)
+
+    expect(narrative?.active.body).not.toBe('My own unchecked narrative instructions.')
+    expect(narrative?.storedBody).toBe('My own unchecked narrative instructions.')
+  })
+
+  it('reports storedBody as null when nothing was ever saved for a key', async () => {
+    const res = await harness.get('/api/settings')
+    expect(res.statusCode).toBe(200)
+    const analysis = res
+      .json<{ prompts: { key: string; locale: string; storedBody: string | null }[] }>()
+      .prompts.find((entry) => entry.key === 'analysis.system' && entry.locale === SHARED)
+
+    expect(analysis?.storedBody).toBeNull()
+  })
 })

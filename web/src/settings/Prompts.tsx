@@ -147,7 +147,17 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   // Derived rather than reseeded by an effect: when the selection changes the draft no
   // longer belongs to it, so the active body shows through without anything having to
   // notice the change and copy it across.
-  const body = draft?.for === selection ? draft.body : (entry?.active.body ?? '')
+  //
+  // `storedBody` rather than `active.body` while locked (#459): `active.body` is the
+  // built-in constant for a locked key regardless of what is actually saved, and showing
+  // it as if it were the stored text would make a genuine customization look identical
+  // to there being nothing there at all. Empty only when `storedBody` really is null.
+  const body =
+    draft?.for === selection
+      ? draft.body
+      : locked
+        ? (entry?.storedBody ?? '')
+        : (entry?.active.body ?? '')
   const note = draft?.for === selection ? draft.note : ''
   const stamp = `${selection}\n${body}`
 
@@ -278,6 +288,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
 
       <Fallback entry={entry} locale={locale} locked={locked} />
       {locked ? <LockedNotice promptEditing={settings.promptEditing} /> : null}
+      {locked ? <BuiltInDisclosure body={entry.active.body} /> : null}
 
       <div className="field">
         <label className="field__label" htmlFor="prompt-body">
@@ -289,6 +300,9 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           rows={14}
           spellCheck={false}
           value={body}
+          placeholder={
+            locked && entry.storedBody === null ? t('settings:prompt.locked.emptyPlaceholder') : undefined
+          }
           disabled={!owner || state.busy || locked}
           onChange={(event) => edit({ body: event.target.value })}
         />
@@ -820,6 +834,29 @@ function LockedNotice({ promptEditing }: { promptEditing: string }): ReactNode {
         )}
       </p>
     </div>
+  )
+}
+
+/**
+ * The text `LockedNotice` only describes, on demand (#459).
+ *
+ * A `<details>` rather than always-open prose: the built-in instructions can run to a
+ * few kilobytes, and printing them unconditionally under every locked key would bury
+ * the field below — the one thing on this screen that still has something to say about
+ * *this* deployment. `body` is always `entry.active.body`, which `resolvePrompt`
+ * answers with the built-in constant whenever the key is locked, so there is nothing
+ * further to fetch: reading it here is the same fact the server already used to decide
+ * what runs.
+ */
+function BuiltInDisclosure({ body }: { body: string }): ReactNode {
+  const { t } = useT()
+
+  return (
+    <details className="prompt__builtin">
+      <summary>{t('settings:prompt.locked.builtIn.show')}</summary>
+      <p className="muted">{t('settings:prompt.locked.builtIn.explain')}</p>
+      <pre className="prompt__builtin-body">{body}</pre>
+    </details>
   )
 }
 

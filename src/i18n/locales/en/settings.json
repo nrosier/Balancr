@@ -471,6 +471,11 @@
     "locked": {
       "all": "This installation runs with PROMPT_EDITING=locked, so none of the assistant's instructions can be edited here. Only whoever runs the server can change this, in its .env.",
       "analysisOnly": "This installation runs with PROMPT_EDITING=analysis_only, so the monthly narrative instructions are fixed to Balancr's own text. The findings instructions can still be edited. Only whoever runs the server can change this, in its .env.",
+      "builtIn": {
+        "explain": "This is the text Balancr ships with. While editing is switched off, it is what actually runs for this key — whatever is stored below.",
+        "show": "Show the built-in instructions"
+      },
+      "emptyPlaceholder": "Nothing has been stored here.",
       "title": "Editing is switched off here"
     },
     "note": "What changed",
