@@ -14,14 +14,18 @@ concurrency:
 permissions:
   contents: read
 
+# Actions below are pinned to a commit SHA, not a floating tag (GitHub's own
+# recommended convention: https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
+# The trailing `# vX` comment is what Dependabot/Renovate read to find and
+# open the bump PR when a new release lands — see .github/dependabot.yml.
 jobs:
   verify:
     name: Typecheck, i18n, tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -65,7 +69,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # gitleaks scans history, which needs all of it.
           fetch-depth: 0
