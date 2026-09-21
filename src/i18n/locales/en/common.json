@@ -195,6 +195,7 @@
     "answered": "Answered",
     "applied": "Applied",
     "blocked": "Blocked",
+    "cached": "Cached — free",
     "capped": "Budget cap reached",
     "degraded": "Degraded",
     "error": "Error",
@@ -209,10 +210,12 @@
     "rejected": "Rejected",
     "reused": "Reused — free",
     "running": "Running",
+    "safe": "Safe",
     "shapeMismatch": "Unexpected shape",
     "skipped": "Skipped",
     "unknown": "Not known",
-    "unreachable": "Unreachable"
+    "unreachable": "Unreachable",
+    "unsafe": "Unsafe"
   },
   "theme": {
     "dark": "Dark",

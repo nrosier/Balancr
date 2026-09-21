@@ -17,7 +17,9 @@
  * what the SPA in `0.6.0` may rely on, expressed once, next to nothing else.
  */
 import { z } from 'zod'
+import { AI_RUN_KINDS } from '../../../db/schema.ts'
 import { AI_PROVIDERS } from '../../../domain/ai/providers.ts'
+import { JUDGE_NOTES_MAX_CHARS } from '../../../domain/ai/schemas.ts'
 import { DRIFT_STATES } from '../../../domain/advice/drift.ts'
 import { BAND_CLASSES, PRESET_IDS, PROFILE_IDS } from '../../../domain/advice/profile.ts'
 import {
@@ -997,15 +999,15 @@ export const portfolioSchema = z.object({
  */
 export const aiRunSchema = z.object({
   id: z.string(),
-  kind: z.enum([
-    'findings',
-    'narrative',
-    'clarify',
-    'chat',
-    'dryrun',
-    'category_guess',
-    'budget_nudge',
-  ]),
+  /**
+   * From `AI_RUN_KINDS` rather than a second hand-written copy of it.
+   *
+   * It *was* a copy, and #454 is what found out: adding `prompt_validation` to the one
+   * array both the table definition and `check-i18n` read left this list behind, so the
+   * ledger's own response schema would have refused to serialise a row the ledger had just
+   * written. Derived now, which is the guarantee that array's own doc comment claims.
+   */
+  kind: z.enum(AI_RUN_KINDS),
   model: z.string(),
   locale: z.string(),
   status: z.enum(['ok', 'error', 'blocked', 'capped', 'reused']),
@@ -1244,6 +1246,17 @@ export const aiRunPayloadSchema = aiRunSchema.extend({
  * that renders as a list of dates. The body arrives from
  * `GET /api/settings/prompts/:id` when a version is opened.
  */
+/**
+ * What a prompt row's text is cleared for (#454).
+ *
+ * Four states rather than a boolean, because "not checked" and "checked and refused" call
+ * for different words on screen and a different next action: one is a button to press, the
+ * other is text to rewrite. `built_in` is its own state for the same reason — a body this
+ * build ships needs no check at all, and showing it as "unchecked" would put a paid button
+ * next to every fresh installation's own default.
+ */
+export const promptGateSchema = z.enum(['built_in', 'safe', 'unvalidated', 'unsafe'])
+
 export const promptVersionSchema = z.object({
   id: z.string(),
   version: z.int().positive(),
@@ -1252,6 +1265,18 @@ export const promptVersionSchema = z.object({
   createdBy: z.string().nullable(),
   createdAt: z.string(),
   chars: z.int().nonnegative(),
+  /** Computed from the row's own body and verdict columns by `promptGateState`. */
+  gate: promptGateSchema,
+  /** When the verdict was reached, or null for a row that carries none. */
+  validatedAt: z.string().nullable(),
+  /**
+   * The rules version the verdict was reached at, or null.
+   *
+   * On the wire even though `gate` already folds it in, because "checked, but against an
+   * older rubric" is the one case where a reader who remembers pressing the button needs
+   * to know why the badge went back to unchecked.
+   */
+  rulesVersion: z.int().nonnegative().nullable(),
 })
 
 export const promptSchema = z.object({
@@ -1279,6 +1304,15 @@ export const promptSchema = z.object({
     version: z.int().nonnegative(),
     locale: z.string(),
     body: z.string(),
+    /**
+     * The gate of the text actually in use (#454).
+     *
+     * `built_in` whenever `id` is null, which is not a special case here so much as the
+     * same rule applied to the fallback: the built-in constant is a built-in body.
+     */
+    gate: promptGateSchema,
+    validatedAt: z.string().nullable(),
+    rulesVersion: z.int().nonnegative().nullable(),
   }),
   versions: z.array(promptVersionSchema),
 })
@@ -1804,6 +1838,15 @@ export const settingsSchema = z.object({
   /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
   invites: z.array(inviteSettingSchema),
   prompts: z.array(promptSchema),
+  /**
+   * `PROMPT_EDITING` (#454): which keys this deployment still lets an owner write to.
+   *
+   * On the wire because the panel has to disable the editor and say why, rather than
+   * offering a textarea whose save is refused with a `403`. Deployment-wide and set in
+   * `.env`, so it is information about the installation rather than a setting on this page
+   * — there is nothing here to change it with, which is the point of it.
+   */
+  promptEditing: z.enum(['full', 'analysis_only', 'locked']),
   accounts: z.array(accountSettingSchema),
   /**
    * Accounts that may be the same money, as ids rather than rows.
@@ -1881,6 +1924,69 @@ export const promptDiffSchema = z.object({
       newLine: z.int().positive().nullable(),
     }),
   ),
+  /**
+   * What a safety check on the candidate body would cost (#454).
+   *
+   * Priced here rather than by an endpoint of its own, because this is already the free
+   * request the editor makes about a body it has in hand — and the price has to be readable
+   * *before* the button is pressed, like every other cost in this application. Local
+   * arithmetic: no call, no ledger row. A number even for a key that is not gated, where
+   * no button will appear to spend it.
+   */
+  validationEstimateMicroEur: microEur(),
+})
+
+/**
+ * `POST /api/ai/prompt-validate` — one stored version's safety verdict (#454).
+ *
+ * The daily cap and every budget refusal arrive here as `200` with a `status`/`reason`,
+ * not as an HTTP error, matching the dry run and the narrative: a recorded refusal is an
+ * answer about what happened, and the ledger row behind it is what makes it auditable.
+ */
+export const promptValidationSchema = z.object({
+  status: z.enum(['safe', 'unsafe', 'cached', 'capped', 'error', 'skipped']),
+  /** A code for the catalogue, never a sentence. */
+  reason: z.string(),
+  promptId: z.string(),
+  key: z.string(),
+  locale: z.string(),
+  version: z.int().nonnegative(),
+  /** The row's gate after this call — what the badge beside the version should now read. */
+  gate: promptGateSchema,
+  /**
+   * The evidence, or null when this call reached no verdict of its own — a refusal, a
+   * failed call, or an answer that did not parse.
+   */
+  verdict: z
+    .object({
+      verdict: z.enum(['safe', 'unsafe']),
+      /** Required rule ids the candidate no longer imposes. These are what block. */
+      missing: z.array(z.string()),
+      /** Required ids stated and then undercut. A subset of the reasons for `unsafe`. */
+      weakened: z.array(z.string()),
+      conflicts: z.array(z.string()),
+      /** Editorial ids missing or weakened. Shown, never blocking. */
+      advisory: z.array(z.string()),
+      /**
+       * The judge's own sentence.
+       *
+       * **Attacker-influenced model output.** It is a model's prose about a text written by
+       * whoever is being checked, so a candidate body can shape it — including into
+       * something reassuring. Bounded server-side (`JUDGE_NOTES_MAX_CHARS`) and to be
+       * rendered as secondary evidence under its own heading, quoted and visually
+       * de-emphasised: never as the primary sentence a reader acts on. The decision is
+       * `verdict` and the reasons are the code arrays above; this is colour.
+       *
+       * Bounded by the same constant the domain schema enforces, not a second copy of the
+       * number — a wire cap that drifted below it would turn a long note into a `500`.
+       */
+      notes: z.string().max(JUDGE_NOTES_MAX_CHARS),
+    })
+    .nullable(),
+  rulesVersion: z.int().nonnegative(),
+  runId: z.string().nullable(),
+  costMicroEur: microEur(),
+  validatedAt: z.string().nullable(),
 })
 
 /**
@@ -2211,6 +2317,8 @@ export type PromptSetting = z.infer<typeof promptSchema>
 export type PromptVersionSetting = z.infer<typeof promptVersionSchema>
 export type PromptBody = z.infer<typeof promptBodySchema>
 export type PromptDiff = z.infer<typeof promptDiffSchema>
+export type PromptGate = z.infer<typeof promptGateSchema>
+export type PromptValidation = z.infer<typeof promptValidationSchema>
 export type AccountSetting = z.infer<typeof accountSettingSchema>
 export type SpendMonthSetting = z.infer<typeof spendMonthSchema>
 export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>

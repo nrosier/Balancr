@@ -378,6 +378,8 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     history: { months: 0, earliest: null, latest: null },
     profile: { email: null, displayName: null, locale: 'en', role: 'owner' },
     locales: { supported: ['en', 'nl'], default: 'en' },
+    // `full` is the default and what every existing deployment runs (#454).
+    promptEditing: 'full',
     loans: [],
     debts: [],
     params,

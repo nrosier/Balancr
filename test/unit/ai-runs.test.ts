@@ -24,6 +24,7 @@ import {
   spendMonthOf,
 } from '../../src/domain/ai/budget.ts'
 import {
+  countRunsSince,
   findReusableRun,
   latestSuccessfulRun,
   loadRun,
@@ -36,7 +37,7 @@ import {
 } from '../../src/domain/ai/runs.ts'
 import { eq } from 'drizzle-orm'
 import { config } from '../../src/config.ts'
-import { prompts, tenantIntegrations } from '../../src/db/schema.ts'
+import { aiRuns, prompts, tenantIntegrations } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
 
@@ -659,5 +660,74 @@ describe('a zero budget', () => {
     expect(checkBudget(db, tenantId, 0, new Date('2026-03-15T03:00:00Z')).reason).toBe(
       'month_budget_exceeded',
     )
+  })
+})
+
+describe('countRunsSince (#454)', () => {
+  const NOW = new Date('2026-09-10T12:00:00.000Z')
+  const since = (hoursAgo: number) => new Date(NOW.getTime() - hoursAgo * 60 * 60 * 1_000)
+
+  /** One row of a kind and status, backdated by `hoursAgo`. */
+  const recordAt = (
+    forTenant: string,
+    hoursAgo: number,
+    overrides: Partial<RecordRun> = {},
+  ): string => {
+    const id = recordRun(db, forTenant, run({ kind: 'prompt_validation', ...overrides }))
+    // `createdAt` has a default rather than a parameter, so the clock is moved afterwards —
+    // which is also the only way to write a row older than this process.
+    db.update(aiRuns).set({ createdAt: since(hoursAgo) }).where(eq(aiRuns.id, id)).run()
+    return id
+  }
+
+  it('counts this tenant’s rows of the given kind inside the window', () => {
+    recordAt(tenantId, 1)
+    recordAt(tenantId, 5)
+    recordAt(tenantId, 23)
+
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24))).toBe(3)
+  })
+
+  it('excludes a row older than the window', () => {
+    recordAt(tenantId, 1)
+    // 25 hours: the case the daily cap exists to let through, so today's allowance is
+    // genuinely a rolling day and not a counter that never resets.
+    recordAt(tenantId, 25)
+
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24))).toBe(1)
+  })
+
+  it('excludes another kind of run', () => {
+    recordAt(tenantId, 1, { kind: 'narrative' })
+    recordAt(tenantId, 1, { kind: 'prompt_validation' })
+
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24))).toBe(1)
+  })
+
+  it('excludes a second tenant’s matching row', () => {
+    const other = createSecondTenant(db)
+    recordAt(tenantId, 1)
+    recordAt(other, 1)
+    recordAt(other, 2)
+
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24))).toBe(1)
+    expect(countRunsSince(db, other, 'prompt_validation', since(24))).toBe(2)
+  })
+
+  it('narrows to a status set, which is how refusals stay free', () => {
+    // `ok` and `error` spent something; `blocked` and `capped` never reached a provider, so
+    // counting them would charge a tenant an attempt for being refused one.
+    recordAt(tenantId, 1, { status: 'ok' })
+    recordAt(tenantId, 1, { status: 'error' })
+    recordAt(tenantId, 1, { status: 'blocked' })
+    recordAt(tenantId, 1, { status: 'capped' })
+
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24), ['ok', 'error'])).toBe(2)
+    // Omitted, every status counts — a different question, and one this function can answer.
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24))).toBe(4)
+  })
+
+  it('is zero rather than null on an empty ledger', () => {
+    expect(countRunsSince(db, tenantId, 'prompt_validation', since(24), ['ok'])).toBe(0)
   })
 })

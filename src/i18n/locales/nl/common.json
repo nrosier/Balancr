@@ -195,6 +195,7 @@
     "answered": "Beantwoord",
     "applied": "Toegepast",
     "blocked": "Geblokkeerd",
+    "cached": "Uit cache — gratis",
     "capped": "Budgetplafond bereikt",
     "degraded": "Verminderd",
     "error": "Fout",
@@ -209,10 +210,12 @@
     "rejected": "Afgewezen",
     "reused": "Herbruikt — gratis",
     "running": "Bezig",
+    "safe": "Veilig",
     "shapeMismatch": "Onverwachte vorm",
     "skipped": "Overgeslagen",
     "unknown": "Niet bekend",
-    "unreachable": "Onbereikbaar"
+    "unreachable": "Onbereikbaar",
+    "unsafe": "Onveilig"
   },
   "theme": {
     "dark": "Donker",

@@ -806,13 +806,17 @@
 }
 
 .badge--truth,
-.badge--ok {
+.badge--ok,
+.badge--safe {
   background: var(--positive-soft);
   color: var(--positive);
 }
 
 .badge--info,
-.badge--reused {
+.badge--reused,
+/* An answer served from a stored verdict rather than bought again (#454) — the same
+   "nothing was spent" meaning `reused` already carries, so the same colour. */
+.badge--cached {
   background: var(--info-soft);
   color: var(--info);
 }
@@ -825,7 +829,8 @@
 }
 
 .badge--alert,
-.badge--error {
+.badge--error,
+.badge--unsafe {
   background: var(--negative-soft);
   color: var(--negative);
 }

@@ -348,6 +348,138 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
   ],
 }
 
+// ---------------------------------------------------------------------------
+//  The safety gate (#454, part of #452)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bump when the required rule set or a rule's meaning changes.
+ *
+ * A bump retires every stored verdict at the old version — fail-closed on purpose: a
+ * verdict is an answer to a specific question, and changing the question does not carry
+ * the old answer forward. An unedited installation is unaffected, because a built-in body
+ * needs no verdict at all (`isBuiltInBody` below), so a bump costs a paid re-check only to
+ * whoever has actually written their own narrative prompt.
+ */
+export const VALIDATION_RULES_VERSION = 1
+
+/**
+ * What a prompt row's text is cleared for.
+ *
+ *  - `built_in` — byte-identical to a text this build ships. Never needs a verdict.
+ *  - `safe` — checked at the current rules version and cleared.
+ *  - `unvalidated` — somebody's own wording with no verdict, or one from an older
+ *    rules version. The state a fresh edit starts in.
+ *  - `unsafe` — checked and refused. Sticky: see `validatePrompt`.
+ */
+export type PromptGateState = 'built_in' | 'safe' | 'unvalidated' | 'unsafe'
+
+/**
+ * Keys whose active body must carry a verdict before it may be used.
+ *
+ * Narrative only, and that is an argument rather than a starting point: `analysis.system`'s
+ * output is grounded against the signal table by `groundResponse`, so an edited analysis
+ * prompt cannot invent a finding — the worst it can do is rank badly, which is an
+ * editorial outcome and not a safety one. `narrative.system` writes free prose that
+ * nothing downstream checks, which is what makes its own rules the thing an edit could
+ * remove.
+ *
+ * Any future key defaults to *not* gated — fail open — until it earns the same argument
+ * `analysis.system` already has. The alternative, gating everything by default, would
+ * make adding a key a silent paid-check requirement for whoever adds it.
+ */
+export const GATED_PROMPT_KEYS: readonly PromptKey[] = ['narrative.system']
+
+export function isGatedKey(key: PromptKey): boolean {
+  return GATED_PROMPT_KEYS.includes(key)
+}
+
+/**
+ * A stored `prompts.key` narrowed to the closed set, or null.
+ *
+ * `prompts.key` is unconstrained text in SQL, so a row cannot prove it holds one of the
+ * keys this build reads. Narrowed by lookup rather than asserted, and null rather than a
+ * throw: a key outside `PROMPT_KEYS` is text nothing reads, which means nothing gates it
+ * either, and the callers that care say so in their own words (a `400` in the HTTP layer,
+ * `not_gated` in `validatePrompt`).
+ */
+export function asPromptKey(key: string): PromptKey | null {
+  return PROMPT_KEYS.find((candidate) => candidate === key) ?? null
+}
+
+/**
+ * True if `body` is byte-identical — after the same trim `createPromptVersion` applies
+ * before storing — to `DEFAULT_PROMPTS[key]` or any entry of `SUPERSEDED_PROMPTS[key]`.
+ *
+ * Load-bearing for `seedPrompts`, which creates and activates exactly such a row on every
+ * boot with no HTTP request behind it and nobody to show a refusal to. Without this
+ * exemption a fresh database would boot with an active, unvalidated narrative prompt, and
+ * the very first thing a new installation did would be to refuse its own built-in text.
+ *
+ * Byte-identical, never normalised, for the reason `SUPERSEDED_PROMPTS` states about its
+ * own comparison: the guarantee is that a single character of somebody's own wording stops
+ * the exemption, and no whitespace-tolerant comparison can promise that.
+ */
+export function isBuiltInBody(key: PromptKey, body: string): boolean {
+  const current = body.trim()
+  if (DEFAULT_PROMPTS[key].trim() === current) return true
+  return SUPERSEDED_PROMPTS[key].some((old) => old.trim() === current)
+}
+
+/**
+ * One row's stored body and verdict columns → what it is cleared for.
+ *
+ * A pure function of what a caller already has, with no query of its own: every caller
+ * either holds a row or is building one, and a version of this that read the database
+ * would be a second place the gate could be answered differently.
+ */
+export function promptGateState(
+  key: PromptKey,
+  row: {
+    body: string
+    validationVerdict: 'safe' | 'unsafe' | null
+    validationRulesVersion: number | null
+  },
+): PromptGateState {
+  if (isBuiltInBody(key, row.body)) return 'built_in'
+  if (row.validationVerdict === null) return 'unvalidated'
+  // A verdict from an older rubric is not a verdict about the current one.
+  if (row.validationRulesVersion !== VALIDATION_RULES_VERSION) return 'unvalidated'
+  return row.validationVerdict
+}
+
+/** Everything one verdict records: the answer, and enough provenance to audit it. */
+export interface PromptValidation {
+  verdict: 'safe' | 'unsafe'
+  /** The serialised `JudgeVerdict` — which rules were missing, weakened, in conflict. */
+  json: string
+  rulesVersion: number
+  /** The `ai_runs` row that bought it, or null when no call was made. */
+  runId: string | null
+  provider: string
+  model: string
+  validatedBy: string | null
+  validatedAt: Date
+}
+
+/**
+ * Refused because the body on its way into use has no safe verdict.
+ *
+ * Carries the three facts a caller needs to turn this into a sentence — which prompt,
+ * which language, and which of the four states it is actually in — rather than a
+ * pre-composed message, because the HTTP layer and the UI word it differently.
+ */
+export class PromptGateError extends Error {
+  constructor(
+    readonly key: PromptKey,
+    readonly locale: string,
+    readonly state: PromptGateState,
+  ) {
+    super(`prompt ${key} (${locale}) cannot be activated: its body is ${state}`)
+    this.name = 'PromptGateError'
+  }
+}
+
 /**
  * The output-language directive, appended to whatever body is active.
  *
@@ -541,7 +673,17 @@ export function createPromptVersion(
       .limit(1)
       .get()
     const version = (latest?.version ?? 0) + 1
+    // A verdict is a property of the text, so a new row carrying words that were already
+    // cleared starts out cleared (#454). Read inside the transaction and written by the
+    // insert below rather than by a second `UPDATE`: a row that existed for an instant
+    // with the body but not the verdict would be a row `promptGateState` would call
+    // `unvalidated`, and that instant is exactly when the activation check runs.
+    const inherited = inheritableValidation(tx, tenantId, input.key, body)
     if (input.activate === true) {
+      // Inside the transaction, so the check and the flag flip cannot be separated by
+      // another writer. Checks `body`, not the stored row, because the row does not exist
+      // yet — `inherited` is the same verdict the insert is about to write.
+      assertActivatable(tx, tenantId, input.key, input.locale, body)
       tx.update(prompts)
         .set({ active: false })
         .where(
@@ -564,6 +706,18 @@ export function createPromptVersion(
         active: input.activate === true,
         note: input.note ?? null,
         createdBy: input.createdBy ?? null,
+        ...(inherited === null
+          ? {}
+          : {
+              validationVerdict: inherited.verdict,
+              validationJson: inherited.json,
+              validationRunId: inherited.runId,
+              validationRulesVersion: inherited.rulesVersion,
+              validationProvider: inherited.provider,
+              validationModel: inherited.model,
+              validatedBy: inherited.validatedBy,
+              validatedAt: inherited.validatedAt,
+            }),
       })
       .returning()
       .all()
@@ -585,6 +739,13 @@ export function activatePrompt(db: PromptDb, tenantId: string, id: string): Prom
       .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
       .get()
     if (row === undefined) throw new Error(`prompt version ${id} does not exist`)
+
+    // After loading the row, before flipping the flag, and inside the same transaction so
+    // the two are atomic (#454). `prompts.key` is unconstrained text in SQL, so it is
+    // narrowed by lookup rather than asserted: a stored key outside `PROMPT_KEYS` is
+    // nothing this build reads, and therefore nothing it gates.
+    const gatedKey = asPromptKey(row.key)
+    if (gatedKey !== null) assertActivatable(tx, tenantId, gatedKey, row.locale, row.body)
 
     tx.update(prompts)
       .set({ active: false })
@@ -653,6 +814,131 @@ export function supersededBuiltIn(key: PromptKey, body: string): boolean {
 }
 
 /**
+ * Writes a verdict onto one row.
+ *
+ * Tenant-scoped like every other function in this file, and by id rather than by body:
+ * the row is the key (see the `prompts` table's own comment on why), so there is nothing
+ * to match on and nothing that could write a verdict onto a second row by accident.
+ *
+ * Takes `PromptDb` rather than `Db` so a caller inside a transaction can use it — the
+ * fence-marker refusal in `validatePrompt` does not need one, but the symmetry is worth
+ * more than the narrower type.
+ */
+export function storePromptValidation(
+  db: PromptDb,
+  tenantId: string,
+  id: string,
+  validation: PromptValidation,
+): void {
+  db.update(prompts)
+    .set({
+      validationVerdict: validation.verdict,
+      validationJson: validation.json,
+      validationRunId: validation.runId,
+      validationRulesVersion: validation.rulesVersion,
+      validationProvider: validation.provider,
+      validationModel: validation.model,
+      validatedBy: validation.validatedBy,
+      validatedAt: validation.validatedAt,
+    })
+    .where(and(eq(prompts.tenantId, tenantId), eq(prompts.id, id)))
+    .run()
+}
+
+/**
+ * The verdict a byte-identical body already carries, at the current rules version, or null.
+ *
+ * Same tenant, same key, *any* locale — because a verdict is a property of the text and
+ * not of the row it happens to sit in. Three ordinary gestures depend on this, and all
+ * three would otherwise cost a second paid check for the same words:
+ *
+ *  - The "write a version for this language only" button, which copies what is in the box
+ *    into a new locale's first version verbatim.
+ *  - Save and activate as two separate clicks: the save inherits nothing (there is
+ *    nothing to inherit from yet), so the *check* lands on the saved row and the later
+ *    activation reads it — but re-saving the same text afterwards must not reset it.
+ *  - Rolling back to a version that was already validated once.
+ *
+ * A tie prefers `unsafe`. Two rows carrying the same body and different verdicts should
+ * not be reachable — the verdict is deterministic given the text and the rules version —
+ * but if it happens, the refusal is the safe half of the disagreement.
+ *
+ * Byte-identical after the same trim as storage, never normalised: the same guarantee
+ * `SUPERSEDED_PROMPTS`'s own comparison rests on. A whitespace-tolerant comparison here
+ * would let a body differing from a cleared one by an invisible character inherit its
+ * verdict, which is precisely the substitution this whole design exists to prevent.
+ */
+export function inheritableValidation(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  body: string,
+): PromptValidation | null {
+  const target = body.trim()
+  const rows = db
+    .select()
+    .from(prompts)
+    .where(and(eq(prompts.tenantId, tenantId), eq(prompts.key, key)))
+    .all()
+
+  const matches = rows.filter(
+    (row) =>
+      row.body.trim() === target &&
+      row.validationVerdict !== null &&
+      row.validationRulesVersion === VALIDATION_RULES_VERSION,
+  )
+  // The tie fails closed.
+  const chosen = matches.find((row) => row.validationVerdict === 'unsafe') ?? matches[0]
+  if (chosen === undefined) return null
+
+  return {
+    // Narrowed by the filter above; the row type cannot prove it here.
+    verdict: chosen.validationVerdict ?? 'unsafe',
+    json: chosen.validationJson ?? '',
+    rulesVersion: VALIDATION_RULES_VERSION,
+    runId: chosen.validationRunId,
+    provider: chosen.validationProvider ?? '',
+    model: chosen.validationModel ?? '',
+    validatedBy: chosen.validatedBy,
+    validatedAt: chosen.validatedAt ?? new Date(),
+  }
+}
+
+/**
+ * Refuses to activate a gated, non-built-in body with no safe verdict.
+ *
+ * **Fail-fast UX only, and not the security boundary.** The enforcement point is the
+ * use-time check #455 adds in `narrative.ts`, which is what covers the three cases a
+ * route-level check structurally cannot: a row that was already active before any of this
+ * shipped, an edit made straight in SQLite, and `seedPrompts` running at boot with no
+ * request behind it. What this buys is that an owner who edits the prompt and presses
+ * "make it active" is told *then*, in the editor, next to the text they just wrote —
+ * rather than discovering a month later that the narrative stopped being produced.
+ *
+ * Deliberately small. Do not grow this into the real check: two enforcement points that
+ * can disagree is worse than one that is honest about being a convenience.
+ */
+export function assertActivatable(
+  db: PromptDb,
+  tenantId: string,
+  key: PromptKey,
+  locale: string,
+  body: string,
+): void {
+  if (!isGatedKey(key)) return
+  if (isBuiltInBody(key, body)) return
+
+  const inherited = inheritableValidation(db, tenantId, key, body)
+  const state = promptGateState(key, {
+    body,
+    validationVerdict: inherited?.verdict ?? null,
+    validationRulesVersion: inherited?.rulesVersion ?? null,
+  })
+  if (state === 'safe') return
+  throw new PromptGateError(key, locale, state)
+}
+
+/**
  * Writes the built-in default for any key that has no shared version yet, and upgrades
  * one whose active shared text is a built-in that has since been improved.
  *
@@ -676,6 +962,14 @@ export function supersededBuiltIn(key: PromptKey, body: string): boolean {
  *
  * The count returned is rows written, which now covers both a seed and an upgrade — it
  * feeds a startup log line saying how many prompts were touched, and both are.
+ *
+ * **Unchanged by the safety gate (#454), and that is a property rather than an oversight.**
+ * Every body this function writes is `DEFAULT_PROMPTS[key]`, so `isBuiltInBody` is true for
+ * all of them: `assertActivatable` returns before consulting a verdict, and
+ * `inheritableValidation` finds nothing to inherit and writes nothing. If a future change
+ * ever has this function write a body it did not take from `DEFAULT_PROMPTS`, that
+ * invariant goes with it and boot starts throwing `PromptGateError` — which is the right
+ * failure, but it is worth knowing where it would come from.
  */
 export function seedPrompts(db: PromptDb, tenantId: string): number {
   let written = 0

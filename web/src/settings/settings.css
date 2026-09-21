@@ -388,7 +388,8 @@
 }
 
 .prompt__diff,
-.prompt__dryrun {
+.prompt__dryrun,
+.prompt__check {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -398,9 +399,26 @@
 
 .prompt__diff > p,
 .prompt__dryrun > p,
+.prompt__check > p,
 .rerun > p {
   margin: 0;
   font-size: var(--type-sm);
+}
+
+/*
+ * The judge's own sentence, set apart from the per-rule codes above it (#454).
+ *
+ * Indented behind a rule and in the muted colour, because it is a *quotation* from a model
+ * about text the reader may have written themselves — so it can be steered, including into
+ * something reassuring. The finding is the code lists; this is corroboration, and it has to
+ * look like corroboration rather than like the verdict.
+ */
+.prompt__check-notes blockquote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  font-size: var(--type-sm);
+  font-style: italic;
 }
 
 /*

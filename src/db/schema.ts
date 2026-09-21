@@ -877,6 +877,46 @@ export const prompts = sqliteTable(
     createdBy: text('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+
+    // -----------------------------------------------------------------------
+    //  The safety verdict for this row's body (#454, part of #452)
+    // -----------------------------------------------------------------------
+    //
+    // On the row rather than in a table of its own, and this is the whole reason the
+    // design needs neither a body hash nor a TTL: a stored prompt body is immutable.
+    // `createPromptVersion` only ever inserts, and `activatePrompt`/`deactivateOverride`
+    // only flip a boolean — nothing in `domain/ai/prompts.ts` rewrites `body`. So the row
+    // *is* the natural key for a verdict about its text: a different body is a different
+    // row carrying its own `NULL`, which makes "check it, then swap the words before
+    // saving" impossible to express. A verdict keyed by anything looser would have to
+    // answer "is this still the text that was checked?", and that question is what a hash
+    // or an expiry is for.
+    //
+    // All eight nullable with no default: every row that existed before this shipped is
+    // legitimately "no verdict", which `promptGateState` reads as `unvalidated` — and for
+    // a built-in body that is not a problem, because `isBuiltInBody` exempts it before the
+    // columns are consulted at all.
+    //
+    // `validationRunId` and `validatedBy` are conceptually foreign keys to `ai_runs` and
+    // `users` and deliberately carry **no `.references()`**. A `.references()` here turns
+    // drizzle-kit's `ALTER TABLE ADD COLUMN` into a full table rebuild, and a rebuild of
+    // *this* table is exactly what `0029_overrated_slyde.sql` had to hand-patch around:
+    // SQLite applied `ai_runs.prompt_id`'s `ON DELETE SET NULL` while the old `prompts`
+    // was dropped, so that migration stashes and restores another table's references
+    // around the rename. Nothing here is worth re-entering that path for — a dangling
+    // run id or user id in a verdict's provenance is a cosmetic gap in an audit trail,
+    // not a correctness problem.
+    validationVerdict: text('validation_verdict', { enum: ['safe', 'unsafe'] }),
+    /** The full `JudgeVerdict`, serialised: which rules were missing, weakened, in conflict. */
+    validationJson: text('validation_json'),
+    /** The `ai_runs` row that bought this verdict, or null when no call was made. */
+    validationRunId: text('validation_run_id'),
+    /** `VALIDATION_RULES_VERSION` as it was when the verdict was reached. */
+    validationRulesVersion: integer('validation_rules_version'),
+    validationProvider: text('validation_provider'),
+    validationModel: text('validation_model'),
+    validatedAt: integer('validated_at', { mode: 'timestamp_ms' }),
+    validatedBy: text('validated_by'),
   },
   (t) => [
     uniqueIndex('prompts_key_locale_version_uq').on(t.tenantId, t.key, t.locale, t.version),
@@ -885,6 +925,12 @@ export const prompts = sqliteTable(
     uniqueIndex('prompts_one_active_uq')
       .on(t.tenantId, t.key, t.locale)
       .where(sql`active = 1`),
+    // No index on the verdict columns, deliberately (#454). The only query that reads
+    // them across rows is `inheritableValidation`, which scans one tenant's versions of
+    // one key — already narrowed by `prompts_key_locale_version_uq`'s leading
+    // `(tenant_id, key)` — and then compares bodies in TypeScript. Every other read has a
+    // row in hand already. An index here would be a write cost on every prompt save for
+    // no read it serves.
   ],
 )
 
@@ -907,6 +953,13 @@ export const AI_RUN_KINDS = [
   'dryrun',
   'category_guess',
   'budget_nudge',
+  /**
+   * The judge call that decides whether an edited `narrative.system` body still
+   * imposes its safety rules (#454). TS-only: `kind` is a plain unconstrained `text`
+   * column, so adding a member needs no migration — but it does need a sentence under
+   * `ai:privacy.kind.*` in every language, which is what the guard below enforces.
+   */
+  'prompt_validation',
 ] as const
 
 /**

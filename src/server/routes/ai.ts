@@ -1,10 +1,10 @@
 /**
- * The seven endpoints that can spend money, and the only ones in the HTTP layer that
+ * The eight endpoints that can spend money, and the only ones in the HTTP layer that
  * reach Gemini at all: `GET /api/ai/estimate`, `POST /api/ai/dry-run`,
  * `POST /api/ai/refresh`, `POST /api/ai/narrative`, `POST /api/ai/category-guess/estimate`,
- * `POST /api/ai/category-guess`, `POST /api/ai/budget-nudge`. This count was already
- * stale at "six" before this comment was corrected (#453); #452's design adds an eighth
- * for the judge call in #454, so it will need correcting again then.
+ * `POST /api/ai/category-guess`, `POST /api/ai/budget-nudge`,
+ * `POST /api/ai/prompt-validate`. This count was already stale at "six" before it was
+ * corrected to seven (#453); the eighth is #454's judge call, described at the bottom.
  *
  * Everything else Balancr serves comes out of SQLite, written by the nightly job —
  * which is what makes the monthly budget a limit rather than a hope. This file is
@@ -57,6 +57,27 @@
  * month's already-pending `budget_amount.set` proposals and may adjust one — priced
  * first by `GET /api/ai/estimate?kind=budget_nudge`, month-scoped like the narrative
  * rather than selection-scoped like a category guess, same six-way fencing.
+ *
+ * `POST /api/ai/prompt-validate` is the eighth, added with #454 (part of #452): it reads
+ * one stored `narrative.system` version and asks the fast model whether that text still
+ * imposes the writer's own safety rules — no arithmetic, no advice, the household's note
+ * is context and not a source, the withheld envelopes are a choice. It is here rather than
+ * in `settings.ts` beside the rest of the prompt editor precisely because it reaches a
+ * model, and this file is the one place that states the invariant that these are the only
+ * endpoints that do. Same fencing as the rest, plus a tenant-scoped cap of
+ * `PROMPT_VALIDATIONS_PER_DAY` off the run ledger — `aiRateLimit()` buckets per IP, which
+ * an IP rotation defeats, so it is a burst guard on top of the daily allowance rather than
+ * instead of it. Priced beforehand by `POST /api/settings/prompts/diff`'s
+ * `validationEstimateMicroEur`, which spends nothing.
+ *
+ * **What it is worth, exactly.** Its ordinary job is catching a tenant owner's
+ * carelessness: a rule deleted while tightening the wording. It is also a meaningfully
+ * real check against a tenant owner who is *trying*, because a custom AI endpoint has to
+ * be allowlisted in `EGRESS_EXTRA_HOSTS`, which only the deployment's operator sets — an
+ * owner cannot quietly point the judge at something that always answers "safe". What it is
+ * not is a check on an owner who is also the operator, which on a single-tenant install is
+ * the usual case: `PROMPT_EDITING=locked` is the only control that binds that person, and
+ * it lives in `.env` for that reason.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -71,7 +92,8 @@ import {
   type AiAvailability,
   type AiOffReason,
 } from '../../domain/ai/availability.ts'
-import { loadPrompt, resolvePrompt } from '../../domain/ai/prompts.ts'
+import { validatePrompt } from '../../domain/ai/prompt-validate.ts'
+import { asPromptKey, isGatedKey, loadPrompt, resolvePrompt } from '../../domain/ai/prompts.ts'
 import { startRefresh, type Job } from '../../jobs/index.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { badRequest, conflict, notFound } from '../errors.ts'
@@ -87,6 +109,7 @@ import {
   categoryGuessEstimateSchema,
   categoryGuessRunSchema,
   monthKey,
+  promptValidationSchema,
   refreshAcceptedSchema,
   type AiBudgetNudgeRun,
   type AiDryRun,
@@ -94,6 +117,7 @@ import {
   type AiNarrativeRun,
   type CategoryGuessEstimateWire,
   type CategoryGuessRunWire,
+  type PromptValidation,
   type RefreshAccepted,
 } from './api/schemas.ts'
 
@@ -150,6 +174,19 @@ const budgetNudgeRequest = z.strictObject({
       message: 'unsupported locale',
     })
     .optional(),
+})
+
+/**
+ * Which stored version to check (#454).
+ *
+ * The body being judged is deliberately **not** on the wire. The verdict lands on the row
+ * it is about, so sending the text alongside the id would create exactly the gap this
+ * design is built to close: a check of one string and a verdict written against another.
+ * An id is all that is needed, because a stored body is immutable — see the `prompts`
+ * table's own comment on why the row is the natural key for a verdict about its text.
+ */
+const promptValidateRequest = z.strictObject({
+  promptId: z.string().min(1),
 })
 
 const narrativeRequest = z.strictObject({
@@ -417,6 +454,49 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
       degraded: outcome.degraded,
       costMicroEur: outcome.costMicroEur,
     })
+    return response
+  })
+
+  /**
+   * One stored narrative prompt version, read by a model and given a verdict (#454).
+   *
+   * Owner-only and rate-limited like every other model-calling route here. The two guards
+   * that are its own:
+   *
+   *  - **The row is loaded tenant-scoped, so another tenant's id is a `404` and not a
+   *    `403`.** Not a softened authorization failure: `loadPrompt` narrows by tenant, so
+   *    from inside this request that row genuinely does not exist. A `403` would confirm
+   *    that some other household has a version by that id.
+   *  - **A non-gated key is a `400`**, mirroring `dryRunPrompt`'s refusal of a narrative
+   *    prompt with the same `details.key` shape — the mirror image of it, in fact: the dry
+   *    run runs only `analysis.system` and this checks only `narrative.system`. Asking to
+   *    validate an analysis prompt is a well-formed request for something that does not
+   *    apply, and the caller can act on being told which key it sent.
+   *
+   * Everything else — the daily cap, an exhausted month's budget — comes back `200` with a
+   * `status` and a `reason`, the same shape the dry run and the narrative use for a
+   * recorded refusal. Those are answers about what happened, each with a ledger row behind
+   * it; an HTTP error would throw away both the reason and the record of it.
+   */
+  app.post('/api/ai/prompt-validate', { ...aiRateLimit() }, async (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    requireAiAvailable(tenantAiAvailability(db, user.tenantId))
+    const body = parseBody(promptValidateRequest, request.body)
+
+    const row = loadPrompt(db, user.tenantId, body.promptId)
+    if (row === null) throw notFound('No such prompt version.')
+
+    const key = asPromptKey(row.key)
+    if (key === null || !isGatedKey(key)) {
+      throw badRequest('That prompt does not need a safety check.', { key: row.key })
+    }
+
+    const outcome = await validatePrompt(db, user.tenantId, {
+      promptId: row.id,
+      userId: user.id,
+    })
+
+    const response: PromptValidation = promptValidationSchema.parse(outcome)
     return response
   })
 

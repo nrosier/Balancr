@@ -30,7 +30,9 @@ import type { Db } from '../../src/db/index.ts'
 import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
+import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import { createPromptVersion } from '../../src/domain/ai/prompts.ts'
+import { NARRATIVE_RULE_IDS } from '../../src/domain/ai/schemas.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -38,8 +40,14 @@ import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import { HttpError } from '../../src/server/errors.ts'
 import { dryRunPrompt } from '../../src/server/routes/ai.ts'
-import type { AiDryRun, AiEstimate, AiNarrativeRun } from '../../src/server/routes/api/schemas.ts'
+import type {
+  AiDryRun,
+  AiEstimate,
+  AiNarrativeRun,
+  PromptValidation,
+} from '../../src/server/routes/api/schemas.ts'
 import { apiFixture, MONTH } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -502,5 +510,104 @@ describe('POST /api/ai/narrative', () => {
     const res = await narrative({ period: '2099-01', force: true })
     expect(res.statusCode).toBe(409)
     expect(fake.calls).toBe(0)
+  })
+})
+
+describe('POST /api/ai/prompt-validate (#454)', () => {
+  const validate = (body: object, token = owner) => {
+    const csrf = newCsrfToken()
+    return app.inject({
+      method: 'POST',
+      url: '/api/ai/prompt-validate',
+      payload: body,
+      cookies: { [SESSION_COOKIE]: token, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+    })
+  }
+
+  /** A judge answer reporting every rule imposed and intact. */
+  const SAFE_REPLY = JSON.stringify({
+    rules: NARRATIVE_RULE_IDS.map((id) => ({ id, present: true, weakened: false })),
+    conflicts: [],
+    notes: 'Reads like the built-in rules in different words.',
+  })
+
+  const saveNarrative = (body: string, tenantId = getSoleTenantId(ctx.db)) =>
+    createPromptVersion(ctx.db, tenantId, {
+      key: 'narrative.system',
+      locale: SHARED_LOCALE,
+      body,
+    })
+
+  it('checks a saved narrative version and answers the new schema', async () => {
+    const fake = fakeGemini(SAFE_REPLY)
+    const row = saveNarrative('My own narrative instructions, rules and all.')
+
+    const res = await validate({ promptId: row.id })
+    expect(res.statusCode).toBe(200)
+
+    const outcome = res.json<PromptValidation>()
+    expect(outcome.status).toBe('safe')
+    expect(outcome.gate).toBe('safe')
+    expect(outcome.promptId).toBe(row.id)
+    expect(outcome.key).toBe('narrative.system')
+    expect(outcome.verdict?.missing).toEqual([])
+    expect(outcome.runId).not.toBeNull()
+    expect(outcome.costMicroEur).toBeGreaterThan(0)
+    expect(fake.calls).toBe(1)
+    expect(runRows(ctx.db).filter((run) => run.kind === 'prompt_validation')).toHaveLength(1)
+  })
+
+  it('refuses a viewer: a check spends the month’s allowance', async () => {
+    const fake = fakeGemini(SAFE_REPLY)
+    const row = saveNarrative('Somebody else’s instructions.')
+
+    expect((await validate({ promptId: row.id }, viewer)).statusCode).toBe(403)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('answers 404 for an id that does not exist', async () => {
+    const fake = fakeGemini(SAFE_REPLY)
+    expect((await validate({ promptId: 'nope' })).statusCode).toBe(404)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('answers 400 with the key for an analysis prompt, mirroring the dry run’s refusal', async () => {
+    // The mirror image of `dryRunPrompt`'s own 400: the dry run only ever runs
+    // `analysis.system`, and this only ever checks `narrative.system`.
+    const fake = fakeGemini(SAFE_REPLY)
+    const row = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Rewritten analysis instructions.',
+    })
+
+    const res = await validate({ promptId: row.id })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')
+    // `details` is logged and never serialised (see `HttpError`), so the key the guard
+    // attaches is asserted where `dryRunPrompt`'s equivalent is — on the throw, not on the
+    // wire. What belongs here is that it is a 400 rather than a 500 or a silent skip.
+    expect(fake.calls).toBe(0)
+  })
+
+  it('answers 404 for another tenant’s id — tenant-scoped loading, not authorization', async () => {
+    // A `403` would confirm that some other household has a version by that id. From inside
+    // this request the row genuinely does not exist, because `loadPrompt` narrows by tenant.
+    const fake = fakeGemini(SAFE_REPLY)
+    const other = createSecondTenant(ctx.db)
+    const row = saveNarrative('Another household’s instructions.', other)
+
+    expect((await validate({ promptId: row.id })).statusCode).toBe(404)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('refuses a body that is not a string, and an unknown field', async () => {
+    expect((await validate({})).statusCode).toBe(400)
+    expect((await validate({ promptId: '' })).statusCode).toBe(400)
+    // `strictObject`: the body being checked is deliberately not on the wire, so a request
+    // that tried to send one is a mistake worth naming rather than silently ignoring.
+    const row = saveNarrative('Instructions.')
+    expect((await validate({ promptId: row.id, body: 'something else' })).statusCode).toBe(400)
   })
 })
