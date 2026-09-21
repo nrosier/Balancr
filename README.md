@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.2.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1057,19 +1057,19 @@ ends.
 | `2.0.0` | Blessed by the person whose money it is | ✅ |
 | `2.1.0` | Benchmark: inflation-adjusted reference figure, country selection for the comparison | ✅ |
 | `2.2.0` | Multi-provider AI and multi-tenant security hardening | ✅ |
+| `2.3.0` | Prompt safety gate and lock for the editable narrative prompt; non-mortgage debt tracking | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.2.0` is the current release. AI configuration is now
-provider-neutral, with presets for Google Gemini, OpenAI, xAI/Grok and native
-Anthropic Claude plus approved custom OpenAI-compatible endpoints. Only Google
-Gemini through AI Studio has been tested end to end against a live provider;
-the other integrations remain preview functionality backed by automated contract
-tests. This release also closes the tenant-isolation and egress findings from the
-security review, makes failed backup restores rollback-safe, and supports up to
-three mortgages per property. Existing deployments upgrade in place.
+**Where it is now** — `2.3.0` is the current release. The editable narrative
+prompt now has a safety gate: edits are bound in length, checked by a judge
+call before activation, and enforced again at use time, with a
+deployment-wide `PROMPT_EDITING` lock for operators who are also the tenant
+owner. Non-mortgage debt — fixed-schedule loans and revolving credit-card
+balances — can now be tracked alongside mortgages. Existing deployments
+upgrade in place.
 
-`docker pull` now resolves `latest` to `2.2.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.3.0`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped

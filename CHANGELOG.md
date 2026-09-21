@@ -6,6 +6,35 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.0] — 2026-09-21
+
+### Added
+
+- **A deployment-wide lock and safety gate for the editable narrative prompt**
+  ([#452](https://github.com/nrosier/Balancr/issues/452),
+  [#453](https://github.com/nrosier/Balancr/issues/453),
+  [#454](https://github.com/nrosier/Balancr/issues/454),
+  [#455](https://github.com/nrosier/Balancr/issues/455),
+  [#459](https://github.com/nrosier/Balancr/issues/459)). Edits to the one AI
+  pass with no output-grounding are now bound in length, checked by a
+  code-owned judge call before they can be activated, and enforced again at
+  use time so a legacy row or direct edit can't bypass the check. A
+  code-owned backstop clause is appended after the editable body so an
+  edited prompt never gets the last word. `PROMPT_EDITING` (`full` /
+  `analysis_only` / `locked`) lets an operator lock prompt edits deployment-wide;
+  the prompt editor now shows what is actually stored under a lock instead of
+  a substituted default.
+- **Non-mortgage debt tracking: fixed-schedule loans and revolving
+  credit-card debt** ([#441](https://github.com/nrosier/Balancr/issues/441),
+  [#442](https://github.com/nrosier/Balancr/issues/442)), alongside the
+  existing mortgage tracking.
+
+### Changed
+
+- **The frontend bundle now splits by route and loads ECharts on demand**
+  ([#435](https://github.com/nrosier/Balancr/issues/435)), cutting the
+  initial page load's script size.
+
 ## [2.2.0] — 2026-09-20
 
 ### Added
