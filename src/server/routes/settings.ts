@@ -87,6 +87,16 @@ import {
   saveHousehold,
 } from '../../domain/benchmark/household.ts'
 import {
+  createDebt,
+  debtKinds,
+  deleteDebt,
+  listDebts,
+  loadDebt,
+  MAX_DEBTS,
+  TooManyDebtsError,
+  updateDebt,
+} from '../../domain/debt/debts.ts'
+import {
   createLoan,
   deleteLoan,
   listLoans,
@@ -394,6 +404,26 @@ const loanRequest = z.strictObject({
   remainingTermMonths: z.number().int(),
   originalPrincipalCents: z.number().int().nullable().optional(),
   extraMonthlyPaymentCents: z.number().int().nullable().optional(),
+})
+
+/**
+ * One revolving debt — a credit card, a store card (#442).
+ *
+ * Loose on bounds on purpose, same division `loanRequest` explains: the balance
+ * ceiling, the APR ceiling and the non-negative cents live in `debtInputSchema` and are
+ * enforced by `createDebt`/`updateDebt`. The whole debt, every time, for the same
+ * "leave this one alone is not a gesture the form can make" reason `loanRequest` gives —
+ * an omitted `aprBp` would be ambiguous between "unchanged" and "no longer known".
+ *
+ * Three routes rather than a whole-list PATCH, same reasoning as loans: a revolving debt
+ * is a table row with an id of its own.
+ */
+const debtRequest = z.strictObject({
+  kind: z.enum(debtKinds).optional(),
+  label: z.string().optional(),
+  balanceCents: z.number().int(),
+  minimumPaymentCents: z.number().int(),
+  aprBp: z.number().int().nullable().optional(),
 })
 
 /**
@@ -877,6 +907,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     benchmark: benchmarkSetting(db, user.tenantId),
     property: loadProperties(db, user.tenantId),
     loans: listLoans(db, user.tenantId),
+    debts: listDebts(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
     // The shared text first, then only those languages someone has actually written
@@ -1299,6 +1330,120 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: { ...before },
       // Null rather than the row: what was recorded is that this loan stopped existing.
+      after: null,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * A new revolving debt — a credit card, a store card (#442).
+   *
+   * Three routes rather than one whole-list PATCH, same reasoning as the loan routes
+   * above: a revolving debt is a row with its own id. Takes effect immediately — there
+   * is no recompute step between this write and the next read of the overview or
+   * portfolio page.
+   */
+  app.post('/api/settings/debts', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const body = parseBody(debtRequest, request.body)
+
+    let created
+    try {
+      created = createDebt(db, user.tenantId, body)
+    } catch (error) {
+      // The balance/APR bounds can only be checked once parsed, so they fail here
+      // rather than in `parseBody` — same division as the loan routes above.
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      // Not a fact about the body: the same request would have been accepted one debt
+      // ago, which is what a 409 says and a 400 would not.
+      if (error instanceof TooManyDebtsError) {
+        throw conflict(`A household may track at most ${String(MAX_DEBTS)} revolving debts.`)
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.debt',
+      entity: 'revolving_debts',
+      entityRef: created.id,
+      actorId: user.id,
+      // Null before, the debt after: the entry reads as "this came into being".
+      before: null,
+      after: { ...created },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Replaces one revolving debt — a fresh statement, a corrected balance.
+   *
+   * There is no history table here any more than there is for a loan: the owner sends
+   * today's real balance as the new `balanceCents`, and the audit entry is what
+   * remembers what it said before.
+   */
+  app.patch('/api/settings/debts/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+    const body = parseBody(debtRequest, request.body)
+
+    // Read first, so a debt belonging to another tenant is a 404 rather than an update
+    // that silently matches nothing and answers 200.
+    const before = loadDebt(db, user.tenantId, id)
+    if (before === null) throw notFound('No such debt.')
+
+    let after
+    try {
+      after = updateDebt(db, user.tenantId, id, body)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+    if (after === null) throw notFound('No such debt.')
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.debt',
+      entity: 'revolving_debts',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      after: { ...after },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Drops a revolving debt — paid off, closed, or entered by mistake.
+   *
+   * The only DELETE this panel needs, and it is one because a debt is a row: "remove
+   * this one" cannot be expressed as a patch of a list that no longer contains it.
+   * `before` carries the whole debt, since after this the row is the only place it
+   * existed.
+   */
+  app.delete('/api/settings/debts/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadDebt(db, user.tenantId, id)
+    if (before === null) throw notFound('No such debt.')
+    deleteDebt(db, user.tenantId, id)
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.debt',
+      entity: 'revolving_debts',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      // Null rather than the row: what was recorded is that this debt stopped existing.
       after: null,
     })
 

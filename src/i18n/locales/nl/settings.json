@@ -215,6 +215,31 @@
     "title": "Deze installatie",
     "version": "Versie"
   },
+  "debts": {
+    "add": "Kaart toevoegen",
+    "apr": "Rentevoet (JKP)",
+    "aprHint": "Optioneel. Alleen gebruikt om de rente van volgende maand te schatten — nooit een aflosschema.",
+    "aprPlaceholder": "bv. wat het afschrift JKP noemt",
+    "aprReads": "Komt neer op {{value}}.",
+    "balance": "Openstaand saldo",
+    "create": "Deze kaart toevoegen",
+    "hint": "Doorlopend krediet — een kredietkaart, een winkelkaart. Geen vast schema: het saldo is wat je het laatst tegen een afschrift bevestigde. Wordt van het nettovermogen afgetrokken en is de volgende keer dat de portefeuillepagina laadt zichtbaar; niets hier wordt herrekend.",
+    "interestReads": "{{value}} geschatte rente volgende maand aan dit tempo.",
+    "interestUnknown": "Geen rentevoet ingevuld, dus geen rente-schatting.",
+    "invalid": "Iets in deze rij is nog geen geldig getal.",
+    "kind": {
+      "creditCard": "Kredietkaart",
+      "other": "Overig"
+    },
+    "kindLabel": "Type",
+    "label": "Naam",
+    "labelPlaceholder": "bv. Kaart",
+    "minimumPayment": "Minimumbetaling",
+    "none": "Nog geen kredietkaarten. Voeg er een toe om het saldo in het nettovermogen te zien.",
+    "remove": "Deze kaart verwijderen",
+    "save": "Deze kaart opslaan",
+    "title": "Kredietkaarten"
+  },
   "history": {
     "coverage": "Dekking",
     "coverageValue": "{{earliest}} – {{latest}}",
@@ -336,6 +361,7 @@
   "nav": {
     "accounts": "Rekeningen",
     "benchmark": "Vergelijking",
+    "debts": "Kredietkaarten",
     "general": "Algemeen",
     "integrations": "Integraties",
     "loans": "Leningen",

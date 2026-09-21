@@ -32,6 +32,11 @@
  * worth happens on `/api/overview`, which is the response that has a total to subtract
  * from; here the balance is only ever reported.
  *
+ * `debts` is the revolving counterpart (#442) — a credit card, a store card — reported
+ * the same way and for the same reason, minus the amortization: a card balance is not
+ * priced "as of the request" the way a loan is, so what is sent is simply the stored
+ * record with `estimatedMonthlyInterestCents` alongside it.
+ *
  * Always the latest snapshot — no `?asOf=` (#345). A picker over Ghostfolio's own
  * history duplicated the Benchmark card's month/year control without its pro-ration,
  * on a page whose whole point is where things stand right now.
@@ -40,6 +45,11 @@ import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
 import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
+import {
+  estimatedMonthlyInterestCents,
+  listDebts,
+  totalDebtBalanceCents,
+} from '../../../domain/debt/debts.ts'
 import {
   effectiveMonthlyPaymentCents,
   listLoans,
@@ -76,6 +86,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   const today = new Date().toISOString().slice(0, 10)
   const properties = loadProperties(db, tenantId).properties
   const loans = listLoans(db, tenantId)
+  const debts = listDebts(db, tenantId)
 
   return portfolioSchema.parse({
     freshness: freshness(db, tenantId),
@@ -153,6 +164,19 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
       payoffDate: loanPayoffDate(loan),
     })),
     totalLoanBalanceCents: totalLoanBalanceCents(loans, today),
+    // Revolving debt (#442), reported the same way and for the same reason as loans,
+    // minus the amortization: `balanceCents` is the stored figure itself, never priced
+    // forward from a date.
+    debts: debts.map((debt) => ({
+      id: debt.id,
+      kind: debt.kind,
+      label: debt.label,
+      balanceCents: debt.balanceCents,
+      minimumPaymentCents: debt.minimumPaymentCents,
+      aprBp: debt.aprBp,
+      estimatedMonthlyInterestCents: estimatedMonthlyInterestCents(debt),
+    })),
+    totalDebtBalanceCents: totalDebtBalanceCents(debts),
     // Every off-budget account, any kind — the full list `netWorth.liquidOffBudgetCents`
     // (on `overviewSchema`) only summarizes the liquid slice of (#353).
     offBudgetAccounts: loadOffBudgetAccounts(db, tenantId).map((account) => ({

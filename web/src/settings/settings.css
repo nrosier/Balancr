@@ -1057,6 +1057,66 @@
   gap: var(--space-3);
 }
 
+/* ---------------------------------------------------------------------------
+   Revolving debt (#442)
+
+   The same proportions as `.loans-form`/`.loans`/`.loan` above, for the same reason:
+   one stored row per card, addressed by id, each with its own Save/Remove. Simpler
+   fields than a loan — no anchor date, no term — so `.debt__fields` gets fewer
+   columns to lay out.
+   --------------------------------------------------------------------------- */
+
+.debts-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.debts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.debt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.debt__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+/* The interest read-back, same reasoning as `.loan__reads`: an estimate for next
+   month and a rate read as a percentage are two different facts. */
+.debt__reads {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.debts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .provenance {
   display: flex;
   flex-direction: column;

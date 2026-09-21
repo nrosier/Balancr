@@ -55,6 +55,19 @@
     "valueSummary": "Marktwaarde tussen {{from}} en {{to}}: {{start}} bij het begin, {{end}} op het einde.",
     "valueTitle": "Marktwaarde in de tijd"
   },
+  "debt": {
+    "caption_one": "Eén kaart.",
+    "caption_other": "{{value}} kaarten.",
+    "column": {
+      "balance": "Openstaand",
+      "estimatedInterest": "Gesch. rente",
+      "kind": "Type",
+      "minimumPayment": "Minimum",
+      "name": "Kaart",
+      "rate": "Rente"
+    },
+    "title": "Kredietkaarten"
+  },
   "dedupe": {
     "hint": "Deze rekening staat in beide tools; alleen de brongegevens tellen mee voor het nettovermogen.",
     "title": "Eenmaal geteld"
@@ -102,6 +115,7 @@
     "offBudget": "Buiten budget",
     "onBudget": "Op budget",
     "propertyValue": "Vastgoedwaarde",
+    "revolvingDebtBalance": "Kredietkaartsaldo",
     "ter": "Jaarlijkse kosten",
     "twr": "Tijdgewogen rendement",
     "twrHint": "Rendement op het geld zolang het belegd was, los van wanneer je stortte.",

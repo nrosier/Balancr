@@ -215,6 +215,31 @@
     "title": "This instance",
     "version": "Version"
   },
+  "debts": {
+    "add": "Add a card",
+    "apr": "Interest rate (APR)",
+    "aprHint": "Optional. Used only to estimate next month's interest — never a schedule.",
+    "aprPlaceholder": "e.g. what the statement calls APR",
+    "aprReads": "Reads as {{value}}.",
+    "balance": "Outstanding balance",
+    "create": "Add this card",
+    "hint": "Revolving balances — a credit card, a store card. No fixed schedule: the balance is whatever you last confirmed against a statement. Subtracted from net worth and shown on the portfolio page the next time either loads; nothing here recomputes.",
+    "interestReads": "{{value}} estimated interest next month at this rate.",
+    "interestUnknown": "No rate entered, so no interest estimate.",
+    "invalid": "Something in this row isn't a valid number yet.",
+    "kind": {
+      "creditCard": "Credit card",
+      "other": "Other"
+    },
+    "kindLabel": "Type",
+    "label": "Name",
+    "labelPlaceholder": "e.g. Card",
+    "minimumPayment": "Minimum payment",
+    "none": "No credit cards yet. Add one to see its balance subtracted from net worth.",
+    "remove": "Remove this card",
+    "save": "Save this card",
+    "title": "Credit cards"
+  },
   "history": {
     "coverage": "Coverage",
     "coverageValue": "{{earliest}} – {{latest}}",
@@ -336,6 +361,7 @@
   "nav": {
     "accounts": "Accounts",
     "benchmark": "Benchmark",
+    "debts": "Credit cards",
     "general": "General",
     "integrations": "Integrations",
     "loans": "Loans",

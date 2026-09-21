@@ -30,6 +30,7 @@ import { aggregateParamsSchema } from '../../../domain/aggregate/params.ts'
 import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/custody.ts'
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
 import { loanKinds } from '../../../domain/loan/vocabulary.ts'
+import { debtKinds } from '../../../domain/debt/vocabulary.ts'
 import { BENCHMARK_BASES, BENCHMARK_PERIODS } from '../../../domain/benchmark/compare.ts'
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
@@ -221,6 +222,17 @@ export const overviewSchema = z.object({
        * account holds the money left, not the debt.
        */
       loanBalanceCents: cents().nullable(),
+      /**
+       * Summed outstanding balance of every revolving debt — a credit card, a store
+       * card (#442) — or null when the household tracks none.
+       *
+       * Subtracted from `totalCents` the same way `loanBalanceCents` is, and reported
+       * separately for the same reason: it is a hand-entered figure, not something the
+       * Actual/Ghostfolio account balances said, and folding it into `debtCents` would
+       * make that field mean two different things depending on whether anybody had
+       * typed a card balance in.
+       */
+      revolvingDebtBalanceCents: cents().nullable(),
       /**
        * How much of `liquidCents` above sits in an off-budget account, null when none
        * of it does (#353) — e.g. a savings pot Actual keeps off-budget that still
@@ -869,6 +881,22 @@ export const portfolioLoanSchema = z.object({
   payoffDate: z.string().nullable(),
 })
 
+/**
+ * One revolving debt, as sent (#442) — the stored record itself rather than a derived
+ * figure, unlike `portfolioLoanSchema`'s `balanceCents`: there is nothing to amortize, so
+ * `balanceCents` here is already what the owner last confirmed against a statement.
+ */
+export const portfolioDebtSchema = z.object({
+  id: z.string(),
+  kind: z.enum(debtKinds),
+  label: z.string(),
+  balanceCents: cents(),
+  minimumPaymentCents: cents(),
+  aprBp: basisPoints().nullable(),
+  /** One month's interest at `aprBp` on the current balance, or null with no APR on file. */
+  estimatedMonthlyInterestCents: cents().nullable(),
+})
+
 /** One off-budget Actual account counted into net worth (#353). */
 export const offBudgetAccountSchema = z.object({
   id: z.string(),
@@ -929,6 +957,15 @@ export const portfolioSchema = z.object({
   loans: z.array(portfolioLoanSchema),
   /** Summed outstanding balance across every loan, 0 when there are none. */
   totalLoanBalanceCents: cents(),
+  /**
+   * Revolving debt — a credit card, a store card (#442). Outside `allocation`/`advice`
+   * for the same reason `loans` is: a card balance is not a position the drift table
+   * could sell to correct anything. The subtraction from net worth happens on
+   * `/api/overview`; here every balance is only ever reported.
+   */
+  debts: z.array(portfolioDebtSchema),
+  /** Summed outstanding balance across every revolving debt, 0 when there are none. */
+  totalDebtBalanceCents: cents(),
   /**
    * Off-budget Actual accounts already counted into net worth, named (#353) — a
    * mortgage or a house-value tracker, say, every kind included. See
@@ -1620,6 +1657,24 @@ export const loanSettingSchema = z.object({
 })
 
 /**
+ * One stored revolving debt, as `/api/settings` lists it (#442).
+ *
+ * The stored record, sent as-is — there is no derived-versus-echo split to make here the
+ * way `portfolioLoanSchema` needs against `loanSettingSchema`: `balanceCents` is never
+ * amortized, so what settings stores and what the portfolio page shows are the same
+ * number. `id` is the server's, same reason as `loanSettingSchema`'s.
+ */
+export const debtSettingSchema = z.object({
+  id: z.string(),
+  kind: z.enum(debtKinds),
+  label: z.string(),
+  balanceCents: cents(),
+  minimumPaymentCents: cents(),
+  /** Annual percentage rate, basis points, or null when nobody has entered one. */
+  aprBp: basisPoints().nullable(),
+})
+
+/**
  * The Actual/Ghostfolio/AI connection this tenant uses (#369, #422).
  *
  * A secret is never on this wire, in either direction: `passwordConfigured` and
@@ -1738,6 +1793,12 @@ export const settingsSchema = z.object({
    * whole-list patch for these, so there is no patch body for the read shape to match.
    */
   loans: z.array(loanSettingSchema),
+  /**
+   * Revolving debt — a credit card, a store card (#442), most recently added first. A
+   * flat array for the same reason `loans` is one: there is no whole-list patch for
+   * these either.
+   */
+  debts: z.array(debtSettingSchema),
   /** The Actual/Ghostfolio/AI connection this tenant uses (#369, #422). */
   integrations: integrationsSettingSchema,
   /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
@@ -2156,6 +2217,7 @@ export type RiskProfileSetting = z.infer<typeof riskProfileSettingSchema>
 export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
 export type LoanSetting = z.infer<typeof loanSettingSchema>
+export type DebtSetting = z.infer<typeof debtSettingSchema>
 export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
 export type InviteSetting = z.infer<typeof inviteSettingSchema>
 export type InviteCreated = z.infer<typeof inviteCreatedSchema>

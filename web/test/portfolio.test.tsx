@@ -107,6 +107,8 @@ const FULL: PortfolioPayload = {
   totalPropertyEquityCents: null,
   loans: [],
   totalLoanBalanceCents: 0,
+  debts: [],
+  totalDebtBalanceCents: 0,
   offBudgetAccounts: [],
   ghostfolioConfigured: true,
 }
@@ -127,6 +129,8 @@ const EMPTY: PortfolioPayload = {
   totalPropertyEquityCents: null,
   loans: [],
   totalLoanBalanceCents: 0,
+  debts: [],
+  totalDebtBalanceCents: 0,
   offBudgetAccounts: [],
   ghostfolioConfigured: true,
 }
@@ -1051,6 +1055,58 @@ describe('loans (#441)', () => {
     expect(cells[1]).toBe('Personal loan')
     expect(cells[3]).toBe('—')
     expect(cells[6]).toBe('—')
+  })
+})
+
+describe('debts (#442)', () => {
+  const CARD: PortfolioPayload['debts'][number] = {
+    id: 'debt-1',
+    kind: 'creditCard',
+    label: 'Card',
+    balanceCents: 200_000,
+    minimumPaymentCents: 10_000,
+    aprBp: 1_800,
+    estimatedMonthlyInterestCents: 3_000,
+  }
+
+  it('draws no card when nothing is owed', async () => {
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+
+    expect(screen.queryByRole('heading', { level: 2, name: 'Credit cards' })).toBeNull()
+  })
+
+  it('shows the balance, the kind, the minimum payment, the rate and the estimated interest', async () => {
+    serve(json({ ...FULL, debts: [CARD], totalDebtBalanceCents: 200_000 }))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Credit cards' })
+
+    const cells = row('Card')
+    expect(cells[0]).toBe('Card')
+    expect(cells[1]).toBe('Credit card')
+    // Never amortized, so never a `≈`: the stored figure is the balance.
+    expect(cells[2]).toBe('€ 2.000')
+    expect(cells[3]).toBe('€ 100')
+    expect(cells[4]).toBe('18%')
+    expect(cells[5]).toBe('€ 30')
+  })
+
+  it('dashes the rate and the estimated interest rather than inventing either', async () => {
+    serve(
+      json({
+        ...FULL,
+        debts: [{ ...CARD, label: 'Store card', kind: 'other', aprBp: null, estimatedMonthlyInterestCents: null }],
+        totalDebtBalanceCents: 200_000,
+      }),
+    )
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Credit cards' })
+
+    const cells = row('Store card')
+    expect(cells[1]).toBe('Other')
+    expect(cells[4]).toBe('—')
+    expect(cells[5]).toBe('—')
   })
 })
 

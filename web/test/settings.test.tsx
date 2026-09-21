@@ -322,6 +322,7 @@ const PAYLOAD: Payload = {
   benchmark: BENCHMARK,
   property: { properties: [] },
   loans: [],
+  debts: [],
   invites: [],
   integrations: {
     actual: {
@@ -487,6 +488,7 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/benchmark': 'Household',
   '/settings/property': 'Property',
   '/settings/loans': 'Loans',
+  '/settings/debts': 'Credit cards',
 }
 
 /**
@@ -2717,6 +2719,199 @@ describe('loans (#441)', () => {
     expect((screen.getByLabelText('Outstanding balance') as HTMLInputElement).disabled).toBe(true)
     expect(saveExisting().disabled).toBe(true)
     expect(boxValue('Outstanding balance')).toBe('€ 15.000,00')
+  })
+})
+
+describe('debts (#442)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/debts')
+
+  const debts = (): HTMLElement => form('debts-form')
+
+  const addDebt = (): void => {
+    fireEvent.click(within(debts()).getByRole('button', { name: 'Add a card' }))
+  }
+
+  const saveNew = (): HTMLButtonElement =>
+    within(debts()).getByRole('button', { name: 'Add this card' }) as HTMLButtonElement
+
+  const saveExisting = (): HTMLButtonElement =>
+    within(debts()).getByRole('button', { name: 'Save this card' }) as HTMLButtonElement
+
+  const removeDebt = (): void => {
+    fireEvent.click(within(debts()).getByRole('button', { name: 'Remove this card' }))
+  }
+
+  /** One box's value, with the currency separator normalised — see the loans block above. */
+  const boxValue = (label: string): string =>
+    (screen.getByLabelText(label) as HTMLInputElement).value.replace(/[  ]/g, ' ')
+
+  /** A stored card, as `/api/settings` sends it. */
+  const STORED: Payload['debts'][number] = {
+    id: 'debt-1',
+    kind: 'creditCard',
+    label: 'Card',
+    balanceCents: 200_000,
+    minimumPaymentCents: 10_000,
+    aprBp: 1_800,
+  }
+
+  const withOneDebt = (extra: Partial<Payload['debts'][number]> = {}): Payload => ({
+    ...PAYLOAD,
+    debts: [{ ...STORED, ...extra }],
+  })
+
+  /** Fills every required box of the row just added. */
+  const fillNewRow = (): void => {
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Card' } })
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '2000' } })
+    fireEvent.change(screen.getByLabelText('Minimum payment'), { target: { value: '100' } })
+    fireEvent.change(screen.getByLabelText('Interest rate (APR)'), { target: { value: '1800' } })
+  }
+
+  it('shows the empty state when nothing is stored yet', async () => {
+    await open(READS)
+
+    expect(
+      within(debts()).getByText('No credit cards yet. Add one to see its balance subtracted from net worth.'),
+    ).toBeTruthy()
+    expect(within(debts()).queryByRole('button', { name: 'Save this card' })).toBeNull()
+  })
+
+  it('offers both kinds', async () => {
+    await open(READS)
+
+    addDebt()
+    const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement
+    expect(Array.from(typeSelect.options, (option) => option.value)).toEqual(['creditCard', 'other'])
+  })
+
+  it('POSTs a new row, with no id of its own — the server assigns that', async () => {
+    const calls = await open({ ...READS, '/api/settings/debts': json(withOneDebt()) })
+
+    addDebt()
+    fillNewRow()
+    fireEvent.click(saveNew())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/debts',
+          method: 'POST',
+          body: {
+            kind: 'creditCard',
+            label: 'Card',
+            balanceCents: 200_000,
+            minimumPaymentCents: 10_000,
+            aprBp: 1_800,
+          },
+        },
+      ])
+    })
+  })
+
+  it('has nothing to save until a stored row is actually changed', async () => {
+    await open({ ...READS, '/api/settings': json(withOneDebt()) })
+
+    expect(saveExisting().disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '1500' } })
+    expect(saveExisting().disabled).toBe(false)
+  })
+
+  it('PATCHes the one debt it edited, at its own URL', async () => {
+    const stored = withOneDebt()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/debts/debt-1': json(stored),
+    })
+
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '1500' } })
+    fireEvent.click(saveExisting())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/debts/debt-1',
+          method: 'PATCH',
+          body: {
+            kind: 'creditCard',
+            label: 'Card',
+            balanceCents: 150_000,
+            minimumPaymentCents: 10_000,
+            aprBp: 1_800,
+          },
+        },
+      ])
+    })
+  })
+
+  it('DELETEs a stored row rather than patching a list without it', async () => {
+    const stored = withOneDebt()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/debts/debt-1': json({ ...PAYLOAD, debts: [] }),
+    })
+
+    removeDebt()
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/debts/debt-1', method: 'DELETE', body: undefined },
+      ])
+    })
+  })
+
+  it('drops an unsaved row locally, with no request at all', async () => {
+    const calls = await open(READS)
+
+    addDebt()
+    removeDebt()
+
+    expect(writes(calls)).toEqual([])
+    expect(
+      within(debts()).getByText('No credit cards yet. Add one to see its balance subtracted from net worth.'),
+    ).toBeTruthy()
+  })
+
+  it('reads back an estimated month of interest at the rate entered', async () => {
+    await open({ ...READS, '/api/settings': json(withOneDebt()) })
+
+    // 2 000,00 at 18% APR: 2 000,00 * 0.18 / 12 = 30,00.
+    expect(within(debts()).getByText('€ 30,00 estimated interest next month at this rate.')).toBeTruthy()
+  })
+
+  it('says no rate was entered rather than estimating zero interest', async () => {
+    await open({ ...READS, '/api/settings': json(withOneDebt({ aprBp: null })) })
+
+    expect(within(debts()).getByText('No rate entered, so no interest estimate.')).toBeTruthy()
+  })
+
+  it('refuses to send a row whose numbers do not parse yet', async () => {
+    await open({ ...READS, '/api/settings': json(withOneDebt()) })
+
+    fireEvent.change(screen.getByLabelText('Interest rate (APR)'), { target: { value: '3.50' } })
+
+    expect(saveExisting().disabled).toBe(true)
+    // Twice over: the caption under the rate box, and the row's own read-back line.
+    expect(
+      within(debts()).getAllByText("Something in this row isn't a valid number yet."),
+    ).toHaveLength(2)
+  })
+
+  it('leaves every control read-only for a viewer, and still readable', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...withOneDebt(),
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect((screen.getByLabelText('Outstanding balance') as HTMLInputElement).disabled).toBe(true)
+    expect(saveExisting().disabled).toBe(true)
+    expect(boxValue('Outstanding balance')).toBe('€ 2.000,00')
   })
 })
 

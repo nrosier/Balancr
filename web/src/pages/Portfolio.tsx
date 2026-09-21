@@ -34,6 +34,7 @@ import { useResource } from '../api/resource.tsx'
 import { AllocationChart } from '../charts/AllocationChart.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
+import { DebtsTable } from '../portfolio/Debts.tsx'
 import { DriftTable } from '../portfolio/Drift.tsx'
 import { LoansTable } from '../portfolio/Loans.tsx'
 import { OffBudgetAccountsTable } from '../portfolio/OffBudgetAccounts.tsx'
@@ -122,8 +123,18 @@ function Figures({
 }): ReactNode {
   const { t } = useT()
   const unknown = t('empty.unknown')
-  const { advice, allocation, cashValueCents, date, history, holdings, loans, offBudgetAccounts, properties } =
-    data
+  const {
+    advice,
+    allocation,
+    cashValueCents,
+    date,
+    debts,
+    history,
+    holdings,
+    loans,
+    offBudgetAccounts,
+    properties,
+  } = data
   const { investedValueCents, totalValueCents, twrBp } = data
 
   return (
@@ -242,6 +253,20 @@ function Figures({
             <section className="card">
               <h2 className="card__title">{t('portfolio:loan.title')}</h2>
               <LoansTable loans={loans} />
+            </section>
+          )}
+
+          {/*
+            Revolving debt — a credit card, a store card (#442). Below Loans for the same
+            reason Loans sits below Property: its balance is already subtracted from the
+            net worth Overview shows, and this card is what explains the subtraction. No
+            fallback branch, same reasoning: a household that tracks no card is not shown
+            an empty table.
+          */}
+          {debts.length === 0 ? null : (
+            <section className="card">
+              <h2 className="card__title">{t('portfolio:debt.title')}</h2>
+              <DebtsTable debts={debts} />
             </section>
           )}
         </>

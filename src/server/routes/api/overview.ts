@@ -33,6 +33,13 @@
  * meaning only that — see `overviewSchema`. `history` is left alone for the same reason
  * as property equity, and for one more: a loan taken out last month was not owed a year
  * ago, and drawing it across the whole curve would rewrite a past that did happen.
+ *
+ * Revolving debt is netted the same way again (#442): every tracked credit-card-style
+ * balance is *subtracted* here and reported on its own as `revolvingDebtBalanceCents`,
+ * for the same reason a loan's balance is kept out of `debtCents` rather than folded in.
+ * There is nothing to price "as of the request" for a revolving balance — it is not
+ * amortized, so today's figure is whatever the owner last confirmed against a statement.
+ * `history` is left alone for the same reason as the other two.
  */
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
@@ -49,6 +56,7 @@ import {
   storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadHygiene, loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import { listDebts, totalDebtBalanceCents } from '../../../domain/debt/debts.ts'
 import { listLoans, totalLoanBalanceCents } from '../../../domain/loan/loans.ts'
 import {
   loadProperties,
@@ -105,6 +113,10 @@ export function buildOverview(db: Db, tenantId: string): Overview {
   // Priced as of right now for the same reason, and subtracted rather than added (#441).
   const loans = listLoans(db, tenantId)
   const loanBalance = totalLoanBalanceCents(loans, today)
+  // Never amortized (#442) — this is just what is on file, as of whenever it was last
+  // updated against a statement.
+  const debts = listDebts(db, tenantId)
+  const debtBalance = totalDebtBalanceCents(debts)
   const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db, tenantId)
   const integrations = integrationAvailability(db, tenantId)
 
@@ -115,7 +127,7 @@ export function buildOverview(db: Db, tenantId: string): Overview {
         ? null
         : {
             date: netWorth.date,
-            totalCents: netWorth.totalCents + (propertyEquity ?? 0) - loanBalance,
+            totalCents: netWorth.totalCents + (propertyEquity ?? 0) - loanBalance - debtBalance,
             liquidCents: netWorth.liquidCents,
             investedCents: netWorth.investedCents,
             debtCents: netWorth.debtCents,
@@ -132,6 +144,8 @@ export function buildOverview(db: Db, tenantId: string): Overview {
             // figures above: "nothing owed on a car loan" and "no car loan" are
             // different answers, and only one of them is worth a row on the card.
             loanBalanceCents: loans.length === 0 ? null : loanBalance,
+            // Null rather than zero with no revolving debt on file, same reasoning (#442).
+            revolvingDebtBalanceCents: debts.length === 0 ? null : debtBalance,
             // How much of `liquidCents` above is sitting off-budget (#353) — a savings
             // pot Actual keeps off-budget, say, that already counted toward the total
             // before this had anywhere to show. Scoped to liquid accounts on purpose;
