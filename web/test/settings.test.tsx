@@ -321,6 +321,7 @@ const PAYLOAD: Payload = {
   ],
   benchmark: BENCHMARK,
   property: { properties: [] },
+  loans: [],
   invites: [],
   integrations: {
     actual: {
@@ -485,6 +486,7 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/accounts': 'Accounts',
   '/settings/benchmark': 'Household',
   '/settings/property': 'Property',
+  '/settings/loans': 'Loans',
 }
 
 /**
@@ -2451,6 +2453,272 @@ const INVITES: Payload['invites'] = [
     revokedAt: null,
   },
 ]
+
+describe('loans (#441)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/loans')
+
+  const loans = (): HTMLElement => form('loans-form')
+
+  const addLoan = (): void => {
+    fireEvent.click(within(loans()).getByRole('button', { name: 'Add a loan' }))
+  }
+
+  const saveNew = (): HTMLButtonElement =>
+    within(loans()).getByRole('button', { name: 'Add this loan' }) as HTMLButtonElement
+
+  const saveExisting = (): HTMLButtonElement =>
+    within(loans()).getByRole('button', { name: 'Save this loan' }) as HTMLButtonElement
+
+  const removeLoan = (): void => {
+    fireEvent.click(within(loans()).getByRole('button', { name: 'Remove this loan' }))
+  }
+
+  /**
+   * One box's value, with the currency separator normalised.
+   *
+   * Belgian money separates the symbol with a NO-BREAK SPACE (U+00A0) or a NARROW one
+   * (U+202F), so a comparison against a typed literal fails on two strings that are
+   * visually identical — the same trap `test/helpers/text.ts` exists for on the server
+   * side. `getByText` normalises whitespace itself; an `input.value` comparison does not.
+   */
+  const boxValue = (label: string): string =>
+    (screen.getByLabelText(label) as HTMLInputElement).value.replace(/[\u202f\u00a0]/g, ' ')
+
+  /**
+   * A stored loan, as `/api/settings` sends it.
+   *
+   * No interest and no payment, so the balance read-back is exactly `principalCents`
+   * whatever day the suite runs on — the panel prices every row against the real clock,
+   * and a fixture that let it amortize would drift with the calendar (the same reason
+   * `server-api.test.ts`'s property fixtures are built this way). The payoff cases below
+   * give it a payment of their own: a payoff date is measured from the anchor, so it is
+   * clock-independent regardless.
+   */
+  const STORED: Payload['loans'][number] = {
+    id: 'loan-1',
+    kind: 'car',
+    label: 'Car',
+    openingDate: '2026-01-01',
+    principalCents: 1_500_000,
+    anchorDate: '2026-01-01',
+    rateBp: 0,
+    monthlyPaymentCents: 0,
+    remainingTermMonths: 60,
+    originalPrincipalCents: 3_000_000,
+    extraMonthlyPaymentCents: null,
+  }
+
+  const withOneLoan = (extra: Partial<Payload['loans'][number]> = {}): Payload => ({
+    ...PAYLOAD,
+    loans: [{ ...STORED, ...extra }],
+  })
+
+  /** Fills every required box of the row just added. */
+  const fillNewRow = (): void => {
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Car' } })
+    fireEvent.change(screen.getByLabelText('Taken out on'), { target: { value: '2026-01-01' } })
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '15000' } })
+    fireEvent.change(screen.getByLabelText('Balance as of'), { target: { value: '2026-01-01' } })
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '60' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1000' } })
+  }
+
+  it('shows the empty state when nothing is stored yet', async () => {
+    await open(READS)
+
+    expect(
+      within(loans()).getByText(
+        'No loans yet. Add a car loan or a personal loan to see it in net worth.',
+      ),
+    ).toBeTruthy()
+    expect(within(loans()).queryByRole('button', { name: 'Save this loan' })).toBeNull()
+  })
+
+  it('offers the two fixed-schedule kinds, and no mortgage among them', async () => {
+    await open(READS)
+
+    addLoan()
+    const typeSelect = screen.getByLabelText('Type') as HTMLSelectElement
+    expect(Array.from(typeSelect.options, (option) => option.value)).toEqual(['car', 'personal'])
+  })
+
+  it('POSTs a new row, with no id of its own — the server assigns that', async () => {
+    const calls = await open({ ...READS, '/api/settings/loans': json(withOneLoan()) })
+
+    addLoan()
+    fillNewRow()
+    fireEvent.click(saveNew())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/loans',
+          method: 'POST',
+          body: {
+            kind: 'car',
+            label: 'Car',
+            openingDate: '2026-01-01',
+            principalCents: 1_500_000,
+            anchorDate: '2026-01-01',
+            rateBp: 0,
+            monthlyPaymentCents: 100_000,
+            remainingTermMonths: 60,
+            originalPrincipalCents: null,
+            extraMonthlyPaymentCents: null,
+          },
+        },
+      ])
+    })
+  })
+
+  it('has nothing to save until a stored row is actually changed', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan()) })
+
+    expect(saveExisting().disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '7000' } })
+    expect(saveExisting().disabled).toBe(false)
+  })
+
+  it('PATCHes the one loan it edited, at its own URL', async () => {
+    const stored = withOneLoan()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/loans/loan-1': json(stored),
+    })
+
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '7000' } })
+    fireEvent.change(screen.getByLabelText('Balance as of'), { target: { value: '2026-09-01' } })
+    fireEvent.click(saveExisting())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/loans/loan-1',
+          method: 'PATCH',
+          body: {
+            kind: 'car',
+            label: 'Car',
+            openingDate: '2026-01-01',
+            principalCents: 700_000,
+            anchorDate: '2026-09-01',
+            rateBp: 0,
+            monthlyPaymentCents: 0,
+            remainingTermMonths: 60,
+            originalPrincipalCents: 3_000_000,
+            extraMonthlyPaymentCents: null,
+          },
+        },
+      ])
+    })
+  })
+
+  it('DELETEs a stored row rather than patching a list without it', async () => {
+    const stored = withOneLoan()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/loans/loan-1': json({ ...PAYLOAD, loans: [] }),
+    })
+
+    removeLoan()
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/loans/loan-1', method: 'DELETE', body: undefined },
+      ])
+    })
+  })
+
+  it('drops an unsaved row locally, with no request at all', async () => {
+    const calls = await open(READS)
+
+    addLoan()
+    removeLoan()
+
+    expect(writes(calls)).toEqual([])
+    expect(
+      within(loans()).getByText(
+        'No loans yet. Add a car loan or a personal loan to see it in net worth.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('reads back the balance and the paid-off share the row implies', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan()) })
+
+    // 15 000,00 owed of an original 30 000,00: half of it paid off already.
+    expect(within(loans()).getByText('€ 15.000,00 still owed today.')).toBeTruthy()
+    expect(within(loans()).getByText('50% of the original loan paid off.')).toBeTruthy()
+  })
+
+  it('reads back the payoff date the schedule implies, measured from the anchor', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan({ monthlyPaymentCents: 100_000 })) })
+
+    // 15 000,00 at 1 000,00 a month with no interest: fifteen months from 01/01/2026.
+    expect(within(loans()).getByText('Paid off around 01/04/2027 at this rate.')).toBeTruthy()
+  })
+
+  it('brings the payoff read-back forward when an extra payment is typed in', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan({ monthlyPaymentCents: 100_000 })) })
+
+    fireEvent.change(screen.getByLabelText('Extra each month'), { target: { value: '2000' } })
+
+    // 3 000,00 a month rather than 1 000,00: five months instead of fifteen.
+    expect(within(loans()).getByText('Paid off around 01/06/2026 at this rate.')).toBeTruthy()
+  })
+
+  it('says so rather than inventing a date when the payment never clears the loan', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan()) })
+
+    expect(
+      within(loans()).getByText('This payment never clears the balance within the term.'),
+    ).toBeTruthy()
+  })
+
+  it('refuses to send a row whose numbers do not parse yet', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan()) })
+
+    // Belgian grouping in a basis-points box, the case `Property.tsx` refuses locally too.
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '3.50' } })
+
+    expect(saveExisting().disabled).toBe(true)
+    // Twice over: the caption under the rate box, and the row's own read-back line.
+    expect(
+      within(loans()).getAllByText("Something in this row isn't a valid number yet."),
+    ).toHaveLength(2)
+  })
+
+  it('offers the standard payment for the rate and term entered', async () => {
+    await open({ ...READS, '/api/settings': json(withOneLoan()) })
+
+    fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '15' } })
+    fireEvent.click(
+      within(loans()).getByRole('button', {
+        name: 'Use the standard payment for this rate and term',
+      }),
+    )
+
+    // 15 000,00 over fifteen months at no interest.
+    expect(boxValue('Monthly payment')).toBe('€ 1.000,00')
+  })
+
+  it('leaves every control read-only for a viewer, and still readable', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...withOneLoan(),
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect((screen.getByLabelText('Outstanding balance') as HTMLInputElement).disabled).toBe(true)
+    expect(saveExisting().disabled).toBe(true)
+    expect(boxValue('Outstanding balance')).toBe('€ 15.000,00')
+  })
+})
 
 describe('members', () => {
   const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/members', 'Members')

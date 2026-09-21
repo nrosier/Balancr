@@ -47,6 +47,7 @@ const FULL: OverviewPayload = {
     debtCents: -1_000_000,
     propertyValueCents: 40_000_000,
     mortgageBalanceCents: 18_000_000,
+    loanBalanceCents: 1_500_000,
     liquidOffBudgetCents: 500_000,
   },
   history: [
@@ -368,6 +369,7 @@ describe('when a figure is absent', () => {
           debtCents: 0,
           propertyValueCents: null,
           mortgageBalanceCents: null,
+          loanBalanceCents: null,
           liquidOffBudgetCents: null,
         },
       } satisfies OverviewPayload),

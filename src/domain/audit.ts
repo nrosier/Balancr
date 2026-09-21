@@ -124,6 +124,20 @@ export const AUDIT_ACTIONS = [
    */
   'settings.property',
   /**
+   * A fixed-schedule non-mortgage loan created, edited or deleted (#441).
+   *
+   * One action for all three rather than `settings.loan.{create,update,delete}`, because
+   * `before`/`after` already say which happened — null before is a create, null after is
+   * a delete — and `entityRef` names the loan either way. The trail is read to answer
+   * "what did this loan say before somebody re-anchored it", and splitting that history
+   * across three action names is what would make it hard to read.
+   *
+   * On this list for the same reason `settings.property` is: what a loan owes is the
+   * owner's own reading of a statement, and nothing in Actual or Ghostfolio can
+   * regenerate it.
+   */
+  'settings.loan',
+  /**
    * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
    *
    * `before`/`after` never carry a secret — only the same `*Configured` shape the

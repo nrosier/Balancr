@@ -25,6 +25,13 @@
  * calendar, not with whatever night Ghostfolio's snapshot last ran, and a fresh install
  * with no Ghostfolio holdings at all (`date === null`) still has properties to show.
  *
+ * `loans` is the same kind of field for the same reasons (#441) — fixed-schedule car and
+ * personal debt, amortized as of the request, with a projected payoff date. Reported
+ * beside the properties rather than inside `allocation`: a car loan is not a position
+ * `advice/{drift,suggest}.ts` could sell to correct a drift. The subtraction from net
+ * worth happens on `/api/overview`, which is the response that has a total to subtract
+ * from; here the balance is only ever reported.
+ *
  * Always the latest snapshot — no `?asOf=` (#345). A picker over Ghostfolio's own
  * history duplicated the Benchmark card's month/year control without its pro-ration,
  * on a page whose whole point is where things stand right now.
@@ -33,6 +40,14 @@ import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
 import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
+import {
+  effectiveMonthlyPaymentCents,
+  listLoans,
+  loanBalanceCents,
+  loanPaidOffBp,
+  loanPayoffDate,
+  totalLoanBalanceCents,
+} from '../../../domain/loan/loans.ts'
 import { knownSplit } from '../../../domain/portfolio/metrics.ts'
 import {
   latestSnapshotDate,
@@ -60,6 +75,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   const split = knownSplit(metrics)
   const today = new Date().toISOString().slice(0, 10)
   const properties = loadProperties(db, tenantId).properties
+  const loans = listLoans(db, tenantId)
 
   return portfolioSchema.parse({
     freshness: freshness(db, tenantId),
@@ -119,6 +135,24 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
       grossYieldBp: grossYieldBp(property),
     })),
     totalPropertyEquityCents: totalEquityCents(properties, today),
+    // Fixed-schedule non-mortgage debt (#441), priced as of the request like the
+    // properties above and for the same reason. `payoffDate` is a projection of the
+    // stored schedule, not a promise — see `monthsToPayoff`.
+    loans: loans.map((loan) => ({
+      id: loan.id,
+      kind: loan.kind,
+      label: loan.label,
+      openingDate: loan.openingDate,
+      balanceCents: loanBalanceCents(loan, today),
+      anchorDate: loan.anchorDate,
+      paidOffBp: loanPaidOffBp(loan, today),
+      // The effective payment, extra included: what the table is read for is what
+      // actually leaves the account each month.
+      monthlyPaymentCents: effectiveMonthlyPaymentCents(loan),
+      rateBp: loan.rateBp,
+      payoffDate: loanPayoffDate(loan),
+    })),
+    totalLoanBalanceCents: totalLoanBalanceCents(loans, today),
     // Every off-budget account, any kind — the full list `netWorth.liquidOffBudgetCents`
     // (on `overviewSchema`) only summarizes the liquid slice of (#353).
     offBudgetAccounts: loadOffBudgetAccounts(db, tenantId).map((account) => ({

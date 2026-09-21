@@ -164,6 +164,19 @@ function Figures({
                   ...(netWorth.mortgageBalanceCents === 0 ? {} : { tone: 'negative' as const }),
                 },
               ]),
+          // Car and personal loans (#441), already subtracted from the total above. Its
+          // own row rather than added to `debt`, which is what the accounts say — and a
+          // subtraction with nothing on screen to explain it is what makes a total look
+          // like a bug. Absent, not zero, for a household that tracks no loan.
+          ...(netWorth.loanBalanceCents === null
+            ? []
+            : [
+                {
+                  label: t('portfolio:metric.loanBalance'),
+                  value: euro(netWorth.loanBalanceCents),
+                  ...(netWorth.loanBalanceCents === 0 ? {} : { tone: 'negative' as const }),
+                },
+              ]),
         ]
 
   return (

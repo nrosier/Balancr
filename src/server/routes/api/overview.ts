@@ -25,6 +25,14 @@
  * snapshot has nothing to be netted into yet. `history` is deliberately left alone —
  * retroactively injecting today's property value into past dates would fabricate
  * equity the owner may not have held throughout that window.
+ *
+ * Fixed-schedule non-mortgage loans are netted the same way and in the opposite
+ * direction (#441): a car or personal loan's outstanding balance is *subtracted* here,
+ * priced as of the request, and reported on its own as `loanBalanceCents`. Not folded
+ * into `debtCents`, which is what the Actual/Ghostfolio accounts say and has to keep
+ * meaning only that — see `overviewSchema`. `history` is left alone for the same reason
+ * as property equity, and for one more: a loan taken out last month was not owed a year
+ * ago, and drawing it across the whole curve would rewrite a past that did happen.
  */
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
@@ -41,6 +49,7 @@ import {
   storedMonths,
 } from '../../../domain/aggregate/month-store.ts'
 import { loadHygiene, loadSignals } from '../../../domain/aggregate/signals-store.ts'
+import { listLoans, totalLoanBalanceCents } from '../../../domain/loan/loans.ts'
 import {
   loadProperties,
   outstandingBalanceCents,
@@ -93,6 +102,9 @@ export function buildOverview(db: Db, tenantId: string): Overview {
   const today = new Date().toISOString().slice(0, 10)
   const properties = loadProperties(db, tenantId).properties
   const propertyEquity = totalEquityCents(properties, today)
+  // Priced as of right now for the same reason, and subtracted rather than added (#441).
+  const loans = listLoans(db, tenantId)
+  const loanBalance = totalLoanBalanceCents(loans, today)
   const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db, tenantId)
   const integrations = integrationAvailability(db, tenantId)
 
@@ -103,7 +115,7 @@ export function buildOverview(db: Db, tenantId: string): Overview {
         ? null
         : {
             date: netWorth.date,
-            totalCents: netWorth.totalCents + (propertyEquity ?? 0),
+            totalCents: netWorth.totalCents + (propertyEquity ?? 0) - loanBalance,
             liquidCents: netWorth.liquidCents,
             investedCents: netWorth.investedCents,
             debtCents: netWorth.debtCents,
@@ -116,6 +128,10 @@ export function buildOverview(db: Db, tenantId: string): Overview {
                   0,
                 )
               : null,
+            // Null rather than zero with no loan on file, matching the two property
+            // figures above: "nothing owed on a car loan" and "no car loan" are
+            // different answers, and only one of them is worth a row on the card.
+            loanBalanceCents: loans.length === 0 ? null : loanBalance,
             // How much of `liquidCents` above is sitting off-budget (#353) — a savings
             // pot Actual keeps off-budget, say, that already counted toward the total
             // before this had anywhere to show. Scoped to liquid accounts on purpose;

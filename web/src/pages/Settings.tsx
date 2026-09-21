@@ -56,6 +56,7 @@ import { AccountsPanel } from '../settings/Accounts.tsx'
 import { BenchmarkSection } from '../settings/Benchmark.tsx'
 import { IntegrationsPanel } from '../settings/Integrations.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
+import { LoansPanel } from '../settings/Loans.tsx'
 import { MembersPanel } from '../settings/Members.tsx'
 import { PromptsPanel } from '../settings/Prompts.tsx'
 import { PropertyPanel } from '../settings/Property.tsx'
@@ -189,6 +190,7 @@ export function Settings(): ReactNode {
                 {section === 'accounts' && <AccountsPanel {...props} />}
                 {section === 'benchmark' && <BenchmarkSection {...props} />}
                 {section === 'property' && <PropertyPanel {...props} />}
+                {section === 'loans' && <LoansPanel {...props} />}
                 {section === 'integrations' && <IntegrationsPanel {...props} />}
                 {section === 'members' && <MembersPanel {...props} />}
               </>

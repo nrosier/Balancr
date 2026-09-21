@@ -22,6 +22,7 @@ export type SettingsSectionId =
   | 'accounts'
   | 'benchmark'
   | 'property'
+  | 'loans'
   | 'integrations'
   | 'members'
 
@@ -33,6 +34,7 @@ export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'accounts', path: '/settings/accounts', labelKey: 'settings:nav.accounts' },
   { id: 'benchmark', path: '/settings/benchmark', labelKey: 'settings:nav.benchmark' },
   { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
+  { id: 'loans', path: '/settings/loans', labelKey: 'settings:nav.loans' },
   { id: 'integrations', path: '/settings/integrations', labelKey: 'settings:nav.integrations' },
   { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
 ]

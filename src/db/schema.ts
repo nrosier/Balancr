@@ -1313,6 +1313,58 @@ export const settings = sqliteTable(
 )
 
 /**
+ * Non-mortgage debt with a fixed schedule: a car loan, a personal loan (#441).
+ *
+ * A real table rather than another JSON blob in `settings`, which is where the
+ * properties and their mortgages live. The difference is what each one is: a
+ * property list is one *setting* — a value somebody typed that changes how a
+ * figure is computed — and it is read and written whole, so a blob costs nothing.
+ * A loan is a durable record with an identity: it is created once, edited in
+ * place for years as the balance is re-anchored against statements, and
+ * eventually deleted, and every one of those is a row operation. A blob would
+ * make "edit this loan" a read-modify-write of every other loan, which is the
+ * shape that loses a concurrent edit, and it would leave the audit trail unable
+ * to name which loan changed.
+ *
+ * Tenant-scoped like everything else since #376: `tenant_id` is `NOT NULL`, a
+ * foreign key, indexed, and every query in `domain/loan/loans.ts` filters on it.
+ *
+ * The amortizing columns are the same six `domain/loan/amortization.ts` works in,
+ * which is also what a mortgage stores — the shared shape, not a coincidence. The
+ * rate is basis points and every amount is integer cents, as everywhere.
+ */
+export const loans = sqliteTable(
+  'loans',
+  {
+    id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** `domain/loan/vocabulary.ts`'s `loanKinds`. A mortgage is not one of them. */
+    kind: text({ enum: ['car', 'personal'] })
+      .notNull()
+      .default('personal'),
+    label: text().notNull().default(''),
+    /** When the loan was taken out, YYYY-MM-DD. Never what the balance amortizes from. */
+    openingDate: text('opening_date').notNull(),
+    /** Outstanding balance as of `anchor_date` — the re-anchor point, not the original amount. */
+    principalCents: integer('principal_cents').notNull(),
+    /** The date `principal_cents` was true, YYYY-MM-DD. */
+    anchorDate: text('anchor_date').notNull(),
+    rateBp: integer('rate_bp').notNull(),
+    monthlyPaymentCents: integer('monthly_payment_cents').notNull(),
+    remainingTermMonths: integer('remaining_term_months').notNull(),
+    /** Null when nobody has entered it — then no paid-off share can be shown (#392). */
+    originalPrincipalCents: integer('original_principal_cents'),
+    /** A voluntary amount paid on top every month, null when none is. */
+    extraMonthlyPaymentCents: integer('extra_monthly_payment_cents'),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+  },
+  (t) => [index('loans_tenant_idx').on(t.tenantId, t.openingDate)],
+)
+
+/**
  * One row per tenant: the Actual/Ghostfolio/AI credentials that used to
  * live only in `.env` (#369). `*Enc` columns are AES-256-GCM via
  * `db/field-crypto.ts`; everything else here is the non-secret half of the
@@ -1385,6 +1437,7 @@ export const schema = {
   jobRuns,
   rateLimits,
   settings,
+  loans,
   tenantIntegrations,
   upstreamProbes,
 }
