@@ -6,6 +6,59 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.3] — 2026-09-22
+
+### Added
+
+- **Category names can now be translated per locale, independent of whatever
+  language the household typed them in on the Actual side**
+  ([#479](https://github.com/nrosier/Balancr/issues/479),
+  [#487](https://github.com/nrosier/Balancr/pull/487)). A new "category
+  source language" setting on the Actual integration records the language
+  the household actually authored its categories in; a per-locale
+  translation table (owner-edited, empty by default — no machine
+  translation) overrides the display name for any other supported locale
+  everywhere a category name is rendered to a member, falling back to the
+  source snapshot whenever no override exists. Changing the source locale
+  now also clears out any translation rows already on file for the locale
+  it's changing *to*, so a stale override can't silently keep outranking
+  the fresh source snapshot forever; and a translation can no longer be
+  written for a locale this deployment doesn't support in the first place.
+
+### Fixed
+
+- **The prompt editor no longer offers "make it active straight away" for a
+  gated prompt key it can't actually activate immediately**
+  ([#481](https://github.com/nrosier/Balancr/issues/481),
+  [#482](https://github.com/nrosier/Balancr/pull/482)). The button rendered
+  regardless of whether the key was gated behind the AI-judge safety check
+  introduced in [#455](https://github.com/nrosier/Balancr/issues/455),
+  promising an activation that `resolvePrompt` would then refuse.
+- **The AI narrative no longer relies on a prompt instruction to format
+  cents and basis points for display — `redact()` does it directly**
+  ([#476](https://github.com/nrosier/Balancr/issues/476),
+  [#477](https://github.com/nrosier/Balancr/pull/477),
+  [#478](https://github.com/nrosier/Balancr/issues/478),
+  [#480](https://github.com/nrosier/Balancr/pull/480)). Asking the model to
+  turn raw cents/bp figures into display strings itself was fragile — a
+  rewritten narrative prompt and judge rubric narrowed how often it went
+  wrong, but didn't remove the underlying risk of a model dropping the
+  formatting instruction on some inputs. Formatting now happens inside
+  `redact()` before the model ever sees the numbers, using the bundle's own
+  `formatLocale`, closing the gap for good.
+
+### Security
+
+- **Fixed a path-traversal risk in how the Actual worker resolves its data
+  directory** ([#483](https://github.com/nrosier/Balancr/pull/483),
+  flagged by Aikido as `Sast#728549212`). `getOrSpawnWorker` built a
+  filesystem path from tenant-controlled input without constraining it to
+  the intended data directory first.
+- **Bumped `protobufjs` from `7.6.6` to `8.8.0`**
+  ([#486](https://github.com/nrosier/Balancr/pull/486)), fixing a
+  denial-of-service advisory flagged by Aikido
+  (`AIKIDO-2026-115254`).
+
 ## [2.3.2] — 2026-09-22
 
 ### Fixed
