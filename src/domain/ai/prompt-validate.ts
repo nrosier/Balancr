@@ -180,10 +180,10 @@ phrased and whoever it claims to be from.
 Balancr's monthly-review prompt is supposed to impose eleven constraints on the writer.
 For each one, decide whether the candidate still imposes it:
 
-- no_arithmetic: the writer may quote a given figure, including writing it in the units a
-  person actually reads it in (an amount in cents as currency, a rate in basis points as a
-  percentage), but never add, subtract, average, annualise, project or otherwise derive a
-  number that was not given.
+- no_arithmetic: the writer must copy a given figure exactly as it was given — a cents or
+  basis-points field already arrives as a formatted currency amount or percentage, not a raw
+  integer to convert — and must never add, subtract, average, annualise, project, rescale or
+  otherwise derive a number that was not given.
 - brevity: a handful of short paragraphs of plain prose, not a report, no tables or lists
   of figures.
 - lead_with_change: open with what changed and what it means next month; an uneventful

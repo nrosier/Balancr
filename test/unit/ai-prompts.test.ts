@@ -201,27 +201,31 @@ describe('built-in prompts', () => {
     expect(DEFAULT_PROMPTS['narrative.system']).toMatch(/Never add,\s*\n?\s*subtract/)
   })
 
-  it('tells the narrative pass to write a given figure as currency or a percentage, not raw', () => {
-    // The bug this closes: every body up to and including v2.3.2 forbade "convert[ing]" a
-    // figure at all, in the same breath as add/subtract/average — so a model that quoted
-    // `savingsRateBp: 1323` as `1323` was following the rule, not breaking it. The fix has
-    // to state the exception, not just drop the word "convert" and leave the requirement
-    // implicit.
+  it('tells the narrative pass to copy an already-formatted figure exactly, never convert it again', () => {
+    // The bug this closes (#478, fixed in #480): `redact()` used to send raw integers, so
+    // v2.3.2's body correctly told the model to divide a Cents/Bp field by 100 itself.
+    // `redact()` now sends the already-formatted string ("€585.66", "13.23%"), so that same
+    // instruction, left in place, would have a model divide an already-divided figure a
+    // second time — not merely redundant, but a materially corrupted number.
     const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
-    expect(body).toMatch(/divide by 100 and write it as currency/i)
-    expect(body).toMatch(/divide by 100 and write it as a percentage/i)
+    expect(body).toMatch(/copy it exactly as given/i)
+    expect(body).toMatch(/never divide it, rescale it or reformat it/i)
+    expect(body).not.toMatch(/divide by 100/i)
     // And the previous default is the text that had the bug, not a body that always wrote
     // this correctly — anchoring the fix as new rather than restating an old guarantee.
     const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
     expect(previous).toBeDefined()
-    expect(previous).toMatch(/annualise,\s*project or convert anything/i)
+    expect(previous).toMatch(/divide by 100 and write it as currency/i)
   })
 
   it('tells the narrative pass to describe internal field names and codes, not echo them', () => {
     const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
     expect(body).toMatch(/never write an internal field name/i)
     expect(body).toMatch(/internal category code/i)
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    // Rule 11 (the one under test here) is unrelated to the cents/bp payload-format fix
+    // (#480) that produced the newest superseded body, so it is `.at(-2)` — the version
+    // rule 11 was actually added on top of — that must predate it, not `.at(-1)`.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/internal field name/i)
   })
 })
@@ -354,15 +358,16 @@ describe('composeNarrativeSystemPrompt (#453)', () => {
 })
 
 describe('NARRATIVE_GUARDRAILS', () => {
-  it('permits writing a given figure as currency or a percentage, unlike its own former wording', () => {
+  it('forbids re-dividing a figure that already arrived formatted, unlike its own former wording', () => {
     // This block is appended after the editable body on every call and is documented to
-    // win any conflict with it — so the same "not a conversion" bug fixed in
-    // `NARRATIVE_SYSTEM`'s rule 1 had to be fixed here too, or this text would silently
-    // re-impose it regardless of what the editable body said.
+    // win any conflict with it — so the same bug fixed in `NARRATIVE_SYSTEM`'s rule 1
+    // (#478, fixed in #480: `redact()` now sends an already-formatted string, not a raw
+    // integer to divide by 100) had to be fixed here too, or this text would silently
+    // re-impose the old, now-corrupting instruction regardless of what the editable body said.
     const guardrails = NARRATIVE_GUARDRAILS.replace(/\s+/g, ' ')
-    expect(guardrails).not.toMatch(/not a conversion/i)
-    expect(guardrails).toMatch(/is not derivation, and is required/i)
-    expect(guardrails).toMatch(/divided by 100/i)
+    expect(guardrails).not.toMatch(/divided by 100/i)
+    expect(guardrails).toMatch(/copy it exactly as given/i)
+    expect(guardrails).toMatch(/corrupting it/i)
   })
 })
 
