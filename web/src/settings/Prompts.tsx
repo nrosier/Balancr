@@ -142,10 +142,22 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const entry = prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
   const selection = selectionOf(key, locale)
 
+  // Under `locked`, an unedited row's `active.body` is `resolvePrompt`'s built-in
+  // fallback — byte-identical to `entry.base` — so it is nothing a household wrote, not
+  // an addition to show. Pre-filling the box with it anyway would invite the exact bug
+  // this guards against: typing a note at the end and saving would store base+note,
+  // which `composeLayeredBody` then sends as the base, then that same base again inside
+  // the "addition". Empty means "no addition" here, never "the base, editable".
+  const uncustomizedUnderLocked =
+    settings.promptEditing === 'locked' &&
+    entry !== undefined &&
+    entry.active.body.trim() === entry.base.trim()
+
   // Derived rather than reseeded by an effect: when the selection changes the draft no
   // longer belongs to it, so the active body shows through without anything having to
   // notice the change and copy it across.
-  const body = draft?.for === selection ? draft.body : (entry?.active.body ?? '')
+  const body =
+    draft?.for === selection ? draft.body : uncustomizedUnderLocked ? '' : (entry?.active.body ?? '')
   const note = draft?.for === selection ? draft.note : ''
   const stamp = `${selection}\n${body}`
 

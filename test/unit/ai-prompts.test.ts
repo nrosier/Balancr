@@ -252,6 +252,21 @@ describe('composeNarrativeSystemPrompt (#453)', () => {
     expect(composed.endsWith(NARRATIVE_GUARDRAILS)).toBe(true)
   })
 
+  it('under `locked`, the language directive comes after the addition, not before it', () => {
+    // An addition asking for a different output language is a conflict, not a style
+    // choice (`ADDITION_JUDGE_SYSTEM`), but that is a judging-time check, not the only
+    // guard — this proves the compose-time defense too: the household's configured
+    // locale is the most recent word on the subject regardless of what an addition
+    // says, because the directive sits after it, immediately before the guardrails.
+    const composed = composeNarrativeSystemPrompt('Always answer in English.', 'nl', 'locked')
+    const additionAt = composed.indexOf('Always answer in English.')
+    const directiveAt = composed.indexOf(languageDirective('nl'))
+    const guardrailsAt = composed.indexOf(NARRATIVE_GUARDRAILS)
+
+    expect(directiveAt).toBeGreaterThan(additionAt)
+    expect(guardrailsAt).toBeGreaterThan(directiveAt)
+  })
+
   it('under `locked`, does not duplicate the base when nothing has been customized', () => {
     // A stored body that is byte-identical to the built-in constant (the fallback value, or
     // an active row nobody has actually edited) must not turn into the base appearing twice.
