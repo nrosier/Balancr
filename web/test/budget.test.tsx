@@ -603,6 +603,21 @@ describe('the Belgian comparison', () => {
     ).toBeTruthy()
   })
 
+  it('explains Difference on its own, since it does not follow from the two share columns beside it (#401)', async () => {
+    serve(json(FULL))
+    renderApp(<Budget />, { path: '/budget/benchmark' })
+    await screen.findByText('Compared with Belgian households')
+
+    const header = screen.getByRole('columnheader', { name: /Difference/ })
+    fireEvent.click(within(header).getByRole('button', { name: 'More info' }))
+
+    // `BENCHMARK` is a mix comparison, so the mix wording is the one that must appear —
+    // the level wording would be a false claim about a euro total this fixture never had.
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'This applies their reported share to your own total spending, so it moves with Your share and Their share above — there is no reference total on record to compare euro amounts against.',
+    )
+  })
+
   it('never raises a difference above information', async () => {
     serve(json(FULL))
     renderApp(<Budget />, { path: '/budget/benchmark' })

@@ -49,6 +49,14 @@
  * `period` now just follows the page picker's own kind, one control on the page instead
  * of two that looked alike.
  *
+ * A seventh, #401: **Difference gets its own `InfoTip` rather than a longer lede.** The lede
+ * covers the reference column, but Difference is not derived from the two share columns beside
+ * it — in a `level` comparison it is a size-adjusted euro gap and moves with the household's
+ * overall spending, not just its split between groups, which reads as inconsistent with
+ * "Your share" and "Their share" until it is spelled out. That is a fact about one column, not
+ * the whole card's basis, so it sits on the column as a `differenceHint` rather than growing the
+ * lede a second time.
+ *
  * Nothing here is computed, in keeping with the rest of the page: every figure arrives as
  * an integer. The one arithmetic is basis points into a scale figure, which is the unit
  * conversion `formatBp` does internally and not a number this card decided.
@@ -67,6 +75,7 @@ import {
   type BenchmarkGroupLine,
   type BenchmarkWire,
 } from '../shared.ts'
+import { InfoTip } from '../ui/InfoTip.tsx'
 import { Money } from '../ui/Money.tsx'
 
 /** Whole euro, like every other total on this page. Cents on a monthly figure are noise. */
@@ -118,6 +127,7 @@ export interface BenchmarkProps {
 export function Benchmark({ benchmark }: BenchmarkProps): ReactNode {
   const { t, language } = useT()
   const captionId = useId()
+  const differenceTipId = useId()
 
   if (benchmark.kind === 'unavailable') {
     return (
@@ -184,6 +194,10 @@ export function Benchmark({ benchmark }: BenchmarkProps): ReactNode {
               </th>
               <th scope="col" className="table__cell--number">
                 {t('budget:benchmark.column.difference')}
+                <InfoTip
+                  id={differenceTipId}
+                  text={t(`budget:benchmark.column.differenceHint.${benchmark.basis}`)}
+                />
               </th>
               <th scope="col">{t('budget:benchmark.column.state')}</th>
             </tr>
