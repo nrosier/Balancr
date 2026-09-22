@@ -428,7 +428,7 @@ export function substituteLabels(
 export function renderNarrative(db: Db, tenantId: string, row: NarrativeRow): string {
   const prepared = prepareMonth(db, tenantId, row.period, row.locale)
   const names = prepared?.nameForLabel ?? new Map<string, string>()
-  return renderMarkdown(substituteLabels(row.bodyMd, names, row.locale))
+  return renderMarkdown(substituteLabels(row.bodyMd, names, row.locale), { maskAmounts: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +851,7 @@ export async function runNarrative(
     period,
     locale,
     bodyMd,
-    html: renderMarkdown(substituteLabels(bodyMd, nameForLabel, locale)),
+    html: renderMarkdown(substituteLabels(bodyMd, nameForLabel, locale), { maskAmounts: true }),
     createdAt: row.createdAt,
     degraded: false,
     costMicroEur: cost,

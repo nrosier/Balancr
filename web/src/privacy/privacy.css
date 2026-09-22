@@ -7,12 +7,25 @@
  * pointer on a figure, a keyboard user tabs to it, and either way only that
  * one node clears. Nothing else on the page un-blurs with it.
  */
-[data-privacy='on'] [data-private] {
+[data-privacy='on'] [data-private],
+[data-privacy='on'] amount {
   filter: blur(0.4em);
   transition: filter 0.1s ease-out;
 }
 
 [data-privacy='on'] [data-private]:hover,
-[data-privacy='on'] [data-private]:focus-visible {
+[data-privacy='on'] [data-private]:focus-visible,
+[data-privacy='on'] amount:hover {
   filter: none;
+}
+
+/*
+ * `<amount>` (#489) is `util/markdown.ts`'s masking tag for figures inside the AI
+ * narrative's own prose — it carries no attribute at all (that renderer's whole
+ * safety argument is that it never emits one), so it can't be a `[data-private]`
+ * node and gets its own selector above instead. No `:focus-visible` rule: the tag
+ * is never a tab stop, since giving it one would mean emitting `tabindex`.
+ */
+amount {
+  display: inline;
 }
