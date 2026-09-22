@@ -23,6 +23,7 @@ import {
   composeSystemPrompt,
   createPromptVersion as createPromptVersionForTenant,
   deactivateOverride as deactivateOverrideForTenant,
+  deletePromptVersion as deletePromptVersionForTenant,
   DEFAULT_PROMPTS,
   diffAgainstActive as diffAgainstActiveForTenant,
   languageDirective,
@@ -65,6 +66,8 @@ const createPromptVersion = (database: TestDb, input: NewPromptVersion) =>
   createPromptVersionForTenant(database, tenantOf(database), input)
 const deactivateOverride = (database: TestDb, key: PromptKey, locale: string) =>
   deactivateOverrideForTenant(database, tenantOf(database), key, locale)
+const deletePromptVersion = (database: TestDb, id: string) =>
+  deletePromptVersionForTenant(database, tenantOf(database), id)
 const diffAgainstActive = (
   database: TestDb,
   key: PromptKey,
@@ -691,6 +694,80 @@ describe('deactivateOverride', () => {
     expect(() => deactivateOverride(db, 'analysis.system', SHARED_LOCALE)).toThrow(
       /cannot be deactivated/,
     )
+  })
+})
+
+describe('deletePromptVersion', () => {
+  it('removes a stored version and reports that one existed', () => {
+    const row = activateChecked(db, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'a version nobody needs any more',
+    })
+
+    expect(deletePromptVersion(db, row.id)).toBe(true)
+    expect(loadPrompt(db, row.id)).toBeNull()
+  })
+
+  it('reports nothing to delete for an id that does not exist', () => {
+    expect(deletePromptVersion(db, 'not-a-real-id')).toBe(false)
+  })
+
+  it('deleting the active row falls back to the built-in, exactly like a fresh install', () => {
+    // The safety property the doc comment on `deletePromptVersion` cites: nothing
+    // stops an active row from being deleted, because `resolvePrompt`'s fallback
+    // already makes "no active row" a correct, visible state.
+    const row = activateChecked(db, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'the only override this household ever made',
+    })
+
+    expect(deletePromptVersion(db, row.id)).toBe(true)
+    const resolved = resolvePrompt(db, 'analysis.system', 'en')
+    expect(resolved.id).toBeNull()
+    expect(resolved.gate).toBe('built_in')
+    expect(resolved.body).toBe(DEFAULT_PROMPTS['analysis.system'])
+  })
+
+  it('clears the link from a run judged under this text, rather than blocking the delete', () => {
+    // `ai_runs.promptId` is `onDelete: 'set null'` — a run keeps its own record of
+    // the verdict, and only the link back to the row it came from clears.
+    const row = activateChecked(db, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'the text a past analysis run was judged under',
+    })
+    const [run] = db
+      .insert(aiRuns)
+      .values({
+        tenantId: tenantOf(db),
+        kind: 'findings',
+        model: 'gemini-3.7-flash',
+        promptId: row.id,
+        locale: 'en',
+        payloadJson: '{}',
+        status: 'ok',
+      })
+      .returning()
+      .all()
+
+    expect(deletePromptVersion(db, row.id)).toBe(true)
+    expect(db.select().from(aiRuns).all().find((r) => r.id === run?.id)?.promptId).toBeNull()
+  })
+
+  it("cannot see, let alone delete, another tenant's version (#410)", () => {
+    const tenantA = getSoleTenantId(db)
+    const tenantB = createSecondTenant(db)
+    const rowB = activateCheckedForTenant(db, tenantB, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'Tenant B instructions.',
+    })
+
+    expect(deletePromptVersionForTenant(db, tenantA, rowB.id)).toBe(false)
+    expect(loadPromptForTenant(db, tenantA, rowB.id)).toBeNull()
+    expect(loadPromptForTenant(db, tenantB, rowB.id)?.id).toBe(rowB.id)
   })
 })
 

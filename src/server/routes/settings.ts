@@ -137,6 +137,7 @@ import {
   createPromptVersion,
   DEFAULT_PROMPTS,
   deactivateOverride,
+  deletePromptVersion,
   diffAgainstActive,
   listPromptVersions,
   loadActivePrompt,
@@ -2406,6 +2407,41 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: previous === null ? null : { id: previous.id, version: previous.version },
       after: { id: activated.id, version: activated.version },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Removes a stored version outright — not the rollback gesture, the "this was wrong"
+   * one. Allowed on the active version too: `resolvePrompt`'s built-in fallback is
+   * exactly what makes losing the active row a safe, visible state rather than a broken
+   * one, and refusing here would just be a second, redundant guard on top of it.
+   *
+   * The delete and its audit entry are one transaction, unlike the other write routes on
+   * this page: those are all reversible (an activation, a save), so a lost audit entry
+   * would be an annoyance the next write's own entry mostly explains. This one is not —
+   * text that is gone is gone — so an audit insert failing here must take the delete back
+   * with it rather than leave a silent, unexplained deletion behind.
+   */
+  app.delete('/api/settings/prompts/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadPrompt(db, user.tenantId, id)
+    if (before === null) throw notFound('No such prompt version.')
+
+    db.transaction((tx) => {
+      deletePromptVersion(tx, user.tenantId, id)
+      recordAudit(tx, {
+        tenantId: user.tenantId,
+        action: 'prompt.delete',
+        entity: 'prompts',
+        entityRef: id,
+        actorId: user.id,
+        before: { key: before.key, locale: before.locale, version: before.version },
+        after: null,
+      })
     })
 
     return buildSettings(db, request)

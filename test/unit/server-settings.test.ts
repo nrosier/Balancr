@@ -42,6 +42,7 @@ import {
   DEFAULT_PROMPTS,
   isGatedKey,
   loadActivePrompt,
+  loadPrompt,
   resolvePrompt,
   storePromptValidation,
   SUPERSEDED_PROMPTS,
@@ -92,7 +93,7 @@ const get = (url: string, token = owner) =>
 
 /** A write that satisfies CSRF unless the test asks for it not to. */
 function send(
-  method: 'PATCH' | 'POST',
+  method: 'DELETE' | 'PATCH' | 'POST',
   url: string,
   body: object = {},
   options: { token?: string; csrf?: boolean } = {},
@@ -114,6 +115,8 @@ const patch = (url: string, body: object, options?: { token?: string; csrf?: boo
   send('PATCH', url, body, options)
 const post = (url: string, body: object = {}, options?: { token?: string; csrf?: boolean }) =>
   send('POST', url, body, options)
+const del = (url: string, options?: { token?: string; csrf?: boolean }) =>
+  send('DELETE', url, {}, options)
 
 /** The audit actions written, most recent first. */
 const auditActions = (db: Db): string[] =>
@@ -122,6 +125,8 @@ const auditActions = (db: Db): string[] =>
     .from(auditLog)
     .all()
     .map((row) => row.action)
+
+const auditEntries = (db: Db) => db.select().from(auditLog).all()
 
 const accountIds = (): string[] => loadAccountMap(ctx.db, tenantId).map((row) => row.id)
 
@@ -1278,6 +1283,109 @@ describe('the prompt editor', () => {
     )
     expect(deactivateB.statusCode).toBe(409)
     expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'nl')?.id).toBe(overrideA.id)
+  })
+})
+
+describe('DELETE /api/settings/prompts/:id', () => {
+  it('removes the version and answers with the whole payload', async () => {
+    // The shared entry, since a non-shared locale's entry disappears once its last
+    // version is gone (asserted separately below) rather than staying with an empty list.
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: 'a version nobody needs any more',
+    })
+
+    const res = await del(`/api/settings/prompts/${row.id}`)
+    expect(res.statusCode).toBe(200)
+    expect(loadPrompt(ctx.db, tenantId, row.id)).toBeNull()
+    const versions = res
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'analysis.system' && p.locale === SHARED_LOCALE)?.versions
+    expect(versions?.map((v) => v.id)).not.toContain(row.id)
+  })
+
+  it('records what was removed, since the row is the only place it existed', async () => {
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'a version nobody needs any more',
+      note: 'trying something',
+    })
+
+    await del(`/api/settings/prompts/${row.id}`)
+
+    expect(auditActions(ctx.db)).toEqual(['prompt.delete'])
+    const entry = auditEntries(ctx.db).find((r) => r.action === 'prompt.delete')
+    expect(entry?.beforeJson).toContain('analysis.system')
+    expect(entry?.afterJson).toBeNull()
+  })
+
+  it('falls back to the built-in text when the active version itself is deleted', async () => {
+    const active = activateChecked('analysis.system', 'en', 'the only override ever made')
+
+    const res = await del(`/api/settings/prompts/${active.id}`)
+    expect(res.statusCode).toBe(200)
+
+    const resolved = resolvePrompt(ctx.db, tenantId, 'analysis.system', 'en')
+    expect(resolved.id).toBeNull()
+    expect(resolved.gate).toBe('built_in')
+    const entry = res
+      .json<Settings>()
+      .prompts.find((p) => p.key === 'analysis.system' && p.locale === SHARED_LOCALE)
+    expect(entry?.active.id).toBeNull()
+  })
+
+  it("drops a language whose last override version was just deleted, back to the shared tab", async () => {
+    const override = activateChecked('analysis.system', 'nl', 'Je rangschikt signalen.')
+
+    const res = await del(`/api/settings/prompts/${override.id}`)
+    expect(res.statusCode).toBe(200)
+
+    const settings = res.json<Settings>()
+    expect(settings.prompts.find((p) => p.key === 'analysis.system' && p.locale === 'nl')).toBeUndefined()
+  })
+
+  it('is a 404 the second time, rather than pretending to delete again', async () => {
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'a version nobody needs any more',
+    })
+    await del(`/api/settings/prompts/${row.id}`)
+
+    const res = await del(`/api/settings/prompts/${row.id}`)
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('answers 404 for an id that never existed', async () => {
+    const res = await del('/api/settings/prompts/nope')
+    expect(res.statusCode).toBe(404)
+  })
+
+  it("is a 404 for another tenant's version, which stays where it is", async () => {
+    const tenantB = createSecondTenant(ctx.db)
+    const theirs = createPromptVersion(ctx.db, tenantB, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'Tenant B instructions.',
+    })
+
+    const res = await del(`/api/settings/prompts/${theirs.id}`)
+    expect(res.statusCode).toBe(404)
+    expect(loadPrompt(ctx.db, tenantB, theirs.id)).not.toBeNull()
+  })
+
+  it('refuses a viewer', async () => {
+    const row = createPromptVersion(ctx.db, tenantId, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'a version nobody needs any more',
+    })
+
+    const res = await del(`/api/settings/prompts/${row.id}`, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadPrompt(ctx.db, tenantId, row.id)).not.toBeNull()
   })
 })
 
