@@ -97,6 +97,7 @@ export function buildBudget(
   owner: boolean,
   benchmarkPeriodParam: unknown = undefined,
   custodyPeriodParam: unknown = undefined,
+  locale: string = config.DEFAULT_LOCALE,
 ): Budget {
   const month = resolveMonth(db, tenantId, monthParam)
   // Nothing computed at all: report the empty state under the current month rather
@@ -106,7 +107,7 @@ export function buildBudget(
   // Hoisted, because the benchmark comparison is a function of the same rows the
   // category list is built from. Loading them twice would let one of the two see a
   // mapping the other did not, which is how a card and a table come to disagree.
-  const facts = loadFacts(db, tenantId, resolved)
+  const facts = loadFacts(db, tenantId, resolved, locale)
   const history = loadTrailingTotals(db, tenantId, resolved, HISTORY_MONTHS)
   const trends = loadCategoryTrends(db, tenantId, resolved, TREND_MONTHS)
   const totals = loadMonthTotals(db, tenantId, [resolved])[0] ?? null
@@ -124,7 +125,7 @@ export function buildBudget(
   const benchmarkRows =
     benchmarkMonths.length === 1 && benchmarkMonths[0] === resolved
       ? facts
-      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m))))
+      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m, locale))))
 
   // Its own independent window: a reader can widen the custody card to a year without
   // widening the benchmark card, so this is not `benchmarkMonths` under another name
@@ -134,7 +135,7 @@ export function buildBudget(
   const custodyRows =
     custodyMonths.length === 1 && custodyMonths[0] === resolved
       ? facts
-      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m))))
+      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m, locale))))
 
   return budgetSchema.parse({
     freshness: freshness(db, tenantId),
@@ -193,7 +194,7 @@ export function buildBudget(
         trends.byCategory.get(fact.categoryId) ??
         new Array<number>(trends.months.length).fill(0),
     })),
-    signals: loadSignals(db, tenantId, resolved),
+    signals: loadSignals(db, tenantId, resolved, locale),
     benchmark: compareMonth(
       benchmarkContext(db, tenantId),
       resolved,

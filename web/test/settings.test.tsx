@@ -353,6 +353,7 @@ const PAYLOAD: Payload = {
     { ghostfolioId: 'g-broker', actualId: 'a-mirror', signals: ['name', 'balance'] },
   ],
   benchmark: BENCHMARK,
+  categoryTranslations: [],
   property: { properties: [] },
   loans: [],
   debts: [],
@@ -363,6 +364,7 @@ const PAYLOAD: Payload = {
       syncId: 'sync-id',
       passwordConfigured: true,
       e2ePasswordConfigured: false,
+      categorySourceLocale: 'en',
     },
     ghostfolio: { url: 'https://ghostfolio.example.com', tokenConfigured: true },
     ai: {
@@ -2307,7 +2309,7 @@ describe('integrations', () => {
         {
           path: '/api/settings/integrations/actual',
           method: 'PATCH',
-          body: { serverUrl: 'https://actual2.example.com', syncId: 'sync-id' },
+          body: { serverUrl: 'https://actual2.example.com', syncId: 'sync-id', categorySourceLocale: 'en' },
         },
       ])
     })
@@ -2324,7 +2326,12 @@ describe('integrations', () => {
         {
           path: '/api/settings/integrations/actual',
           method: 'PATCH',
-          body: { serverUrl: 'https://actual.example.com', syncId: 'sync-id', password: 'new-pw' },
+          body: {
+            serverUrl: 'https://actual.example.com',
+            syncId: 'sync-id',
+            password: 'new-pw',
+            categorySourceLocale: 'en',
+          },
         },
       ])
     })

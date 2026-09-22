@@ -131,7 +131,7 @@ export function collectBundle(
   if (totals === undefined) return null
 
   const meta = loadCategoryMeta(db, tenantId)
-  const categories: BundleCategory[] = loadFacts(db, tenantId, month)
+  const categories: BundleCategory[] = loadFacts(db, tenantId, month, locale)
     .filter(worthSending)
     .map((fact) => ({ fact, meta: meta.get(fact.categoryId) ?? null }))
 

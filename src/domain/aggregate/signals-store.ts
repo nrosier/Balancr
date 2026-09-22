@@ -14,6 +14,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryGuessCandidates, monthlyHygiene, monthlySignals, monthlyTotals } from '../../db/schema.ts'
+import { loadCategoryNames } from './facts.ts'
 import type { CategoryHistorySample } from './proposal-rules.ts'
 import { FINDING_CODES, type FindingCode, type Severity } from '../ai/codes.ts'
 import type { HygieneScore } from './hygiene.ts'
@@ -235,7 +236,7 @@ function toMetrics(json: string): Record<string, number> | null {
  * break their ties deterministically, so the read order only has to be stable
  * enough to make a test readable.
  */
-export function loadSignals(db: Db, tenantId: string, month: string): Signal[] {
+export function loadSignals(db: Db, tenantId: string, month: string, locale?: string): Signal[] {
   const rows = db
     .select()
     .from(monthlySignals)
@@ -243,7 +244,7 @@ export function loadSignals(db: Db, tenantId: string, month: string): Signal[] {
     .orderBy(monthlySignals.code, monthlySignals.subjectKey)
     .all()
 
-  return toSignals(rows)
+  return toSignals(rows, locale === undefined ? undefined : loadCategoryNames(db, tenantId, locale))
 }
 
 /**
@@ -257,6 +258,7 @@ export function loadSignalsForMonths(
   db: Db,
   tenantId: string,
   months: readonly string[],
+  locale?: string,
 ): Map<string, Signal[]> {
   const byMonth = new Map<string, Signal[]>(months.map((month) => [month, []]))
   if (months.length === 0) return byMonth
@@ -268,18 +270,29 @@ export function loadSignalsForMonths(
     .orderBy(monthlySignals.month, monthlySignals.code, monthlySignals.subjectKey)
     .all()
 
+  const names = locale === undefined ? undefined : loadCategoryNames(db, tenantId, locale)
   const byMonthRaw = new Map<string, (typeof rows)[number][]>()
   for (const row of rows) {
     const forMonth = byMonthRaw.get(row.month) ?? []
     forMonth.push(row)
     byMonthRaw.set(row.month, forMonth)
   }
-  for (const [month, monthRows] of byMonthRaw) byMonth.set(month, toSignals(monthRows))
+  for (const [month, monthRows] of byMonthRaw) byMonth.set(month, toSignals(monthRows, names))
 
   return byMonth
 }
 
-function toSignals(rows: readonly (typeof monthlySignals.$inferSelect)[]): Signal[] {
+/**
+ * `names`, when given, resolves a category-subject signal's display name for the
+ * caller's locale — `subjectName` is a write-time snapshot (`persistSignals`) that
+ * is never itself updated by a translation, so a stale value must be overlaid at
+ * read time rather than trusted. A household-level signal has no `subjectId` and
+ * keeps `subjectName` as-is; translation is scoped to categories.
+ */
+function toSignals(
+  rows: readonly (typeof monthlySignals.$inferSelect)[],
+  names?: Map<string, string>,
+): Signal[] {
   const signals: Signal[] = []
   for (const row of rows) {
     if (!KNOWN.has(row.code)) continue
@@ -288,7 +301,7 @@ function toSignals(rows: readonly (typeof monthlySignals.$inferSelect)[]): Signa
     signals.push({
       code: row.code as FindingCode,
       categoryId: row.subjectId,
-      categoryName: row.subjectName,
+      categoryName: row.subjectId === null ? row.subjectName : names?.get(row.subjectId) ?? row.subjectName,
       severity: row.severity as Severity,
       metrics,
     })

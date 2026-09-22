@@ -1775,6 +1775,14 @@ export const integrationsSettingSchema = z.object({
     syncId: z.string(),
     passwordConfigured: z.boolean(),
     e2ePasswordConfigured: z.boolean(),
+    /**
+     * The language the household actually typed its Actual categories in (#479).
+     *
+     * Not a secret, so it round-trips as-is like `serverUrl`. `loadCategoryNames` treats
+     * this locale as the one that can never have a translation row of its own — its name
+     * *is* `category_meta.nameSnapshot`.
+     */
+    categorySourceLocale: z.string(),
   }),
   ghostfolio: z.object({
     url: z.string(),
@@ -1886,6 +1894,23 @@ export const settingsSchema = z.object({
   debts: z.array(debtSettingSchema),
   /** The Actual/Ghostfolio/AI connection this tenant uses (#369, #422). */
   integrations: integrationsSettingSchema,
+  /**
+   * Category names in a locale someone in the household reads that Actual itself
+   * never named a category in (#479) — one row per category, plus whatever locales
+   * an owner has already translated it into. Arrives with the rest of `/api/settings`,
+   * the same "no second fetch" pattern `benchmark.categories` uses, so the translation
+   * panel can be built without its own endpoint.
+   */
+  categoryTranslations: z.array(
+    z.object({
+      categoryId: z.string(),
+      categoryName: z.string(),
+      isIncome: z.boolean(),
+      hidden: z.boolean(),
+      /** locale → name. Never has an entry for `integrations.actual.categorySourceLocale`. */
+      translations: z.record(z.string(), z.string()),
+    }),
+  ),
   /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
   invites: z.array(inviteSettingSchema),
   prompts: z.array(promptSchema),

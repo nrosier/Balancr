@@ -17,7 +17,7 @@
  */
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
-import { categoryMeta, monthlyCategoryFacts } from '../../db/schema.ts'
+import { categoryMeta, categoryTranslations, monthlyCategoryFacts } from '../../db/schema.ts'
 import { monthsBefore } from '../../util/month.ts'
 import type { ExpectedFrequency } from './baseline.ts'
 import type { MonthlyFact } from './spend.ts'
@@ -221,8 +221,13 @@ export function loadFrequencies(db: Db, tenantId: string): Map<string, ExpectedF
  * The join is inner: a fact whose category has no meta row cannot exist, because
  * `syncCategoryMeta` runs first in the same pass. If one ever did, it would be a
  * fact with no name, and dropping it is better than inventing one.
+ *
+ * `locale`, when given, resolves each name through `loadCategoryNames` — a member
+ * reading a translated locale sees their own words; every other caller (nightly
+ * jobs, forecasting, anything that never puts a name in front of a person) omits
+ * it and gets the untranslated source-language snapshot, as before (#479).
  */
-export function loadFacts(db: Db, tenantId: string, month: string): MonthlyFact[] {
+export function loadFacts(db: Db, tenantId: string, month: string, locale?: string): MonthlyFact[] {
   const rows = db
     .select({
       fact: monthlyCategoryFacts,
@@ -242,10 +247,12 @@ export function loadFacts(db: Db, tenantId: string, month: string): MonthlyFact[
     .orderBy(monthlyCategoryFacts.categoryId)
     .all()
 
+  const names = locale === undefined ? null : loadCategoryNames(db, tenantId, locale)
+
   return rows.map(({ fact, name, isIncome, hidden }) => ({
     month: fact.month,
     categoryId: fact.categoryId,
-    categoryName: name,
+    categoryName: names?.get(fact.categoryId) ?? name,
     isIncome,
     hidden,
     spentCents: fact.spentCents,
@@ -356,4 +363,34 @@ export function loadCategoryMeta(
       .all()
       .map((row) => [row.categoryId, row]),
   )
+}
+
+/**
+ * categoryId → display name for `locale`, falling back to the source-language
+ * snapshot (#479).
+ *
+ * The join is on `locale` itself, not on "is this the source locale" — a translation
+ * row is never written for the source locale (see `domain/i18n/category-translations.ts`),
+ * so passing the source locale here simply never matches anything and `nameSnapshot`
+ * wins on its own, with no need for this function to know which locale is authoritative.
+ */
+export function loadCategoryNames(db: Db, tenantId: string, locale: string): Map<string, string> {
+  const rows = db
+    .select({
+      categoryId: categoryMeta.categoryId,
+      name: sql<string>`coalesce(${categoryTranslations.name}, ${categoryMeta.nameSnapshot})`,
+    })
+    .from(categoryMeta)
+    .leftJoin(
+      categoryTranslations,
+      and(
+        eq(categoryTranslations.tenantId, categoryMeta.tenantId),
+        eq(categoryTranslations.categoryId, categoryMeta.categoryId),
+        eq(categoryTranslations.locale, locale),
+      ),
+    )
+    .where(eq(categoryMeta.tenantId, tenantId))
+    .all()
+
+  return new Map(rows.map((row) => [row.categoryId, row.name]))
 }

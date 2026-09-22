@@ -120,6 +120,12 @@ import {
   saveNature,
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
+import {
+  loadCategoryTranslationRows,
+  saveCategoryTranslation,
+  SourceLocaleError,
+  TranslationError,
+} from '../../domain/i18n/category-translations.ts'
 import { BENCHMARK_COUNTRIES, SHARED_COST_DIRECTIONS } from '../../domain/benchmark/vocabulary.ts'
 import {
   applyReferenceOverride,
@@ -454,6 +460,14 @@ const coicopPatchRequest = z.strictObject({ coicop: z.enum(COICOP_CHOICES).nulla
 const custodySharedPatchRequest = z.strictObject({ custodyShared: z.boolean() })
 
 /**
+ * One category's name in one locale (#479). `name: null` (or blank) clears the override
+ * back to the source-language snapshot — the same "absent means unchanged, null means
+ * take it back" shape `coicopPatchRequest` uses, except here even blank counts, since a
+ * translation table has no other way to express "type nothing".
+ */
+const categoryTranslationPatchRequest = z.strictObject({ name: z.string().nullable() })
+
+/**
  * How much of one category the AI layer may see (#278).
  *
  * An enum rather than the two booleans it writes, so the wire carries the decision and
@@ -570,6 +584,8 @@ const actualIntegrationPatchRequest = z.strictObject({
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
+  /** The language the household typed its Actual categories in (#479). Never a secret. */
+  categorySourceLocale: localeRequest,
 })
 
 /** The Ghostfolio connection (#369). See `actualIntegrationPatchRequest` for why `securityToken` is optional. */
@@ -923,6 +939,7 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
       syncId: row.actualSyncId,
       passwordConfigured: row.actualPasswordEnc.length > 0,
       e2ePasswordConfigured: row.actualE2ePasswordEnc !== null,
+      categorySourceLocale: row.actualCategorySourceLocale,
     },
     ghostfolio: {
       url: row.ghostfolioUrl,
@@ -987,6 +1004,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     loans: listLoans(db, user.tenantId),
     debts: listDebts(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
+    categoryTranslations: loadCategoryTranslationRows(db, user.tenantId),
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
@@ -1585,6 +1603,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .set({
         actualServerUrl: patch.serverUrl,
         actualSyncId: patch.syncId,
+        actualCategorySourceLocale: patch.categorySourceLocale,
         ...(patch.password === undefined ? {} : { actualPasswordEnc: encryptField(patch.password) }),
         ...(patch.e2ePassword === undefined
           ? {}
@@ -1939,6 +1958,48 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       actorId: user.id,
       before: { coicopCode: before.coicop },
       after: { coicopCode: coicop },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * A category's name in one member's locale (#479).
+   *
+   * The only writer of `category_translations`. `saveCategoryTranslation` throws for a
+   * category with no `category_meta` row (a 404, same as `coicop` above) and for the
+   * tenant's configured source locale (a 400 — that locale's name is the snapshot
+   * itself, not a translation). Audited against `category_translations` rather than
+   * `category_meta`: this table, not that one, is what actually changes.
+   */
+  app.patch('/api/settings/categories/:id/translation/:locale', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const { id: categoryId, locale } = request.params as { id: string; locale: string }
+    const { name } = parseBody(categoryTranslationPatchRequest, request.body)
+
+    const before = loadCategoryTranslationRows(db, user.tenantId).find(
+      (row) => row.categoryId === categoryId,
+    )
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      saveCategoryTranslation(db, user.tenantId, categoryId, locale, name)
+    } catch (error) {
+      // Only reachable if the row disappeared between the two statements — see the
+      // coicop route above for why that race is a 404, not a 500.
+      if (error instanceof TranslationError) throw notFound('No such category.')
+      if (error instanceof SourceLocaleError) throw badRequest(error.message)
+      throw error
+    }
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.category-translation',
+      entity: 'category_translations',
+      entityRef: `${categoryId}:${locale}`,
+      actorId: user.id,
+      before: { name: before.translations[locale] ?? null },
+      after: { name },
     })
 
     return buildSettings(db, request)

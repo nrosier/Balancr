@@ -381,6 +381,27 @@ export const categoryMeta = sqliteTable(
 )
 
 /**
+ * An owner's own translation of one category's name into one locale (#479).
+ *
+ * Never holds a row for the household's configured source locale — that locale's
+ * name is `category_meta.nameSnapshot` itself, so a translation row there would be
+ * a second, competing answer to the same question. See `domain/i18n/category-translations.ts`.
+ */
+export const categoryTranslations = sqliteTable(
+  'category_translations',
+  {
+    categoryId: text('category_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    locale: text('locale').notNull(),
+    name: text('name').notNull(),
+    updatedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.categoryId, t.locale] })],
+)
+
+/**
  * Categories whose purpose is still unclear. Only categories above a
  * materiality threshold are enqueued — being interrogated about a €4 envelope
  * is how a tool like this gets abandoned.
@@ -1497,6 +1518,8 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
   actualPasswordEnc: text('actual_password_enc').notNull(),
   actualSyncId: text('actual_sync_id').notNull(),
   actualE2ePasswordEnc: text('actual_e2e_password_enc'),
+  /** Which language the household's own Actual categories are authored in (#479). */
+  actualCategorySourceLocale: text('actual_category_source_locale').notNull().default('en'),
   ghostfolioUrl: text('ghostfolio_url').notNull(),
   ghostfolioSecurityTokenEnc: text('ghostfolio_security_token_enc').notNull(),
   aiProvider: text('ai_provider', {

@@ -64,7 +64,7 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { loadCategoryMeta } from '../../../domain/aggregate/facts.ts'
+import { loadCategoryNames } from '../../../domain/aggregate/facts.ts'
 import { loadMonthTotals, storedMonths } from '../../../domain/aggregate/month-store.ts'
 import {
   loadCategoryGuessCandidates,
@@ -134,15 +134,15 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     month,
     factsChangedAt: factsChangedAt?.toISOString() ?? null,
     months: storedMonths(db, tenantId),
-    signals: month === null ? [] : loadSignals(db, tenantId, month),
+    signals: month === null ? [] : loadSignals(db, tenantId, month, locale),
     signalsHistory:
-      month === null || signalsPeriod !== 'year' ? [] : signalsHistoryFor(db, tenantId, month),
+      month === null || signalsPeriod !== 'year' ? [] : signalsHistoryFor(db, tenantId, month, locale),
     categoryGuessCandidates:
       month === null
         ? []
         : wireCandidates(
             loadCategoryGuessCandidates(db, tenantId, month),
-            loadCategoryMeta(db, tenantId),
+            loadCategoryNames(db, tenantId, locale),
           ),
     narrative:
       narrative === null
@@ -232,9 +232,10 @@ function signalsHistoryFor(
   db: Db,
   tenantId: string,
   month: string,
+  locale: string,
 ): { month: string; signals: Signal[] }[] {
   const months = monthRange(`${month.slice(0, 4)}-01`, month)
-  const byMonth = loadSignalsForMonths(db, tenantId, months)
+  const byMonth = loadSignalsForMonths(db, tenantId, months, locale)
 
   const history: { month: string; signals: Signal[] }[] = []
   for (const candidate of months) {
@@ -251,7 +252,7 @@ function signalsHistoryFor(
  */
 function wireCandidates(
   candidates: readonly CategoryGuessCandidate[],
-  categoryMetaById: Map<string, { nameSnapshot: string }>,
+  names: Map<string, string>,
 ): CategoryGuessCandidateWire[] {
   return candidates.map((candidate) => ({
     transactionId: candidate.transactionId,
@@ -260,7 +261,7 @@ function wireCandidates(
     date: candidate.date,
     history: candidate.history.map((sample) => ({
       categoryId: sample.categoryId,
-      categoryName: categoryMetaById.get(sample.categoryId)?.nameSnapshot ?? sample.categoryId,
+      categoryName: names.get(sample.categoryId) ?? sample.categoryId,
       count: sample.count,
     })),
   }))
