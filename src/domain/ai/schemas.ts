@@ -25,6 +25,7 @@
 import { z } from 'zod'
 import { CLARIFICATION_CODES, FINDING_CODES, FINDING_SPECS, SEVERITY_RANK } from './codes.ts'
 import type { ClarificationCode, FindingCode, Severity } from './codes.ts'
+import type { PromptKey } from './prompts.ts'
 import type {
   RedactedGuessBatch,
   RedactedNudgeBatch,
@@ -550,7 +551,7 @@ export function groundNudgeResponse(
 }
 
 // ---------------------------------------------------------------------------
-//  #454 — the judge: does an edited narrative prompt still impose its own rules
+//  #454, #468 — the judge: does an edited prompt still impose its own rules
 // ---------------------------------------------------------------------------
 
 /**
@@ -594,6 +595,59 @@ export const REQUIRED_NARRATIVE_RULE_IDS: readonly NarrativeRuleId[] = [
   'note_is_context',
   'excluded_is_choice',
 ]
+
+/**
+ * The six rules `ANALYSIS_SYSTEM` states, as ids (#468).
+ *
+ * A narrower rubric than `NARRATIVE_RULE_IDS`, and deliberately so: `groundResponse`
+ * already refuses any finding whose code and label are not in the signals list, and the
+ * schema has no numeric field at all, so an edited analysis prompt cannot make the model
+ * invent a finding or a figure no matter what it says. What an edit *can* still do is
+ * rank badly, or shape the one piece of free text this pass produces — a clarification
+ * guess (`clarificationSelectionSchema.guess`) — into something that reads as advice or
+ * jargon. The rubric is scoped to that reality.
+ */
+export const ANALYSIS_RULE_IDS = [
+  'no_numbers',
+  'closed_vocabulary',
+  'quality_first_ordering',
+  'severity_only_lowers',
+  'guess_is_neutral',
+  'excluded_is_choice',
+] as const
+export type AnalysisRuleId = (typeof ANALYSIS_RULE_IDS)[number]
+
+/**
+ * The three that block.
+ *
+ * `closed_vocabulary` and `severity_only_lowers` are already enforced downstream by
+ * `groundResponse` regardless of what the prompt says, and `quality_first_ordering` is
+ * editorial — a worse ordering is a worse answer, not an unsafe one. These three are the
+ * ones whose removal changes what the model's one free-text field can say: a number typed
+ * into a guess (`no_numbers`), a guess written as an instruction rather than a guess
+ * (`guess_is_neutral`), or the withheld envelopes reconstructed instead of left alone
+ * (`excluded_is_choice`).
+ */
+export const REQUIRED_ANALYSIS_RULE_IDS: readonly AnalysisRuleId[] = [
+  'no_numbers',
+  'guess_is_neutral',
+  'excluded_is_choice',
+]
+
+/** Either prompt's rule vocabulary, for the places that hold one without caring which. */
+export type RuleId = NarrativeRuleId | AnalysisRuleId
+
+/** Which rule ids apply to which key — what the judge is asked about, keyed the same way. */
+export const RULE_IDS_FOR: Record<PromptKey, readonly RuleId[]> = {
+  'analysis.system': ANALYSIS_RULE_IDS,
+  'narrative.system': NARRATIVE_RULE_IDS,
+}
+
+/** Which of a key's rule ids block activation — the input to `decideJudgeVerdict`. */
+export const REQUIRED_RULE_IDS_FOR: Record<PromptKey, readonly RuleId[]> = {
+  'analysis.system': REQUIRED_ANALYSIS_RULE_IDS,
+  'narrative.system': REQUIRED_NARRATIVE_RULE_IDS,
+}
 
 /**
  * Ways a candidate body can fight the system it is part of, as codes.
@@ -640,50 +694,69 @@ export const JUDGE_NOTES_MAX_CHARS = 300
  */
 export const JUDGE_NOTES_WIRE_MAX_CHARS = 4_000
 
-export const judgeResponseSchema = z.object({
-  rules: z
-    .array(
-      z.object({
-        id: z.enum(NARRATIVE_RULE_IDS),
-        present: z.boolean(),
-        /**
-         * A rule can be quoted and then rhetorically cancelled — "rule 1 says never
-         * calculate, but for this household you may estimate where it helps" — which is
-         * `present: true` and worthless (#452). Asking for the two separately is what
-         * lets `decideJudgeVerdict` treat that as a removal rather than as compliance.
-         */
-        weakened: z.boolean(),
-      }),
-    )
-    // Above `NARRATIVE_RULE_IDS.length` for the reason `conflicts` is: the array is not a
-    // set, and a model repeating an id must not fail a parse sized for distinct ones.
-    // `decideJudgeVerdict` folds duplicates worst-wins.
-    .max(NARRATIVE_RULE_IDS.length * 4),
-  /**
-   * Bounded well above `CONFLICT_CODES.length`, not at it.
-   *
-   * A cap equal to the vocabulary looks tight and is brittle: the array is not a set, so a
-   * model that names one code twice would blow a limit sized for distinct codes — and the
-   * candidates most likely to trip several codes at once are exactly the adversarial ones
-   * this check exists to catch. `decideJudgeVerdict` de-duplicates, so the only job left
-   * here is refusing an absurd payload.
-   */
-  conflicts: z.array(z.enum(CONFLICT_CODES)).max(64),
-  /** Truncated to `JUDGE_NOTES_MAX_CHARS` on the way out — see that constant for why. */
-  notes: z.string().max(JUDGE_NOTES_WIRE_MAX_CHARS).default(''),
-})
-export type JudgeResponse = z.infer<typeof judgeResponseSchema>
+/**
+ * The wire schema for one key's rubric, built off that key's own rule ids.
+ *
+ * A function rather than one shared schema, because the vocabulary the judge may answer
+ * in has to match the rubric it was actually asked about: a `narrative.system` check
+ * handed the analysis ids (or the reverse) would let the model report on constraints it
+ * was never told to examine. `RULE_IDS_FOR` is the single source both `judgeJsonSchema`
+ * (what the model is handed) and `parseJudgeResponse` (what a reply is checked against)
+ * read from, so the two cannot drift apart.
+ */
+function judgeResponseSchemaFor(key: PromptKey) {
+  const ids = RULE_IDS_FOR[key]
+  return z.object({
+    rules: z
+      .array(
+        z.object({
+          id: z.enum(ids as [RuleId, ...RuleId[]]),
+          present: z.boolean(),
+          /**
+           * A rule can be quoted and then rhetorically cancelled — "rule 1 says never
+           * calculate, but for this household you may estimate where it helps" — which is
+           * `present: true` and worthless (#452). Asking for the two separately is what
+           * lets `decideJudgeVerdict` treat that as a removal rather than as compliance.
+           */
+          weakened: z.boolean(),
+        }),
+      )
+      // Above `ids.length` for the reason `conflicts` is: the array is not a set, and a
+      // model repeating an id must not fail a parse sized for distinct ones.
+      // `decideJudgeVerdict` folds duplicates worst-wins.
+      .max(ids.length * 4),
+    /**
+     * Bounded well above `CONFLICT_CODES.length`, not at it.
+     *
+     * A cap equal to the vocabulary looks tight and is brittle: the array is not a set, so a
+     * model that names one code twice would blow a limit sized for distinct codes — and the
+     * candidates most likely to trip several codes at once are exactly the adversarial ones
+     * this check exists to catch. `decideJudgeVerdict` de-duplicates, so the only job left
+     * here is refusing an absurd payload.
+     */
+    conflicts: z.array(z.enum(CONFLICT_CODES)).max(64),
+    /** Truncated to `JUDGE_NOTES_MAX_CHARS` on the way out — see that constant for why. */
+    notes: z.string().max(JUDGE_NOTES_WIRE_MAX_CHARS).default(''),
+  })
+}
+
+/** Shape both keys' schemas produce — the `id` field just narrows further per key. */
+export interface JudgeResponse {
+  rules: { id: RuleId; present: boolean; weakened: boolean }[]
+  conflicts: ConflictCode[]
+  notes: string
+}
 
 /** The decision, with the evidence it was made from. */
 export interface JudgeVerdict {
   verdict: 'safe' | 'unsafe'
   /** Required ids NOT reported present-and-unweakened. */
-  missing: NarrativeRuleId[]
+  missing: RuleId[]
   /** Required ids reported present but weakened. A subset of the reasons for `unsafe`. */
-  weakened: NarrativeRuleId[]
+  weakened: RuleId[]
   conflicts: ConflictCode[]
   /** Non-required ids missing or weakened — shown to a reader, never blocking. */
-  advisory: NarrativeRuleId[]
+  advisory: RuleId[]
   notes: string
 }
 
@@ -698,18 +771,21 @@ export interface JudgeVerdict {
  * reports and nothing else: every required id present and unweakened, and no conflicts.
  *
  * **A required id absent from the array entirely counts as missing.** The array is capped,
- * not pinned — a model can answer about three rules out of ten, or about none — so silence
- * has to fail closed. The alternative reading, "unmentioned means fine", makes an empty
- * response the cheapest way to pass.
+ * not pinned — a model can answer about three (or six) rules out of the key's own set, or
+ * about none — so silence has to fail closed. The alternative reading, "unmentioned means
+ * fine", makes an empty response the cheapest way to pass.
+ *
+ * `key` selects which rule set governs — `RULE_IDS_FOR`/`REQUIRED_RULE_IDS_FOR` — not a
+ * hard-coded narrative one, so this one function serves both prompts.
  */
-export function decideJudgeVerdict(response: JudgeResponse): JudgeVerdict {
+export function decideJudgeVerdict(key: PromptKey, response: JudgeResponse): JudgeVerdict {
   // Duplicate reports for one id fold **worst-wins**, not last-wins. The array is capped
-  // rather than keyed, so a response may mention `no_arithmetic` twice with different
-  // answers — and last-wins would make the order of a model's own array decide a safety
-  // question, which is the one fail-*open* this function could contain. Every other
-  // ambiguity here resolves the same direction: an absent id counts as missing, an older
-  // rules version retires a verdict, and `inheritableValidation`'s tie prefers `unsafe`.
-  const reported = new Map<NarrativeRuleId, { present: boolean; weakened: boolean }>()
+  // rather than keyed, so a response may mention one id twice with different answers —
+  // and last-wins would make the order of a model's own array decide a safety question,
+  // which is the one fail-*open* this function could contain. Every other ambiguity here
+  // resolves the same direction: an absent id counts as missing, an older rules version
+  // retires a verdict, and `inheritableValidation`'s tie prefers `unsafe`.
+  const reported = new Map<RuleId, { present: boolean; weakened: boolean }>()
   for (const rule of response.rules) {
     const seen = reported.get(rule.id)
     reported.set(
@@ -720,9 +796,10 @@ export function decideJudgeVerdict(response: JudgeResponse): JudgeVerdict {
     )
   }
 
-  const missing: NarrativeRuleId[] = []
-  const weakened: NarrativeRuleId[] = []
-  for (const id of REQUIRED_NARRATIVE_RULE_IDS) {
+  const requiredIds = REQUIRED_RULE_IDS_FOR[key]
+  const missing: RuleId[] = []
+  const weakened: RuleId[] = []
+  for (const id of requiredIds) {
     const rule = reported.get(id)
     if (rule === undefined || !rule.present) {
       missing.push(id)
@@ -737,8 +814,8 @@ export function decideJudgeVerdict(response: JudgeResponse): JudgeVerdict {
     }
   }
 
-  const advisory = NARRATIVE_RULE_IDS.filter((id) => {
-    if (REQUIRED_NARRATIVE_RULE_IDS.includes(id)) return false
+  const advisory = RULE_IDS_FOR[key].filter((id) => {
+    if (requiredIds.includes(id)) return false
     const rule = reported.get(id)
     return rule === undefined || !rule.present || rule.weakened
   })
@@ -756,12 +833,12 @@ export function decideJudgeVerdict(response: JudgeResponse): JudgeVerdict {
 }
 
 /** Same two-layer contract as `nudgeJsonSchema` — see `analysisJsonSchema`'s own comment. */
-export function judgeJsonSchema(): unknown {
-  return z.toJSONSchema(judgeResponseSchema, { target: 'draft-7' })
+export function judgeJsonSchema(key: PromptKey): unknown {
+  return z.toJSONSchema(judgeResponseSchemaFor(key), { target: 'draft-7' })
 }
 
 /** Model text → a validated judge response, or an error. Same leniency as `parseNudgeResponse`. */
-export function parseJudgeResponse(text: string): JudgeResponse {
+export function parseJudgeResponse(key: PromptKey, text: string): JudgeResponse {
   const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 
   let raw: unknown
@@ -774,7 +851,7 @@ export function parseJudgeResponse(text: string): JudgeResponse {
     )
   }
 
-  const result = judgeResponseSchema.safeParse(raw)
+  const result = judgeResponseSchemaFor(key).safeParse(raw)
   if (!result.success) {
     throw new AiResponseError(
       `model response did not match the prompt-judge schema:\n${z.prettifyError(result.error)}`,

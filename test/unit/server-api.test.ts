@@ -1463,9 +1463,9 @@ describe('GET /api/insights', () => {
       })
     }
 
-    it('reports built_in and unlocked on an installation nobody has edited', async () => {
+    it('reports built_in on an installation nobody has edited', async () => {
       const body = (await get('/api/insights')).json()
-      expect(body.narrativePrompt).toEqual({ gate: 'built_in', locked: false })
+      expect(body.narrativePrompt).toEqual({ gate: 'built_in' })
     })
 
     it('reports unvalidated for an active body with no verdict', async () => {

@@ -141,11 +141,9 @@ import {
   loadActivePrompt,
   PROMPT_KEYS,
   loadPrompt,
-  promptEditingBlocks,
   promptGateState,
   PromptGateError,
   resolvePrompt,
-  type PromptEditing,
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
@@ -155,7 +153,7 @@ import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
-import { badRequest, conflict, forbidden, invalidBody, notFound } from '../errors.ts'
+import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
 import { integrationsTestRateLimit } from '../rate-limit.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
@@ -746,9 +744,11 @@ const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, E
 function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string): PromptSetting {
   const active = resolvePrompt(db, tenantId, key, locale)
   const versions = listPromptVersions(db, tenantId, key, locale)
-  // Read off the raw row set, not off `active`: `resolvePrompt` answers `id: null` for a
-  // locked key even when this locale has a version flagged active, and that is the one
-  // case `storedBody` exists to cover (#459).
+  // Read off the raw row set, not off `active`: for a language with no override of its
+  // own, `resolvePrompt` answers with the *shared* row, which this locale's own version
+  // list does not contain — so `active.id` can differ from anything in `versions` even
+  // though neither is locked or pinned (#468). `storedBody` is what this locale actually
+  // has on file, independent of which row inheritance resolves to.
   const storedActive = versions.find((row) => row.active) ?? null
   // Fetched by id rather than found in `versions`, because the two are not the same set:
   // for a language with no override of its own, `resolvePrompt` answers with the *shared*
@@ -1038,43 +1038,15 @@ function touchedGroups(params: unknown, patch: object): Record<string, unknown> 
   return Object.fromEntries(Object.keys(patch).map((group) => [group, all[group]]))
 }
 
-/**
- * Re-exported rather than defined here, which is where #454 put them.
- *
- * `resolvePrompt` needs the same answer at read time (#455) and `src/domain/` cannot import
- * a route module, so the predicate moved to `domain/ai/prompts.ts` beside the keys it is
- * about. Kept exported from here because this is the module whose `403` it produces, and
- * because the tests that exercise the guard import it from this path.
- */
-export { promptEditingBlocks, type PromptEditing }
-
-/**
- * Refuses a prompt write this deployment has switched off.
- *
- * **Writes only, and `resolvePrompt` is the other half.** This stops a version being
- * created or activated for a locked key; since #455 `resolvePrompt` additionally pins a
- * locked key's *reads* to `DEFAULT_PROMPTS`, which is what covers the cases a route guard
- * structurally cannot — a row that was already active before `PROMPT_EDITING` was set, and
- * an edit made straight in SQLite. Both consult `promptEditingBlocks`, so a deployment
- * cannot refuse the edit and still run the edited row.
- *
- * `403` rather than `409`: unlike the gate refusal below, nothing about the request or the
- * stored state can be fixed to make it succeed. The deployment does not permit it.
- */
-export function requirePromptEditable(mode: PromptEditing, key: PromptKey): void {
-  if (!promptEditingBlocks(mode, key)) return
-  throw forbidden(`This deployment has PROMPT_EDITING=${mode}, so ${key} cannot be changed here.`)
-}
-
 /** The sentence each gate state deserves. Named states, because the fix differs. */
 const GATE_REFUSAL: Readonly<Record<string, string>> = {
   unvalidated:
-    'This version of the narrative instructions has not passed a safety check yet, so it ' +
-    'cannot be made active. Run the check on it first.',
+    'This version of the instructions has not passed a safety check yet, so it cannot be ' +
+    'made active. Run the check on it first.',
   unsafe:
-    'A safety check found that this version of the narrative instructions no longer ' +
-    'imposes the rules the monthly review depends on, so it cannot be made active. Edit ' +
-    'the text and save it as a new version.',
+    'A safety check found that this version of the instructions no longer imposes the ' +
+    'rules the pass depends on, so it cannot be made active. Edit the text and save it ' +
+    'as a new version.',
 }
 
 /**
@@ -2346,7 +2318,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       // Priced on the same free request that already has the candidate in hand (#454), so
       // the editor can show what a safety check would cost before offering the button.
       // Local arithmetic: no call, no ledger row.
-      validationEstimateMicroEur: estimatePromptValidation(db, user.tenantId, body),
+      validationEstimateMicroEur: estimatePromptValidation(db, user.tenantId, key, body),
     })
   })
 
@@ -2361,7 +2333,6 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.post('/api/settings/prompts', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const input = parseBody(promptCreateRequest, request.body)
-    requirePromptEditable(config.PROMPT_EDITING, input.key)
 
     const previous =
       input.activate === true
@@ -2421,7 +2392,6 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const row = loadPrompt(db, user.tenantId, id)
     if (row === null) throw notFound('No such prompt version.')
     const key = promptKeyOf(row.key)
-    requirePromptEditable(config.PROMPT_EDITING, key)
 
     const previous = loadActivePrompt(db, user.tenantId, key, row.locale)
     const activated = promptGateGuard(() => activatePrompt(db, user.tenantId, id))
@@ -2451,12 +2421,6 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const params = request.params as { key: string; locale: string }
     const key = promptKeyOf(params.key)
-    // Guarded like the other two write routes (#454), and it genuinely needs to be: switching
-    // an override off changes which body `resolvePrompt` returns for that language — this
-    // route even records `prompt.activate` in the audit trail, because that is what it does.
-    // Without this, `PROMPT_EDITING=locked` would still let an owner change the narrative
-    // instructions in force for a language, just by retiring the override above them.
-    requirePromptEditable(config.PROMPT_EDITING, key)
     if (params.locale === SHARED_LOCALE) {
       throw badRequest('The shared prompt is what the others fall back to.')
     }

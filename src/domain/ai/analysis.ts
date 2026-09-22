@@ -48,7 +48,8 @@ import { enqueueClarifications } from './clarify.ts'
 import { DEFAULT_CAPS, rankSignals, type RankCaps } from './findings.ts'
 import { hashPayload } from './payload-hash.ts'
 import {
-  composeSystemPrompt,
+  composeAnalysisSystemPrompt,
+  isGatedKey,
   loadPrompt,
   promptGateState,
   resolvePrompt,
@@ -100,6 +101,13 @@ export type AnalysisReason =
   | 'estimate_exceeds_remaining'
   | 'call_failed'
   | 'bad_response'
+  /**
+   * The active `analysis.system` body has no safe verdict, and this deployment's
+   * `PROMPT_EDITING` requires one for this key (#468). A configuration refusal, not a
+   * fault, mirroring `NarrativeReason.prompt_unvalidated`: nothing was called, nothing
+   * was billed, and a retry cannot fix it. See the refusal in `runAnalysis`.
+   */
+  | 'prompt_unvalidated'
 
 export interface AnalysisOutcome {
   status: AnalysisStatus
@@ -459,6 +467,23 @@ export function estimateAnalysis(
 
   const payloadChars = JSON.stringify(prepared.payload).length
   const prompt = resolvePromptFor(db, tenantId, locale, undefined)
+  // After the free checks and before anything is priced, mirroring `estimateNarrative`
+  // (#455, #468). Resolving costs one indexed read, and pricing a run whose prompt cannot
+  // be used would put a figure in front of somebody for a button that is going to refuse.
+  if (
+    isGatedKey(config.PROMPT_EDITING, 'analysis.system') &&
+    (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe')
+  ) {
+    return {
+      month: options.month,
+      model,
+      payloadChars,
+      estimateMicroEur: 0,
+      allowed: false,
+      reason: 'prompt_unvalidated',
+    }
+  }
+
   const reused = findReusableRun(db, tenantId, {
     kind: 'findings',
     period: options.month,
@@ -512,11 +537,10 @@ function resolvePromptFor(
     locale: row.locale,
     version: row.version,
     body: row.body,
-    // Computed from the row rather than assumed (#455). `analysis.system` is not in
-    // `GATED_PROMPT_KEYS` — its output is grounded against the signal table, so an edit
-    // cannot invent a finding — and nothing in this pass reads `gate`; it is answered
-    // honestly anyway, so a future decision to gate this key finds a real value here
-    // instead of a hard-coded `built_in` that would quietly exempt every named version.
+    // Computed from the row rather than assumed (#455, #468). Whether this actually needs
+    // a verdict depends on `PROMPT_EDITING`, which `runAnalysis`/`estimateAnalysis` consult
+    // via `isGatedKey` — this function answers `gate` honestly regardless of mode, so it is
+    // never a hard-coded `built_in` that would quietly exempt every named version.
     gate: promptGateState('analysis.system', row),
   }
 }
@@ -559,6 +583,44 @@ export async function runAnalysis(
   // the reuse key, and the reuse check has to run before a free answer could be
   // wrongly refused for being "over budget" (#160).
   const prompt = resolvePromptFor(db, tenantId, locale, options.promptId)
+
+  // The enforcement boundary (#455's, extended to this key by #468). Checked before the
+  // reuse lookup and the budget guard, same reasoning as `runNarrative`: a run that cannot
+  // use its own instructions must refuse for free, and reporting `capped` for it would name
+  // the wrong problem. Gated by `isGatedKey` rather than unconditional — under `full` this
+  // key is not required to carry a verdict at all, so an `unvalidated` body is fine to run.
+  //
+  // **Never substitute `DEFAULT_PROMPTS` here**, for the same reason `runNarrative` never
+  // does: the household would read findings ordered by rules they did not write, believing
+  // it came from the instructions they can see in the editor.
+  if (
+    isGatedKey(config.PROMPT_EDITING, 'analysis.system') &&
+    (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe')
+  ) {
+    const runId = recordRun(db, tenantId, {
+      kind,
+      provider: ai.provider,
+      model,
+      locale,
+      period: month,
+      payload,
+      payloadHash,
+      promptId: prompt.id,
+      status: 'blocked',
+      error: 'prompt_unvalidated',
+      userId: options.userId ?? null,
+    })
+    log.warn({ month, gate: prompt.gate }, 'analysis prompt has no safe verdict; refusing to run')
+    return {
+      ...base,
+      status: 'skipped',
+      reason: 'prompt_unvalidated',
+      runId,
+      degraded: true,
+      findings: [],
+      costMicroEur: 0,
+    }
+  }
 
   if (options.force !== true) {
     const reused = findReusableRun(db, tenantId, {
@@ -635,7 +697,7 @@ export async function runAnalysis(
   try {
     result = await callAi(db, tenantId, {
       model,
-      systemPrompt: composeSystemPrompt(prompt.body, locale),
+      systemPrompt: composeAnalysisSystemPrompt(prompt.body, locale),
       instruction: analysisInstruction(payload),
       payload,
       responseJsonSchema: analysisJsonSchema(),

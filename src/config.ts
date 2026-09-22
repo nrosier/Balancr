@@ -338,15 +338,21 @@ const EnvSchema = z.object({
 
   // Prompts
   /**
-   * Which prompts a tenant owner may still write to (#454, Q1 of #452).
+   * Whether an edited prompt needs the judge's sign-off before it can go live (#468, #454,
+   * Q1 of #452).
    *
-   *  - `full` — today's behaviour and the default, so no existing deployment changes.
-   *    Every key is editable, and an edited `narrative.system` has to pass the judge
-   *    before it can be activated.
-   *  - `analysis_only` — writes to `narrative.system` are refused and it is pinned to its
-   *    built-in text. `analysis.system` stays editable, because its output is grounded
-   *    against the signal table and an edit there cannot invent a finding.
-   *  - `locked` — the same, for every key.
+   * Both modes leave every key editable — nothing here ever refuses a write or pins a read
+   * to built-in text. `narrative.system` is gated either way: its output has no grounding
+   * downstream, so the judge is the only thing standing between an edit and whatever it
+   * says, and that does not become optional just because an operator wants `analysis.system`
+   * looser. The mode only decides `analysis.system`, whose output stays grounded against
+   * the signal table regardless:
+   *
+   *  - `locked` — the default. `analysis.system` is gated too, for the one surface that
+   *    grounding does not cover: a clarification guess, the pass's only free text.
+   *  - `full` — "god mode," for `analysis.system` only. An edited analysis prompt goes live
+   *    the moment it's activated, judge or no judge. Not the default, because that is the
+   *    state where a jailbroken edit has nothing but the schema standing in its way.
    *
    * **This is the only control in the whole design that binds an owner who *wants* a
    * weakened prompt.** Everything else — the judge, the activation gate, the code-owned
@@ -365,7 +371,7 @@ const EnvSchema = z.object({
    * narrative prompt to built-in text is a deliberate operator-level substitution, and the
    * loud kind is the opposite of what this design exists to prevent.
    */
-  PROMPT_EDITING: z.enum(['full', 'analysis_only', 'locked']).default('full'),
+  PROMPT_EDITING: z.enum(['full', 'locked']).default('locked'),
 
   // Locale
   SUPPORTED_LOCALES: csv('en,nl'),

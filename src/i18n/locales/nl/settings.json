@@ -55,7 +55,7 @@
       "not_confident": "Het model was hier niet zeker genoeg van om te raden.",
       "not_gated": "Deze instructies hebben geen veiligheidscontrole nodig.",
       "ok": "Afgerond.",
-      "prompt_unvalidated": "De instructies voor het verhaal zijn niet door een veiligheidscontrole gekomen, dus er is geen verhaal geschreven.",
+      "prompt_unvalidated": "Deze instructies zijn niet door een veiligheidscontrole gekomen, dus is er niets mee geschreven.",
       "reused": "Beantwoord met een eerdere uitvoering waar niets aan is veranderd — geen kosten.",
       "safe": "Gecontroleerd: de instructies leggen nog elke regel op.",
       "truncated": "Het antwoord van het model werd afgekapt, ook na een nieuwe poging — het vorige antwoord wordt getoond.",
@@ -468,16 +468,6 @@
       "shared": "Alle talen"
     },
     "locale": "Geldt voor",
-    "locked": {
-      "all": "Deze installatie draait met PROMPT_EDITING=locked, dus geen enkele instructie van de assistent kan hier aangepast worden. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
-      "analysisOnly": "Deze installatie draait met PROMPT_EDITING=analysis_only, dus de instructies voor het maandverhaal staan vast op de eigen tekst van Balancr. De instructies voor de bevindingen kun je wel aanpassen. Alleen wie de server beheert kan dit wijzigen, in de .env daarvan.",
-      "builtIn": {
-        "explain": "Dit is de tekst waarmee Balancr wordt geleverd. Zolang aanpassen uitstaat, is dit wat werkelijk gebruikt wordt voor deze instructie — wat hieronder ook opgeslagen staat.",
-        "show": "Toon de ingebouwde instructies"
-      },
-      "emptyPlaceholder": "Hier is niets opgeslagen.",
-      "title": "Aanpassen staat hier uit"
-    },
     "note": "Wat er veranderd is",
     "notePlaceholder": "Waarom deze versie bestaat",
     "override": {
