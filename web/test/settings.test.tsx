@@ -4265,6 +4265,43 @@ describe('the prompt safety check (#454)', () => {
     expect(screen.queryByText("Balancr's own")).toBeNull()
   })
 
+  it('still lets a deactivated override be opened and checked, since its own version is real', async () => {
+    // Unlike the language above, this one *has* written its own text — `deactivateOverride`
+    // only stops it from running, it does not delete the row. `entry.active` resolves to the
+    // shared text either way, so "inherits shared" has to be judged on `versions.length`, not
+    // on whether one of those versions happens to be active right now.
+    const withDeactivatedOverride: Payload = {
+      ...saved(),
+      prompts: [
+        ...saved().prompts,
+        {
+          key: 'narrative.system',
+          locale: 'nl',
+          active: {
+            id: 'n3',
+            version: 3,
+            locale: SHARED_LOCALE,
+            body: BUILT_IN,
+            gate: 'built_in',
+            validatedAt: null,
+            rulesVersion: null,
+          },
+          versions: [version({ id: 'n5', version: 1 })],
+        },
+      ] as Payload['prompts'],
+    }
+    await open({
+      ...READS,
+      '/api/settings': json(withDeactivatedOverride),
+      '/api/settings/prompts/n5': json(promptBody(version({ id: 'n5', version: 1 }), EDITED)),
+    })
+    selectNarrative()
+    fireEvent.change(screen.getByLabelText('Applies to'), { target: { value: 'nl' } })
+    await editVersion(0, EDITED)
+
+    expect(await screen.findByRole('button', { name: 'Check' })).not.toBeNull()
+  })
+
   it('draws no gate badge on a version of a key this mode does not gate', async () => {
     // `PAYLOAD.promptEditing` is `full` (#468), under which `analysis.system` is not gated —
     // so a warn-tone "Not checked" beside an edited findings prompt would advertise a check

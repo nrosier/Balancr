@@ -245,10 +245,12 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
    *
    * `buildSettings` emits an entry per supported locale, and for a language nobody has written
    * an override for, that entry has an empty `versions` list and the *shared* row as its
-   * `active`. There is nothing here to check — the row belongs to the shared tab.
+   * `active`. There is nothing here to check — the row belongs to the shared tab. Checked on
+   * `versions.length`, not on "no *active* row of its own" — a locale whose override was
+   * deactivated (`deactivateOverride`) keeps its stored versions, just none of them active, and
+   * those are real rows this section still needs to let someone open and check.
    */
-  const ownActiveVersion = entry.versions.find((version) => version.active) ?? null
-  const inheritsShared = ownActiveVersion === null && entry.active.id !== null
+  const inheritsShared = entry.versions.length === 0 && entry.active.id !== null
 
   // The row the box last matched may have been deleted since (the point of Part 1): the
   // anchor id survives in the draft, but it names nothing in this fresh `entry.versions` any
