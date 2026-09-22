@@ -216,6 +216,19 @@
       "sizeNotANumber": "Een heel getal in basispunten tussen 10000 en 200000.",
       "sizeReads": "{{size}} equivalente volwassenen op de schaal.",
       "title": "Het gemiddelde huishouden waarmee vergeleken wordt"
+    },
+    "translations": {
+      "caption": "De naam van elke categorie in de gekozen taal, aanpasbaar, met terugval naar de taal waarin ze getypt is als het veld leeg blijft",
+      "column": {
+        "category": "Categorie (zoals getypt in Actual)",
+        "name": "Vertaalde naam"
+      },
+      "hint": "Een naam voor een categorie in een andere taal dan waarin ze getypt is, voor iedereen in het huishouden die de app in een andere taal leest. Laat een veld leeg en die categorie houdt de naam die Actual ervoor heeft.",
+      "inputLabel": "Vertaalde naam voor {{name}}",
+      "localeLabel": "Taal om te bewerken",
+      "noTargets": "Elke ondersteunde taal is precies de taal waarin je categorieën al getypt zijn, dus er is niets om naar te vertalen.",
+      "none": "Nog geen categorieën geaggregeerd. Voer eerst een synchronisatie uit.",
+      "title": "Vertalingen"
     }
   },
   "build": {
@@ -258,6 +271,8 @@
   },
   "integrations": {
     "actual": {
+      "categorySourceLocale": "Categorietaal",
+      "categorySourceLocaleHint": "De taal waarin je Actual-categorieën echt getypt zijn. Voor deze taal wordt nooit een vertaling opgeslagen, want ze is al de naam zelf.",
       "e2ePassword": "Wachtwoord voor eind-tot-eindversleuteling",
       "hint": "De Actual Budget-instantie waarvan Balancr verrichtingen en saldi synchroniseert.",
       "password": "Wachtwoord",

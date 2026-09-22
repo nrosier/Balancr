@@ -28,8 +28,10 @@ import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
 import { decryptField } from '../../src/db/field-crypto.ts'
-import { auditLog, tenantIntegrations, users } from '../../src/db/schema.ts'
+import { auditLog, categoryMeta, tenantIntegrations, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { loadCategoryNames } from '../../src/domain/aggregate/facts.ts'
+import { saveCategoryTranslation } from '../../src/domain/i18n/category-translations.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { runJob, type Job } from '../../src/jobs/index.ts'
 import { buildApp } from '../../src/server/app.ts'
@@ -156,6 +158,7 @@ describe('GET /api/settings', () => {
         syncId: 'test-sync-id',
         passwordConfigured: true,
         e2ePasswordConfigured: false,
+        categorySourceLocale: 'en',
       },
       ghostfolio: { url: 'http://ghostfolio.test:3333', tokenConfigured: true },
       ai: {
@@ -184,6 +187,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual2.test:5006',
       syncId: 'sync-id-2',
+      categorySourceLocale: 'en',
     })
 
     expect(res.statusCode).toBe(200)
@@ -195,6 +199,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual2.test:5006',
       syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
     })
 
     expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
@@ -204,6 +209,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual.test:5006',
       syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
       password: 'new-password',
     })
 
@@ -215,6 +221,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual.test:5006',
       syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
       e2ePassword: 'e2e-secret',
     })
 
@@ -222,8 +229,73 @@ describe('PATCH /api/settings/integrations/actual', () => {
     expect(decryptField(row(ctx.db).actualE2ePasswordEnc as string)).toBe('e2e-secret')
   })
 
+  it('updates the category source locale', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'nl',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.actual.categorySourceLocale).toBe('nl')
+    expect(row(ctx.db).actualCategorySourceLocale).toBe('nl')
+  })
+
+  it('drops stale translations for a locale that becomes the new source locale', async () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    ctx.db
+      .insert(categoryMeta)
+      .values({ tenantId, categoryId: 'groceries', nameSnapshot: 'Groceries', isIncome: false, hidden: false })
+      .run()
+    saveCategoryTranslation(ctx.db, tenantId, 'groceries', 'nl', 'Boodschappen')
+
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'nl',
+    })
+
+    expect(res.statusCode).toBe(200)
+    // The now-source locale's name is the Actual snapshot; the stale override cannot be
+    // left standing, since a translation for the source locale can no longer be written
+    // (or cleared) through the ordinary route.
+    expect(loadCategoryNames(ctx.db, tenantId, 'nl').get('groceries')).toBe('Groceries')
+  })
+
+  it('leaves other locales\' translations alone when the source locale changes', async () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    ctx.db
+      .insert(categoryMeta)
+      .values({ tenantId, categoryId: 'groceries', nameSnapshot: 'Groceries', isIncome: false, hidden: false })
+      .run()
+    saveCategoryTranslation(ctx.db, tenantId, 'groceries', 'fr', 'Courses')
+
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'nl',
+    })
+
+    expect(loadCategoryNames(ctx.db, tenantId, 'fr').get('groceries')).toBe('Courses')
+  })
+
+  it('refuses an unsupported category source locale', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'xx',
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(row(ctx.db).actualCategorySourceLocale).toBe('en')
+  })
+
   it('refuses an empty server URL rather than storing a blank one', async () => {
-    const res = await patch('/api/settings/integrations/actual', { serverUrl: '', syncId: 'test-sync-id' })
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: '',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
     expect(res.statusCode).toBe(400)
     expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['serverUrl'])
     expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
@@ -233,6 +305,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual.test:5006',
       syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
       password: '',
     })
     expect(res.statusCode).toBe(400)
@@ -243,6 +316,7 @@ describe('PATCH /api/settings/integrations/actual', () => {
     await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual2.test:5006',
       syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
       password: 'new-password',
     })
 
@@ -255,13 +329,14 @@ describe('PATCH /api/settings/integrations/actual', () => {
       syncId: 'test-sync-id',
       passwordConfigured: true,
       e2ePasswordConfigured: false,
+      categorySourceLocale: 'en',
     })
   })
 
   it('is refused for a viewer', async () => {
     const res = await patch(
       '/api/settings/integrations/actual',
-      { serverUrl: 'http://actual2.test:5006', syncId: 'test-sync-id' },
+      { serverUrl: 'http://actual2.test:5006', syncId: 'test-sync-id', categorySourceLocale: 'en' },
       { token: viewer },
     )
     expect(res.statusCode).toBe(403)

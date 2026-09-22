@@ -1178,10 +1178,120 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
 }
 
 // ---------------------------------------------------------------------------
+//  The translations
+// ---------------------------------------------------------------------------
+
+/**
+ * A category's name in whichever locale the picker above the table has selected (#479).
+ *
+ * Unlike every column in `MappingPanel`, an empty value here is not "unmapped" — it is
+ * "no translation", which already has a fallback: `category_meta.nameSnapshot`, shown as
+ * a placeholder rather than typed into the box, so the box's own emptiness still reads as
+ * "nothing overridden here" rather than as a category with no name at all.
+ */
+export function TranslationsPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const { categoryTranslations, integrations, locales } = settings
+  const sourceLocale = integrations.actual.categorySourceLocale
+  const targets = locales.supported.filter((code) => code !== sourceLocale)
+  const [locale, setLocale] = useState<string>(targets[0] ?? sourceLocale)
+  const locked = !owner || state.busy
+
+  return (
+    <Panel
+      title={t('settings:benchmark.translations.title')}
+      hint={t('settings:benchmark.translations.hint')}
+      notice={owner ? null : <p className="panel__meta muted">{t('settings:viewerOnly')}</p>}
+    >
+      {categoryTranslations.length === 0 ? (
+        <p className="muted">{t('settings:benchmark.translations.none')}</p>
+      ) : targets.length === 0 ? (
+        <p className="muted">{t('settings:benchmark.translations.noTargets')}</p>
+      ) : (
+        <>
+          <div className="field">
+            <label className="field__label" htmlFor="benchmark-translations-locale">
+              {t('settings:benchmark.translations.localeLabel')}
+            </label>
+            <select
+              id="benchmark-translations-locale"
+              className="field__input"
+              value={locale}
+              onChange={(event) => setLocale(event.target.value)}
+            >
+              {targets.map((code) => (
+                <option key={code} value={code}>
+                  {t(`settings:language.${code}`, { defaultValue: code })}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="table-scroll">
+            <table className="table">
+              <caption className="table__caption">
+                {t('settings:benchmark.translations.caption')}
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">{t('settings:benchmark.translations.column.category')}</th>
+                  <th scope="col">{t('settings:benchmark.translations.column.name')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryTranslations.map((category) => (
+                  <tr key={category.categoryId}>
+                    <th scope="row" className="table__cell--name">
+                      {category.categoryName}
+                      {category.isIncome || category.hidden ? (
+                        <span className="badge mapping__flag">
+                          {t(
+                            `settings:benchmark.mapping.${category.isIncome ? 'income' : 'hidden'}`,
+                          )}
+                        </span>
+                      ) : null}
+                    </th>
+                    <td>
+                      <input
+                        // Remounted on a locale switch, since `defaultValue` only applies at
+                        // mount — without this key the box would keep showing whichever
+                        // locale's text it opened with even after the picker above changed.
+                        key={locale}
+                        type="text"
+                        className="field__input"
+                        aria-label={t('settings:benchmark.translations.inputLabel', {
+                          name: category.categoryName,
+                        })}
+                        placeholder={category.categoryName}
+                        defaultValue={category.translations[locale] ?? ''}
+                        disabled={locked}
+                        onBlur={(event) => {
+                          const value = event.target.value.trim()
+                          state.save(
+                            `translation:${category.categoryId}:${locale}`,
+                            'PATCH',
+                            `/api/settings/categories/${category.categoryId}/translation/${locale}`,
+                            { name: value === '' ? null : value },
+                          )
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Panel>
+  )
+}
+
+// ---------------------------------------------------------------------------
 //  Subsections
 // ---------------------------------------------------------------------------
 
-type BenchmarkSubsectionId = 'household' | 'mapping' | 'comparison'
+type BenchmarkSubsectionId = 'household' | 'mapping' | 'translations' | 'comparison'
 
 const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
   {
@@ -1193,6 +1303,11 @@ const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
     id: 'mapping',
     path: '/settings/benchmark/mapping',
     labelKey: 'settings:benchmark.mapping.title',
+  },
+  {
+    id: 'translations',
+    path: '/settings/benchmark/translations',
+    labelKey: 'settings:benchmark.translations.title',
   },
   {
     id: 'comparison',
@@ -1226,6 +1341,9 @@ export function BenchmarkSection(props: SettingsPanelProps): ReactNode {
       </div>
       <div hidden={active !== 'mapping'}>
         <MappingPanel {...props} />
+      </div>
+      <div hidden={active !== 'translations'}>
+        <TranslationsPanel {...props} />
       </div>
       <div hidden={active !== 'comparison'}>
         <ComparisonPanel {...props} />

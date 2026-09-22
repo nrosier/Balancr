@@ -68,6 +68,7 @@ interface ActualDraft {
   syncId: string
   password: string
   e2ePassword: string
+  categorySourceLocale: string
 }
 
 const actualDraftOf = (actual: IntegrationsSetting['actual']): ActualDraft => ({
@@ -75,6 +76,7 @@ const actualDraftOf = (actual: IntegrationsSetting['actual']): ActualDraft => ({
   syncId: actual.syncId,
   password: '',
   e2ePassword: '',
+  categorySourceLocale: actual.categorySourceLocale,
 })
 
 function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
@@ -106,6 +108,7 @@ function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
         syncId,
         ...(password === '' ? {} : { password }),
         ...(e2ePassword === '' ? {} : { e2ePassword }),
+        categorySourceLocale: current.categorySourceLocale,
       },
       () => setDraft(null),
     )
@@ -190,8 +193,29 @@ function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode 
           ) : null}
         </div>
 
+        <div className="field">
+          <label className="field__label" htmlFor="integrations-actual-category-source-locale">
+            {t('settings:integrations.actual.categorySourceLocale')}
+          </label>
+          <select
+            id="integrations-actual-category-source-locale"
+            className="field__input"
+            value={current.categorySourceLocale}
+            disabled={locked}
+            onChange={(event) => edit({ categorySourceLocale: event.target.value })}
+          >
+            {settings.locales.supported.map((code) => (
+              <option key={code} value={code}>
+                {t(`settings:language.${code}`, { defaultValue: code })}
+              </option>
+            ))}
+          </select>
+          <p className="panel__meta muted">{t('settings:integrations.actual.categorySourceLocaleHint')}</p>
+        </div>
+
         <Issue message={state.issue('serverUrl')} />
         <Issue message={state.issue('syncId')} />
+        <Issue message={state.issue('categorySourceLocale')} />
 
         <div className="integrations__actions">
           <button type="submit" className="button button--primary" disabled={locked || draft === null || !ok}>

@@ -216,6 +216,19 @@
       "sizeNotANumber": "A whole number of basis points between 10000 and 200000.",
       "sizeReads": "{{size}} equivalent adults on the scale.",
       "title": "The average household it compares to"
+    },
+    "translations": {
+      "caption": "Each category's name in the selected language, editable, falling back to the language it was typed in when empty",
+      "column": {
+        "category": "Category (as typed in Actual)",
+        "name": "Translated name"
+      },
+      "hint": "A name for a category in a language other than the one it was typed in, for anyone in the household who reads the app in a different language. Leave a box empty and that category keeps the name Actual has for it.",
+      "inputLabel": "Translated name for {{name}}",
+      "localeLabel": "Editing language",
+      "noTargets": "Every supported language is the one your categories are already typed in, so there is nothing to translate into.",
+      "none": "No categories have been aggregated yet. Run a sync first.",
+      "title": "Translations"
     }
   },
   "build": {
@@ -258,6 +271,8 @@
   },
   "integrations": {
     "actual": {
+      "categorySourceLocale": "Category language",
+      "categorySourceLocaleHint": "The language your Actual categories were actually typed in. A translation is never stored for this language, since it already is the name.",
       "e2ePassword": "End-to-end encryption password",
       "hint": "The Actual Budget instance Balancr syncs transactions and balances from.",
       "password": "Password",

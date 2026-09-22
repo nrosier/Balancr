@@ -399,6 +399,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
       outsideCode: '00',
       categories: [],
     },
+    categoryTranslations: [],
     property: { properties: [] },
     integrations: {
       actual: {
@@ -406,6 +407,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
         syncId: 'sync-id',
         passwordConfigured: true,
         e2ePasswordConfigured: false,
+        categorySourceLocale: 'en',
       },
       ghostfolio: { url: 'https://ghostfolio.example.test', tokenConfigured: true },
       ai: {

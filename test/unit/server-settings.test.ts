@@ -35,6 +35,7 @@ import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
+import { loadCategoryTranslationRows } from '../../src/domain/i18n/category-translations.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import {
   activatePrompt,
@@ -704,6 +705,74 @@ describe('PATCH /api/settings/categories/:id/ai-visibility', () => {
     const res = await send_('cat-groceries', { aiVisibility: 'absent' }, { token: viewer })
     expect(res.statusCode).toBe(403)
     expect(visibilityOf('cat-groceries')).toBe('shown')
+  })
+})
+
+describe('PATCH /api/settings/categories/:id/translation/:locale', () => {
+  // The fixture never sets `actualCategorySourceLocale` explicitly, so it sits at the
+  // schema's own default — the same value a fresh deployment would have on day one.
+  const SOURCE_LOCALE = 'en'
+
+  const send_ = (id: string, locale: string, body: object, options?: { token?: string }) =>
+    patch(`/api/settings/categories/${id}/translation/${locale}`, body, options)
+
+  const translationsOf = (id: string): Record<string, string> | undefined =>
+    loadCategoryTranslationRows(ctx.db, tenantId).find((row) => row.categoryId === id)?.translations
+
+  it('writes a translated name, and answers with the list saying so (#479)', async () => {
+    const res = await send_('cat-groceries', 'nl', { name: 'Boodschappen' })
+
+    expect(res.statusCode).toBe(200)
+    const row = res
+      .json<Settings>()
+      .categoryTranslations.find((category) => category.categoryId === 'cat-groceries')
+    expect(row?.translations.nl).toBe('Boodschappen')
+    expect(translationsOf('cat-groceries')).toEqual({ nl: 'Boodschappen' })
+  })
+
+  it('clears a translation back to the source name when given null', async () => {
+    await send_('cat-groceries', 'nl', { name: 'Boodschappen' })
+    const res = await send_('cat-groceries', 'nl', { name: null })
+
+    expect(res.statusCode).toBe(200)
+    expect(translationsOf('cat-groceries')).toEqual({})
+  })
+
+  it('records the change against the translation table, not against settings', async () => {
+    await send_('cat-groceries', 'nl', { name: 'Boodschappen' })
+    expect(auditActions(ctx.db)).toContain('settings.category-translation')
+  })
+
+  it('refuses a body with no name key, and one with the wrong type', async () => {
+    expect((await send_('cat-groceries', 'nl', {})).statusCode).toBe(400)
+    expect((await send_('cat-groceries', 'nl', { name: 42 })).statusCode).toBe(400)
+    expect(translationsOf('cat-groceries')).toEqual({})
+  })
+
+  it('answers 404 for a category Balancr has never seen', async () => {
+    const res = await send_('cat-invented', 'nl', { name: 'Spook' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it("answers 400 for the tenant's own category source locale", async () => {
+    const res = await send_('cat-groceries', SOURCE_LOCALE, { name: 'Groceries 2' })
+    expect(res.statusCode).toBe(400)
+    expect(translationsOf('cat-groceries')).toEqual({})
+  })
+
+  it('answers 400 for a locale this deployment does not support, rather than persisting it', async () => {
+    // The locale comes off the URL, not the request-body schema — a client can put
+    // anything there, and the settings UI's own picker only offers supported locales,
+    // so an unvalidated write would sit in the table with no way to reach it again.
+    const res = await send_('cat-groceries', 'xx', { name: 'Groceries 2' })
+    expect(res.statusCode).toBe(400)
+    expect(translationsOf('cat-groceries')).toEqual({})
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_('cat-groceries', 'nl', { name: 'Boodschappen' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(translationsOf('cat-groceries')).toEqual({})
   })
 })
 

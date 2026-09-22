@@ -78,6 +78,7 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
       request.user?.role === 'owner',
       query?.benchmarkPeriod,
       query?.custodyPeriod,
+      resolveLocale(request),
     )
   })
 

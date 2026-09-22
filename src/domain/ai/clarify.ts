@@ -34,7 +34,7 @@ import { categoryMeta, clarificationQueue } from '../../db/schema.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
 import { recordAudit } from '../audit.ts'
-import { loadCategoryMeta, loadFacts } from '../aggregate/facts.ts'
+import { loadCategoryMeta, loadCategoryNames, loadFacts } from '../aggregate/facts.ts'
 import { loadMonthTotals } from '../aggregate/month-store.ts'
 import { CLARIFICATION_CODES, type ClarificationCode } from './codes.ts'
 
@@ -358,14 +358,12 @@ export function openQuestions(
   limit = 20,
 ): ClarificationCard[] {
   const rows = db
-    .select({ queue: clarificationQueue, name: categoryMeta.nameSnapshot })
+    .select({ queue: clarificationQueue })
     .from(clarificationQueue)
-    .leftJoin(
-      categoryMeta,
-      and(eq(categoryMeta.categoryId, clarificationQueue.categoryId), eq(categoryMeta.tenantId, tenantId)),
-    )
     .where(and(eq(clarificationQueue.tenantId, tenantId), eq(clarificationQueue.status, 'open')))
     .all()
+
+  const names = loadCategoryNames(db, tenantId, locale)
 
   return rows
     .filter((row) => isCode(row.queue.questionCode))
@@ -375,9 +373,9 @@ export function openQuestions(
         a.queue.createdAt.getTime() - b.queue.createdAt.getTime(),
     )
     .slice(0, limit)
-    .map(({ queue, name }) => {
+    .map(({ queue }) => {
       const code = queue.questionCode as ClarificationCode
-      const categoryName = name ?? queue.categoryId
+      const categoryName = names.get(queue.categoryId) ?? queue.categoryId
       const guess = storedGuess(queue)
       const choices = choicesFor(code, locale)
       return {

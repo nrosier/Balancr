@@ -80,6 +80,8 @@ export const AUDIT_ACTIONS = [
    */
   'settings.benchmarkReference',
   'settings.coicop',
+  /** A category's name in one locale, set or cleared back to the source snapshot (#479). */
+  'settings.category-translation',
   /**
    * A category flagged as shared with a co-parent, or unflagged (#44).
    *

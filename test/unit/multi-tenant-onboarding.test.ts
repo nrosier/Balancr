@@ -176,6 +176,7 @@ describe('a second household, provisioned through the real route', () => {
       ['custody-shared', { custodyShared: true }],
       ['ai-visibility', { aiVisibility: 'absent' }],
       ['nature', { nature: 'savings' }],
+      ['translation/nl', { name: 'Boodschappen' }],
     ] as const) {
       const attempted = await asOwnerB(
         'PATCH',
