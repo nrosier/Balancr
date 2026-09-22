@@ -478,8 +478,13 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
  * Balancr's own base rather than a replacement of it (see `composeLayeredBody`): a verdict
  * reached under the old full-rubric audit answers a different question than the new
  * conflict-only check, and must not be read as an answer to this one.
+ *
+ * Bumped to 3 for the change that redefined `no_arithmetic` to require, rather than forbid,
+ * converting a `Cents`/`Bp` field into display units, and added `no_internal_ids`: a verdict
+ * reached under the old wording certified a narrative against rules this build no longer
+ * asks the judge to enforce.
  */
-export const VALIDATION_RULES_VERSION = 2
+export const VALIDATION_RULES_VERSION = 3
 
 /**
  * What a prompt row's text is cleared for.
