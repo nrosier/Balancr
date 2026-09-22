@@ -190,6 +190,7 @@
       "no_address_no_moralise": "Blijft zakelijk en velt geen oordeel",
       "no_advice": "Geeft geen beleggings-, product- of belastingadvies",
       "no_arithmetic": "Rekent nooit zelf een bedrag uit",
+      "no_internal_ids": "Beschrijft cijfers en categorieën in gewone taal, nooit met hun interne naam",
       "no_numbers": "Noemt, berekent of schat zelf nooit een cijfer",
       "note_is_context": "Neemt je notitie als uitleg, nooit als cijfer",
       "quality_first_ordering": "Zet datakwaliteitsproblemen voor bevindingen over uitgaven",

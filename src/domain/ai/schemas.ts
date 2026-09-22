@@ -555,12 +555,16 @@ export function groundNudgeResponse(
 // ---------------------------------------------------------------------------
 
 /**
- * The ten rules `NARRATIVE_SYSTEM` states, as ids.
+ * The eleven rules `NARRATIVE_SYSTEM` states, as ids.
  *
  * A closed vocabulary for the same reason `FINDING_CODES` is one: the judge answers in
  * codes rather than prose, so an invented rule name is a parse failure instead of a
  * sentence nobody can act on. The order matches the prompt's own numbering, which is what
  * makes the two readable side by side when either changes.
+ *
+ * `no_internal_ids` (rule 11) is editorial like `brevity`/`drift_is_fact`/etc — it shapes
+ * how the writer talks about a figure or category, not what it is allowed to claim about
+ * one — so it is judged like the rest but not in `REQUIRED_NARRATIVE_RULE_IDS` below.
  */
 export const NARRATIVE_RULE_IDS = [
   'no_arithmetic',
@@ -573,6 +577,7 @@ export const NARRATIVE_RULE_IDS = [
   'drift_is_fact',
   'note_is_context',
   'excluded_is_choice',
+  'no_internal_ids',
 ] as const
 export type NarrativeRuleId = (typeof NARRATIVE_RULE_IDS)[number]
 
@@ -652,7 +657,7 @@ export const REQUIRED_RULE_IDS_FOR: Record<PromptKey, readonly RuleId[]> = {
 /**
  * Ways a candidate body can fight the system it is part of, as codes.
  *
- * Distinct from a missing rule: a prompt can state all ten rules faithfully and still, in
+ * Distinct from a missing rule: a prompt can state every rule faithfully and still, in
  * another sentence, claim to override everything above it or demand the model produce
  * figures. Any one of these is enough on its own for `unsafe` — there is no legitimate
  * reason for an editable prompt body to do any of them.
