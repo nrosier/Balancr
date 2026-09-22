@@ -17,6 +17,10 @@
     },
     "column": {
       "difference": "Difference",
+      "differenceHint": {
+        "level": "This compares euro amounts, not shares: it scales the reference household's total to your household's size, so it also carries any gap in how much you spend overall, not only how you split it between groups.",
+        "mix": "This applies their reported share to your own total spending, so it moves with Your share and Their share above — there is no reference total on record to compare euro amounts against."
+      },
       "group": "Group",
       "reference": "Reference",
       "referenceShare": "Their share",

@@ -17,6 +17,10 @@
     },
     "column": {
       "difference": "Verschil",
+      "differenceHint": {
+        "level": "Dit vergelijkt eurobedragen, geen aandelen: het schaalt het totaal van het referentiehuishouden naar de grootte van het jouwe, dus het draagt ook elk verschil in hoeveel je in totaal uitgeeft, niet enkel hoe je dat verdeelt over groepen.",
+        "mix": "Dit past hun gerapporteerde aandeel toe op jouw eigen totale uitgaven, dus het beweegt mee met Jouw aandeel en Hun aandeel hierboven — er is geen referentietotaal bekend om eurobedragen tegen af te zetten."
+      },
       "group": "Groep",
       "reference": "Referentie",
       "referenceShare": "Hun aandeel",
