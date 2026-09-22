@@ -172,6 +172,16 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
   const existing = workers.get(tenantId)
   if (existing !== undefined) return existing
 
+  // Validated before anything is forked or cached: a rejected tenantId must
+  // leave no child process behind, and a retry with the same bad tenantId
+  // must hit this check again rather than an early-return on a cached worker.
+  const baseDataDir = resolve(config.ACTUAL_DATA_DIR)
+  const tenantDataDir = resolve(baseDataDir, tenantId)
+  const relDataDir = relative(baseDataDir, tenantDataDir)
+  if (relDataDir.startsWith('..') || isAbsolute(relDataDir)) {
+    throw new Error('Invalid file path')
+  }
+
   const child = fork(WORKER_PATH, [], { stdio: 'pipe', serialization: 'advanced' })
   const worker: TenantWorker = {
     child,
@@ -184,12 +194,6 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
   attachChild(tenantId, worker)
 
   const integrations = resolvedIntegrations(db, tenantId)
-  const baseDataDir = resolve(config.ACTUAL_DATA_DIR)
-  const tenantDataDir = resolve(baseDataDir, tenantId)
-  const relDataDir = relative(baseDataDir, tenantDataDir)
-  if (relDataDir.startsWith('..') || isAbsolute(relDataDir)) {
-    throw new Error('Invalid file path')
-  }
   const openConfig: ActualOpenConfig = {
     serverUrl: integrations.actual.serverUrl,
     password: integrations.actual.password,
