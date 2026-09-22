@@ -28,8 +28,10 @@ import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
 import { decryptField } from '../../src/db/field-crypto.ts'
-import { auditLog, tenantIntegrations, users } from '../../src/db/schema.ts'
+import { auditLog, categoryMeta, tenantIntegrations, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { loadCategoryNames } from '../../src/domain/aggregate/facts.ts'
+import { saveCategoryTranslation } from '../../src/domain/i18n/category-translations.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { runJob, type Job } from '../../src/jobs/index.ts'
 import { buildApp } from '../../src/server/app.ts'
@@ -237,6 +239,44 @@ describe('PATCH /api/settings/integrations/actual', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json<Settings>().integrations.actual.categorySourceLocale).toBe('nl')
     expect(row(ctx.db).actualCategorySourceLocale).toBe('nl')
+  })
+
+  it('drops stale translations for a locale that becomes the new source locale', async () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    ctx.db
+      .insert(categoryMeta)
+      .values({ tenantId, categoryId: 'groceries', nameSnapshot: 'Groceries', isIncome: false, hidden: false })
+      .run()
+    saveCategoryTranslation(ctx.db, tenantId, 'groceries', 'nl', 'Boodschappen')
+
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'nl',
+    })
+
+    expect(res.statusCode).toBe(200)
+    // The now-source locale's name is the Actual snapshot; the stale override cannot be
+    // left standing, since a translation for the source locale can no longer be written
+    // (or cleared) through the ordinary route.
+    expect(loadCategoryNames(ctx.db, tenantId, 'nl').get('groceries')).toBe('Groceries')
+  })
+
+  it('leaves other locales\' translations alone when the source locale changes', async () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    ctx.db
+      .insert(categoryMeta)
+      .values({ tenantId, categoryId: 'groceries', nameSnapshot: 'Groceries', isIncome: false, hidden: false })
+      .run()
+    saveCategoryTranslation(ctx.db, tenantId, 'groceries', 'fr', 'Courses')
+
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'nl',
+    })
+
+    expect(loadCategoryNames(ctx.db, tenantId, 'fr').get('groceries')).toBe('Courses')
   })
 
   it('refuses an unsupported category source locale', async () => {

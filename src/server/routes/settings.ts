@@ -121,6 +121,7 @@ import {
 } from '../../domain/benchmark/mapping.ts'
 import { benchmarkOrNull, transcribedBlocks } from '../../domain/benchmark/model.ts'
 import {
+  clearTranslationsForLocale,
   loadCategoryTranslationRows,
   saveCategoryTranslation,
   SourceLocaleError,
@@ -1613,6 +1614,14 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
 
+    // The new source locale's name is the Actual snapshot from here on — any translation
+    // rows already on file for it would otherwise keep outranking that snapshot forever,
+    // with no way to clear them (`saveCategoryTranslation` rejects writes for the source
+    // locale outright).
+    if (patch.categorySourceLocale !== before.actual.categorySourceLocale) {
+      clearTranslationsForLocale(db, tenantId, patch.categorySourceLocale)
+    }
+
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
       tenantId: user.tenantId,
@@ -1976,6 +1985,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const { id: categoryId, locale } = request.params as { id: string; locale: string }
     const { name } = parseBody(categoryTranslationPatchRequest, request.body)
+
+    if (!config.SUPPORTED_LOCALES.includes(locale)) {
+      throw badRequest(`Unsupported locale: ${locale}`)
+    }
 
     const before = loadCategoryTranslationRows(db, user.tenantId).find(
       (row) => row.categoryId === categoryId,

@@ -8,6 +8,7 @@ import {
   loadFacts,
 } from '../../src/domain/aggregate/facts.ts'
 import {
+  clearTranslationsForLocale,
   loadCategoryTranslationRows,
   saveCategoryTranslation,
   SourceLocaleError,
@@ -143,6 +144,43 @@ describe('category translations (#479)', () => {
 
       expect(loadCategoryNames(ctx.db, TENANT_ID, 'nl').get('same-id')).toBe('A groceries')
       expect(loadCategoryNames(ctx.db, tenantB, 'nl').get('same-id')).toBe('B boodschappen')
+    })
+  })
+
+  describe('clearTranslationsForLocale', () => {
+    it('drops every translation on file for that locale, across categories', () => {
+      seed([
+        { id: 'groceries', name: 'Groceries' },
+        { id: 'rent', name: 'Rent' },
+      ])
+      seedSourceLocale('en')
+
+      saveCategoryTranslation(ctx.db, TENANT_ID, 'groceries', 'nl', 'Boodschappen')
+      saveCategoryTranslation(ctx.db, TENANT_ID, 'rent', 'nl', 'Huur')
+      saveCategoryTranslation(ctx.db, TENANT_ID, 'groceries', 'fr', 'Courses')
+
+      clearTranslationsForLocale(ctx.db, TENANT_ID, 'nl')
+
+      expect(loadCategoryNames(ctx.db, TENANT_ID, 'nl').get('groceries')).toBe('Groceries')
+      expect(loadCategoryNames(ctx.db, TENANT_ID, 'nl').get('rent')).toBe('Rent')
+      // The other locale's override is untouched.
+      expect(loadCategoryNames(ctx.db, TENANT_ID, 'fr').get('groceries')).toBe('Courses')
+    })
+
+    it('leaves other tenants alone (#409)', () => {
+      const tenantB = createSecondTenant(ctx.db)
+      seed([{ id: 'groceries', name: 'Groceries' }])
+      seed([{ id: 'groceries', name: 'B groceries' }], tenantB)
+      seedSourceLocale('en')
+      seedSourceLocale('en', tenantB)
+
+      saveCategoryTranslation(ctx.db, TENANT_ID, 'groceries', 'nl', 'Boodschappen')
+      saveCategoryTranslation(ctx.db, tenantB, 'groceries', 'nl', 'B boodschappen')
+
+      clearTranslationsForLocale(ctx.db, TENANT_ID, 'nl')
+
+      expect(loadCategoryNames(ctx.db, TENANT_ID, 'nl').get('groceries')).toBe('Groceries')
+      expect(loadCategoryNames(ctx.db, tenantB, 'nl').get('groceries')).toBe('B boodschappen')
     })
   })
 

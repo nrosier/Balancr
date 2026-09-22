@@ -134,3 +134,17 @@ export function saveCategoryTranslation(
     })
     .run()
 }
+
+/**
+ * Drops every translation on file for one locale, across all categories.
+ *
+ * Called when the tenant's category source locale changes to this one: `loadCategoryNames`
+ * would otherwise keep preferring a now-stale override over the fresh source snapshot, and
+ * `saveCategoryTranslation`'s own guard blocks clearing it any other way, since a write for
+ * the source locale is rejected outright.
+ */
+export function clearTranslationsForLocale(db: Db, tenantId: string, locale: string): void {
+  db.delete(categoryTranslations)
+    .where(and(eq(categoryTranslations.tenantId, tenantId), eq(categoryTranslations.locale, locale)))
+    .run()
+}

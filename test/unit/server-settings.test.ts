@@ -760,6 +760,15 @@ describe('PATCH /api/settings/categories/:id/translation/:locale', () => {
     expect(translationsOf('cat-groceries')).toEqual({})
   })
 
+  it('answers 400 for a locale this deployment does not support, rather than persisting it', async () => {
+    // The locale comes off the URL, not the request-body schema — a client can put
+    // anything there, and the settings UI's own picker only offers supported locales,
+    // so an unvalidated write would sit in the table with no way to reach it again.
+    const res = await send_('cat-groceries', 'xx', { name: 'Groceries 2' })
+    expect(res.statusCode).toBe(400)
+    expect(translationsOf('cat-groceries')).toEqual({})
+  })
+
   it('is refused for a viewer', async () => {
     const res = await send_('cat-groceries', 'nl', { name: 'Boodschappen' }, { token: viewer })
     expect(res.statusCode).toBe(403)
