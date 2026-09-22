@@ -14,9 +14,19 @@
  * it ourselves means it happens before that unmount rather than racing it.
  */
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import DOMPurify from 'dompurify'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import type { Changelog } from '../shared.ts'
+
+function sanitizeHtml(html: string | null | undefined): string {
+  return html
+    ? DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['span', 'p'],
+        ALLOWED_ATTR: ['class'],
+      })
+    : ''
+}
 
 export interface ChangelogDialogProps {
   /** Null when the running build could not read its own `package.json`. */
@@ -79,7 +89,7 @@ export function ChangelogDialog({ version, onClose, returnFocusTo }: ChangelogDi
                   <span className="changelog-entry__date">{entry.date}</span>
                 </h3>
                 {/* Sanitised server-side by `util/markdown.ts`; see `Narrative.tsx`. */}
-                <div className="prose" dangerouslySetInnerHTML={{ __html: entry.html }} />
+                <div className="prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(entry.html) }} />
                 <a
                   className="changelog-entry__link"
                   href={entry.releaseUrl}
