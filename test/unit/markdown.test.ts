@@ -183,8 +183,12 @@ describe('renderMarkdown amount masking (#489)', () => {
     )
   })
 
-  it('never masks a literal number inside a code span', () => {
-    expect(renderMarkdown('`12345`', { maskAmounts: true })).toBe('<p><code>12345</code></p>')
+  it('masks a number inside a code span too, nested inside <code> rather than skipped', () => {
+    // A model choosing to format a figure as code must not be a way to switch masking
+    // off — see the comment on maskAmounts.
+    expect(renderMarkdown('`12345`', { maskAmounts: true })).toBe(
+      '<p><code><amount>12345</amount></code></p>',
+    )
   })
 
   it('nests correctly inside emphasis', () => {

@@ -108,23 +108,19 @@ const AMT_CLOSE = ''
 const AMT_HELD = /(\d+)/g
 
 /**
- * Replaces every number-like run outside a backtick span with a sentinel, so a
- * literal code value (`` `12345` ``) is never masked — masking is for prose amounts,
- * not for numbers the model is quoting verbatim as code.
+ * Replaces every number-like run, including one inside a backtick span, with a
+ * sentinel. A code span is not exempted: this renderer's narrative caller has no
+ * legitimate reason to emit a number as code, and the one thing masking must not
+ * do is give the model a formatting choice that switches it off. A masked figure
+ * that started in backticks still ends up inside `<code>` once the pipeline
+ * restores both placeholders below — nested, not lost.
  */
 function maskAmounts(text: string): { text: string; amounts: string[] } {
   const amounts: string[] = []
-  const out = text
-    .split(/(`[^`\n]*`)/)
-    .map((part) =>
-      part.startsWith('`')
-        ? part
-        : part.replace(NUMBER, (match) => {
-            amounts.push(match)
-            return `${AMT_OPEN}${amounts.length - 1}${AMT_CLOSE}`
-          }),
-    )
-    .join('')
+  const out = text.replace(NUMBER, (match) => {
+    amounts.push(match)
+    return `${AMT_OPEN}${amounts.length - 1}${AMT_CLOSE}`
+  })
   return { text: out, amounts }
 }
 
