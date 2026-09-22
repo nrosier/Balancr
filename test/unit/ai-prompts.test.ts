@@ -220,8 +220,11 @@ describe('composeSystemPrompt', () => {
 })
 
 describe('composeNarrativeSystemPrompt (#453)', () => {
-  it('orders body, then the language directive, then the guardrails, last', () => {
-    const composed = composeNarrativeSystemPrompt('Be brief.', 'nl')
+  it('under `full`, orders body, then the language directive, then the guardrails, last', () => {
+    // `full` still means "replace the whole thing" (#468's addition layering only changes
+    // `locked`, tested below), so this is the one case that still has no base or addition to
+    // account for.
+    const composed = composeNarrativeSystemPrompt('Be brief.', 'nl', 'full')
     const bodyAt = composed.indexOf('Be brief.')
     const directiveAt = composed.indexOf(languageDirective('nl'))
     const guardrailsAt = composed.indexOf(NARRATIVE_GUARDRAILS)
@@ -232,6 +235,41 @@ describe('composeNarrativeSystemPrompt (#453)', () => {
     // Guardrails are strictly last: nothing follows them, not even trailing
     // whitespace from a naive concatenation.
     expect(composed.endsWith(NARRATIVE_GUARDRAILS)).toBe(true)
+  })
+
+  it('under `locked`, always sends the base first, with a customization layered as an addition', () => {
+    // The refinement of #468: a `locked` customization is no longer a replacement of
+    // Balancr's own prompt, it is a short addition on top of it — so the base has to be in
+    // there in full, ahead of whatever a household wrote, and the guardrails still close it.
+    const composed = composeNarrativeSystemPrompt('Be brief.', 'en', 'locked')
+    const baseAt = composed.indexOf(DEFAULT_PROMPTS['narrative.system'])
+    const additionAt = composed.indexOf('Be brief.')
+    const guardrailsAt = composed.indexOf(NARRATIVE_GUARDRAILS)
+
+    expect(baseAt).toBe(0)
+    expect(additionAt).toBeGreaterThan(baseAt)
+    expect(guardrailsAt).toBeGreaterThan(additionAt)
+    expect(composed.endsWith(NARRATIVE_GUARDRAILS)).toBe(true)
+  })
+
+  it('under `locked`, does not duplicate the base when nothing has been customized', () => {
+    // A stored body that is byte-identical to the built-in constant (the fallback value, or
+    // an active row nobody has actually edited) must not turn into the base appearing twice.
+    const composed = composeNarrativeSystemPrompt(
+      DEFAULT_PROMPTS['narrative.system'],
+      'en',
+      'locked',
+    )
+    const occurrences = composed.split(DEFAULT_PROMPTS['narrative.system']).length - 1
+
+    expect(occurrences).toBe(1)
+    expect(composed.endsWith(NARRATIVE_GUARDRAILS)).toBe(true)
+  })
+
+  it('`locked` is the default, so calling with no explicit mode composes the same way', () => {
+    const withDefault = composeNarrativeSystemPrompt('Be brief.', 'en')
+    const withExplicitLocked = composeNarrativeSystemPrompt('Be brief.', 'en', 'locked')
+    expect(withDefault).toBe(withExplicitLocked)
   })
 
   /**

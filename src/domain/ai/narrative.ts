@@ -752,7 +752,7 @@ export async function runNarrative(
       // backstop (#453) is appended after the language directive, unconditionally, so an
       // edited (or maliciously "disclaimed") body never gets the last word. Every other
       // caller of `composeSystemPrompt` in this file passes a code-owned constant instead.
-      systemPrompt: composeNarrativeSystemPrompt(prompt.body, locale),
+      systemPrompt: composeNarrativeSystemPrompt(prompt.body, locale, config.PROMPT_EDITING),
       instruction: narrativeInstruction(payload),
       payload,
       temperature: NARRATIVE_TEMPERATURE,

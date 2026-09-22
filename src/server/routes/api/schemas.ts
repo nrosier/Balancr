@@ -1321,6 +1321,15 @@ export const promptSchema = z.object({
    */
   locale: z.string(),
   /**
+   * Balancr's own instructions for this key, always sent in full regardless of what a
+   * household has customized (#468's `locked` mode layers a customization as an addition
+   * on top of this rather than a replacement of it — see `composeLayeredBody`).
+   *
+   * Mode-independent: present the same under `full` and `locked`, since a household under
+   * `full` can still see what it's overriding.
+   */
+  base: z.string(),
+  /**
    * What a run would use right now — which is not always a row in `versions`.
    *
    * `resolvePrompt` falls back to the shared text and then to the built-in constant,

@@ -276,15 +276,20 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
 
       <Fallback entry={entry} locale={locale} />
 
+      {settings.promptEditing !== 'locked' ? null : <BaseBlock base={entry.base} />}
+
       <div className="field">
         <label className="field__label" htmlFor="prompt-body">
-          {t('settings:prompt.body')}
+          {t(settings.promptEditing === 'locked' ? 'settings:prompt.bodyLocked' : 'settings:prompt.body')}
         </label>
         <textarea
           id="prompt-body"
           className="field__input prompt__body"
           rows={14}
           spellCheck={false}
+          placeholder={
+            settings.promptEditing === 'locked' ? t('settings:prompt.bodyPlaceholder') : undefined
+          }
           value={body}
           disabled={!owner || state.busy}
           onChange={(event) => edit({ body: event.target.value })}
@@ -458,6 +463,27 @@ function Fallback({
     <div className="notice notice--info" role="status">
       <p className="notice__lead">{t('settings:prompt.override.off')}</p>
     </div>
+  )
+}
+
+/**
+ * Balancr's own instructions, read-only and collapsed by default.
+ *
+ * Shown only under `locked`, where the textarea below no longer holds the whole prompt —
+ * this is the part that always runs before it, so what is actually sent is this text plus
+ * whatever is typed below, not the box alone. Collapsed by default because most edits here
+ * are a tone note that has nothing to do with the base; `<details>` needs no state of its
+ * own to remember whether it was opened.
+ */
+function BaseBlock({ base }: { base: string }): ReactNode {
+  const { t } = useT()
+
+  return (
+    <details className="prompt__builtin">
+      <summary>{t('settings:prompt.base.summary')}</summary>
+      <p className="muted">{t('settings:prompt.base.hint')}</p>
+      <pre className="prompt__builtin-body">{base}</pre>
+    </details>
   )
 }
 

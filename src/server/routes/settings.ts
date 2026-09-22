@@ -135,6 +135,7 @@ import {
   activatePrompt,
   asPromptKey,
   createPromptVersion,
+  DEFAULT_PROMPTS,
   deactivateOverride,
   diffAgainstActive,
   listPromptVersions,
@@ -771,6 +772,7 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
   return promptSchema.parse({
     key,
     locale,
+    base: DEFAULT_PROMPTS[key],
     active: {
       id: active.id,
       version: active.version,
