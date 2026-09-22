@@ -37,7 +37,7 @@
  * flagged for #372/#373 rather than addressed here.
  */
 import { type ChildProcess, fork } from 'node:child_process'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as api from '@actual-app/api'
 import { config } from '../../config.ts'
@@ -172,6 +172,16 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
   const existing = workers.get(tenantId)
   if (existing !== undefined) return existing
 
+  // Validated before anything is forked or cached: a rejected tenantId must
+  // leave no child process behind, and a retry with the same bad tenantId
+  // must hit this check again rather than an early-return on a cached worker.
+  const baseDataDir = resolve(config.ACTUAL_DATA_DIR)
+  const tenantDataDir = resolve(baseDataDir, tenantId)
+  const relDataDir = relative(baseDataDir, tenantDataDir)
+  if (relDataDir.startsWith('..') || isAbsolute(relDataDir)) {
+    throw new Error('Invalid file path')
+  }
+
   const child = fork(WORKER_PATH, [], { stdio: 'pipe', serialization: 'advanced' })
   const worker: TenantWorker = {
     child,
@@ -187,7 +197,7 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
   const openConfig: ActualOpenConfig = {
     serverUrl: integrations.actual.serverUrl,
     password: integrations.actual.password,
-    dataDir: join(config.ACTUAL_DATA_DIR, tenantId),
+    dataDir: tenantDataDir,
     syncId: integrations.actual.syncId,
     e2ePassword: integrations.actual.e2ePassword,
     logLevel: config.LOG_LEVEL,
