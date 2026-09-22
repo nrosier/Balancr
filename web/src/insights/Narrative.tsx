@@ -37,6 +37,7 @@
  * under today's name.
  */
 import { useState, type ReactNode } from 'react'
+import DOMPurify from 'dompurify'
 import { ApiError, apiSend } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useResource, useSessionExpiry } from '../api/resource.tsx'
@@ -50,6 +51,15 @@ import {
   type Insights,
 } from '../shared.ts'
 import { Private } from '../ui/Money.tsx'
+
+function sanitizeHtml(html: string | null | undefined): string {
+  return html
+    ? DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['span', 'p'],
+        ALLOWED_ATTR: ['class'],
+      })
+    : ''
+}
 
 export interface NarrativeProps {
   narrative: Insights['narrative']
@@ -137,7 +147,7 @@ export function Narrative({
       ) : (
         <>
           {/* Sanitised server-side by `util/markdown.ts`; see the note above. */}
-          <div className="prose" dangerouslySetInnerHTML={{ __html: narrative.html }} />
+          <div className="prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(narrative.html) }} />
           <p className="muted">
             {narrative.model === null
               ? t('time.lastUpdated', { when: formatDateTime(narrative.generatedAt) })
