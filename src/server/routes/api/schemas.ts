@@ -1167,24 +1167,16 @@ export const insightsSchema = z.object({
     })
     .nullable(),
   /**
-   * The state of the narrative instructions a run *would* use right now (#455).
+   * The state of the narrative instructions a run *would* use right now (#455, #468).
    *
    * Separate from `narrative` above and deliberately never null: `narrative` is a review
    * that exists, and this is about whether writing one is even possible — which is exactly
    * the question the page has to answer when `narrative` is null and it is about to draw a
    * priced button. `gate` outside `built_in`/`safe` means `runNarrative` will refuse, so the
-   * page shows why instead of a price; `locked` means `PROMPT_EDITING` has pinned the key to
-   * Balancr's own text, which runs fine and is worth saying out loud.
-   *
-   * The two cannot both be interesting at once — a pinned key resolves as `built_in` — but
-   * both are on the wire rather than folded into one code, because the pin is a property of
-   * the deployment and the gate is a property of a stored row, and a single field would
-   * make the page guess which it was looking at.
+   * page shows why instead of a price.
    */
   narrativePrompt: z.object({
     gate: promptGateSchema,
-    /** `PROMPT_EDITING` takes `narrative.system` out of this deployment's hands. */
-    locked: z.boolean(),
   }),
   /**
    * The clarification cards, which are the one place the server does render text.
@@ -1889,14 +1881,14 @@ export const settingsSchema = z.object({
   invites: z.array(inviteSettingSchema),
   prompts: z.array(promptSchema),
   /**
-   * `PROMPT_EDITING` (#454): which keys this deployment still lets an owner write to.
+   * `PROMPT_EDITING` (#454, #468): `full` or `locked`. Every prompt key stays editable in
+   * both modes — the difference is only whether `analysis.system` needs a safe verdict
+   * before it can be made active (`locked`, the default) or not (`full`).
    *
-   * On the wire because the panel has to disable the editor and say why, rather than
-   * offering a textarea whose save is refused with a `403`. Deployment-wide and set in
-   * `.env`, so it is information about the installation rather than a setting on this page
-   * — there is nothing here to change it with, which is the point of it.
+   * On the wire so the panel can say which mode is in force; there is nothing here to
+   * change it with — it is set in `.env`, deployment-wide.
    */
-  promptEditing: z.enum(['full', 'analysis_only', 'locked']),
+  promptEditing: z.enum(['full', 'locked']),
   accounts: z.array(accountSettingSchema),
   /**
    * Accounts that may be the same money, as ids rather than rows.

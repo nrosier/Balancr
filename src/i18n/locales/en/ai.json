@@ -108,7 +108,6 @@
       "written": "Written, for {{cost}}. The page has been reloaded."
     },
     "promptCustom": "Written from instructions this household has edited.",
-    "promptLocked": "Written from the built-in instructions; editing is switched off on this deployment.",
     "promptUnvalidated": "The instructions for the monthly review have not passed their safety check, so no review will be written until they do. The owner can check them under Settings.",
     "rewrite": {
       "lede": "Nothing about this month has changed, but you can ask for a new review anyway — same price as any other run.",
@@ -182,14 +181,19 @@
     },
     "rule": {
       "brevity": "Stays short and readable",
+      "closed_vocabulary": "Only reports findings actually computed for it",
       "data_quality": "Says when the figures cannot be trusted",
       "drift_is_fact": "Explains portfolio drift without recalculating it",
       "excluded_is_choice": "Leaves the envelopes you withheld alone",
+      "guess_is_neutral": "Writes a clarification guess in plain language, not as fact",
       "lead_with_change": "Leads with what changed",
       "no_address_no_moralise": "Stays impersonal and passes no judgement",
       "no_advice": "Gives no investment, product or tax advice",
       "no_arithmetic": "Never works out a figure of its own",
+      "no_numbers": "Never states, derives or estimates a number itself",
       "note_is_context": "Takes your note as an explanation, never as a figure",
+      "quality_first_ordering": "Puts data-quality problems ahead of spending findings",
+      "severity_only_lowers": "Only ever lowers a severity, never raises one",
       "shared_costs": "Treats shared costs as shared"
     }
   },

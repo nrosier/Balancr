@@ -55,7 +55,7 @@
       "not_confident": "The model was not confident enough about this one to guess.",
       "not_gated": "These instructions need no safety check.",
       "ok": "Completed.",
-      "prompt_unvalidated": "The narrative instructions have not passed a safety check, so no review was written.",
+      "prompt_unvalidated": "These instructions have not passed a safety check, so nothing was written from them.",
       "reused": "Answered from a past run with nothing new to check — no charge.",
       "safe": "Checked: the instructions still impose every rule.",
       "truncated": "The model's answer was cut off, even after retrying — showing the last one instead.",
@@ -468,16 +468,6 @@
       "shared": "All languages"
     },
     "locale": "Applies to",
-    "locked": {
-      "all": "This installation runs with PROMPT_EDITING=locked, so none of the assistant's instructions can be edited here. Only whoever runs the server can change this, in its .env.",
-      "analysisOnly": "This installation runs with PROMPT_EDITING=analysis_only, so the monthly narrative instructions are fixed to Balancr's own text. The findings instructions can still be edited. Only whoever runs the server can change this, in its .env.",
-      "builtIn": {
-        "explain": "This is the text Balancr ships with. While editing is switched off, it is what actually runs for this key — whatever is stored below.",
-        "show": "Show the built-in instructions"
-      },
-      "emptyPlaceholder": "Nothing has been stored here.",
-      "title": "Editing is switched off here"
-    },
     "note": "What changed",
     "notePlaceholder": "Why this version exists",
     "override": {

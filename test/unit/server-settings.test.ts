@@ -26,7 +26,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
-import { HttpError } from '../../src/server/errors.ts'
 import { config } from '../../src/config.ts'
 import { auditLog, prompts, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -38,19 +37,17 @@ import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
 import {
+  activatePrompt,
   createPromptVersion,
   DEFAULT_PROMPTS,
-  PROMPT_KEYS,
+  isGatedKey,
   loadActivePrompt,
   resolvePrompt,
   storePromptValidation,
   SUPERSEDED_PROMPTS,
   VALIDATION_RULES_VERSION,
 } from '../../src/domain/ai/prompts.ts'
-import {
-  promptEditingBlocks,
-  requirePromptEditable,
-} from '../../src/server/routes/settings.ts'
+import type { PromptKey, PromptValidation } from '../../src/domain/ai/prompts.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
@@ -128,6 +125,48 @@ const auditActions = (db: Db): string[] =>
 
 const accountIds = (): string[] => loadAccountMap(ctx.db, tenantId).map((row) => row.id)
 
+/** A safe verdict at the current rules version, as a passing check would leave one. */
+const verdict = (): PromptValidation => ({
+  verdict: 'safe',
+  json: JSON.stringify({
+    verdict: 'safe',
+    missing: [],
+    weakened: [],
+    conflicts: [],
+    advisory: [],
+    notes: '',
+  }),
+  rulesVersion: VALIDATION_RULES_VERSION,
+  runId: null,
+  provider: 'gemini-aistudio',
+  model: 'gemini-3.7-flash',
+  validatedBy: null,
+  validatedAt: new Date('2026-09-01T10:00:00.000Z'),
+})
+
+/**
+ * Creates a version and activates it the way an owner does once a check has passed.
+ * `analysis.system` is gated under `locked`, the default, since #468 — a raw
+ * `createPromptVersion(..., activate: true)` with an arbitrary body now throws for it the
+ * same way it always has for `narrative.system`.
+ */
+const activateChecked = (key: PromptKey, locale: string, text: string, tid: string = tenantId) => {
+  const row = createPromptVersion(ctx.db, tid, { key, locale, body: text })
+  if (isGatedKey(config.PROMPT_EDITING, key)) storePromptValidation(ctx.db, tid, row.id, verdict())
+  return activatePrompt(ctx.db, tid, row.id)
+}
+
+/**
+ * Lets an HTTP `activate: true` request for this exact body succeed with no second paid
+ * check: `inheritableValidation` matches by tenant, key and byte-identical body regardless
+ * of locale, so a throwaway validated draft is enough.
+ */
+const preValidate = (key: PromptKey, text: string, tid: string = tenantId): void => {
+  if (!isGatedKey(config.PROMPT_EDITING, key)) return
+  const draft = createPromptVersion(ctx.db, tid, { key, locale: SHARED_LOCALE, body: text })
+  storePromptValidation(ctx.db, tid, draft.id, verdict())
+}
+
 beforeAll(async () => {
   await initI18n()
 })
@@ -200,12 +239,7 @@ describe('GET /api/settings', () => {
   })
 
   it('lists a language override alongside the shared prompt, once one exists', async () => {
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'Je rangschikt signalen.',
-      activate: true,
-    })
+    activateChecked('analysis.system', 'nl', 'Je rangschikt signalen.')
 
     const settings = (await get('/api/settings')).json<Settings>()
 
@@ -221,12 +255,7 @@ describe('GET /api/settings', () => {
   })
 
   it('does not put a prompt body in the version list, or an external id in an account', async () => {
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'You rank signals.\nNothing else.',
-      activate: true,
-    })
+    activateChecked('analysis.system', 'en', 'You rank signals.\nNothing else.')
 
     const settings = (await get('/api/settings')).json<Settings>()
     const english = settings.prompts.find(
@@ -1020,6 +1049,7 @@ describe('the prompt editor', () => {
   })
 
   it('stores and activates in one gesture when asked', async () => {
+    preValidate('analysis.system', body)
     const res = await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: 'en',
@@ -1070,18 +1100,8 @@ describe('the prompt editor', () => {
   })
 
   it('rolls back by activating an older version, text untouched', async () => {
-    const first = createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'The first one.',
-      activate: true,
-    })
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'en',
-      body,
-      activate: true,
-    })
+    const first = activateChecked('analysis.system', 'en', 'The first one.')
+    activateChecked('analysis.system', 'en', body)
 
     const res = await post(`/api/settings/prompts/${first.id}/activate`)
     expect(res.statusCode).toBe(200)
@@ -1126,6 +1146,7 @@ describe('the prompt editor', () => {
   })
 
   it('stores a shared version that every language then resolves to', async () => {
+    preValidate('analysis.system', body)
     const res = await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
@@ -1142,18 +1163,8 @@ describe('the prompt editor', () => {
   })
 
   it('sends a language back to the shared prompt without deleting its versions', async () => {
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: SHARED_LOCALE,
-      body,
-      activate: true,
-    })
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'Je rangschikt signalen.',
-      activate: true,
-    })
+    activateChecked('analysis.system', SHARED_LOCALE, body)
+    activateChecked('analysis.system', 'nl', 'Je rangschikt signalen.')
 
     const res = await post('/api/settings/prompts/analysis.system/nl/shared')
     expect(res.statusCode).toBe(200)
@@ -1188,12 +1199,7 @@ describe('the prompt editor', () => {
   })
 
   it('is refused for a viewer', async () => {
-    createPromptVersion(ctx.db, tenantId, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'Je rangschikt signalen.',
-      activate: true,
-    })
+    activateChecked('analysis.system', 'nl', 'Je rangschikt signalen.')
 
     const res = await post(
       '/api/settings/prompts/analysis.system/nl/shared',
@@ -1205,6 +1211,7 @@ describe('the prompt editor', () => {
   })
 
   it('never reads, diffs, activates or deactivates another tenant\'s prompt (#410)', async () => {
+    preValidate('analysis.system', 'Tenant A shared instructions.')
     const createdA = await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
@@ -1215,6 +1222,7 @@ describe('the prompt editor', () => {
     const promptA = loadActivePrompt(ctx.db, tenantId, 'analysis.system', SHARED_LOCALE)
     if (promptA === null) throw new Error('tenant A prompt was not activated')
 
+    preValidate('analysis.system', 'Tenant A Nederlandse instructies.')
     await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: 'nl',
@@ -1244,6 +1252,7 @@ describe('the prompt editor', () => {
     expect(diffB.statusCode).toBe(200)
     expect(diffB.json<{ active: { id: string | null } }>().active.id).toBeNull()
 
+    preValidate('analysis.system', 'Tenant B shared instructions.', tenantB)
     const createdB = await post(
       '/api/settings/prompts',
       {
@@ -1424,14 +1433,28 @@ describe('the narrative activation gate (#454)', () => {
     expect(version?.gate).toBe('unvalidated')
   })
 
-  it('leaves the analysis prompt ungated, however rewritten', async () => {
-    const res = await post('/api/settings/prompts', {
+  it('gates the analysis prompt too, under locked, the default (#468)', async () => {
+    // Before #468 this key was never gated at all. `locked` is what the test environment
+    // defaults to, and under it a rewritten analysis body needs the same sign-off narrative
+    // has always needed — an edit here does not get to skip the judge just because the
+    // pass's output happens to be grounded against the signal table.
+    const rewritten = 'Completely rewritten analysis instructions with nothing of mine left.'
+    const refused = await post('/api/settings/prompts', {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
-      body: 'Completely rewritten analysis instructions with nothing of mine left.',
+      body: rewritten,
       activate: true,
     })
-    expect(res.statusCode).toBe(200)
+    expect(refused.statusCode).toBe(409)
+
+    preValidate('analysis.system', rewritten)
+    const activated = await post('/api/settings/prompts', {
+      key: 'analysis.system',
+      locale: SHARED_LOCALE,
+      body: rewritten,
+      activate: true,
+    })
+    expect(activated.statusCode).toBe(200)
   })
 
   it('prices a safety check on the free diff endpoint, spending nothing', async () => {
@@ -1444,49 +1467,5 @@ describe('the narrative activation gate (#454)', () => {
     // The price a button shows before it is pressed. Local arithmetic — this endpoint
     // reaches no model, which is why it lives outside `routes/ai.ts`.
     expect(res.json<PromptDiff>().validationEstimateMicroEur).toBeGreaterThan(0)
-  })
-})
-
-describe('PROMPT_EDITING (#454, Q1 of #452)', () => {
-  it('blocks nothing on full, the default every existing deployment runs', () => {
-    for (const key of PROMPT_KEYS) {
-      expect(promptEditingBlocks('full', key), key).toBe(false)
-      expect(() => requirePromptEditable('full', key)).not.toThrow()
-    }
-  })
-
-  it('blocks only the narrative prompt on analysis_only', () => {
-    // `analysis.system` stays editable because its output is grounded against the signal
-    // table: an edit there cannot invent a finding, so locking it buys nothing.
-    expect(promptEditingBlocks('analysis_only', 'narrative.system')).toBe(true)
-    expect(promptEditingBlocks('analysis_only', 'analysis.system')).toBe(false)
-  })
-
-  it('blocks every key on locked', () => {
-    for (const key of PROMPT_KEYS) {
-      expect(promptEditingBlocks('locked', key), key).toBe(true)
-    }
-  })
-
-  it('refuses with a 403 naming the mode, because nothing about the request can fix it', () => {
-    // Unlike the gate's `409`, there is no state a caller can reach to make this succeed.
-    // The deployment does not permit it, and only its operator can change that.
-    try {
-      requirePromptEditable('locked', 'narrative.system')
-      throw new Error('expected a refusal')
-    } catch (error) {
-      if (!(error instanceof HttpError)) throw error
-      expect(error.statusCode).toBe(403)
-      expect(error.message).toContain('PROMPT_EDITING=locked')
-    }
-  })
-
-  it('is on the settings payload so the panel can explain itself', async () => {
-    // The editor has to disable the box and say why, rather than offering a textarea whose
-    // save comes back 403. Deployment-wide and read from `.env`, so there is nothing on the
-    // page that could change it — which is the point of it.
-    expect((await get('/api/settings')).json<Settings>().promptEditing).toBe(
-      config.PROMPT_EDITING,
-    )
   })
 })

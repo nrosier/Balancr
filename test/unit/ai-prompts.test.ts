@@ -29,13 +29,13 @@ import {
   listPromptVersions as listPromptVersionsForTenant,
   loadActivePrompt as loadActivePromptForTenant,
   loadPrompt as loadPromptForTenant,
+  assertActivatable,
   isBuiltInBody,
   isGatedKey,
   inheritableValidation as inheritableValidationForTenant,
   NARRATIVE_GUARDRAILS,
   nextVersion as nextVersionForTenant,
   PROMPT_KEYS,
-  promptEditingBlocks,
   promptGateState,
   PromptGateError,
   storePromptValidation,
@@ -45,13 +45,9 @@ import {
   SUPERSEDED_PROMPTS,
   supersededBuiltIn,
   type NewPromptVersion,
-  type PromptEditing,
   type PromptKey,
   type PromptValidation,
 } from '../../src/domain/ai/prompts.ts'
-// Imported through the route module as well, to pin that the `403` guard and the read-time
-// pin are the same function rather than two copies of one rule (#455).
-import { promptEditingBlocks as routePromptEditingBlocks } from '../../src/server/routes/settings.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
 import { seedPreMigrationDb } from '../helpers/pre-migration-db.ts'
 
@@ -111,10 +107,23 @@ const storeValidation = (database: TestDb, id: string, value: 'safe' | 'unsafe')
  * *active, edited narrative* row has to earn it the same way the editor does. Non-gated keys
  * get no verdict written, because nothing would ever read it.
  */
-function activateChecked(database: TestDb, input: Omit<NewPromptVersion, 'activate'>): void {
+function activateChecked(database: TestDb, input: Omit<NewPromptVersion, 'activate'>) {
   const row = createPromptVersion(database, { ...input, activate: false })
-  if (isGatedKey(input.key)) storeValidation(database, row.id, 'safe')
-  activatePrompt(database, row.id)
+  if (isGatedKey(config.PROMPT_EDITING, input.key)) storeValidation(database, row.id, 'safe')
+  return activatePrompt(database, row.id)
+}
+
+/** The tenant-scoped form of `activateChecked`, for the multi-tenant cases below. */
+function activateCheckedForTenant(
+  database: TestDb,
+  tenantId: string,
+  input: Omit<NewPromptVersion, 'activate'>,
+) {
+  const row = createPromptVersionForTenant(database, tenantId, { ...input, activate: false })
+  if (isGatedKey(config.PROMPT_EDITING, input.key)) {
+    storePromptValidation(database, tenantId, row.id, verdict('safe'))
+  }
+  return activatePromptForTenant(database, tenantId, row.id)
 }
 
 /**
@@ -304,11 +313,10 @@ describe('seedPrompts', () => {
 
   it('leaves an edited prompt alone', () => {
     seedPrompts(db)
-    createPromptVersion(db, {
+    activateChecked(db, {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
       body: 'Edited by hand.',
-      activate: true,
     })
 
     expect(seedPrompts(db)).toBe(0)
@@ -467,11 +475,10 @@ describe('seedPrompts', () => {
   it('writes the shared row even when a language already has an override', () => {
     // The state a partly-diverged database is left in by the migration: the
     // override survives, and the shared text it will fall back to gets written.
-    createPromptVersion(db, {
+    activateChecked(db, {
       key: 'analysis.system',
       locale: 'nl',
       body: 'een eigen versie',
-      activate: true,
     })
 
     expect(seedPrompts(db)).toBe(PROMPT_KEYS.length)
@@ -487,17 +494,15 @@ describe('tenant isolation (#410)', () => {
     seedPromptsForTenant(db, tenantA)
     seedPromptsForTenant(db, tenantB)
 
-    const activeA = createPromptVersionForTenant(db, tenantA, {
+    const activeA = activateCheckedForTenant(db, tenantA, {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
       body: 'Tenant A instructions.',
-      activate: true,
     })
-    const activeB = createPromptVersionForTenant(db, tenantB, {
+    const activeB = activateCheckedForTenant(db, tenantB, {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
       body: 'Tenant B instructions.',
-      activate: true,
     })
 
     expect(activeA.version).toBe(2)
@@ -525,11 +530,10 @@ describe('tenant isolation (#410)', () => {
     )
     expect(diffA.active.id).toBe(activeA.id)
 
-    const overrideB = createPromptVersionForTenant(db, tenantB, {
+    const overrideB = activateCheckedForTenant(db, tenantB, {
       key: 'analysis.system',
       locale: 'nl',
       body: 'Alleen voor tenant B.',
-      activate: true,
     })
     expect(deactivateOverrideForTenant(db, tenantA, 'analysis.system', 'nl')).toBe(0)
     expect(loadActivePromptForTenant(db, tenantB, 'analysis.system', 'nl')?.id).toBe(
@@ -613,18 +617,8 @@ describe('the superseded list', () => {
 
 describe('deactivateOverride', () => {
   it('sends a language back to the shared text without deleting its versions', () => {
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: SHARED_LOCALE,
-      body: 'the shared one',
-      activate: true,
-    })
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'de Nederlandse versie',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: SHARED_LOCALE, body: 'the shared one' })
+    activateChecked(db, { key: 'analysis.system', locale: 'nl', body: 'de Nederlandse versie' })
 
     expect(deactivateOverride(db, 'analysis.system', 'nl')).toBe(1)
     expect(resolvePrompt(db, 'analysis.system', 'nl').body).toBe('the shared one')
@@ -633,12 +627,7 @@ describe('deactivateOverride', () => {
   })
 
   it('reports no change when the language had no override', () => {
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: SHARED_LOCALE,
-      body: 'the shared one',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: SHARED_LOCALE, body: 'the shared one' })
 
     expect(deactivateOverride(db, 'analysis.system', 'nl')).toBe(0)
   })
@@ -657,11 +646,10 @@ describe('the one-active-version index', () => {
     // The database enforces this, not the module remembering to clear the old flag —
     // and it has to keep enforcing it for the shared rows, which is the argument for
     // a sentinel over NULL: SQLite treats NULLs in a unique index as distinct.
-    const first = createPromptVersion(db, {
+    const first = activateChecked(db, {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
       body: 'one',
-      activate: true,
     })
     const second = createPromptVersion(db, {
       key: 'analysis.system',
@@ -739,12 +727,7 @@ describe('the 0010 collapse', () => {
     // to tidy it up — nor may one language's version be promoted to shared, because
     // nothing says which language should win.
     seededPerLocale('analysis.system', 'the seeded text')
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'improved by hand',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'improved by hand' })
 
     collapse()
 
@@ -923,19 +906,9 @@ describe('createPromptVersion', () => {
     expect(loadActivePrompt(db, 'analysis.system', 'en')).toBeNull()
   })
 
-  it('clears the previous active row when activating in the same step', () => {
-    const first = createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'one',
-      activate: true,
-    })
-    const second = createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'two',
-      activate: true,
-    })
+  it('clears the previous active row when a new version is activated', () => {
+    const first = activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'one' })
+    const second = activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'two' })
 
     expect(loadPrompt(db, first.id)?.active).toBe(false)
     expect(loadActivePrompt(db, 'analysis.system', 'en')?.id).toBe(second.id)
@@ -944,8 +917,8 @@ describe('createPromptVersion', () => {
   it('keeps the text of every earlier version', () => {
     // The reason for versioning at all: last month's output must remain
     // explainable by the prompt that produced it.
-    createPromptVersion(db, { key: 'analysis.system', locale: 'en', body: 'one', activate: true })
-    createPromptVersion(db, { key: 'analysis.system', locale: 'en', body: 'two', activate: true })
+    activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'one' })
+    activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'two' })
 
     expect(listPromptVersions(db, 'analysis.system', 'en').map((row) => row.body)).toEqual([
       'two',
@@ -978,17 +951,11 @@ describe('createPromptVersion', () => {
 
 describe('activatePrompt', () => {
   it('rolls back to an older version with its text untouched', () => {
-    const first = createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'the good one',
-      activate: true,
-    })
-    const second = createPromptVersion(db, {
+    const first = activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'the good one' })
+    const second = activateChecked(db, {
       key: 'analysis.system',
       locale: 'en',
       body: 'the regression',
-      activate: true,
     })
 
     const rolled = activatePrompt(db, first.id)
@@ -1001,12 +968,7 @@ describe('activatePrompt', () => {
 
   it('leaves exactly one active row, which the database also enforces', () => {
     const rows = [1, 2, 3].map((n) =>
-      createPromptVersion(db, {
-        key: 'analysis.system',
-        locale: 'en',
-        body: `body ${n}`,
-        activate: true,
-      }),
+      activateChecked(db, { key: 'analysis.system', locale: 'en', body: `body ${n}` }),
     )
     activatePrompt(db, (rows[1] as { id: string }).id)
 
@@ -1020,18 +982,8 @@ describe('activatePrompt', () => {
   })
 
   it('does not touch another locale sharing the key', () => {
-    const en = createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'english',
-      activate: true,
-    })
-    const nl = createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'nederlands',
-      activate: true,
-    })
+    const en = activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'english' })
+    const nl = activateChecked(db, { key: 'analysis.system', locale: 'nl', body: 'nederlands' })
 
     activatePrompt(db, en.id)
     expect(loadPrompt(db, nl.id)?.active).toBe(true)
@@ -1045,12 +997,7 @@ describe('activatePrompt', () => {
 describe('resolvePrompt', () => {
   it('uses the locale, when the locale has an active version', () => {
     seedPrompts(db)
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'nederlandse versie',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: 'nl', body: 'nederlandse versie' })
 
     const resolved = resolvePrompt(db, 'analysis.system', 'nl')
     expect(resolved.body).toBe('nederlandse versie')
@@ -1060,12 +1007,7 @@ describe('resolvePrompt', () => {
 
   it('falls back to the shared text rather than to nothing', () => {
     // The ordinary case: one canonical prompt, and no language owns a copy of it.
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: SHARED_LOCALE,
-      body: 'the shared one',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: SHARED_LOCALE, body: 'the shared one' })
 
     const resolved = resolvePrompt(db, 'analysis.system', 'nl')
     expect(resolved.body).toBe('the shared one')
@@ -1073,18 +1015,8 @@ describe('resolvePrompt', () => {
   })
 
   it('prefers a language override over the shared text, for that language only', () => {
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: SHARED_LOCALE,
-      body: 'the shared one',
-      activate: true,
-    })
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'de Nederlandse versie',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: SHARED_LOCALE, body: 'the shared one' })
+    activateChecked(db, { key: 'analysis.system', locale: 'nl', body: 'de Nederlandse versie' })
 
     expect(resolvePrompt(db, 'analysis.system', 'nl').body).toBe('de Nederlandse versie')
     expect(resolvePrompt(db, 'analysis.system', 'en').body).toBe('the shared one')
@@ -1093,12 +1025,7 @@ describe('resolvePrompt', () => {
   it('does not let an override leak into the shared prompt', () => {
     // Asking for the shared text must never answer with one language's version,
     // or the editor's default view would show whichever language was edited last.
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'nl',
-      body: 'de Nederlandse versie',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: 'nl', body: 'de Nederlandse versie' })
 
     const resolved = resolvePrompt(db, 'analysis.system', SHARED_LOCALE)
     expect(resolved.body).toBe(DEFAULT_PROMPTS['analysis.system'])
@@ -1211,129 +1138,9 @@ describe("resolvePrompt's gate (#455)", () => {
   })
 })
 
-describe('the PROMPT_EDITING read-time pin (#455, Q1 of #452)', () => {
-  /** `resolvePrompt` under a deployment mode, without rebuilding the module graph. */
-  const resolveUnder = (key: PromptKey, locale: string, mode: PromptEditing) =>
-    resolvePromptForTenant(db, tenantOf(db), key, locale, mode)
-
-  it('pins a locked narrative key to the built-in text, whatever is stored', () => {
-    // The read-time proof that the substitution is real. This is the row a write-time `403`
-    // structurally cannot reach: it was already active when the operator set the variable.
-    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, 'My own unchecked instructions.')
-
-    const resolved = resolveUnder('narrative.system', 'en', 'locked')
-    expect(resolved.body).toBe(DEFAULT_PROMPTS['narrative.system'])
-    expect(resolved.body).not.toBe('My own unchecked instructions.')
-    expect(resolved.gate).toBe('built_in')
-    expect(resolved.id).toBeNull()
-    expect(resolved.version).toBe(0)
-  })
-
-  it('pins a narrative key under analysis_only and leaves the analysis key alone', () => {
-    // The whole reason the middle mode exists: the analysis pass's output is grounded, so an
-    // edit there cannot invent a finding and is not pinned.
-    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, 'My own narrative wording.')
-    seedLegacyActive(db, 'analysis.system', SHARED_LOCALE, 'My own ranking wording.')
-
-    expect(resolveUnder('narrative.system', 'en', 'analysis_only').body).toBe(
-      DEFAULT_PROMPTS['narrative.system'],
-    )
-    expect(resolveUnder('analysis.system', 'en', 'analysis_only').body).toBe(
-      'My own ranking wording.',
-    )
-  })
-
-  it('pins both keys under locked', () => {
-    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, 'My own narrative wording.')
-    seedLegacyActive(db, 'analysis.system', SHARED_LOCALE, 'My own ranking wording.')
-
-    for (const key of PROMPT_KEYS) {
-      expect(resolveUnder(key, 'en', 'locked').body, key).toBe(DEFAULT_PROMPTS[key])
-    }
-  })
-
-  it('pins a language override too, not only the shared row', () => {
-    // Otherwise `locked` would be a lock an owner could step around from the other side, by
-    // writing the text they wanted under one language.
-    seedLegacyActive(db, 'narrative.system', 'nl', 'Mijn eigen instructies.')
-
-    expect(resolveUnder('narrative.system', 'nl', 'locked').body).toBe(
-      DEFAULT_PROMPTS['narrative.system'],
-    )
-  })
-
-  it('pins a row that passed its check too, because the lock is not about the verdict', () => {
-    // `safe` text is still somebody's own wording, and `locked` means this deployment uses
-    // Balancr's.
-    const row = createPromptVersion(db, {
-      key: 'narrative.system',
-      locale: SHARED_LOCALE,
-      body: 'Checked instructions of my own.',
-    })
-    storeValidation(db, row.id, 'safe')
-    activatePrompt(db, row.id)
-
-    expect(resolveUnder('narrative.system', 'en', 'locked').body).toBe(
-      DEFAULT_PROMPTS['narrative.system'],
-    )
-    expect(resolveUnder('narrative.system', 'en', 'full').body).toBe(
-      'Checked instructions of my own.',
-    )
-  })
-
-  it('destroys nothing: the stored version is still there to roll forward to', () => {
-    // The pin is a read-time substitution and nothing else. `full` gets the row back, which
-    // is what makes the change reversible by editing `.env` rather than by restoring a row.
-    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, 'My own unchecked instructions.')
-
-    expect(resolveUnder('narrative.system', 'en', 'locked').body).toBe(
-      DEFAULT_PROMPTS['narrative.system'],
-    )
-    expect(loadActivePrompt(db, 'narrative.system', SHARED_LOCALE)?.body).toBe(
-      'My own unchecked instructions.',
-    )
-    expect(resolveUnder('narrative.system', 'en', 'full').body).toBe(
-      'My own unchecked instructions.',
-    )
-  })
-
-  it('changes nothing under full, which is every existing deployment', () => {
-    seedLegacyActive(db, 'narrative.system', SHARED_LOCALE, 'My own unchecked instructions.')
-    const resolved = resolveUnder('narrative.system', 'en', 'full')
-    expect(resolved.body).toBe('My own unchecked instructions.')
-    expect(resolved.gate).toBe('unvalidated')
-  })
-})
-
-describe('promptEditingBlocks (#455 — one answer for read and write)', () => {
-  it('blocks nothing under full', () => {
-    for (const key of PROMPT_KEYS) expect(promptEditingBlocks('full', key), key).toBe(false)
-  })
-
-  it('blocks only the narrative key under analysis_only', () => {
-    expect(promptEditingBlocks('analysis_only', 'narrative.system')).toBe(true)
-    expect(promptEditingBlocks('analysis_only', 'analysis.system')).toBe(false)
-  })
-
-  it('blocks every key under locked', () => {
-    for (const key of PROMPT_KEYS) expect(promptEditingBlocks('locked', key), key).toBe(true)
-  })
-
-  it('is the very function the route guard exports, not a second copy of the rule', () => {
-    // The property the pin rests on: if these ever diverged, a deployment could refuse the
-    // edit and still run the edited row — the state #454 shipped and flagged for this PR.
-    expect(routePromptEditingBlocks).toBe(promptEditingBlocks)
-  })
-})
-
 describe('diffAgainstActive', () => {
   it('diffs against the active version', () => {
-    createPromptVersion(db, {
-      key: 'analysis.system',
-      locale: 'en',
-      body: 'line one\nline two',
-      activate: true,
-    })
+    activateChecked(db, { key: 'analysis.system', locale: 'en', body: 'line one\nline two' })
 
     const { active, diff } = diffAgainstActive(
       db,
@@ -1440,13 +1247,18 @@ describe('isBuiltInBody (#454)', () => {
   })
 })
 
-describe('isGatedKey (#454)', () => {
-  it('gates the narrative prompt and nothing else', () => {
-    // `analysis.system` is left open on purpose: `groundResponse` checks its output against
-    // the computed signals, so an edit there cannot invent a finding. Any future key
-    // defaults to not gated until it earns the same argument.
-    expect(isGatedKey('narrative.system')).toBe(true)
-    expect(isGatedKey('analysis.system')).toBe(false)
+describe('isGatedKey (#454, #468)', () => {
+  it('gates the narrative prompt in both modes', () => {
+    expect(isGatedKey('full', 'narrative.system')).toBe(true)
+    expect(isGatedKey('locked', 'narrative.system')).toBe(true)
+  })
+
+  it('gates the analysis prompt only under locked, the default', () => {
+    // Under `full` ("god mode") nothing is gated. Under `locked`, the default, an edited
+    // analysis prompt needs a safety verdict too — the same mechanism narrative has had
+    // since #454, extended to the one other prompt an owner can edit.
+    expect(isGatedKey('full', 'analysis.system')).toBe(false)
+    expect(isGatedKey('locked', 'analysis.system')).toBe(true)
   })
 })
 
@@ -1730,14 +1542,20 @@ describe('assertActivatable (#454)', () => {
     }
   })
 
-  it('never blocks a non-gated key, however edited', () => {
+  it('never blocks a non-gated key under full, however edited', () => {
+    // `analysis.system` is only gated under `locked` (#468) — under `full`, "god mode",
+    // an edit needs no verdict at all. `createPromptVersion`/`activatePrompt` always read the
+    // live `config.PROMPT_EDITING` (`locked` by default in tests), so exercising `full` here
+    // means calling `assertActivatable` directly with its mode override.
     expect(() =>
-      createPromptVersion(db, {
-        key: 'analysis.system',
-        locale: SHARED_LOCALE,
-        body: 'Completely rewritten analysis instructions.',
-        activate: true,
-      }),
+      assertActivatable(
+        db,
+        tenantOf(db),
+        'analysis.system',
+        SHARED_LOCALE,
+        'Completely rewritten analysis instructions.',
+        'full',
+      ),
     ).not.toThrow()
   })
 

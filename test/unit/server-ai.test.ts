@@ -31,8 +31,13 @@ import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { prepareMonth } from '../../src/domain/ai/analysis.ts'
 import { SHARED_LOCALE } from '../../src/domain/ai/prompt-locale.ts'
-import { createPromptVersion } from '../../src/domain/ai/prompts.ts'
-import { NARRATIVE_RULE_IDS } from '../../src/domain/ai/schemas.ts'
+import {
+  createPromptVersion,
+  DEFAULT_PROMPTS,
+  storePromptValidation,
+  VALIDATION_RULES_VERSION,
+} from '../../src/domain/ai/prompts.ts'
+import { ANALYSIS_RULE_IDS, NARRATIVE_RULE_IDS } from '../../src/domain/ai/schemas.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
@@ -282,16 +287,37 @@ describe('POST /api/ai/dry-run', () => {
   })
 
   it('tests the version it was given rather than the active one', async () => {
+    // The active row is left on the built-in text, which needs no verdict to activate —
+    // the point under test is which *id* a dry run reads, not which body is active.
     const active = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'analysis.system',
       locale: 'en',
-      body: 'The active prompt.',
+      body: DEFAULT_PROMPTS['analysis.system'],
       activate: true,
     })
     const draft = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'analysis.system',
       locale: 'en',
       body: 'The draft under test.',
+    })
+    // A dry run under `locked`, the default, still refuses an unvalidated analysis body
+    // (#468) — give the draft the verdict an owner would have gotten from the checker.
+    storePromptValidation(ctx.db, getSoleTenantId(ctx.db), draft.id, {
+      verdict: 'safe',
+      json: JSON.stringify({
+        verdict: 'safe',
+        missing: [],
+        weakened: [],
+        conflicts: [],
+        advisory: [],
+        notes: '',
+      }),
+      rulesVersion: VALIDATION_RULES_VERSION,
+      runId: null,
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      validatedBy: null,
+      validatedAt: new Date(),
     })
 
     fakeGemini(reply(labelFor('cat-groceries')))
@@ -525,9 +551,16 @@ describe('POST /api/ai/prompt-validate (#454)', () => {
     })
   }
 
-  /** A judge answer reporting every rule imposed and intact. */
+  /** A judge answer reporting every narrative rule imposed and intact. */
   const SAFE_REPLY = JSON.stringify({
     rules: NARRATIVE_RULE_IDS.map((id) => ({ id, present: true, weakened: false })),
+    conflicts: [],
+    notes: 'Reads like the built-in rules in different words.',
+  })
+
+  /** The analysis rubric's version of `SAFE_REPLY` (#468). */
+  const ANALYSIS_SAFE_REPLY = JSON.stringify({
+    rules: ANALYSIS_RULE_IDS.map((id) => ({ id, present: true, weakened: false })),
     conflicts: [],
     notes: 'Reads like the built-in rules in different words.',
   })
@@ -572,10 +605,11 @@ describe('POST /api/ai/prompt-validate (#454)', () => {
     expect(fake.calls).toBe(0)
   })
 
-  it('answers 400 with the key for an analysis prompt, mirroring the dry run’s refusal', async () => {
-    // The mirror image of `dryRunPrompt`'s own 400: the dry run only ever runs
-    // `analysis.system`, and this only ever checks `narrative.system`.
-    const fake = fakeGemini(SAFE_REPLY)
+  it('checks a saved analysis version under locked, the default (#468)', async () => {
+    // `analysis.system` is gated only under `locked`, which is what the test environment
+    // defaults to — so this endpoint now genuinely validates it, the new capability #468
+    // added, rather than refusing it the way it used to when analysis was never gated.
+    const fake = fakeGemini(ANALYSIS_SAFE_REPLY)
     const row = createPromptVersion(ctx.db, getSoleTenantId(ctx.db), {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
@@ -583,12 +617,13 @@ describe('POST /api/ai/prompt-validate (#454)', () => {
     })
 
     const res = await validate({ promptId: row.id })
-    expect(res.statusCode).toBe(400)
-    expect(res.json<{ error: { code: string } }>().error.code).toBe('bad_request')
-    // `details` is logged and never serialised (see `HttpError`), so the key the guard
-    // attaches is asserted where `dryRunPrompt`'s equivalent is — on the throw, not on the
-    // wire. What belongs here is that it is a 400 rather than a 500 or a silent skip.
-    expect(fake.calls).toBe(0)
+    expect(res.statusCode).toBe(200)
+
+    const outcome = res.json<PromptValidation>()
+    expect(outcome.status).toBe('safe')
+    expect(outcome.gate).toBe('safe')
+    expect(outcome.key).toBe('analysis.system')
+    expect(fake.calls).toBe(1)
   })
 
   it('answers 404 for another tenant’s id — tenant-scoped loading, not authorization', async () => {

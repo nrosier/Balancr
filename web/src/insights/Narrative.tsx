@@ -209,20 +209,13 @@ export function Narrative({
 /**
  * What stands where a priced button would otherwise be (#455, part of #452).
  *
- * Two states, and only one of them can be true at a time:
- *
- *  - **The instructions have no safe verdict** (`unvalidated`/`unsafe`). `runNarrative`
- *    refuses outright and spends nothing, so the caller drops the `Offer` and this says why.
- *    A price beside a run that is going to refuse is the failure `requireAiAvailable`
- *    already argues against for the endpoint itself — "answering with a number for a run
- *    that cannot be started is what puts a priced button on a page that has no model behind
- *    it" — and it is worse here, because the reader would press it and be charged nothing
- *    while learning nothing. `notice--warn` rather than `muted`: this is the one state where
- *    no review will be written at all until somebody acts, and the sentence names who can.
- *  - **`PROMPT_EDITING` has pinned the key** to Balancr's own text. Nothing is broken and
- *    the `Offer` stays — a run works fine — but the reader is told which instructions it
- *    will use, because the server genuinely substitutes the built-in body in that case
- *    (`resolvePrompt`) and saying so is what makes the sentence true rather than decorative.
+ * The one state this explains: **the instructions have no safe verdict**
+ * (`unvalidated`/`unsafe`). `runNarrative` refuses outright and spends nothing, so the
+ * caller drops the `Offer` and this says why. A price beside a run that is going to
+ * refuse is the failure `requireAiAvailable` already argues against for the endpoint
+ * itself — "answering with a number for a run that cannot be started is what puts a
+ * priced button on a page that has no model behind it" — and it is worse here, because
+ * the reader would press it and be charged nothing while learning nothing.
  *
  * Rendered in all three of the card's offer slots rather than once at the top, so the
  * explanation sits where the missing button was.
@@ -237,7 +230,6 @@ function PromptState({ prompt }: { prompt: Insights['narrativePrompt'] }): React
       </p>
     )
   }
-  if (prompt.locked) return <p className="muted">{t('ai:narrative.promptLocked')}</p>
   return null
 }
 

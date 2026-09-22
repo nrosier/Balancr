@@ -137,7 +137,7 @@ const AI_ON = { enabled: true, reason: null } as const
  * still lets an owner edit it (#455). What every fixture below carries unless it is about
  * the gate itself.
  */
-const PROMPT_CLEARED = { gate: 'built_in', locked: false } as const
+const PROMPT_CLEARED = { gate: 'built_in' } as const
 
 /** A month the AI layer has been all the way through. */
 const FULL: InsightsPayload = {
@@ -996,14 +996,12 @@ describe('the narrative', () => {
    * called, which the `serve` stub would fail loudly on.
    */
   describe('the prompt safety gate', () => {
-    const gate = (state: 'unvalidated' | 'unsafe' | 'built_in', locked = false) =>
-      ({ gate: state, locked }) as InsightsPayload['narrativePrompt']
+    const gate = (state: 'unvalidated' | 'unsafe' | 'built_in') =>
+      ({ gate: state }) as InsightsPayload['narrativePrompt']
 
     const UNVALIDATED =
       'The instructions for the monthly review have not passed their safety check, so no ' +
       'review will be written until they do. The owner can check them under Settings.'
-    const LOCKED =
-      'Written from the built-in instructions; editing is switched off on this deployment.'
 
     it('says no review will be written, instead of pricing one', () => {
       // No `serve` stub at all: if the offer mounted it would fetch an estimate and fail.
@@ -1065,22 +1063,6 @@ describe('the narrative', () => {
       expect(screen.queryByRole('button')).toBeNull()
     })
 
-    it('says which instructions a locked deployment uses, and still offers a review', async () => {
-      // Nothing is broken here: the server pinned the key to Balancr's own text, so a run
-      // works. The sentence is a disclosure, not a refusal, so the priced control stays.
-      serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
-      renderApp(
-        <Narrative
-          narrative={null}
-          {...NARRATIVE_PROPS}
-          narrativePrompt={gate('built_in', true)}
-        />,
-      )
-
-      expect(screen.getByText(LOCKED)).toBeTruthy()
-      await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
-    })
-
     it('says nothing about the prompt when there is nothing to say', async () => {
       serve({ '/api/ai/estimate?kind=narrative&month=2026-08': json(NARRATIVE_ESTIMATE) })
       renderApp(<Narrative narrative={null} {...NARRATIVE_PROPS} />)
@@ -1088,7 +1070,6 @@ describe('the narrative', () => {
       await screen.findByText('Writing one for August 2026 would cost about € 0,0021.')
       const text = document.body.textContent ?? ''
       expect(text).not.toContain(UNVALIDATED)
-      expect(text).not.toContain(LOCKED)
     })
 
     it('discloses an edited prompt to every reader of an existing review', () => {

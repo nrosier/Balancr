@@ -81,7 +81,7 @@ import {
   renderNarrative,
   usedEditedPrompt,
 } from '../../../domain/ai/narrative.ts'
-import { promptEditingBlocks, resolvePrompt } from '../../../domain/ai/prompts.ts'
+import { resolvePrompt } from '../../../domain/ai/prompts.ts'
 import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
 import type { Signal } from '../../../domain/aggregate/overspend.ts'
@@ -165,7 +165,6 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
     // on, rather than a second derivation that could disagree with it (#455).
     narrativePrompt: {
       gate: resolvePrompt(db, tenantId, 'narrative.system', locale).gate,
-      locked: promptEditingBlocks(config.PROMPT_EDITING, 'narrative.system'),
     },
     questions: openQuestions(db, tenantId, locale).map((card) => ({
       id: card.id,

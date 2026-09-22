@@ -101,7 +101,6 @@ import { aiRateLimit } from '../rate-limit.ts'
 import { parseBody } from '../validate.ts'
 import { resolveMonth } from './api/budget.ts'
 import { auditRefresh, busyError, requireJobsEnabled } from './refresh.ts'
-import { requirePromptEditable } from './settings.ts'
 import {
   aiBudgetNudgeRunSchema,
   aiDryRunSchema,
@@ -250,14 +249,10 @@ function monthToRun(db: Db, tenantId: string, asked: unknown): string {
  * *activation* the only path that puts an unvalidated narrative body into use.
  * See that test for why the export exists.
  *
- * **An explicit id is refused where `PROMPT_EDITING` has locked the key (#455).** Without
- * this the read-time pin would have one door left open: `resolvePrompt` answers with the
- * built-in text for a locked key, but this branch reads a stored row directly, so an owner
- * of a `locked` deployment could still send their own instructions to a model — just not
- * as the prompt that runs. A `403` rather than a silent substitution, because a dry run is
- * a question about one specific version and quietly answering about a different text would
- * be worse than declining: "what would this version do" has no answer on a deployment
- * where no stored version can be what runs.
+ * Refuses an id that is not an `analysis.system` version, or does not exist. Whether the
+ * resolved prompt actually passed its safety check is `runAnalysis`'s own question, not
+ * this one — it answers with whatever body the id names either way, the same way
+ * `resolvePrompt` answers with whatever is active either way (#468).
  */
 export function dryRunPrompt(
   db: Db,
@@ -275,7 +270,6 @@ export function dryRunPrompt(
   if (row.key !== 'analysis.system') {
     throw badRequest('That is not an analysis prompt.', { key: row.key })
   }
-  requirePromptEditable(config.PROMPT_EDITING, 'analysis.system')
   return { id: row.id, version: row.version }
 }
 
@@ -478,10 +472,9 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
    *    `403`.** Not a softened authorization failure: `loadPrompt` narrows by tenant, so
    *    from inside this request that row genuinely does not exist. A `403` would confirm
    *    that some other household has a version by that id.
-   *  - **A non-gated key is a `400`**, mirroring `dryRunPrompt`'s refusal of a narrative
-   *    prompt with the same `details.key` shape — the mirror image of it, in fact: the dry
-   *    run runs only `analysis.system` and this checks only `narrative.system`. Asking to
-   *    validate an analysis prompt is a well-formed request for something that does not
+   *  - **A key this deployment does not gate is a `400`** — `narrative.system` always, and
+   *    `analysis.system` only under `PROMPT_EDITING=locked` (#468). Asking to validate a
+   *    key that needs no verdict here is a well-formed request for something that does not
    *    apply, and the caller can act on being told which key it sent.
    *
    * Everything else — the daily cap, an exhausted month's budget — comes back `200` with a
@@ -498,7 +491,7 @@ export function registerAiRoutes(app: FastifyInstance, db: Db, registry: readonl
     if (row === null) throw notFound('No such prompt version.')
 
     const key = asPromptKey(row.key)
-    if (key === null || !isGatedKey(key)) {
+    if (key === null || !isGatedKey(config.PROMPT_EDITING, key)) {
       throw badRequest('That prompt does not need a safety check.', { key: row.key })
     }
 

@@ -71,22 +71,21 @@ import type { SettingsPanelProps } from './state.ts'
 const TESTABLE_KEY = 'analysis.system'
 
 /**
- * The keys whose active body needs a safety verdict before it may run (#454).
+ * Whether this key's active body needs a safety verdict before it may run (#454, #468).
  *
- * A duplicate of `GATED_PROMPT_KEYS` in `src/domain/ai/prompts.ts`, which is the source of
- * truth — `web/` does not import domain modules, so the literal is copied rather than
- * shared. It only decides whether a *section* is drawn; the server refuses a check on a
- * non-gated key with a `400` regardless, so a stale copy here is a missing button and never
- * a check that should not have happened.
+ * A duplicate of `isGatedKey` in `src/domain/ai/prompts.ts`, which is the source of truth —
+ * `web/` does not import domain modules, so the rule is copied rather than shared. It only
+ * decides whether a *section* is drawn; `POST /api/ai/prompt-validate` refuses a check on a
+ * key this mode does not gate with a `400` regardless, so a stale copy here is a missing
+ * button and never a check that should not have happened — which is why, unlike the rule it
+ * mirrors, it does not need to be exact in the direction of gating a key too little.
+ *
+ * `narrative.system` is gated unconditionally; `analysis.system` only under `locked`, the
+ * default — under `full` an edit to it needs no sign-off, so offering the check there would
+ * be a button that always 400s.
  */
-const GATED_KEYS: readonly string[] = ['narrative.system']
-
-/**
- * Whether `PROMPT_EDITING` forbids editing this key. Mirrors `promptEditingBlocks` in
- * `src/server/routes/settings.ts`, which is what actually refuses the write with a `403`.
- */
-const editingBlocked = (promptEditing: string, key: string): boolean =>
-  promptEditing === 'locked' || (promptEditing === 'analysis_only' && key === 'narrative.system')
+const isGatedKey = (promptEditing: string, key: string): boolean =>
+  key === 'narrative.system' || (key === 'analysis.system' && promptEditing === 'locked')
 
 /** What the editor holds, and which `(key, locale)` it was opened for. */
 interface Draft {
@@ -142,22 +141,11 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
 
   const entry = prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
   const selection = selectionOf(key, locale)
-  const locked = editingBlocked(settings.promptEditing, key)
 
   // Derived rather than reseeded by an effect: when the selection changes the draft no
   // longer belongs to it, so the active body shows through without anything having to
   // notice the change and copy it across.
-  //
-  // `storedBody` rather than `active.body` while locked (#459): `active.body` is the
-  // built-in constant for a locked key regardless of what is actually saved, and showing
-  // it as if it were the stored text would make a genuine customization look identical
-  // to there being nothing there at all. Empty only when `storedBody` really is null.
-  const body =
-    draft?.for === selection
-      ? draft.body
-      : locked
-        ? (entry?.storedBody ?? '')
-        : (entry?.active.body ?? '')
+  const body = draft?.for === selection ? draft.body : (entry?.active.body ?? '')
   const note = draft?.for === selection ? draft.note : ''
   const stamp = `${selection}\n${body}`
 
@@ -195,7 +183,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
     )
   }
 
-  const gated = GATED_KEYS.includes(entry.key)
+  const gated = isGatedKey(settings.promptEditing, entry.key)
 
   /**
    * One version's gate, with a verdict obtained since the last read taking precedence.
@@ -286,9 +274,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         </div>
       </div>
 
-      <Fallback entry={entry} locale={locale} locked={locked} />
-      {locked ? <LockedNotice promptEditing={settings.promptEditing} /> : null}
-      {locked ? <BuiltInDisclosure body={entry.active.body} /> : null}
+      <Fallback entry={entry} locale={locale} />
 
       <div className="field">
         <label className="field__label" htmlFor="prompt-body">
@@ -300,10 +286,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           rows={14}
           spellCheck={false}
           value={body}
-          placeholder={
-            locked && entry.storedBody === null ? t('settings:prompt.locked.emptyPlaceholder') : undefined
-          }
-          disabled={!owner || state.busy || locked}
+          disabled={!owner || state.busy}
           onChange={(event) => edit({ body: event.target.value })}
         />
         <Issue message={state.issue('body')} />
@@ -319,7 +302,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           type="text"
           value={note}
           placeholder={t('settings:prompt.notePlaceholder')}
-          disabled={!owner || state.busy || locked}
+          disabled={!owner || state.busy}
           onChange={(event) => edit({ note: event.target.value })}
         />
         <Issue message={state.issue('note')} />
@@ -348,7 +331,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
             key={action}
             type="button"
             className={action === 'save' ? 'button button--quiet' : 'button button--primary'}
-            disabled={!owner || state.busy || locked || body.trim() === ''}
+            disabled={!owner || state.busy || body.trim() === ''}
             onClick={() => {
               state.save(
                 action,
@@ -382,7 +365,6 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           gateOf={gateOf}
           state={state}
           owner={owner}
-          locked={locked}
           // Only ever the price the server quoted for text that is still on screen: a
           // figure from a diff of something else would be a number beside the wrong button.
           estimateMicroEur={
@@ -410,7 +392,6 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         supported={settings.locales.supported}
         state={state}
         owner={owner}
-        locked={locked}
         onJump={jumpTo}
       />
 
@@ -436,7 +417,6 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         gateOf={gateOf}
         state={state}
         owner={owner}
-        locked={locked}
         onOpen={(loaded) =>
           setDraft({ for: selection, body: loaded.body, note: loaded.note ?? '' })
         }
@@ -454,25 +434,16 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
  * otherwise edit without noticing: nothing is stored anywhere, so the box holds a
  * constant compiled into the build; or this language has versions but none of them is
  * active, so what runs for it is the shared text and not what is on screen above.
- *
- * Silent when `PROMPT_EDITING` has pinned this key (#455). `resolvePrompt` answers with the
- * built-in text in that case however many versions are stored, so "nothing is stored
- * anywhere" would be the wrong reason for the right box — and `LockedNotice`, rendered
- * immediately below this, gives the right one.
  */
 function Fallback({
   entry,
   locale,
-  locked,
 }: {
   entry: PromptSetting
   locale: string
-  locked: boolean
 }): ReactNode {
   const { t } = useT()
   const { active } = entry
-
-  if (locked) return null
 
   if (active.id === null) {
     return (
@@ -500,8 +471,6 @@ interface OverridesProps {
   supported: string[]
   state: SettingsPanelProps['state']
   owner: boolean
-  /** True when `PROMPT_EDITING` forbids changing this key at all (#454). */
-  locked: boolean
   onJump: (locale: string) => void
 }
 
@@ -526,7 +495,6 @@ function Overrides({
   supported,
   state,
   owner,
-  locked,
   onJump,
 }: OverridesProps): ReactNode {
   const { t } = useT()
@@ -545,10 +513,7 @@ function Overrides({
           <button
             type="button"
             className="button button--quiet"
-            // Switching an override off changes which body runs for this language, so it is
-            // refused under a lock exactly like a write — the button says so rather than
-            // being offered and failing.
-            disabled={!owner || state.busy || locked}
+            disabled={!owner || state.busy}
             onClick={() => {
               state.save(
                 `shared:${locale}`,
@@ -567,7 +532,7 @@ function Overrides({
               key={candidate}
               type="button"
               className="button button--quiet"
-              disabled={!owner || state.busy || locked || body.trim() === ''}
+              disabled={!owner || state.busy || body.trim() === ''}
               onClick={() => {
                 // The box, like every other button on this panel that sends text: what
                 // is on screen becomes that language's first version, and it starts
@@ -811,55 +776,6 @@ function Outcome({ run }: { run: AiDryRun }): ReactNode {
   )
 }
 
-/**
- * Why the editor is read-only, when `PROMPT_EDITING` is what made it so (#454).
- *
- * Loud rather than a quietly disabled textarea. Pinning the narrative instructions to
- * Balancr's own text is a deliberate substitution made by whoever runs the server, and the
- * silent kind of substitution is the thing this whole feature exists to prevent — so the
- * reader is told which setting did it and who can change it, not left wondering why the box
- * stopped accepting typing.
- */
-function LockedNotice({ promptEditing }: { promptEditing: string }): ReactNode {
-  const { t } = useT()
-
-  return (
-    <div className="notice notice--warn" role="status">
-      <p className="notice__lead">{t('settings:prompt.locked.title')}</p>
-      <p>
-        {t(
-          promptEditing === 'locked'
-            ? 'settings:prompt.locked.all'
-            : 'settings:prompt.locked.analysisOnly',
-        )}
-      </p>
-    </div>
-  )
-}
-
-/**
- * The text `LockedNotice` only describes, on demand (#459).
- *
- * A `<details>` rather than always-open prose: the built-in instructions can run to a
- * few kilobytes, and printing them unconditionally under every locked key would bury
- * the field below — the one thing on this screen that still has something to say about
- * *this* deployment. `body` is always `entry.active.body`, which `resolvePrompt`
- * answers with the built-in constant whenever the key is locked, so there is nothing
- * further to fetch: reading it here is the same fact the server already used to decide
- * what runs.
- */
-function BuiltInDisclosure({ body }: { body: string }): ReactNode {
-  const { t } = useT()
-
-  return (
-    <details className="prompt__builtin">
-      <summary>{t('settings:prompt.locked.builtIn.show')}</summary>
-      <p className="muted">{t('settings:prompt.locked.builtIn.explain')}</p>
-      <pre className="prompt__builtin-body">{body}</pre>
-    </details>
-  )
-}
-
 /** A gate badge. `truth` for the two cleared states, `warn`/`alert` for the two that block. */
 function GateBadge({ gate }: { gate: PromptGate }): ReactNode {
   const { t } = useT()
@@ -877,7 +793,6 @@ interface CheckProps {
   gateOf: (version: { id: string | null; gate: PromptGate }) => PromptGate
   state: SettingsPanelProps['state']
   owner: boolean
-  locked: boolean
   /** From the last diff of this exact text, or null when none has been fetched. */
   estimateMicroEur: number | null
   result: PromptValidation | null
@@ -913,7 +828,6 @@ function Check({
   gateOf,
   state,
   owner,
-  locked,
   estimateMicroEur,
   result,
   stale,
@@ -1010,7 +924,7 @@ function Check({
           <button
             type="button"
             className="button button--quiet"
-            disabled={!owner || state.busy || locked || !canCheck}
+            disabled={!owner || state.busy || !canCheck}
             onClick={() => {
               if (target === null) return
               state.ask<PromptValidation>(
@@ -1147,8 +1061,6 @@ interface VersionsProps {
   gateOf: (version: { id: string | null; gate: PromptGate }) => PromptGate
   state: SettingsPanelProps['state']
   owner: boolean
-  /** True when `PROMPT_EDITING` forbids changing this key (#454). */
-  locked: boolean
   onOpen: (loaded: PromptBody) => void
 }
 
@@ -1158,7 +1070,6 @@ function Versions({
   gateOf,
   state,
   owner,
-  locked,
   onOpen,
 }: VersionsProps): ReactNode {
   const { t } = useT()
@@ -1183,7 +1094,6 @@ function Versions({
             gate={gated ? gateOf(version) : null}
             busy={state.busy}
             owner={owner}
-            locked={locked}
             onOpen={() => {
               state.ask<PromptBody>(
                 `open:${version.id}`,
@@ -1214,7 +1124,6 @@ interface VersionProps {
   gate: PromptGate | null
   busy: boolean
   owner: boolean
-  locked: boolean
   onOpen: () => void
   onActivate: () => void
 }
@@ -1224,7 +1133,6 @@ function Version({
   gate,
   busy,
   owner,
-  locked,
   onOpen,
   onActivate,
 }: VersionProps): ReactNode {
@@ -1260,9 +1168,7 @@ function Version({
           <button
             type="button"
             className="button button--quiet"
-            // Activation is a write, and a locked deployment answers 403 — so the control is
-            // disabled rather than offered and refused, like every other write above.
-            disabled={!owner || busy || locked}
+            disabled={!owner || busy}
             onClick={onActivate}
           >
             {t('settings:prompt.activate')}

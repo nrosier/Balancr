@@ -4109,10 +4109,10 @@ describe('the prompt safety check (#454)', () => {
     expect(screen.queryByText("Balancr's own")).toBeNull()
   })
 
-  it('draws no gate badge on a version of a key nothing gates', async () => {
-    // `analysis.system` is not gated, so a warn-tone "Not checked" beside an edited findings
-    // prompt would advertise a check the endpoint refuses (400) and a restriction that does not
-    // apply to it.
+  it('draws no gate badge on a version of a key this mode does not gate', async () => {
+    // `PAYLOAD.promptEditing` is `full` (#468), under which `analysis.system` is not gated —
+    // so a warn-tone "Not checked" beside an edited findings prompt would advertise a check
+    // the endpoint refuses (400) and a restriction that does not apply to it here.
     await open({ ...READS, '/api/settings': json(saved()) })
 
     const rows = document.querySelectorAll('.version')
@@ -4121,110 +4121,13 @@ describe('the prompt safety check (#454)', () => {
     expect(screen.queryByRole('heading', { name: /Safety check/ })).toBeNull()
   })
 
-  it('explains a locked deployment instead of offering a textarea that refuses', async () => {
-    await open({
-      ...READS,
-      '/api/settings': json({ ...saved(), promptEditing: 'analysis_only' } satisfies Payload),
-    })
-    selectNarrative()
-
-    await screen.findByText('Editing is switched off here')
-    await screen.findByText(/PROMPT_EDITING=analysis_only/)
-    // Disabled rather than accepting typing and failing on save.
-    expect(screen.getByLabelText('Instructions').getAttribute('disabled')).not.toBeNull()
-    expect(
-      screen.getByRole('button', { name: 'Save as a new version' }).getAttribute('disabled'),
-    ).not.toBeNull()
-    // Activation too: it is a write, and the server answers 403 for it under a lock. A button
-    // that stayed clickable would be offering a gesture that cannot succeed.
-    for (const button of screen.getAllByRole('button', { name: 'Make active' })) {
-      expect(button.getAttribute('disabled')).not.toBeNull()
-    }
-    expect(screen.queryByRole('button', { name: /^Check version/ })?.getAttribute('disabled'))
-      .not.toBeNull()
-  })
-
-  it('leaves activation clickable when editing is not locked', async () => {
-    // The other half, or the assertion above would pass with every button disabled always.
+  it('leaves activation clickable, since nothing about editing is ever blocked (#468)', async () => {
     await open({ ...READS, '/api/settings': json(saved()) })
     selectNarrative()
 
     const activate = screen.getAllByRole('button', { name: 'Make active' })
     expect(activate.length).toBeGreaterThan(0)
     for (const button of activate) expect(button.getAttribute('disabled')).toBeNull()
-  })
-
-  it('leaves the analysis prompt editable under analysis_only', async () => {
-    await open({
-      ...READS,
-      '/api/settings': json({ ...saved(), promptEditing: 'analysis_only' } satisfies Payload),
-    })
-
-    // The findings instructions are still editable, which is the whole reason this mode
-    // exists rather than only `locked`.
-    expect(screen.queryByText('Editing is switched off here')).toBeNull()
-    expect(screen.getByLabelText('Instructions').getAttribute('disabled')).toBeNull()
-  })
-
-  /**
-   * A locked deployment shaped the way the server actually answers one (#459): `active` pinned
-   * to the built-in text with no id, and `storedBody` carrying whatever is really saved —
-   * independently of it, since that is the distinction the box below has to draw.
-   */
-  const lockedWith = (storedBody: string | null): Payload => {
-    const base = saved()
-    return {
-      ...base,
-      promptEditing: 'locked',
-      prompts: base.prompts.map((entry) =>
-        entry.key === 'narrative.system'
-          ? {
-              ...entry,
-              active: { ...entry.active, id: null, version: 0, gate: 'built_in', body: BUILT_IN },
-              storedBody,
-            }
-          : entry,
-      ) as Payload['prompts'],
-    }
-  }
-
-  it('shows the stored text, not the built-in constant, under a lock (#459)', async () => {
-    // The bug this closes: `active.body` is the built-in text here regardless of what is
-    // saved, so the box has to read `storedBody` instead or a real customization would look
-    // exactly like there being nothing there.
-    await open({ ...READS, '/api/settings': json(lockedWith(EDITED)) })
-    selectNarrative()
-
-    await screen.findByText('Editing is switched off here')
-    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(EDITED)
-  })
-
-  it('shows an empty box with a placeholder when nothing was ever saved under a lock', async () => {
-    await open({ ...READS, '/api/settings': json(lockedWith(null)) })
-    selectNarrative()
-
-    await screen.findByText('Editing is switched off here')
-    const box = screen.getByLabelText('Instructions') as HTMLTextAreaElement
-    expect(box.value).toBe('')
-    expect(box.getAttribute('placeholder')).toBe('Nothing has been stored here.')
-  })
-
-  it('folds the built-in instructions away until asked for, under a lock', async () => {
-    await open({ ...READS, '/api/settings': json(lockedWith(EDITED)) })
-    selectNarrative()
-
-    await screen.findByText('Editing is switched off here')
-    const summary = await screen.findByText('Show the built-in instructions')
-    const details = summary.closest('details')
-    // Collapsed on load: `open` is the one signal jsdom gives for this, since it renders a
-    // closed `<details>`'s content into the DOM the same as an open one (no UA stylesheet).
-    expect(details?.open).toBeFalsy()
-
-    fireEvent.click(summary)
-
-    expect(details?.open).toBe(true)
-    expect(screen.getByText(BUILT_IN)).toBeTruthy()
-    expect(screen.getByText(/it is what actually runs for this key/)).toBeTruthy()
   })
 })
 

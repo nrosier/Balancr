@@ -108,7 +108,6 @@
       "written": "Geschreven, voor {{cost}}. De pagina is opnieuw geladen."
     },
     "promptCustom": "Geschreven met instructies die dit huishouden zelf heeft aangepast.",
-    "promptLocked": "Geschreven met de ingebouwde instructies; aanpassen staat uit op deze installatie.",
     "promptUnvalidated": "De instructies voor het maandverhaal zijn niet door hun veiligheidscontrole gekomen, dus er wordt geen verhaal geschreven zolang dat niet gebeurt. De eigenaar kan ze nakijken bij de instellingen.",
     "rewrite": {
       "lede": "Er is niets veranderd aan deze maand, maar je kunt toch een nieuw verhaal aanvragen — dezelfde prijs als elke andere run.",
@@ -182,14 +181,19 @@
     },
     "rule": {
       "brevity": "Blijft kort en leesbaar",
+      "closed_vocabulary": "Meldt alleen bevindingen die er echt voor berekend zijn",
       "data_quality": "Zegt het wanneer de cijfers niet te vertrouwen zijn",
       "drift_is_fact": "Legt afwijking in de portefeuille uit zonder te herrekenen",
       "excluded_is_choice": "Laat de enveloppen die je achterhield ongemoeid",
+      "guess_is_neutral": "Schrijft een verduidelijkingsgok in gewone taal, niet als feit",
       "lead_with_change": "Begint met wat er veranderd is",
       "no_address_no_moralise": "Blijft zakelijk en velt geen oordeel",
       "no_advice": "Geeft geen beleggings-, product- of belastingadvies",
       "no_arithmetic": "Rekent nooit zelf een bedrag uit",
+      "no_numbers": "Noemt, berekent of schat zelf nooit een cijfer",
       "note_is_context": "Neemt je notitie als uitleg, nooit als cijfer",
+      "quality_first_ordering": "Zet datakwaliteitsproblemen voor bevindingen over uitgaven",
+      "severity_only_lowers": "Verlaagt een ernst alleen, verhoogt hem nooit",
       "shared_costs": "Behandelt gedeelde kosten als gedeeld"
     }
   },

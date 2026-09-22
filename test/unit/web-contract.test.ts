@@ -47,6 +47,7 @@ const REASONS: Record<AnalysisReason, true> = {
   estimate_exceeds_remaining: true,
   call_failed: true,
   bad_response: true,
+  prompt_unvalidated: true,
 }
 
 const STATUSES: Record<AnalysisStatus, true> = {
