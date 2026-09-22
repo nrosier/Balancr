@@ -18,7 +18,7 @@ concurrency:
 jobs:
   image:
     name: Build and push
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -81,7 +81,7 @@ jobs:
     # that's set up on Harbor's side, delete this job outright instead of
     # re-enabling it.
     if: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Trigger Harbor replication
         id: replicate
