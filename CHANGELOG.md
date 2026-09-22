@@ -6,6 +6,44 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.1] — 2026-09-22
+
+### Added
+
+- **`analysis.system` is now gated under `locked` too, and `PROMPT_EDITING`
+  drops the now-redundant `analysis_only` mode**
+  ([#468](https://github.com/nrosier/Balancr/issues/468)). `PROMPT_EDITING`
+  is `full` or `locked` — `locked` (the new default, previously `full`) puts
+  both prompts behind the same AI-judge safety check `narrative.system` has
+  had since [#452](https://github.com/nrosier/Balancr/issues/452)–[#455](https://github.com/nrosier/Balancr/issues/455);
+  `full` leaves both fully editable, no gate. See Upgrading below for an
+  installation with `analysis_only` set. Also adds a rule asking the
+  analysis prompt to write clarification guesses in plain language, with no
+  financial jargon.
+
+### Changed
+
+- **A `locked` customization is now layered as a short addition on
+  Balancr's own base prompt, not a full replacement**
+  ([#468](https://github.com/nrosier/Balancr/issues/468)). Balancr's own
+  instructions are always sent first, in full; a household's stored text
+  follows as a lightweight addition that only has to avoid fighting the
+  base rather than independently satisfy the whole rubric — which is what
+  lets a short style note ("write in short sentences") pass instead of
+  failing for not restating every rule. The prompt editor now shows
+  Balancr's own base in a collapsed block under `locked` and relabels the
+  textarea to "Additional instructions".
+- **Dependency maintenance**: `@google/genai`, `jsdom`, the GitHub Actions
+  runner image bumped to `ubuntu-26.04`, plus a lock-file maintenance pass —
+  each verified by CI before merging, none behavior-visible.
+
+### Upgrading
+
+An installation with `PROMPT_EDITING=analysis_only` in `.env` will fail to
+boot on this version. Switch it to `full` (no judge gate on either prompt)
+or `locked` (the new default — both prompts stay editable, but a body must
+pass a safety check before it can be activated).
+
 ## [2.3.0] — 2026-09-21
 
 ### Added

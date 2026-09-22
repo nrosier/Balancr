@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1061,15 +1061,16 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.3.0` is the current release. The editable narrative
-prompt now has a safety gate: edits are bound in length, checked by a judge
-call before activation, and enforced again at use time, with a
-deployment-wide `PROMPT_EDITING` lock for operators who are also the tenant
-owner. Non-mortgage debt — fixed-schedule loans and revolving credit-card
-balances — can now be tracked alongside mortgages. Existing deployments
-upgrade in place.
+**Where it is now** — `2.3.1` is the current release. Under the `locked`
+`PROMPT_EDITING` mode, a household's customization is now layered as a short
+addition on top of Balancr's own base prompt instead of replacing it outright,
+so a tone or style note passes review without having to restate the whole
+rubric; `analysis.system` is gated the same way `narrative.system` already
+was, and the now-redundant `analysis_only` mode is gone (see
+[`CHANGELOG.md`](CHANGELOG.md) for the upgrade note if you had it set).
+Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.3.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.3.1`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
