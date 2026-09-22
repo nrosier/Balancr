@@ -173,6 +173,21 @@ describe('decideJudgeVerdict (#454)', () => {
     expect(verdict.advisory).toEqual(['brevity'])
   })
 
+  it('stays safe when the raw-name rule is missing, and lists it as advisory', () => {
+    // no_internal_ids shapes how a figure or category is described, not what the writer
+    // is allowed to claim about it — editorial like brevity, not one of the four that
+    // block. See NARRATIVE_RULE_IDS's own doc comment.
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      withRule(allClear(), 'no_internal_ids', { present: false }),
+      'replacement',
+    )
+
+    expect(verdict.verdict).toBe('safe')
+    expect(verdict.missing).toEqual([])
+    expect(verdict.advisory).toEqual(['no_internal_ids'])
+  })
+
   it('reports a weakened editorial rule as advisory too, still without blocking', () => {
     const verdict = decideJudgeVerdict(
       'narrative.system',
@@ -184,7 +199,7 @@ describe('decideJudgeVerdict (#454)', () => {
     expect(verdict.advisory).toEqual(['lead_with_change'])
   })
 
-  it('is unsafe for any conflict code, even with all ten rules intact', () => {
+  it('is unsafe for any conflict code, even with every rule intact', () => {
     // A candidate can state every rule faithfully and, in another sentence, claim to
     // override everything above it. There is no legitimate reason for a prompt body to.
     const verdict = decideJudgeVerdict(
@@ -943,7 +958,7 @@ describe('validatePrompt — concurrency (#454)', () => {
 
 describe('the judge’s own constants (#454)', () => {
   it('expects a small answer, because the judge replies in codes', () => {
-    // Far below a narrative's own ceiling: ten short objects, a conflict array and one
+    // Far below a narrative's own ceiling: eleven short objects, a conflict array and one
     // sentence. An estimate sized for prose would cap runs that were affordable.
     expect(JUDGE_EXPECTED_OUTPUT_TOKENS).toBeLessThan(2_000)
   })

@@ -200,6 +200,30 @@ describe('built-in prompts', () => {
   it('tells the narrative pass not to do arithmetic on the figures it quotes', () => {
     expect(DEFAULT_PROMPTS['narrative.system']).toMatch(/Never add,\s*\n?\s*subtract/)
   })
+
+  it('tells the narrative pass to write a given figure as currency or a percentage, not raw', () => {
+    // The bug this closes: every body up to and including v2.3.2 forbade "convert[ing]" a
+    // figure at all, in the same breath as add/subtract/average — so a model that quoted
+    // `savingsRateBp: 1323` as `1323` was following the rule, not breaking it. The fix has
+    // to state the exception, not just drop the word "convert" and leave the requirement
+    // implicit.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/divide by 100 and write it as currency/i)
+    expect(body).toMatch(/divide by 100 and write it as a percentage/i)
+    // And the previous default is the text that had the bug, not a body that always wrote
+    // this correctly — anchoring the fix as new rather than restating an old guarantee.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).toBeDefined()
+    expect(previous).toMatch(/annualise,\s*project or convert anything/i)
+  })
+
+  it('tells the narrative pass to describe internal field names and codes, not echo them', () => {
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/never write an internal field name/i)
+    expect(body).toMatch(/internal category code/i)
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).not.toMatch(/internal field name/i)
+  })
 })
 
 describe('languageDirective', () => {
@@ -326,6 +350,19 @@ describe('composeNarrativeSystemPrompt (#453)', () => {
     const finalGuardrailsAt = withDisclaimer.lastIndexOf(NARRATIVE_GUARDRAILS)
     expect(disclaimerAt).toBeGreaterThan(-1)
     expect(finalGuardrailsAt).toBeGreaterThan(disclaimerAt)
+  })
+})
+
+describe('NARRATIVE_GUARDRAILS', () => {
+  it('permits writing a given figure as currency or a percentage, unlike its own former wording', () => {
+    // This block is appended after the editable body on every call and is documented to
+    // win any conflict with it — so the same "not a conversion" bug fixed in
+    // `NARRATIVE_SYSTEM`'s rule 1 had to be fixed here too, or this text would silently
+    // re-impose it regardless of what the editable body said.
+    const guardrails = NARRATIVE_GUARDRAILS.replace(/\s+/g, ' ')
+    expect(guardrails).not.toMatch(/not a conversion/i)
+    expect(guardrails).toMatch(/is not derivation, and is required/i)
+    expect(guardrails).toMatch(/divided by 100/i)
   })
 })
 

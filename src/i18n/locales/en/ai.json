@@ -190,6 +190,7 @@
       "no_address_no_moralise": "Stays impersonal and passes no judgement",
       "no_advice": "Gives no investment, product or tax advice",
       "no_arithmetic": "Never works out a figure of its own",
+      "no_internal_ids": "Describes figures and categories in plain language, never by their internal name",
       "no_numbers": "Never states, derives or estimates a number itself",
       "note_is_context": "Takes your note as an explanation, never as a figure",
       "quality_first_ordering": "Puts data-quality problems ahead of spending findings",
