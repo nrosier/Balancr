@@ -19,6 +19,15 @@
  * anywhere — the prompt forbids URLs and product names — and a model that
  * produces one is either hallucinating a source or repeating something out of the
  * data. Either way the label is the part worth reading.
+ *
+ * **Amount masking (#489) is opt-in and tag-based, never attribute-based.** Privacy
+ * mode blurs a fixed set of elements by attribute (`data-private`, in `web/`'s own
+ * components), but this file's whole safety argument rests on emitting no attribute
+ * at all — so a masked figure here gets its own tag, `<amount>`, instead. The CSS
+ * that blurs it lives in `privacy/privacy.css` and targets the tag directly. Masking
+ * is heavily over-inclusive on purpose: anything that looks like a number is masked,
+ * including a year or a percentage, because a false negative here is a household's
+ * spending on someone's screen and a false positive is, at worst, a blurred date.
  */
 
 /**
@@ -26,7 +35,7 @@
  * contains nothing else, which is the property that makes the renderer safe
  * rather than the individual regexes.
  */
-export const ALLOWED_TAGS: readonly string[] = ['h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'code']
+export const ALLOWED_TAGS: readonly string[] = ['h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'code', 'amount']
 
 const ESCAPES: Record<string, string> = {
   '&': '&amp;',
@@ -80,14 +89,56 @@ const hold = (index: number): string => `<code-hold:${index}>`
 const HELD = /<code-hold:(\d+)>/g
 
 /**
+ * Anything that reads as a number: an optional leading currency sign or minus,
+ * digit groups with either separator, an optional trailing currency sign or `%`.
+ * Deliberately broad (see the module comment on masking) — this also catches a
+ * bare year or a day count, which is an accepted false positive, not a bug.
+ */
+const NUMBER = /[€$£]?-?\d[\d.,]*[€$£%]?/g
+
+/**
+ * Private-use-area sentinels, not `<`/`>`: a masked amount is lifted out of the
+ * *raw* text, before `escapeHtml` runs, specifically so its marker survives
+ * untouched through escaping, code-span lifting and the emphasis regexes below —
+ * none of which can produce or destroy a codepoint here — and is only turned into
+ * a real `<amount>` tag in the last line of `inline`, after everything else.
+ */
+const AMT_OPEN = ''
+const AMT_CLOSE = ''
+const AMT_HELD = /(\d+)/g
+
+/**
+ * Replaces every number-like run outside a backtick span with a sentinel, so a
+ * literal code value (`` `12345` ``) is never masked — masking is for prose amounts,
+ * not for numbers the model is quoting verbatim as code.
+ */
+function maskAmounts(text: string): { text: string; amounts: string[] } {
+  const amounts: string[] = []
+  const out = text
+    .split(/(`[^`\n]*`)/)
+    .map((part) =>
+      part.startsWith('`')
+        ? part
+        : part.replace(NUMBER, (match) => {
+            amounts.push(match)
+            return `${AMT_OPEN}${amounts.length - 1}${AMT_CLOSE}`
+          }),
+    )
+    .join('')
+  return { text: out, amounts }
+}
+
+/**
  * Inline markup on one already-joined block of text.
  *
  * Code spans are lifted out first and put back last, so `` `**not bold**` ``
  * stays literal — the usual reason a hand-rolled renderer gets emphasis wrong.
  */
-function inline(text: string): string {
+function inline(text: string, shouldMaskAmounts: boolean): string {
+  const { text: source, amounts } = shouldMaskAmounts ? maskAmounts(text) : { text, amounts: [] }
+
   const held: string[] = []
-  let out = escapeHtml(text).replace(/`([^`\n]+)`/g, (_match, code: string) => {
+  let out = escapeHtml(source).replace(/`([^`\n]+)`/g, (_match, code: string) => {
     held.push(code)
     return hold(held.length - 1)
   })
@@ -104,7 +155,11 @@ function inline(text: string): string {
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/(^|[^\w_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>')
 
-  return out.replace(HELD, (_match, index: string) => `<code>${held[Number(index)] ?? ''}</code>`)
+  out = out.replace(HELD, (_match, index: string) => `<code>${held[Number(index)] ?? ''}</code>`)
+  return out.replace(
+    AMT_HELD,
+    (_match, index: string) => `<amount>${escapeHtml(amounts[Number(index)] ?? '')}</amount>`,
+  )
 }
 
 type BlockKind = 'p' | 'ul' | 'ol'
@@ -177,13 +232,13 @@ function tokenize(lines: readonly string[]): Token[] {
   return tokens
 }
 
-function renderToken(token: Token): string {
-  if (token.kind === 'h3') return `<h3>${inline(token.text)}</h3>`
+function renderToken(token: Token, shouldMaskAmounts: boolean): string {
+  if (token.kind === 'h3') return `<h3>${inline(token.text, shouldMaskAmounts)}</h3>`
   if (token.kind === 'p') {
-    const text = inline(token.parts.join(' ').trim())
+    const text = inline(token.parts.join(' ').trim(), shouldMaskAmounts)
     return text === '' ? '' : `<p>${text}</p>`
   }
-  const items = token.parts.map((part) => `<li>${inline(part)}</li>`).join('')
+  const items = token.parts.map((part) => `<li>${inline(part, shouldMaskAmounts)}</li>`).join('')
   return `<${token.kind}>${items}</${token.kind}>`
 }
 
@@ -193,10 +248,16 @@ function renderToken(token: Token): string {
  * Every heading level renders as `<h3>`. The narrative sits inside a page that
  * already owns its own `<h1>` and `<h2>`, so a model reaching for `#` is making a
  * layout decision it has no way to make correctly.
+ *
+ * `maskAmounts` (#489) defaults off: this renderer also renders the changelog,
+ * which has no amounts to hide and every reason to keep its version numbers and
+ * issue references plainly readable. The narrative is the one caller that turns
+ * it on.
  */
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, options: { maskAmounts?: boolean } = {}): string {
+  const shouldMaskAmounts = options.maskAmounts ?? false
   return tokenize(stripControl(source.replace(/\r\n?/g, '\n')).split('\n'))
-    .map(renderToken)
+    .map((token) => renderToken(token, shouldMaskAmounts))
     .filter((html) => html !== '')
     .join('\n')
 }

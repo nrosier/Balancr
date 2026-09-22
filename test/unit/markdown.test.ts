@@ -164,6 +164,41 @@ describe('renderMarkdown formatting', () => {
   })
 })
 
+describe('renderMarkdown amount masking (#489)', () => {
+  it('leaves figures alone when the option is not passed, same as every other caller', () => {
+    expect(renderMarkdown('Spending was €450 this month.')).toBe(
+      '<p>Spending was €450 this month.</p>',
+    )
+  })
+
+  it('wraps a figure in <amount> when asked to', () => {
+    expect(renderMarkdown('Spending was €450 this month.', { maskAmounts: true })).toBe(
+      '<p>Spending was <amount>€450</amount> this month.</p>',
+    )
+  })
+
+  it('is deliberately over-inclusive: a year and a percentage are masked too', () => {
+    expect(renderMarkdown('In 2026 spending rose 12%.', { maskAmounts: true })).toBe(
+      '<p>In <amount>2026</amount> spending rose <amount>12%</amount>.</p>',
+    )
+  })
+
+  it('never masks a literal number inside a code span', () => {
+    expect(renderMarkdown('`12345`', { maskAmounts: true })).toBe('<p><code>12345</code></p>')
+  })
+
+  it('nests correctly inside emphasis', () => {
+    expect(renderMarkdown('**€450**', { maskAmounts: true })).toBe(
+      '<p><strong><amount>€450</amount></strong></p>',
+    )
+  })
+
+  it('emits no attribute even while masking — <amount> is a bare tag, same rule as every other tag', () => {
+    const html = renderMarkdown('Spending was €450 this month.', { maskAmounts: true })
+    expect(html).not.toMatch(/<[a-zA-Z][a-zA-Z0-9-]*\s/)
+  })
+})
+
 describe('isBlankMarkdown', () => {
   it('is true for whitespace, which is what an empty model answer looks like', () => {
     expect(isBlankMarkdown('  \n\n \t ')).toBe(true)
