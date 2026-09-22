@@ -3823,6 +3823,17 @@ describe('the prompt safety check (#454)', () => {
     expect(screen.queryByRole('button', { name: /^(Check|Save & check)$/ })).toBeNull()
   })
 
+  it('offers no "make it active straight away" button for a gated key (#481)', async () => {
+    // A gated key can never actually activate on save — `assertActivatable` refuses any
+    // edit that hasn't been through the safety check first — so the button is not just
+    // useless here, it's guaranteed to fail. Only the plain Save stays.
+    await open(READS)
+    selectNarrative()
+
+    await screen.findByRole('button', { name: 'Save as a new version' })
+    expect(screen.queryByRole('button', { name: 'Make it active straight away' })).toBeNull()
+  })
+
   /** Mocks `GET /api/settings/prompts/:id` for opening a version into the box. */
   const promptBody = (v: Version, body: string): PromptBody => ({
     ...v,
