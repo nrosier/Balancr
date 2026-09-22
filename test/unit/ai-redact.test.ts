@@ -24,6 +24,7 @@
  * the bundle. Check 2 is what notices if that ever stops being true.
  */
 import { describe, expect, it } from 'vitest'
+import { formatBpAsPercent, formatCentsAsCurrency } from '../../src/domain/ai/format.ts'
 import {
   GUESS_PAYLOAD_KEYS,
   NUDGE_PAYLOAD_KEYS,
@@ -41,6 +42,10 @@ import {
 import type { AccountMapRow } from '../../src/domain/aggregate/accounts.ts'
 import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
+
+/** The fixture's own currency/formatLocale, so assertions use the real formatter. */
+const money = (cents: number) => formatCentsAsCurrency(cents, 'EUR', 'nl-BE')
+const pct = (bp: number) => formatBpAsPercent(bp, 'nl-BE')
 
 /**
  * Strings that must never reach Gemini, planted throughout the fixture.
@@ -253,6 +258,7 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
     month: '2026-08',
     locale: 'en',
     currency: 'EUR',
+    formatLocale: 'nl-BE',
     categories: [
       {
         // `committedCents` non-zero, so the allowlist walk actually sees the field
@@ -546,7 +552,7 @@ describe('a sensitive category', () => {
     expect(sent?.coicop).toBe('06.2')
     expect(sent?.nature).toBe('fixed')
     expect(sent?.frequency).toBe('monthly')
-    expect(sent?.spentCents).toBe(24_000)
+    expect(sent?.spentCents).toBe(money(24_000))
     expect(sent?.txnCount).toBe(2)
   })
 
@@ -595,9 +601,9 @@ describe('an excluded category (#278)', () => {
     const excluded = redact(bundle()).payload.excluded
     expect(excluded).toEqual({
       count: 1,
-      spentCents: 31_000,
-      budgetedCents: 30_000,
-      incomeCents: 0,
+      spentCents: money(31_000),
+      budgetedCents: money(30_000),
+      incomeCents: money(0),
     })
   })
 
@@ -625,12 +631,13 @@ describe('an excluded category (#278)', () => {
         signals: [],
       }),
     ).payload
-    const listed = payload.categories
-      .filter((category) => !category.income)
-      .reduce((sum, category) => sum + category.spentCents, 0)
-    expect(listed).toBe(52_000)
-    expect(payload.totals.spentCents).toBe(83_000)
-    expect(listed + (payload.excluded?.spentCents ?? 0)).toBe(payload.totals.spentCents)
+    const listed = payload.categories.find((category) => !category.income)
+    // 52_000 (listed) + 31_000 (WITHHELD's spentCents, the one envelope excluded) =
+    // 83_000 (totals) — reconciliation is a property of the cents `redact()` was
+    // given; each assertion below is that same arithmetic, independently formatted.
+    expect(listed?.spentCents).toBe(money(52_000))
+    expect(payload.excluded?.spentCents).toBe(money(31_000))
+    expect(payload.totals.spentCents).toBe(money(83_000))
   })
 
   it('drops a finding about it rather than sending it as the household own', () => {
@@ -669,9 +676,9 @@ describe('an excluded category (#278)', () => {
     expect(payload.categories).toEqual([])
     expect(payload.excluded).toEqual({
       count: 2,
-      spentCents: 31_000,
-      budgetedCents: 30_000,
-      incomeCents: 60_000,
+      spentCents: money(31_000),
+      budgetedCents: money(30_000),
+      incomeCents: money(60_000),
     })
   })
 
@@ -689,7 +696,7 @@ describe('an excluded category (#278)', () => {
     const { payload, labelFor } = redact(bundle())
     expect(labelFor.has('cat-therapy')).toBe(true)
     expect(payload.categories.find((c) => c.label === labelFor.get('cat-therapy'))?.spentCents).toBe(
-      24_000,
+      money(24_000),
     )
   })
 })
@@ -795,16 +802,16 @@ describe('labels', () => {
 describe('the portfolio crosses as a shape, not as holdings', () => {
   it('sends the total, the return and the asset-class shares', () => {
     const sent = redact(bundle()).payload.portfolio
-    expect(sent?.totalValueCents).toBe(4_200_000)
-    expect(sent?.twrBp).toBe(742)
+    expect(sent?.totalValueCents).toBe(money(4_200_000))
+    expect(sent?.twrBp).toBe(pct(742))
     expect(sent?.holdingCount).toBe(2)
     // Both halves of the total, because `twrBp` is a return over all of it while the
     // allocation covers the invested part only — without the split the model cannot
     // tell a portfolio that is up 7,4% from one that is half cash and up 15%.
-    expect(sent?.investedValueCents).toBe(4_200_000)
-    expect(sent?.cashValueCents).toBe(0)
+    expect(sent?.investedValueCents).toBe(money(4_200_000))
+    expect(sent?.cashValueCents).toBe(money(0))
     expect(sent?.allocation.map((a) => a.assetClass)).toEqual(['EQUITY', 'FIXED_INCOME'])
-    expect(sent?.allocation.map((a) => a.shareBp)).toEqual([8_571, 1_429])
+    expect(sent?.allocation.map((a) => a.shareBp)).toEqual([pct(8_571), pct(1_429)])
   })
 
   it('carries a holding count and no per-holding key', () => {
@@ -838,8 +845,8 @@ describe('the drift crosses as bands and counts, not as trades', () => {
     expect(sent?.profile).toBe('balanced')
     expect(sent?.isPreset).toBe(true)
     expect(sent?.monthsObserved).toBe(4)
-    expect(sent?.toleranceBp).toBe(100)
-    expect(sent?.minTradeCents).toBe(50_000)
+    expect(sent?.toleranceBp).toBe(pct(100))
+    expect(sent?.minTradeCents).toBe(money(50_000))
   })
 
   it('sends one line per class, with how long it has been outside its band', () => {
@@ -851,8 +858,8 @@ describe('the drift crosses as bands and counts, not as trades', () => {
     ])
     const equity = sent?.lines[0]
     expect(equity?.state).toBe('above')
-    expect(equity?.shareBp).toBe(8_571)
-    expect(equity?.maxBp).toBe(7_500)
+    expect(equity?.shareBp).toBe(pct(8_571))
+    expect(equity?.maxBp).toBe(pct(7_500))
     // The count is the only figure here the portfolio page does not already show, and
     // the whole reason the block exists: it is what separates a market that moved from
     // a rebalance nobody did (#183).
@@ -895,7 +902,7 @@ describe('the drift crosses as bands and counts, not as trades', () => {
     // Unmapped positions are worse still: the entry *is* Ghostfolio's own string for an
     // instrument it could not classify. A count and a share is all of it that survives.
     expect(sent?.unmappedCount).toBe(1)
-    expect(sent?.unmappedShareBp).toBe(300)
+    expect(sent?.unmappedShareBp).toBe(pct(300))
   })
 
   it('is null when there is no portfolio to measure against a profile', () => {
@@ -906,10 +913,10 @@ describe('the drift crosses as bands and counts, not as trades', () => {
 describe('net worth crosses as a total, not as accounts', () => {
   it('drops contributions and exclusions, which are per-account', () => {
     const sent = redact(bundle()).payload.netWorth
-    expect(sent?.totalCents).toBe(4_920_000)
-    expect(sent?.liquidCents).toBe(900_000)
-    expect(sent?.investedCents).toBe(4_200_000)
-    expect(sent?.debtCents).toBe(180_000)
+    expect(sent?.totalCents).toBe(money(4_920_000))
+    expect(sent?.liquidCents).toBe(money(900_000))
+    expect(sent?.investedCents).toBe(money(4_200_000))
+    expect(sent?.debtCents).toBe(money(180_000))
     const json = JSON.stringify(sent)
     expect(json).not.toContain('KBC')
     expect(json).not.toContain('contributions')
@@ -938,8 +945,19 @@ describe('the month itself', () => {
     expect(payload.month).toBe('2026-08')
     expect(payload.locale).toBe('en')
     expect(payload.currency).toBe('EUR')
-    expect(payload.totals.savingsRateBp).toBe(1_026)
+    expect(payload.totals.savingsRateBp).toBe(pct(1_026))
     expect(payload.history.map((h) => h.month)).toEqual(['2026-06', '2026-07'])
+  })
+
+  it("uses the bundle's own currency and formatLocale, not a hardcoded one", () => {
+    // `money()`/`pct()` above call the same formatter with the same EUR/nl-BE the
+    // fixture happens to use, so on their own they could not tell a payload that
+    // reads `bundle.currency`/`bundle.formatLocale` from one that silently ignores
+    // them. A second bundle with different values is what actually distinguishes
+    // the two, and is the plumbing this test exists to catch.
+    const payload = redact(bundle({ currency: 'USD', formatLocale: 'en-US' })).payload
+    expect(payload.totals.spentCents).toBe(formatCentsAsCurrency(341_000, 'USD', 'en-US'))
+    expect(payload.totals.spentCents).not.toBe(money(341_000))
   })
 
   it('drops the carryover fields, which say nothing the model can use', () => {
@@ -950,9 +968,9 @@ describe('the month itself', () => {
 
   it('sends the hygiene score, because the rest is worthless without it', () => {
     const hygiene = redact(bundle()).payload.hygiene
-    expect(hygiene.scoreBp).toBe(8_450)
+    expect(hygiene.scoreBp).toBe(pct(8_450))
     expect(hygiene.uncategorisedCount).toBe(31)
-    expect(hygiene.uncategorisedCents).toBe(47_500)
+    expect(hygiene.uncategorisedCents).toBe(money(47_500))
     expect(hygiene.mismatchCount).toBe(1)
   })
 })
@@ -997,7 +1015,7 @@ describe("the month's own note (#298)", () => {
     // the alimony category is unaffected either way — still present, still a label.
     const { payload, labelFor } = redact(bundle())
     const alimony = payload.categories.find((c) => c.label === labelFor.get('cat-alimony'))
-    expect(alimony?.spentCents).toBe(41_000)
+    expect(alimony?.spentCents).toBe(money(41_000))
     expect(alimony?.name).toBeUndefined()
   })
 })
