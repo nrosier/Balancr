@@ -6,6 +6,34 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.4] — 2026-09-23
+
+### Fixed
+
+- **The AI narrative now masks the figures in its own prose under privacy
+  mode, instead of leaving them fully readable**
+  ([#489](https://github.com/nrosier/Balancr/issues/489),
+  [#490](https://github.com/nrosier/Balancr/pull/490)). Privacy mode blurs a
+  fixed set of elements by attribute, but `markdown.ts`'s whole safety
+  argument rests on emitting no attribute at all, so a masked figure gets
+  its own bare tag, `<amount>`, instead. Masking is deliberately
+  over-inclusive — a year or a percentage gets blurred along with a euro
+  amount, because a false negative here is a household's spending on
+  someone's screen and a false positive is, at worst, a blurred date — and
+  it also catches a figure the model chose to format as inline code, which
+  would otherwise have been a way to switch masking off by accident. This
+  covers the Narrative tab only; Findings, Pending and Ledger still show
+  their figures unmasked and remain open under #489.
+- **The Benchmark card's "Difference" column explains itself instead of
+  reading as a third share figure**
+  ([#401](https://github.com/nrosier/Balancr/issues/401),
+  [#491](https://github.com/nrosier/Balancr/pull/491)). Difference isn't
+  derived from the two share columns beside it — in a size-adjusted
+  ("level") comparison it also carries any gap in the household's overall
+  spending, not just how that spending splits between groups — so the
+  column header now carries an info tooltip worded to match, branched on
+  whether the comparison has a reference euro total on record at all.
+
 ## [2.3.3] — 2026-09-22
 
 ### Added
