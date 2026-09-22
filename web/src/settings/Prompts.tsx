@@ -428,7 +428,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           {t('settings:prompt.diff.compare')}
         </button>
 
-        {(['save', 'saveAndActivate'] as const).map((action) => (
+        {(gated ? (['save'] as const) : (['save', 'saveAndActivate'] as const)).map((action) => (
           <button
             key={action}
             type="button"
