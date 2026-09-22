@@ -697,7 +697,7 @@ export async function runAnalysis(
   try {
     result = await callAi(db, tenantId, {
       model,
-      systemPrompt: composeAnalysisSystemPrompt(prompt.body, locale),
+      systemPrompt: composeAnalysisSystemPrompt(prompt.body, locale, config.PROMPT_EDITING),
       instruction: analysisInstruction(payload),
       payload,
       responseJsonSchema: analysisJsonSchema(),

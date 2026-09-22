@@ -390,7 +390,13 @@
   "prompt": {
     "activate": "Make active",
     "active": "Active",
+    "base": {
+      "hint": "Always sent first, in full, regardless of what is added below.",
+      "summary": "Balancr's own instructions — always sent first"
+    },
     "body": "Instructions",
+    "bodyLocked": "Additional instructions (optional)",
+    "bodyPlaceholder": "Add a short note about tone or style — Balancr's own instructions above are always sent first.",
     "chars": "{{chars}} characters",
     "check": {
       "aboutSavedVersion": "This checks saved version {{version}}. The box above shows the instructions currently in force, which are not the same text.",

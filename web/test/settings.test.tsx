@@ -254,6 +254,7 @@ const PAYLOAD: Payload = {
     {
       key: 'analysis.system',
       locale: SHARED_LOCALE,
+      base: 'Judge the signals, Balancr’s own way.',
       // `analysis.system` is not gated (#454), so its rows carry no verdict and read as
       // `unvalidated` — which is why no Check section is drawn for this key at all.
       active: {
@@ -296,6 +297,7 @@ const PAYLOAD: Payload = {
     {
       key: 'narrative.system',
       locale: SHARED_LOCALE,
+      base: 'Write the month up.',
       // The built-in constant: no row anywhere, `id: null`, `version: 0`. `built_in` is the
       // gate a body this build ships always has, which is what keeps a fresh installation
       // from being offered a paid check on Balancr's own text.
@@ -3361,6 +3363,7 @@ describe('prompts', () => {
   const DUTCH: Payload['prompts'][number] = {
     key: 'analysis.system',
     locale: 'nl',
+    base: 'Judge the signals, Balancr’s own way.',
     active: {
       id: 'p3',
       version: 1,

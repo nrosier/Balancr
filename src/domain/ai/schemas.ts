@@ -670,6 +670,18 @@ export const CONFLICT_CODES = [
 export type ConflictCode = (typeof CONFLICT_CODES)[number]
 
 /**
+ * What the judge is being asked to do (#468 refinement).
+ *
+ * `'replacement'` is the original audit: does the candidate — the whole prompt — still
+ * impose every one of the key's own rules. `'addition'` is the lighter check `locked`
+ * uses once a customization stops being a replacement and becomes a short addition
+ * layered on Balancr's own base (`composeLayeredBody` in `prompts.ts`): the base is
+ * always sent in full, so there is nothing left to audit for *presence*, only for
+ * whether the addition fights the base or the rules that follow it.
+ */
+export type CheckKind = 'replacement' | 'addition'
+
+/**
  * How much of the judge's own prose is kept.
  *
  * Short on purpose: it is read by a person as supporting evidence beside the codes, and it
@@ -695,16 +707,36 @@ export const JUDGE_NOTES_MAX_CHARS = 300
 export const JUDGE_NOTES_WIRE_MAX_CHARS = 4_000
 
 /**
- * The wire schema for one key's rubric, built off that key's own rule ids.
+ * Bounded well above `CONFLICT_CODES.length`, not at it.
+ *
+ * A cap equal to the vocabulary looks tight and is brittle: the array is not a set, so a
+ * model that names one code twice would blow a limit sized for distinct codes — and the
+ * candidates most likely to trip several codes at once are exactly the adversarial ones
+ * this check exists to catch. `decideJudgeVerdict` de-duplicates, so the only job left
+ * here is refusing an absurd payload.
+ */
+const conflictsSchema = z.array(z.enum(CONFLICT_CODES)).max(64)
+
+/** Truncated to `JUDGE_NOTES_MAX_CHARS` on the way out — see that constant for why. */
+const notesSchema = z.string().max(JUDGE_NOTES_WIRE_MAX_CHARS).default('')
+
+/**
+ * The wire schema for one check, built off `checkKind` and — for `'replacement'` —
+ * that key's own rule ids.
  *
  * A function rather than one shared schema, because the vocabulary the judge may answer
- * in has to match the rubric it was actually asked about: a `narrative.system` check
- * handed the analysis ids (or the reverse) would let the model report on constraints it
- * was never told to examine. `RULE_IDS_FOR` is the single source both `judgeJsonSchema`
- * (what the model is handed) and `parseJudgeResponse` (what a reply is checked against)
- * read from, so the two cannot drift apart.
+ * in has to match what it was actually asked about: a `narrative.system` check handed
+ * the analysis ids (or the reverse) would let the model report on constraints it was
+ * never told to examine, and an `'addition'` check has no rules to report on at all —
+ * the base is always sent in full, so there is nothing for a `rules` field to mean.
+ * `RULE_IDS_FOR` is the single source both `judgeJsonSchema` (what the model is handed)
+ * and `parseJudgeResponse` (what a reply is checked against) read from for
+ * `'replacement'`, so the two cannot drift apart.
  */
-function judgeResponseSchemaFor(key: PromptKey) {
+function judgeResponseSchemaFor(key: PromptKey, checkKind: CheckKind) {
+  if (checkKind === 'addition') {
+    return z.object({ conflicts: conflictsSchema, notes: notesSchema })
+  }
   const ids = RULE_IDS_FOR[key]
   return z.object({
     rules: z
@@ -725,24 +757,18 @@ function judgeResponseSchemaFor(key: PromptKey) {
       // model repeating an id must not fail a parse sized for distinct ones.
       // `decideJudgeVerdict` folds duplicates worst-wins.
       .max(ids.length * 4),
-    /**
-     * Bounded well above `CONFLICT_CODES.length`, not at it.
-     *
-     * A cap equal to the vocabulary looks tight and is brittle: the array is not a set, so a
-     * model that names one code twice would blow a limit sized for distinct codes — and the
-     * candidates most likely to trip several codes at once are exactly the adversarial ones
-     * this check exists to catch. `decideJudgeVerdict` de-duplicates, so the only job left
-     * here is refusing an absurd payload.
-     */
-    conflicts: z.array(z.enum(CONFLICT_CODES)).max(64),
-    /** Truncated to `JUDGE_NOTES_MAX_CHARS` on the way out — see that constant for why. */
-    notes: z.string().max(JUDGE_NOTES_WIRE_MAX_CHARS).default(''),
+    conflicts: conflictsSchema,
+    notes: notesSchema,
   })
 }
 
-/** Shape both keys' schemas produce — the `id` field just narrows further per key. */
+/**
+ * Shape either check can produce. `rules` is absent from the wire for an `'addition'`
+ * check (see `judgeResponseSchemaFor`), so `decideJudgeVerdict` treats a missing array
+ * the same as an empty one rather than requiring callers to fake one up.
+ */
 export interface JudgeResponse {
-  rules: { id: RuleId; present: boolean; weakened: boolean }[]
+  rules?: { id: RuleId; present: boolean; weakened: boolean }[]
   conflicts: ConflictCode[]
   notes: string
 }
@@ -776,9 +802,30 @@ export interface JudgeVerdict {
  * fine", makes an empty response the cheapest way to pass.
  *
  * `key` selects which rule set governs — `RULE_IDS_FOR`/`REQUIRED_RULE_IDS_FOR` — not a
- * hard-coded narrative one, so this one function serves both prompts.
+ * hard-coded narrative one, so this one function serves both prompts. `checkKind` selects
+ * which question is even being asked: for `'addition'` there are no rules to fold at
+ * all — the base is always sent in full — so the verdict is conflicts alone, with empty
+ * `missing`/`weakened`/`advisory` (the `JudgeVerdict` shape is already a superset, so
+ * every downstream reader — storage, the settings UI's `RuleList` — needs no change to
+ * handle an addition verdict).
  */
-export function decideJudgeVerdict(key: PromptKey, response: JudgeResponse): JudgeVerdict {
+export function decideJudgeVerdict(
+  key: PromptKey,
+  response: JudgeResponse,
+  checkKind: CheckKind,
+): JudgeVerdict {
+  const conflicts = [...new Set(response.conflicts)]
+  if (checkKind === 'addition') {
+    return {
+      verdict: conflicts.length === 0 ? 'safe' : 'unsafe',
+      missing: [],
+      weakened: [],
+      conflicts,
+      advisory: [],
+      notes: response.notes.replace(/\s+/g, ' ').trim().slice(0, JUDGE_NOTES_MAX_CHARS),
+    }
+  }
+
   // Duplicate reports for one id fold **worst-wins**, not last-wins. The array is capped
   // rather than keyed, so a response may mention one id twice with different answers —
   // and last-wins would make the order of a model's own array decide a safety question,
@@ -786,7 +833,7 @@ export function decideJudgeVerdict(key: PromptKey, response: JudgeResponse): Jud
   // resolves the same direction: an absent id counts as missing, an older rules version
   // retires a verdict, and `inheritableValidation`'s tie prefers `unsafe`.
   const reported = new Map<RuleId, { present: boolean; weakened: boolean }>()
-  for (const rule of response.rules) {
+  for (const rule of response.rules ?? []) {
     const seen = reported.get(rule.id)
     reported.set(
       rule.id,
@@ -820,8 +867,6 @@ export function decideJudgeVerdict(key: PromptKey, response: JudgeResponse): Jud
     return rule === undefined || !rule.present || rule.weakened
   })
 
-  const conflicts = [...new Set(response.conflicts)]
-
   return {
     verdict: missing.length === 0 && conflicts.length === 0 ? 'safe' : 'unsafe',
     missing,
@@ -833,12 +878,12 @@ export function decideJudgeVerdict(key: PromptKey, response: JudgeResponse): Jud
 }
 
 /** Same two-layer contract as `nudgeJsonSchema` — see `analysisJsonSchema`'s own comment. */
-export function judgeJsonSchema(key: PromptKey): unknown {
-  return z.toJSONSchema(judgeResponseSchemaFor(key), { target: 'draft-7' })
+export function judgeJsonSchema(key: PromptKey, checkKind: CheckKind): unknown {
+  return z.toJSONSchema(judgeResponseSchemaFor(key, checkKind), { target: 'draft-7' })
 }
 
 /** Model text → a validated judge response, or an error. Same leniency as `parseNudgeResponse`. */
-export function parseJudgeResponse(key: PromptKey, text: string): JudgeResponse {
+export function parseJudgeResponse(key: PromptKey, checkKind: CheckKind, text: string): JudgeResponse {
   const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 
   let raw: unknown
@@ -851,7 +896,7 @@ export function parseJudgeResponse(key: PromptKey, text: string): JudgeResponse 
     )
   }
 
-  const result = judgeResponseSchemaFor(key).safeParse(raw)
+  const result = judgeResponseSchemaFor(key, checkKind).safeParse(raw)
   if (!result.success) {
     throw new AiResponseError(
       `model response did not match the prompt-judge schema:\n${z.prettifyError(result.error)}`,

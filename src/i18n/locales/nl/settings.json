@@ -390,7 +390,13 @@
   "prompt": {
     "activate": "Activeren",
     "active": "Actief",
+    "base": {
+      "hint": "Wordt altijd eerst en volledig verzonden, ongeacht wat hieronder wordt toegevoegd.",
+      "summary": "Balancr's eigen instructies — altijd eerst verzonden"
+    },
     "body": "Instructies",
+    "bodyLocked": "Extra instructies (optioneel)",
+    "bodyPlaceholder": "Voeg een korte notitie toe over toon of stijl — Balancr's eigen instructies hierboven worden altijd eerst verzonden.",
     "chars": "{{chars}} tekens",
     "check": {
       "aboutSavedVersion": "Dit controleert bewaarde versie {{version}}. Het vak hierboven toont de instructies die nu gelden, en dat is niet dezelfde tekst.",

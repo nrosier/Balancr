@@ -72,8 +72,11 @@ beforeEach(() => {
 //  decideJudgeVerdict — the decision, in TypeScript
 // ---------------------------------------------------------------------------
 
+/** The full-rubric shape `decideJudgeVerdict`/`parseJudgeResponse` take for `'replacement'`. */
+type ReplacementJudgeResponse = JudgeResponse & { rules: NonNullable<JudgeResponse['rules']> }
+
 /** A response reporting every rule present and intact, with no conflicts. */
-const allClear = (over: Partial<JudgeResponse> = {}): JudgeResponse => ({
+const allClear = (over: Partial<ReplacementJudgeResponse> = {}): ReplacementJudgeResponse => ({
   rules: NARRATIVE_RULE_IDS.map((id) => ({ id, present: true, weakened: false })),
   conflicts: [],
   notes: '',
@@ -81,17 +84,17 @@ const allClear = (over: Partial<JudgeResponse> = {}): JudgeResponse => ({
 })
 
 const withRule = (
-  base: JudgeResponse,
+  base: ReplacementJudgeResponse,
   id: NarrativeRuleId,
   patch: { present?: boolean; weakened?: boolean },
-): JudgeResponse => ({
+): ReplacementJudgeResponse => ({
   ...base,
   rules: base.rules.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)),
 })
 
 describe('decideJudgeVerdict (#454)', () => {
   it('is safe when every rule is present and unweakened and nothing conflicts', () => {
-    const verdict = decideJudgeVerdict('narrative.system', allClear())
+    const verdict = decideJudgeVerdict('narrative.system', allClear(), 'replacement')
 
     expect(verdict.verdict).toBe('safe')
     expect(verdict.missing).toEqual([])
@@ -103,8 +106,10 @@ describe('decideJudgeVerdict (#454)', () => {
   it('is unsafe when one required rule is weakened', () => {
     // The attack the two-flag schema exists for: a rule can be quoted faithfully and then
     // rhetorically cancelled, which is `present: true` and worth nothing.
-    const verdict = decideJudgeVerdict('narrative.system', 
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
       withRule(allClear(), 'no_arithmetic', { weakened: true }),
+      'replacement',
     )
 
     expect(verdict.verdict).toBe('unsafe')
@@ -115,7 +120,11 @@ describe('decideJudgeVerdict (#454)', () => {
   })
 
   it('is unsafe when one required rule is reported absent', () => {
-    const verdict = decideJudgeVerdict('narrative.system', withRule(allClear(), 'no_advice', { present: false }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      withRule(allClear(), 'no_advice', { present: false }),
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('unsafe')
     expect(verdict.missing).toEqual(['no_advice'])
@@ -125,17 +134,25 @@ describe('decideJudgeVerdict (#454)', () => {
   it('is unsafe when a required id is absent from the array entirely — silence fails closed', () => {
     // The array is capped, not pinned: a model may answer about three rules, or none. The
     // other reading — "unmentioned means fine" — makes an empty response the cheapest pass.
-    const verdict = decideJudgeVerdict('narrative.system', {
-      ...allClear(),
-      rules: allClear().rules.filter((rule) => rule.id !== 'note_is_context'),
-    })
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      {
+        ...allClear(),
+        rules: allClear().rules.filter((rule) => rule.id !== 'note_is_context'),
+      },
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('unsafe')
     expect(verdict.missing).toEqual(['note_is_context'])
   })
 
   it('refuses an entirely empty answer, naming every required rule', () => {
-    const verdict = decideJudgeVerdict('narrative.system', { rules: [], conflicts: [], notes: '' })
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      { rules: [], conflicts: [], notes: '' },
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('unsafe')
     expect(verdict.missing).toEqual([...REQUIRED_NARRATIVE_RULE_IDS])
@@ -145,7 +162,11 @@ describe('decideJudgeVerdict (#454)', () => {
     // Brevity and tone are editorial: an owner who wants a longer or differently structured
     // review is exercising a preference, not creating a safety problem. Blocking on those
     // would turn the gate into an argument about house style.
-    const verdict = decideJudgeVerdict('narrative.system', withRule(allClear(), 'brevity', { present: false }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      withRule(allClear(), 'brevity', { present: false }),
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('safe')
     expect(verdict.missing).toEqual([])
@@ -153,7 +174,11 @@ describe('decideJudgeVerdict (#454)', () => {
   })
 
   it('reports a weakened editorial rule as advisory too, still without blocking', () => {
-    const verdict = decideJudgeVerdict('narrative.system', withRule(allClear(), 'lead_with_change', { weakened: true }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      withRule(allClear(), 'lead_with_change', { weakened: true }),
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('safe')
     expect(verdict.advisory).toEqual(['lead_with_change'])
@@ -162,7 +187,11 @@ describe('decideJudgeVerdict (#454)', () => {
   it('is unsafe for any conflict code, even with all ten rules intact', () => {
     // A candidate can state every rule faithfully and, in another sentence, claim to
     // override everything above it. There is no legitimate reason for a prompt body to.
-    const verdict = decideJudgeVerdict('narrative.system', allClear({ conflicts: ['overrides_system'] }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      allClear({ conflicts: ['overrides_system'] }),
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('unsafe')
     expect(verdict.missing).toEqual([])
@@ -170,14 +199,22 @@ describe('decideJudgeVerdict (#454)', () => {
   })
 
   it('de-duplicates conflict codes', () => {
-    const verdict = decideJudgeVerdict('narrative.system', allClear({ conflicts: ['exfiltration', 'exfiltration'] }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      allClear({ conflicts: ['exfiltration', 'exfiltration'] }),
+      'replacement',
+    )
     expect(verdict.conflicts).toEqual(['exfiltration'])
   })
 
   it('normalises and bounds the judge’s own prose', () => {
     // It is model output shaped by the text under examination, so it is whitespace-collapsed
     // and capped here rather than trusted to be a sentence.
-    const verdict = decideJudgeVerdict('narrative.system', allClear({ notes: '  looks\n\n  fine  ' }))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      allClear({ notes: '  looks\n\n  fine  ' }),
+      'replacement',
+    )
     expect(verdict.notes).toBe('looks fine')
   })
 
@@ -185,7 +222,7 @@ describe('decideJudgeVerdict (#454)', () => {
     // The array is capped rather than keyed, so a model may answer about one id twice with
     // different answers. Last-wins would let the order of a model's own array decide a safety
     // question — the one fail-*open* this function could contain. Both orderings must refuse.
-    const absentThenPresent: JudgeResponse = {
+    const absentThenPresent: ReplacementJudgeResponse = {
       ...allClear(),
       rules: [
         { id: 'no_arithmetic', present: false, weakened: false },
@@ -193,17 +230,19 @@ describe('decideJudgeVerdict (#454)', () => {
         ...allClear().rules.filter((rule) => rule.id !== 'no_arithmetic'),
       ],
     }
-    expect(decideJudgeVerdict('narrative.system', absentThenPresent).verdict).toBe('unsafe')
-    expect(decideJudgeVerdict('narrative.system', absentThenPresent).missing).toEqual(['no_arithmetic'])
+    expect(decideJudgeVerdict('narrative.system', absentThenPresent, 'replacement').verdict).toBe('unsafe')
+    expect(decideJudgeVerdict('narrative.system', absentThenPresent, 'replacement').missing).toEqual([
+      'no_arithmetic',
+    ])
 
-    const reversed: JudgeResponse = {
+    const reversed: ReplacementJudgeResponse = {
       ...absentThenPresent,
       rules: [...absentThenPresent.rules].reverse(),
     }
-    expect(decideJudgeVerdict('narrative.system', reversed).verdict).toBe('unsafe')
+    expect(decideJudgeVerdict('narrative.system', reversed, 'replacement').verdict).toBe('unsafe')
 
     // Same for a `weakened` flag raised in only one of the two reports.
-    const weakenedOnce: JudgeResponse = {
+    const weakenedOnce: ReplacementJudgeResponse = {
       ...allClear(),
       rules: [
         { id: 'no_advice', present: true, weakened: true },
@@ -211,8 +250,10 @@ describe('decideJudgeVerdict (#454)', () => {
         ...allClear().rules.filter((rule) => rule.id !== 'no_advice'),
       ],
     }
-    expect(decideJudgeVerdict('narrative.system', weakenedOnce).verdict).toBe('unsafe')
-    expect(decideJudgeVerdict('narrative.system', weakenedOnce).weakened).toEqual(['no_advice'])
+    expect(decideJudgeVerdict('narrative.system', weakenedOnce, 'replacement').verdict).toBe('unsafe')
+    expect(decideJudgeVerdict('narrative.system', weakenedOnce, 'replacement').weakened).toEqual([
+      'no_advice',
+    ])
   })
 })
 
@@ -222,12 +263,16 @@ describe('parseJudgeResponse (#454)', () => {
     // sentence too many into `bad_response` — money spent, no verdict stored — and at
     // `temperature: 0` that is deterministic, so the body becomes permanently uncheckable and
     // therefore permanently unactivatable. A cosmetic overrun must never cost a verdict.
-    const response = parseJudgeResponse('narrative.system', 
+    const response = parseJudgeResponse(
+      'narrative.system',
+      'replacement',
       JSON.stringify(allClear({ notes: 'x'.repeat(JUDGE_NOTES_MAX_CHARS + 500) })),
     )
     // Truncated where it is displayed, not rejected where it arrives.
-    expect(decideJudgeVerdict('narrative.system', response).notes).toHaveLength(JUDGE_NOTES_MAX_CHARS)
-    expect(decideJudgeVerdict('narrative.system', response).verdict).toBe('safe')
+    expect(decideJudgeVerdict('narrative.system', response, 'replacement').notes).toHaveLength(
+      JUDGE_NOTES_MAX_CHARS,
+    )
+    expect(decideJudgeVerdict('narrative.system', response, 'replacement').verdict).toBe('safe')
   })
 
   it('accepts a repeated conflict code rather than failing on a set-sized cap', () => {
@@ -235,7 +280,11 @@ describe('parseJudgeResponse (#454)', () => {
     // set, and the candidates most likely to trip several codes are the adversarial ones this
     // check exists to catch.
     const many = Array.from({ length: 20 }, () => 'overrides_system' as const)
-    const verdict = decideJudgeVerdict('narrative.system', parseJudgeResponse('narrative.system', JSON.stringify(allClear({ conflicts: many }))))
+    const verdict = decideJudgeVerdict(
+      'narrative.system',
+      parseJudgeResponse('narrative.system', 'replacement', JSON.stringify(allClear({ conflicts: many }))),
+      'replacement',
+    )
 
     expect(verdict.verdict).toBe('unsafe')
     // De-duplicated on the way out.
@@ -245,12 +294,18 @@ describe('parseJudgeResponse (#454)', () => {
   it('still refuses an unknown rule id and an unknown conflict code', () => {
     // The closed vocabulary is the layer the relaxed bounds above must not weaken.
     expect(() =>
-      parseJudgeResponse('narrative.system', 
+      parseJudgeResponse(
+        'narrative.system',
+        'replacement',
         JSON.stringify({ rules: [{ id: 'be_nice', present: true, weakened: false }], conflicts: [] }),
       ),
     ).toThrow()
     expect(() =>
-      parseJudgeResponse('narrative.system', JSON.stringify({ rules: [], conflicts: ['be_mean'] })),
+      parseJudgeResponse(
+        'narrative.system',
+        'replacement',
+        JSON.stringify({ rules: [], conflicts: ['be_mean'] }),
+      ),
     ).toThrow()
   })
 })
@@ -307,10 +362,12 @@ function fakeGemini(reply: string | Error): Recorded {
   return recorded
 }
 
-const SAFE_REPLY = JSON.stringify(allClear())
-const UNSAFE_REPLY = JSON.stringify(
-  withRule(allClear(), 'no_arithmetic', { present: false }),
-)
+// `validatePrompt` is exercised below under the default `locked` mode, where a gated key's
+// check is an addition-only conflict check (#468's refinement) rather than the full-rubric
+// audit the `decideJudgeVerdict`/`parseJudgeResponse` tests above exercise directly — so
+// these replies are shaped for that schema (`conflicts` + `notes`, no `rules`).
+const SAFE_REPLY = JSON.stringify({ conflicts: [], notes: '' })
+const UNSAFE_REPLY = JSON.stringify({ conflicts: ['overrides_system'], notes: '' })
 
 /** An edited narrative version, saved but not activated — the state a check runs against. */
 const saveNarrative = (body: string, locale = SHARED_LOCALE) =>
@@ -612,9 +669,10 @@ describe('validatePrompt — how the call is made', () => {
     const systemPrompt = fake.systemPrompts[0] ?? ''
     expect(systemPrompt).not.toContain('Write all free text in')
     expect(systemPrompt).not.toContain('Dutch (Nederlands)')
-    // It is the code-owned rubric, recognisable by the rule ids it names.
-    expect(systemPrompt).toContain('no_arithmetic')
-    expect(systemPrompt).toContain('excluded_is_choice')
+    // It is the code-owned, conflict-only rubric under `locked` (#468's refinement),
+    // recognisable by the conflict codes it names.
+    expect(systemPrompt).toContain('overrides_system')
+    expect(systemPrompt).toContain('claims_authority')
   })
 
   it('asks the fast model at temperature 0', async () => {
@@ -686,10 +744,10 @@ describe('validatePrompt — how the call is made', () => {
     const outcome = await validatePrompt(db, tenantId, { promptId: row.id })
 
     expect(outcome.status).toBe('unsafe')
-    expect(outcome.verdict?.missing).toEqual(['no_arithmetic'])
+    expect(outcome.verdict?.conflicts).toEqual(['overrides_system'])
     expect(JSON.parse(rowOf(row.id).validationJson ?? 'null')).toMatchObject({
       verdict: 'unsafe',
-      missing: ['no_arithmetic'],
+      conflicts: ['overrides_system'],
     })
   })
 })
@@ -734,11 +792,12 @@ describe('validatePrompt — when it goes wrong', () => {
     expect(runs[0]?.costMicroEur).toBeGreaterThan(0)
   })
 
-  it('refuses a schema-valid answer carrying an invented rule id', async () => {
-    // The closed vocabulary is the first of the two layers: an id nothing recognises is a
-    // parse failure rather than a rule silently treated as satisfied.
-    fakeGemini(JSON.stringify({ rules: [{ id: 'be_nice', present: true, weakened: false }], conflicts: [], notes: '' }))
-    const row = saveNarrative('A candidate graded against a made-up rule.')
+  it('refuses a schema-valid answer carrying an invented conflict code', async () => {
+    // The closed vocabulary is the first of the two layers under the addition-only check
+    // (#468's refinement): a code nothing recognises is a parse failure rather than a
+    // conflict silently treated as absent.
+    fakeGemini(JSON.stringify({ conflicts: ['be_mean'], notes: '' }))
+    const row = saveNarrative('A candidate graded against a made-up conflict code.')
 
     const outcome = await validatePrompt(db, tenantId, { promptId: row.id })
 

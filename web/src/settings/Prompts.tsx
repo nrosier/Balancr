@@ -142,10 +142,22 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const entry = prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
   const selection = selectionOf(key, locale)
 
+  // Under `locked`, an unedited row's `active.body` is `resolvePrompt`'s built-in
+  // fallback — byte-identical to `entry.base` — so it is nothing a household wrote, not
+  // an addition to show. Pre-filling the box with it anyway would invite the exact bug
+  // this guards against: typing a note at the end and saving would store base+note,
+  // which `composeLayeredBody` then sends as the base, then that same base again inside
+  // the "addition". Empty means "no addition" here, never "the base, editable".
+  const uncustomizedUnderLocked =
+    settings.promptEditing === 'locked' &&
+    entry !== undefined &&
+    entry.active.body.trim() === entry.base.trim()
+
   // Derived rather than reseeded by an effect: when the selection changes the draft no
   // longer belongs to it, so the active body shows through without anything having to
   // notice the change and copy it across.
-  const body = draft?.for === selection ? draft.body : (entry?.active.body ?? '')
+  const body =
+    draft?.for === selection ? draft.body : uncustomizedUnderLocked ? '' : (entry?.active.body ?? '')
   const note = draft?.for === selection ? draft.note : ''
   const stamp = `${selection}\n${body}`
 
@@ -276,15 +288,20 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
 
       <Fallback entry={entry} locale={locale} />
 
+      {settings.promptEditing !== 'locked' ? null : <BaseBlock base={entry.base} />}
+
       <div className="field">
         <label className="field__label" htmlFor="prompt-body">
-          {t('settings:prompt.body')}
+          {t(settings.promptEditing === 'locked' ? 'settings:prompt.bodyLocked' : 'settings:prompt.body')}
         </label>
         <textarea
           id="prompt-body"
           className="field__input prompt__body"
           rows={14}
           spellCheck={false}
+          placeholder={
+            settings.promptEditing === 'locked' ? t('settings:prompt.bodyPlaceholder') : undefined
+          }
           value={body}
           disabled={!owner || state.busy}
           onChange={(event) => edit({ body: event.target.value })}
@@ -458,6 +475,27 @@ function Fallback({
     <div className="notice notice--info" role="status">
       <p className="notice__lead">{t('settings:prompt.override.off')}</p>
     </div>
+  )
+}
+
+/**
+ * Balancr's own instructions, read-only and collapsed by default.
+ *
+ * Shown only under `locked`, where the textarea below no longer holds the whole prompt —
+ * this is the part that always runs before it, so what is actually sent is this text plus
+ * whatever is typed below, not the box alone. Collapsed by default because most edits here
+ * are a tone note that has nothing to do with the base; `<details>` needs no state of its
+ * own to remember whether it was opened.
+ */
+function BaseBlock({ base }: { base: string }): ReactNode {
+  const { t } = useT()
+
+  return (
+    <details className="prompt__builtin">
+      <summary>{t('settings:prompt.base.summary')}</summary>
+      <p className="muted">{t('settings:prompt.base.hint')}</p>
+      <pre className="prompt__builtin-body">{base}</pre>
+    </details>
   )
 }
 
