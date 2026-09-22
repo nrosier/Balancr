@@ -6,6 +6,25 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.2] — 2026-09-22
+
+### Fixed
+
+- **The prompt editor can now delete a stored version, and "Check" always
+  judges the text actually in the box**
+  ([#475](https://github.com/nrosier/Balancr/pull/475)). Every edit is a new
+  row, but there was no way to remove one — only "Activate" (roll back)
+  existed. Deleting is now allowed, including the active version:
+  `resolvePrompt`'s built-in fallback already makes "no active row" a safe,
+  visible state, so refusing would have just been a second guard on top of
+  one that already works. Separately, the safety check used to target
+  whichever stored row the box happened to resolve to rather than the box's
+  own text, so an edit could silently return a stale cached verdict from an
+  older version; the box now tracks the version it was last loaded from, and
+  edited text is saved as a new version before it's checked. Copy no longer
+  talks about "checking version 1" — the button just reads "Check" or "Save
+  & check".
+
 ## [2.3.1] — 2026-09-22
 
 ### Added
