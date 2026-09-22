@@ -44,6 +44,7 @@ import type { DriftState } from '../advice/drift.ts'
 import type { DriftPersistence } from '../advice/persistence.ts'
 import type { PortfolioMetricsResult } from '../portfolio/metrics.ts'
 import type { Severity } from './codes.ts'
+import { formatBpAsPercent, formatBpAsPercentOrNull, formatCentsAsCurrency } from './format.ts'
 
 export type CategoryMetaRow = typeof categoryMeta.$inferSelect
 
@@ -73,6 +74,13 @@ export interface AnalysisBundle {
   /** Output language for the model, as an ISO code. */
   locale: string
   currency: string
+  /**
+   * `config.FORMAT_LOCALE`, for rendering `currency`/`Bp` fields — never `locale`.
+   * Punctuation must match the household's own bank and broker statements
+   * regardless of which language the model writes in; see `i18n/format.ts`'s
+   * header comment for why the two are kept apart everywhere else in the codebase.
+   */
+  formatLocale: string
   /** One entry per category in the month, with whatever is known about it. */
   categories: readonly BundleCategory[]
   totals: MonthTotals
@@ -171,9 +179,9 @@ export interface RedactedCategory {
   /** Whether the cost is shared with the co-parent, which halves what it means. */
   custodyShared?: boolean
   income: boolean
-  spentCents: number
-  budgetedCents: number
-  availableCents: number
+  spentCents: string
+  budgetedCents: string
+  availableCents: string
   txnCount: number
   /**
    * Still scheduled to leave this envelope before month end (#159). Omitted when
@@ -185,9 +193,9 @@ export interface RedactedCategory {
    * decide about. Sent because the model is asked to explain an envelope, and
    * "€38 left" reads very differently once "€50 still due" is beside it.
    */
-  committedCents?: number
-  baselineCents?: number
-  deltaBp?: number
+  committedCents?: string
+  baselineCents?: string
+  deltaBp?: string
   /** Months of history behind `baselineCents`, so thin evidence is visible. */
   baselineMonths?: number
 }
@@ -203,23 +211,23 @@ export interface RedactedAccount {
 export interface RedactedAllocation {
   /** Ghostfolio's asset-class label — a class, never an instrument. */
   assetClass: string
-  valueCents: number
-  shareBp: number
+  valueCents: string
+  shareBp: string
 }
 
 export interface RedactedPortfolio {
   date: string
-  totalValueCents: number
+  totalValueCents: string
   /**
    * The two halves of the total. Sent because `twrBp` is a return over the whole of
    * it, cash included, and a model told only the total would read that return as the
    * performance of an invested portfolio. `allocation` is over the invested half, so
    * without these two the shares would not reconcile against the total either.
    */
-  investedValueCents: number
-  cashValueCents: number
+  investedValueCents: string
+  cashValueCents: string
   /** Ghostfolio's own figure, copied. Null when it did not report one. */
-  twrBp: number | null
+  twrBp: string | null
   holdingCount: number
   allocation: RedactedAllocation[]
 }
@@ -227,15 +235,15 @@ export interface RedactedPortfolio {
 export interface RedactedDriftLine {
   /** One of four fixed ids. Never a fund, never a position. */
   assetClass: string
-  shareBp: number
-  minBp: number
-  targetBp: number
-  maxBp: number
+  shareBp: string
+  minBp: string
+  targetBp: string
+  maxBp: string
   state: DriftState
   /** Distance past the edge it is outside, zero when inside. */
-  outsideBp: number
+  outsideBp: string
   /** Signed as `drift.ts` defines it: positive means short of target. */
-  gapCents: number
+  gapCents: string
   /** Consecutive month ends on this side of the band, ending now. 0 when inside. */
   monthsOutside: number
 }
@@ -254,8 +262,8 @@ export interface RedactedDrift {
   /** One of four fixed profile ids, `custom` included. Not a name anybody typed. */
   profile: string
   isPreset: boolean
-  toleranceBp: number
-  minTradeCents: number
+  toleranceBp: string
+  minTradeCents: string
   /**
    * Usable month-end observations behind `monthsOutside`, so the model can tell "one
    * month outside" from "one month of history". Without it a fresh install reads as
@@ -266,7 +274,7 @@ export interface RedactedDrift {
   suggestionCount: number
   skippedCount: number
   unmappedCount: number
-  unmappedShareBp: number
+  unmappedShareBp: string
 }
 
 export interface RedactedSignal {
@@ -288,10 +296,10 @@ export interface RedactedSignal {
 
 export interface RedactedMonthTotals {
   month: string
-  incomeCents: number
-  spentCents: number
-  budgetedCents: number
-  savingsRateBp: number | null
+  incomeCents: string
+  spentCents: string
+  budgetedCents: string
+  savingsRateBp: string | null
 }
 
 /**
@@ -310,18 +318,26 @@ export interface RedactedMonthTotals {
 export interface RedactedExcluded {
   /** How many envelopes were left out. */
   count: number
-  spentCents: number
-  budgetedCents: number
+  spentCents: string
+  budgetedCents: string
   /** Income envelopes can be excluded too, and `totals.incomeCents` still holds them. */
-  incomeCents: number
+  incomeCents: string
 }
 
 export interface RedactedNetWorth {
   date: string
-  totalCents: number
-  liquidCents: number
-  investedCents: number
-  debtCents: number
+  totalCents: string
+  liquidCents: string
+  investedCents: string
+  debtCents: string
+}
+
+/** `RedactedPayload.hygiene`'s own shape — see `BundleHygiene` for the pre-redaction one. */
+export interface RedactedHygiene {
+  scoreBp: string
+  uncategorisedCount: number
+  uncategorisedCents: string
+  mismatchCount: number
 }
 
 /** Exactly what is sent. Stored verbatim in `ai_runs.payload_json`. */
@@ -332,7 +348,7 @@ export interface RedactedPayload {
   totals: RedactedMonthTotals
   history: RedactedMonthTotals[]
   netWorth: RedactedNetWorth | null
-  hygiene: BundleHygiene
+  hygiene: RedactedHygiene
   categories: RedactedCategory[]
   /**
    * Null when nothing is excluded, rather than a zeroed block (#278).
@@ -404,42 +420,54 @@ function categoryName(name: string): string {
     : `${clean.slice(0, CATEGORY_NAME_MAX_CHARS)}…`
 }
 
-function toTotals(totals: MonthTotals): RedactedMonthTotals {
+function toTotals(totals: MonthTotals, currency: string, formatLocale: string): RedactedMonthTotals {
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
   return {
     month: totals.month,
-    incomeCents: totals.incomeCents,
-    spentCents: totals.spentCents,
-    budgetedCents: totals.budgetedCents,
-    savingsRateBp: totals.savingsRateBp,
+    incomeCents: money(totals.incomeCents),
+    spentCents: money(totals.spentCents),
+    budgetedCents: money(totals.budgetedCents),
+    savingsRateBp: formatBpAsPercentOrNull(totals.savingsRateBp, formatLocale),
   }
 }
 
-function toNetWorth(netWorth: NetWorthSummary): RedactedNetWorth {
+function toNetWorth(
+  netWorth: NetWorthSummary,
+  currency: string,
+  formatLocale: string,
+): RedactedNetWorth {
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
   // `contributions` and `excluded` are deliberately dropped: both are per-account
   // and would reintroduce the account dimension the labels exist to remove.
   return {
     date: netWorth.date,
-    totalCents: netWorth.totalCents,
-    liquidCents: netWorth.liquidCents,
-    investedCents: netWorth.investedCents,
-    debtCents: netWorth.debtCents,
+    totalCents: money(netWorth.totalCents),
+    liquidCents: money(netWorth.liquidCents),
+    investedCents: money(netWorth.investedCents),
+    debtCents: money(netWorth.debtCents),
   }
 }
 
-function toCategory(entry: BundleCategory, label: string): RedactedCategory {
+function toCategory(
+  entry: BundleCategory,
+  label: string,
+  currency: string,
+  formatLocale: string,
+): RedactedCategory {
   const { fact, meta } = entry
   const sensitive = meta?.sensitive === true
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
 
   const out: RedactedCategory = {
     label,
     income: fact.isIncome,
-    spentCents: fact.spentCents,
-    budgetedCents: fact.budgetedCents,
-    availableCents: fact.availableCents,
+    spentCents: money(fact.spentCents),
+    budgetedCents: money(fact.budgetedCents),
+    availableCents: money(fact.availableCents),
     txnCount: fact.txnCount,
   }
 
-  if (fact.committedCents > 0) out.committedCents = fact.committedCents
+  if (fact.committedCents > 0) out.committedCents = money(fact.committedCents)
 
   // The whole point of the flag: a sensitive category keeps its amounts and its
   // shape, and loses everything that says what it is.
@@ -459,8 +487,10 @@ function toCategory(entry: BundleCategory, label: string): RedactedCategory {
   }
 
   if (fact.baseline !== null) {
-    out.baselineCents = fact.baseline.baselineCents
-    if (fact.baseline.deltaBp !== null) out.deltaBp = fact.baseline.deltaBp
+    out.baselineCents = money(fact.baseline.baselineCents)
+    if (fact.baseline.deltaBp !== null) {
+      out.deltaBp = formatBpAsPercent(fact.baseline.deltaBp, formatLocale)
+    }
     out.baselineMonths = fact.baseline.monthsUsed
   }
 
@@ -476,51 +506,59 @@ function toAccount(row: AccountMapRow, label: string): RedactedAccount {
   }
 }
 
-function toPortfolio(portfolio: BundlePortfolio): RedactedPortfolio {
+function toPortfolio(
+  portfolio: BundlePortfolio,
+  currency: string,
+  formatLocale: string,
+): RedactedPortfolio {
   const { metrics } = portfolio
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
+  const pct = (bp: number) => formatBpAsPercent(bp, formatLocale)
   return {
     date: metrics.date,
-    totalValueCents: metrics.totalValueCents,
-    investedValueCents: metrics.investedValueCents,
-    cashValueCents: metrics.cashValueCents,
-    twrBp: metrics.twrBp,
+    totalValueCents: money(metrics.totalValueCents),
+    investedValueCents: money(metrics.investedValueCents),
+    cashValueCents: money(metrics.cashValueCents),
+    twrBp: formatBpAsPercentOrNull(metrics.twrBp, formatLocale),
     // A count, not a list — and one the bundle already reduced to a number, so
     // there is no instrument here to omit. Asset-class shares carry everything
     // useful that can be said about the shape of a portfolio.
     holdingCount: portfolio.holdingCount,
     allocation: metrics.allocation.map((slice) => ({
       assetClass: slice.key,
-      valueCents: slice.valueCents,
-      shareBp: slice.shareBp,
+      valueCents: money(slice.valueCents),
+      shareBp: pct(slice.shareBp),
     })),
   }
 }
 
-function toDrift(drift: BundleDrift): RedactedDrift {
+function toDrift(drift: BundleDrift, currency: string, formatLocale: string): RedactedDrift {
   const { persistence } = drift
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
+  const pct = (bp: number) => formatBpAsPercent(bp, formatLocale)
   return {
     profile: persistence.profile,
     isPreset: persistence.isPreset,
-    toleranceBp: drift.toleranceBp,
-    minTradeCents: drift.minTradeCents,
+    toleranceBp: pct(drift.toleranceBp),
+    minTradeCents: money(drift.minTradeCents),
     monthsObserved: persistence.monthsObserved,
     // Copied field by field rather than spread, so a field added to `PersistentLine`
     // for the portfolio page does not silently become a field in the payload.
     lines: persistence.lines.map((line) => ({
       assetClass: line.assetClass,
-      shareBp: line.shareBp,
-      minBp: line.minBp,
-      targetBp: line.targetBp,
-      maxBp: line.maxBp,
+      shareBp: pct(line.shareBp),
+      minBp: pct(line.minBp),
+      targetBp: pct(line.targetBp),
+      maxBp: pct(line.maxBp),
       state: line.state,
-      outsideBp: line.outsideBp,
-      gapCents: line.gapCents,
+      outsideBp: pct(line.outsideBp),
+      gapCents: money(line.gapCents),
       monthsOutside: line.monthsOutside,
     })),
     suggestionCount: drift.suggestionCount,
     skippedCount: drift.skippedCount,
     unmappedCount: drift.unmappedCount,
-    unmappedShareBp: drift.unmappedShareBp,
+    unmappedShareBp: pct(drift.unmappedShareBp),
   }
 }
 
@@ -558,7 +596,11 @@ function toSignal(signal: Signal, labelFor: ReadonlyMap<string, string>): Redact
  * Income is summed separately from spending because `totals` reports the two
  * separately, and one combined figure would reconcile against neither.
  */
-function toExcluded(entries: readonly BundleCategory[]): RedactedExcluded | null {
+function toExcluded(
+  entries: readonly BundleCategory[],
+  currency: string,
+  formatLocale: string,
+): RedactedExcluded | null {
   if (entries.length === 0) return null
   let spentCents = 0
   let budgetedCents = 0
@@ -568,7 +610,22 @@ function toExcluded(entries: readonly BundleCategory[]): RedactedExcluded | null
     else spentCents += entry.fact.spentCents
     budgetedCents += entry.fact.budgetedCents
   }
-  return { count: entries.length, spentCents, budgetedCents, incomeCents }
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
+  return {
+    count: entries.length,
+    spentCents: money(spentCents),
+    budgetedCents: money(budgetedCents),
+    incomeCents: money(incomeCents),
+  }
+}
+
+function toHygiene(hygiene: BundleHygiene, currency: string, formatLocale: string): RedactedHygiene {
+  return {
+    scoreBp: formatBpAsPercent(hygiene.scoreBp, formatLocale),
+    uncategorisedCount: hygiene.uncategorisedCount,
+    uncategorisedCents: formatCentsAsCurrency(hygiene.uncategorisedCents, currency, formatLocale),
+    mismatchCount: hygiene.mismatchCount,
+  }
 }
 
 /**
@@ -584,6 +641,7 @@ function toExcluded(entries: readonly BundleCategory[]): RedactedExcluded | null
  * and how many. Its signals go with it — see below.
  */
 export function redact(bundle: AnalysisBundle): Redaction {
+  const { currency, formatLocale } = bundle
   const labelFor = new Map<string, string>()
   const categoryIdFor = new Map<string, string>()
 
@@ -611,7 +669,7 @@ export function redact(bundle: AnalysisBundle): Redaction {
     const label = `c${index + 1}`
     labelFor.set(entry.fact.categoryId, label)
     categoryIdFor.set(label, entry.fact.categoryId)
-    return toCategory(entry, label)
+    return toCategory(entry, label, currency, formatLocale)
   })
 
   // Accounts are keyed by their source id, which is what a hygiene signal about
@@ -630,20 +688,17 @@ export function redact(bundle: AnalysisBundle): Redaction {
       month: bundle.month,
       locale: bundle.locale,
       currency: bundle.currency,
-      totals: toTotals(bundle.totals),
-      history: bundle.totalsHistory.map(toTotals),
-      netWorth: bundle.netWorth === null ? null : toNetWorth(bundle.netWorth),
-      hygiene: {
-        scoreBp: bundle.hygiene.scoreBp,
-        uncategorisedCount: bundle.hygiene.uncategorisedCount,
-        uncategorisedCents: bundle.hygiene.uncategorisedCents,
-        mismatchCount: bundle.hygiene.mismatchCount,
-      },
+      totals: toTotals(bundle.totals, currency, formatLocale),
+      history: bundle.totalsHistory.map((totals) => toTotals(totals, currency, formatLocale)),
+      netWorth:
+        bundle.netWorth === null ? null : toNetWorth(bundle.netWorth, currency, formatLocale),
+      hygiene: toHygiene(bundle.hygiene, currency, formatLocale),
       categories: redactedCategories,
-      excluded: toExcluded(excludedEntries),
+      excluded: toExcluded(excludedEntries, currency, formatLocale),
       accounts: redactedAccounts,
-      portfolio: bundle.portfolio === null ? null : toPortfolio(bundle.portfolio),
-      drift: bundle.drift === null ? null : toDrift(bundle.drift),
+      portfolio:
+        bundle.portfolio === null ? null : toPortfolio(bundle.portfolio, currency, formatLocale),
+      drift: bundle.drift === null ? null : toDrift(bundle.drift, currency, formatLocale),
       // A signal about an excluded envelope is dropped rather than sent unlabelled.
       // `toSignal` reads a missing label as household level, which is what null has
       // always meant there — so forwarding one would report a category's overspend as

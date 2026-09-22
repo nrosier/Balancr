@@ -142,6 +142,7 @@ export function collectBundle(
     month,
     locale,
     currency: config.BASE_CURRENCY,
+    formatLocale: config.FORMAT_LOCALE,
     categories,
     totals,
     // The month itself is `totals`; repeating it in the history would have the

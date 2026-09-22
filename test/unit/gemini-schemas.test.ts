@@ -30,6 +30,10 @@ import {
   toGeminiSchema,
 } from '../../src/adapters/gemini/json-schema.ts'
 import type { RedactedNudgeBatch, RedactedPayload, RedactedSignal } from '../../src/domain/ai/redact.ts'
+import { formatBpAsPercent, formatCentsAsCurrency } from '../../src/domain/ai/format.ts'
+
+const money = (cents: number) => formatCentsAsCurrency(cents, 'EUR', 'nl-BE')
+const pct = (bp: number) => formatBpAsPercent(bp, 'nl-BE')
 
 function signal(
   code: RedactedSignal['code'],
@@ -46,17 +50,17 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
     currency: 'EUR',
     totals: {
       month: '2026-03',
-      incomeCents: 380_000,
-      spentCents: 310_000,
-      budgetedCents: 320_000,
-      savingsRateBp: 1_842,
+      incomeCents: money(380_000),
+      spentCents: money(310_000),
+      budgetedCents: money(320_000),
+      savingsRateBp: pct(1_842),
     },
     history: [],
     netWorth: null,
     hygiene: {
-      scoreBp: 10_000,
+      scoreBp: pct(10_000),
       uncategorisedCount: 0,
-      uncategorisedCents: 0,
+      uncategorisedCents: money(0),
       mismatchCount: 0,
     },
     categories: [
@@ -64,18 +68,18 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
         label: 'c1',
         name: 'Groceries',
         income: false,
-        spentCents: 42_000,
-        budgetedCents: 38_000,
-        availableCents: -4_000,
+        spentCents: money(42_000),
+        budgetedCents: money(38_000),
+        availableCents: money(-4_000),
         txnCount: 31,
       },
       {
         label: 'c2',
         name: 'Transport',
         income: false,
-        spentCents: 9_000,
-        budgetedCents: 12_000,
-        availableCents: 3_000,
+        spentCents: money(9_000),
+        budgetedCents: money(12_000),
+        availableCents: money(3_000),
         txnCount: 4,
       },
     ],
