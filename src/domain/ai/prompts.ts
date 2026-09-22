@@ -922,10 +922,14 @@ export function activatePrompt(db: PromptDb, tenantId: string, id: string): Prom
 /**
  * Stops using a language's override, so the shared text applies again.
  *
- * Deactivation rather than deletion, because no gesture in this module destroys text
- * that produced an output: the override's versions stay readable, and reactivating one
- * is the ordinary rollback. `resolvePrompt` then falls through to `SHARED_LOCALE`,
- * which is what a language with no override of its own has always meant.
+ * Deactivation rather than deletion, because most of the time no gesture in this module
+ * needs to destroy text that produced an output: the override's versions stay readable,
+ * and reactivating one is the ordinary rollback. `resolvePrompt` then falls through to
+ * `SHARED_LOCALE`, which is what a language with no override of its own has always meant.
+ * `deletePromptVersion` is the one deliberate exception — a household that wants a row
+ * gone rather than merely switched off can ask for that explicitly; this stays the fast,
+ * reversible "not right now" gesture for an override, distinct from that "this was wrong"
+ * one.
  *
  * Refuses on the shared row itself. Deactivating it would leave every language on the
  * built-in constant with nothing in the UI saying so, and the gesture wanted there is
@@ -952,6 +956,26 @@ export function deactivateOverride(
       ),
     )
     .run().changes
+}
+
+/**
+ * Removes one stored version, active or not.
+ *
+ * Unconditional, like `deleteLoan`/`deleteDebt`: no check against `active`, because the
+ * built-in fallback (`resolvePrompt`'s third step, surfaced by `Fallback` in the settings
+ * UI) already makes "no active row" a correct, visible state rather than a silent one.
+ * `ai_runs.promptId` is `onDelete: 'set null'`, so a run that was judged under this text
+ * keeps its own record of the verdict; only the link back to the row it came from clears.
+ *
+ * True when a version of this tenant's was deleted, false when there was none to delete.
+ */
+export function deletePromptVersion(db: PromptDb, tenantId: string, id: string): boolean {
+  const deleted = db
+    .delete(prompts)
+    .where(and(eq(prompts.id, id), eq(prompts.tenantId, tenantId)))
+    .returning()
+    .all()
+  return deleted.length > 0
 }
 
 /**

@@ -36,14 +36,14 @@
  * deployment whose jobs have never run there is no month to price — a 409, not an error
  * worth a red box — and the Test button says so instead of failing when pressed.
  *
- * **The safety check is about a row, not about the box** (#454). `POST /api/ai/prompt-validate`
- * writes a verdict onto one stored version, so there is nothing a draft could be checked
- * against — and the gap between "the text I checked" and "the text that runs" is exactly what
- * the gate exists to close. The order is therefore save, check, activate: the check targets the
- * newest *saved* version that still needs a verdict (see `target`), not the active one, because
- * a gated body with no verdict cannot be active in the first place. Every control and every
- * result names the version it is about, since the textarea may well be showing something else.
- * Offered for gated keys only.
+ * **The safety check is about the box, not a row** (#454). `POST /api/ai/prompt-validate` writes
+ * a verdict onto one stored version, so checking has to know which version the box's current
+ * text matches — its *anchor*, set whenever the box is loaded, opened, or saved, and left
+ * untouched by typing (see `Draft.anchorId`/`anchorBody`). Unmodified text checks the anchored
+ * row directly, the ordinary cache-reuse path; modified text has nothing stored to check yet, so
+ * the button saves the box as a new version first and validates that one, then re-anchors to it.
+ * Nothing here names a version number — the person editing never asked to manage one, only to
+ * check whatever is in front of them. Offered for gated keys only.
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import { useT, type TFunction } from '../i18n.ts'
@@ -63,6 +63,7 @@ import {
   type PromptSetting,
   type PromptValidation,
   type PromptVersionSetting,
+  type Settings,
 } from '../shared.ts'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
@@ -87,11 +88,22 @@ const TESTABLE_KEY = 'analysis.system'
 const isGatedKey = (promptEditing: string, key: string): boolean =>
   key === 'narrative.system' || (key === 'analysis.system' && promptEditing === 'locked')
 
-/** What the editor holds, and which `(key, locale)` it was opened for. */
+/**
+ * What the editor holds, and which `(key, locale)` it was opened for.
+ *
+ * `anchorId`/`anchorBody` record which stored row (if any) `body` last matched — set whenever
+ * the box is (re)seeded from a known row (initial load, opening a version, or just having saved
+ * one), left untouched by free-typing. It is "what the box last matched", not "what is in the
+ * box now" — that comparison is `draftDiverged`, computed from these two fields rather than
+ * always against the active row, which is what let a check silently reuse a stale verdict once
+ * the box had moved on from whatever row it was really about.
+ */
 interface Draft {
   for: string
   body: string
   note: string
+  anchorId: string | null
+  anchorBody: string
 }
 
 const selectionOf = (key: string, locale: string): string => `${key}:${locale}`
@@ -159,10 +171,19 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const body =
     draft?.for === selection ? draft.body : uncustomizedUnderLocked ? '' : (entry?.active.body ?? '')
   const note = draft?.for === selection ? draft.note : ''
+  // Same fallback shape as `body`'s own: on a fresh load, before anything has been typed, the
+  // anchor is exactly what the box already shows, so `draftDiverged` starts false.
+  const anchorId = draft?.for === selection ? draft.anchorId : (entry?.active.id ?? null)
+  const anchorBody =
+    draft?.for === selection
+      ? draft.anchorBody
+      : uncustomizedUnderLocked
+        ? ''
+        : (entry?.active.body ?? '')
   const stamp = `${selection}\n${body}`
 
-  const edit = (next: Partial<Omit<Draft, 'for'>>): void => {
-    setDraft({ for: selection, body, note, ...next })
+  const edit = (next: Partial<Omit<Draft, 'for' | 'anchorId' | 'anchorBody'>>): void => {
+    setDraft({ for: selection, body, note, anchorId, anchorBody, ...next })
   }
 
   const select = (nextKey: string, nextLocale: string): void => {
@@ -211,34 +232,96 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
       ? check.result.gate
       : version.gate
 
+  /** A row's gate by id, looked up rather than carried around as a whole `PromptVersionSetting`. */
+  const gateForId = (id: string | null): PromptGate => {
+    if (id === null) return 'built_in'
+    if (id === entry.active.id) return gateOf(entry.active)
+    const version = entry.versions.find((candidate) => candidate.id === id)
+    return version === undefined ? 'built_in' : gateOf(version)
+  }
+
   /**
-   * The version a check should be run against.
+   * This language has no rows of its own, so what runs for it is the shared text.
    *
-   * **The newest version that still needs one**, falling back to the active row. Not simply
-   * "the active version", and that is the whole reason this is a computed target: a gated body
-   * with no verdict *cannot be active* — `assertActivatable` refuses exactly that — so the row
-   * that needs checking is never the active one except in the grandfathered case of a row that
-   * was already active before this shipped. A control pinned to the active version would
-   * therefore be permanently disabled for every prompt anyone actually edits, and saving an
-   * edit would deadlock: unable to activate without a verdict, unable to obtain a verdict
-   * without activating.
-   *
-   * Newest first because `versions` is ordered by version descending, so this is the edit
-   * just saved rather than an abandoned draft from last month.
-   *
-   * The second step keeps the section pointed at a row that has *just* been checked. Without
-   * it a successful check would move the target away from itself — the row stops being
-   * `unvalidated` the moment `gateOf` reads the fresh verdict — and the result would vanish in
-   * the same render that produced it. A newly saved version still wins over it, because then
-   * the section really is about the new row.
+   * `buildSettings` emits an entry per supported locale, and for a language nobody has written
+   * an override for, that entry has an empty `versions` list and the *shared* row as its
+   * `active`. There is nothing here to check — the row belongs to the shared tab.
    */
-  const target =
-    entry.versions.find((version) => gateOf(version) === 'unvalidated') ??
-    (check === null
-      ? undefined
-      : entry.versions.find((version) => version.id === check.promptId)) ??
-    entry.versions.find((version) => version.active) ??
-    null
+  const ownActiveVersion = entry.versions.find((version) => version.active) ?? null
+  const inheritsShared = ownActiveVersion === null && entry.active.id !== null
+
+  // The row the box last matched may have been deleted since (the point of Part 1): the
+  // anchor id survives in the draft, but it names nothing in this fresh `entry.versions` any
+  // more. Treated as diverged below rather than as "nothing to check" — the box may still hold
+  // real text, there is just no existing row left to reuse a verdict from.
+  const anchorRowGone =
+    anchorId !== null &&
+    anchorId !== entry.active.id &&
+    entry.versions.every((version) => version.id !== anchorId)
+
+  // The box, not a row: has what is on screen moved on from the row it was last checked
+  // against? This is the fix for the reported bug — comparing only to `entry.active.body`
+  // missed every case where the anchor was some other, already-checked row.
+  const draftDiverged = anchorRowGone || body.trim() !== anchorBody.trim()
+
+  const anchorGate: PromptGate = anchorRowGone ? 'unvalidated' : gateForId(anchorId)
+
+  // Nothing stored anywhere and nothing typed either, or what is on screen is text this build
+  // ships and never needs a paid verdict. `!draftDiverged` is what keeps this from also
+  // catching a box someone has just started writing into with nothing saved yet — there is
+  // something to check the moment the box says something the anchor doesn't, even with no
+  // anchor at all; the save-then-check path exists precisely for that case.
+  const nothingToCheck = !inheritsShared && !draftDiverged && (anchorId === null || anchorGate === 'built_in')
+
+  const canCheck = !nothingToCheck && !inheritsShared && body.trim() !== ''
+
+  // Re-anchors the draft to whichever row a save just produced (versions are ordered newest
+  // first, and nothing else could have created one in between), so a second, unmodified press
+  // of Check afterwards is the ordinary cache-reuse path.
+  const reanchorAfterSave = (saved: Settings): PromptVersionSetting | null => {
+    const savedEntry = saved.prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
+    const newest = savedEntry?.versions[0] ?? null
+    setDraft({ for: selection, body, note: '', anchorId: newest?.id ?? null, anchorBody: body.trim() })
+    return newest
+  }
+
+  // Save-then-check: `state.ts`'s shared `busy.current` ref stays true until *after* the first
+  // call's `after` returns, so a same-tick second `state.save`/`state.ask` would silently no-op.
+  // Deferring with `setTimeout` is the simplest correct fix — there is no other chaining
+  // precedent in this codebase to match instead.
+  const runCheck = (): void => {
+    if (!draftDiverged) {
+      if (anchorId === null) return
+      state.ask<PromptValidation>(
+        'prompt-validate',
+        'POST',
+        '/api/ai/prompt-validate',
+        { promptId: anchorId },
+        (value) => setCheck({ promptId: anchorId, stamp, result: value }),
+      )
+      return
+    }
+
+    state.save(
+      'prompt-save-and-check',
+      'POST',
+      '/api/settings/prompts',
+      { key, locale, body, ...(note.trim() === '' ? {} : { note }) },
+      (saved) => {
+        const newest = reanchorAfterSave(saved)
+        if (newest === null) return
+        setTimeout(() => {
+          state.ask<PromptValidation>(
+            'prompt-validate',
+            'POST',
+            '/api/ai/prompt-validate',
+            { promptId: newest.id },
+            (value) => setCheck({ promptId: newest.id, stamp, result: value }),
+          )
+        }, 0)
+      },
+    )
+  }
 
   return (
     <Panel
@@ -362,8 +445,9 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
                   ...(action === 'saveAndActivate' ? { activate: true } : {}),
                 },
                 // The text stays in the box, the note does not: the version now exists
-                // and carries it, and leaving it there invites saving it twice.
-                () => setDraft({ for: selection, body, note: '' }),
+                // and carries it, and leaving it there invites saving it twice. Also
+                // re-anchors the draft to the row just saved.
+                reanchorAfterSave,
               )
             }}
           >
@@ -376,10 +460,11 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
 
       {!gated ? null : (
         <Check
-          entry={entry}
-          body={body}
-          target={target}
-          gateOf={gateOf}
+          anchorGate={anchorGate}
+          inheritsShared={inheritsShared}
+          nothingToCheck={nothingToCheck}
+          canCheck={canCheck}
+          draftDiverged={draftDiverged}
           state={state}
           owner={owner}
           // Only ever the price the server quoted for text that is still on screen: a
@@ -387,16 +472,14 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           estimateMicroEur={
             diff === null || diff.stamp !== stamp ? null : diff.diff.validationEstimateMicroEur
           }
-          // Shown only while it is still about the row the section is about. A verdict for a
-          // row that a newer save has superseded is not this section's answer any more.
-          result={check !== null && check.promptId === target?.id ? check.result : null}
+          // Shown only while it is still about the row the box is anchored to. A verdict for a
+          // row a newer save has superseded is not this section's answer any more.
+          result={check !== null && check.promptId === anchorId ? check.result : null}
           // Two ways a result stops being current, and neither discards it — being told the
           // answer has moved on is the point. The box has been edited since it was obtained,
-          // or a newer version now needs checking instead.
-          stale={
-            check !== null && (check.stamp !== stamp || check.promptId !== (target?.id ?? null))
-          }
-          onChecked={(promptId, result) => setCheck({ promptId, stamp, result })}
+          // or a newer version is now the anchor instead.
+          stale={check !== null && (check.stamp !== stamp || check.promptId !== anchorId)}
+          onRun={runCheck}
         />
       )}
 
@@ -435,8 +518,28 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         state={state}
         owner={owner}
         onOpen={(loaded) =>
-          setDraft({ for: selection, body: loaded.body, note: loaded.note ?? '' })
+          setDraft({
+            for: selection,
+            body: loaded.body,
+            note: loaded.note ?? '',
+            anchorId: loaded.id,
+            anchorBody: loaded.body,
+          })
         }
+        onDeleted={(nextSettings) => {
+          // A deleted override's last version drops that locale from `buildSettings`'
+          // per-locale list entirely (it only keeps entries with versions.length > 0) —
+          // land back on the shared tab rather than on a selection that no longer exists.
+          if (locale === SHARED_LOCALE) return
+          const stillExists = nextSettings.prompts.some(
+            (candidate) => candidate.key === key && candidate.locale === locale,
+          )
+          if (stillExists) return
+          setLocale(SHARED_LOCALE)
+          setDraft(null)
+          setRun(null)
+          setCheck(null)
+        }}
       />
     </Panel>
   )
@@ -823,12 +926,13 @@ function GateBadge({ gate }: { gate: PromptGate }): ReactNode {
 }
 
 interface CheckProps {
-  entry: PromptSetting
-  /** What is in the textarea right now — not necessarily what is stored. */
-  body: string
-  /** The stored version a check would run against, or null when nothing is saved. */
-  target: PromptVersionSetting | null
-  gateOf: (version: { id: string | null; gate: PromptGate }) => PromptGate
+  /** The gate of whatever row the box is anchored to — `'built_in'` when there is none. */
+  anchorGate: PromptGate
+  inheritsShared: boolean
+  nothingToCheck: boolean
+  canCheck: boolean
+  /** Whether the box has moved on from the row it is anchored to. */
+  draftDiverged: boolean
   state: SettingsPanelProps['state']
   owner: boolean
   /** From the last diff of this exact text, or null when none has been fetched. */
@@ -836,23 +940,22 @@ interface CheckProps {
   result: PromptValidation | null
   /** True when a result exists but the text has moved on since it was obtained. */
   stale: boolean
-  onChecked: (promptId: string, result: PromptValidation) => void
+  onRun: () => void
 }
 
 /**
  * The safety check, priced before it happens (#454).
  *
- * Mirrors `DryRun` above in shape, and in the one property that matters about both: the
- * button targets a **stored row**, never the textarea. `POST /api/ai/prompt-validate` takes a
- * `promptId` and writes the verdict onto that row, so a check of unsaved text would have
- * nothing to record against — and the gap between "the text I checked" and "the text that
- * runs" is exactly what this gate exists to close.
- *
- * Where it departs from `DryRun` is *which* row: see `target` in the panel above. The dry run
- * can sit on the active version because running the active analysis prompt is the question
- * worth asking; a check cannot, because a gated body with no verdict is by construction not
- * the active one. So the order is save, check, activate — and the button names the version it
- * will check, so pressing it is never a guess.
+ * Mirrors `DryRun` above in shape, but about the box, not a stored row (reworked from the
+ * original #468/#474 shape, which named the row a check would run against — the version
+ * numbers that produced turned out to be an implementation detail nobody asked to manage, and
+ * comparing the box only to the *active* row rather than to whichever row it last matched let a
+ * check silently reuse a stale cached verdict once that row and the active one had parted ways).
+ * `POST /api/ai/prompt-validate` still takes a `promptId` and writes the verdict onto a stored
+ * row — nothing on the backend changed, since its cache is already keyed by row content — but
+ * the button now decides for itself whether that row already matches the box (an ordinary
+ * check) or has to be created first (`runCheck`'s save-then-check leg, deferred with
+ * `setTimeout` past the shared `busy` ref in `state.ts`).
  *
  * The state machine is derived rather than stored: idle (no result), validating
  * (`state.pending`), a verdict, or stale — and stale is a comparison against the text on
@@ -860,54 +963,20 @@ interface CheckProps {
  * edit and clear it.
  */
 function Check({
-  entry,
-  body,
-  target,
-  gateOf,
+  anchorGate,
+  inheritsShared,
+  nothingToCheck,
+  canCheck,
+  draftDiverged,
   state,
   owner,
   estimateMicroEur,
   result,
   stale,
-  onChecked,
+  onRun,
 }: CheckProps): ReactNode {
   const { t } = useT()
-  // The badge describes the row this section is *about* — the one a check would run against —
-  // falling back to the active body when there is no row at all. Badging the active version
-  // while the button below names a different one is how a reader ends up reading "Balancr's
-  // own" above a warning that their own text is unchecked.
-  const targetGate = target === null ? gateOf(entry.active) : gateOf(target)
-  /**
-   * This language has no rows of its own, so what runs for it is the shared text.
-   *
-   * `buildSettings` emits an entry per supported locale, and for a language nobody has
-   * written an override for that entry has an empty `versions` list and the *shared* row as
-   * its `active`. There is nothing here to check — the row belongs to the shared tab — and
-   * saying which tab to use beats a sentence about built-in text that may well be false.
-   */
-  const inheritsShared = target === null && entry.active.id !== null
-  // Nothing stored anywhere, or what is stored is text this build ships and never needs a
-  // paid verdict. Keyed off the gate rather than off `target === null`, so a language that
-  // merely inherits the shared row is not described as running a built-in.
-  const nothingToCheck = !inheritsShared && (target === null || targetGate === 'built_in')
-  /**
-   * Whether the box can be asserted to hold the target row's text.
-   *
-   * Only when the target *is* the active row and the box still matches it. `PromptVersionSetting`
-   * carries no `body` — the version list is deliberately shipped without one — so for any other
-   * row this is unknowable, and the honest move is to say which version is being checked rather
-   * than to imply it is what is on screen. Getting this wrong is how a reader concludes that the
-   * text in front of them was cleared when a different version was.
-   */
-  const draftDiverged = body.trim() !== entry.active.body.trim()
-  const boxIsTarget = target !== null && target.active && !draftDiverged
-  // The one case worth *refusing*: the only checkable row is the one already in force, and the
-  // box has been typed over, so a check could only answer about text that is not on screen.
-  // Saving first is the next step — and after a save the target is the new row, which is what
-  // keeps save → check → activate from deadlocking.
-  const unsavedDraft = target !== null && target.active && draftDiverged
-  const running = state.pending === 'prompt-validate'
-  const canCheck = !nothingToCheck && !inheritsShared && !unsavedDraft
+  const running = state.pending === 'prompt-validate' || state.pending === 'prompt-save-and-check'
 
   return (
     <section className="prompt__check">
@@ -915,42 +984,24 @@ function Check({
         {t('settings:prompt.check.title')}{' '}
         {/* Suppressed for a language that only inherits: the gate belongs to the shared row,
             and badging it here reads as a claim about this tab. */}
-        {inheritsShared ? null : <GateBadge gate={targetGate} />}
+        {inheritsShared ? null : <GateBadge gate={anchorGate} />}
       </h3>
       <p className="muted">{t('settings:prompt.check.hint')}</p>
 
       {inheritsShared ? (
         <p className="muted">{t('settings:prompt.check.usesShared')}</p>
       ) : nothingToCheck ? (
-        // No button at all rather than a disabled one with nothing explaining it. Which
-        // sentence depends on why: text has been written but not stored yet, or what is stored
-        // is Balancr's own and needs no check.
-        <p className="muted">
-          {t(
-            draftDiverged
-              ? 'settings:prompt.check.mustSaveFirst'
-              : 'settings:prompt.check.builtIn',
-          )}
-        </p>
+        // No button at all rather than a disabled one with nothing explaining it: nothing has
+        // been typed and what is on screen is Balancr's own text, which needs no check.
+        <p className="muted">{t('settings:prompt.check.builtIn')}</p>
       ) : (
         <>
-          {targetGate === 'unvalidated' ? (
+          {anchorGate === 'unvalidated' && !draftDiverged ? (
             <p className="notice notice--warn" role="status">
               {t('settings:prompt.check.unvalidated')}
             </p>
           ) : null}
 
-          {unsavedDraft ? <p className="muted">{t('settings:prompt.check.mustSaveFirst')}</p> : null}
-          {/* Not a warning, just the truth: the button is about a saved row, and the box is
-              showing the text currently in force rather than that row's. Said whenever it
-              cannot be asserted otherwise, which on a fresh page load is the normal case. */}
-          {boxIsTarget || unsavedDraft || target === null ? null : (
-            <p className="muted">
-              {t('settings:prompt.check.aboutSavedVersion', {
-                version: formatDecimal(target.version, 0),
-              })}
-            </p>
-          )}
           {estimateMicroEur === null ? null : (
             <p className="muted">
               {t('settings:prompt.check.estimate', {
@@ -963,22 +1014,11 @@ function Check({
             type="button"
             className="button button--quiet"
             disabled={!owner || state.busy || !canCheck}
-            onClick={() => {
-              if (target === null) return
-              state.ask<PromptValidation>(
-                'prompt-validate',
-                'POST',
-                '/api/ai/prompt-validate',
-                { promptId: target.id },
-                (value) => onChecked(target.id, value),
-              )
-            }}
+            onClick={onRun}
           >
             {running
               ? t('settings:prompt.check.running')
-              : t('settings:prompt.check.run', {
-                  version: formatDecimal(target?.version ?? entry.active.version, 0),
-                })}
+              : t(draftDiverged ? 'settings:prompt.check.saveAndRun' : 'settings:prompt.check.run')}
           </button>
 
           {stale ? <p className="muted">{t('settings:prompt.check.stale')}</p> : null}
@@ -1007,14 +1047,6 @@ function CheckOutcome({ result }: { result: PromptValidation }): ReactNode {
       <p className="dryrun__head">
         <span className={`badge badge--${result.status}`}>{t(`status.${result.status}`)}</span>{' '}
         {t(`settings:ai.reason.${result.reason}`)}
-      </p>
-      {/* Which version this is about, always and unconditionally. A verdict belongs to a row,
-          and the textarea above may be showing something else entirely — naming the version is
-          what stops a reader concluding that the text in front of them is what was cleared. */}
-      <p className="muted">
-        {t('settings:prompt.check.aboutVersion', {
-          version: formatDecimal(result.version, 0),
-        })}
       </p>
       {result.costMicroEur === 0 ? null : (
         <p className="muted">
@@ -1100,6 +1132,7 @@ interface VersionsProps {
   state: SettingsPanelProps['state']
   owner: boolean
   onOpen: (loaded: PromptBody) => void
+  onDeleted: (settings: Settings) => void
 }
 
 function Versions({
@@ -1109,6 +1142,7 @@ function Versions({
   state,
   owner,
   onOpen,
+  onDeleted,
 }: VersionsProps): ReactNode {
   const { t } = useT()
 
@@ -1149,6 +1183,15 @@ function Versions({
                 undefined,
               )
             }}
+            onDelete={() => {
+              state.save(
+                `delete:${version.id}`,
+                'DELETE',
+                `/api/settings/prompts/${version.id}`,
+                undefined,
+                onDeleted,
+              )
+            }}
           />
         ))}
       </ul>
@@ -1164,6 +1207,7 @@ interface VersionProps {
   owner: boolean
   onOpen: () => void
   onActivate: () => void
+  onDelete: () => void
 }
 
 function Version({
@@ -1173,8 +1217,13 @@ function Version({
   owner,
   onOpen,
   onActivate,
+  onDelete,
 }: VersionProps): ReactNode {
   const { t } = useT()
+  // Its own arm/confirm step, the same shape `ResetControl` in `Status.tsx` uses for the
+  // full recompute: a delete is not the rollback gesture (`onActivate` is), so it should
+  // cost a deliberate second click, not a single accidental one.
+  const [armed, setArmed] = useState(false)
 
   return (
     <li className="version">
@@ -1210,6 +1259,38 @@ function Version({
             onClick={onActivate}
           >
             {t('settings:prompt.activate')}
+          </button>
+        )}
+        {armed ? (
+          <>
+            <button
+              type="button"
+              className="button"
+              disabled={!owner || busy}
+              onClick={() => {
+                setArmed(false)
+                onDelete()
+              }}
+            >
+              {t('settings:prompt.deleteVersionConfirm')}
+            </button>
+            <button
+              type="button"
+              className="button button--quiet"
+              disabled={busy}
+              onClick={() => setArmed(false)}
+            >
+              {t('settings:prompt.deleteVersionCancel')}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="button button--quiet"
+            disabled={!owner || busy}
+            onClick={() => setArmed(true)}
+          >
+            {t('settings:prompt.deleteVersion')}
           </button>
         )}
       </div>

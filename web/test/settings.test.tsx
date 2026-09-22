@@ -37,7 +37,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Settings } from '../src/pages/Settings.tsx'
 import { ACCOUNT_KINDS } from '../src/settings/kinds.ts'
 import { SHARED_LOCALE } from '../src/shared.ts'
-import type { AiDryRun, AiEstimate, PromptDiff, Settings as Payload } from '../src/shared.ts'
+import type { AiDryRun, AiEstimate, PromptBody, PromptDiff, Settings as Payload } from '../src/shared.ts'
 import { i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
 /**
@@ -3820,36 +3820,86 @@ describe('the prompt safety check (#454)', () => {
     selectNarrative()
 
     await screen.findByText("These are Balancr's own instructions, so they need no check.")
-    expect(screen.queryByRole('button', { name: /^Check version/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Check|Save & check)$/ })).toBeNull()
   })
 
-  it('warns that an unchecked saved version cannot be made active', async () => {
-    await open({ ...READS, '/api/settings': json(saved()) })
-    selectNarrative()
-
-    await screen.findByText('This version has not been checked yet, so it cannot be made active.')
-    expect(await screen.findByRole('button', { name: 'Check version 4' })).toBeTruthy()
+  /** Mocks `GET /api/settings/prompts/:id` for opening a version into the box. */
+  const promptBody = (v: Version, body: string): PromptBody => ({
+    ...v,
+    key: 'narrative.system',
+    locale: SHARED_LOCALE,
+    body,
   })
 
-  it('targets the newly saved version, not the active one — the save/check/activate order', async () => {
-    // The regression this pins: a gated body with no verdict *cannot be active*, because
-    // `assertActivatable` refuses exactly that. So a Check button pinned to the active version
-    // would be permanently disabled for every prompt anyone actually edits, and saving an edit
-    // would deadlock — unable to activate without a verdict, unable to get a verdict without
-    // activating. The button must name the saved version, which here is 4 and not the active 3.
-    const calls = await open({
+  /** `Edit` on the version at this position in `entry.versions` — index 0 is version 4. */
+  const editVersion = async (index: number, body: string): Promise<void> => {
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[index] as HTMLElement)
+    await screen.findByDisplayValue(body)
+  }
+
+  it('warns that an unchecked version cannot be made active, once opened', async () => {
+    // On a fresh load the box shows the *active* row — here, the built-in text, which needs
+    // no check at all. The unvalidated warning is about whichever row is actually on screen,
+    // so it only appears once the unchecked saved version has been opened into the box.
+    await open({
       ...READS,
       '/api/settings': json(saved()),
-      '/api/ai/prompt-validate': json(SAFE_RESULT),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
+    })
+    selectNarrative()
+    expect(screen.queryByText('This has not been checked yet, so it cannot be made active.')).toBeNull()
+
+    await editVersion(0, EDITED)
+
+    await screen.findByText('This has not been checked yet, so it cannot be made active.')
+    expect(await screen.findByRole('button', { name: 'Check' })).toBeTruthy()
+  })
+
+  it('warns immediately when the active row itself is unvalidated (a pre-#454 legacy state)', async () => {
+    // `grandfathered()`: the one state in which an active row can be unvalidated at all —
+    // this PR refuses to *re*-activate one and refuses nothing at use time, so it keeps
+    // running until #455 lands. Here the anchor on a fresh load already is that row, so the
+    // warning and an ordinary (non-diverged) Check button show up without opening anything.
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(grandfathered()),
+      '/api/ai/prompt-validate': json({ ...SAFE_RESULT, promptId: 'n1', version: 1 }),
     })
     selectNarrative()
 
-    const button = await screen.findByRole('button', { name: 'Check version 4' })
+    await screen.findByText('This has not been checked yet, so it cannot be made active.')
+    const button = await screen.findByRole('button', { name: 'Check' })
     expect(button.getAttribute('disabled')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Check version 3' })).toBeNull()
 
     fireEvent.click(button)
-    await screen.findByText('This version still imposes every rule the monthly narrative depends on.')
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
+    expect(writes(calls)).toEqual([
+      { method: 'POST', path: '/api/ai/prompt-validate', body: { promptId: 'n1' } },
+    ])
+  })
+
+  it('checks whichever version was opened, not the active one', async () => {
+    // The regression this pins: a gated body with no verdict *cannot be active*, because
+    // `assertActivatable` refuses exactly that. So a Check button pinned to the active version
+    // would be permanently disabled for every prompt anyone actually edits. The box, once
+    // version 4 has been opened, is anchored to it rather than to the active version 3.
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
+      '/api/ai/prompt-validate': json(SAFE_RESULT),
+    })
+    selectNarrative()
+    // Nothing to check yet: the box still shows the active, built-in text.
+    expect(screen.queryByRole('button', { name: /^(Check|Save & check)$/ })).toBeNull()
+
+    await editVersion(0, EDITED)
+
+    const button = await screen.findByRole('button', { name: 'Check' })
+    expect(button.getAttribute('disabled')).toBeNull()
+
+    fireEvent.click(button)
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
     expect(writes(calls)).toEqual([
       { method: 'POST', path: '/api/ai/prompt-validate', body: { promptId: 'n4' } },
     ])
@@ -3863,35 +3913,39 @@ describe('the prompt safety check (#454)', () => {
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/ai/prompt-validate': json(SAFE_RESULT),
     })
     selectNarrative()
-    // Two badges read the same gate before the check: the section heading (which describes the
-    // row a check would run against, not the active one) and that row in the version list.
+    await editVersion(0, EDITED)
+    // Two badges read the same gate before the check: the section heading (which describes
+    // whichever row the box is anchored to) and that row in the version list.
     expect(screen.getAllByText('Not checked')).toHaveLength(2)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
-    await screen.findByText('This version still imposes every rule the monthly narrative depends on.')
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
 
     // Both are now current, and the stale warning is gone.
     expect(screen.queryByText('Not checked')).toBeNull()
     expect(screen.getAllByText('Checked')).toHaveLength(2)
     expect(
-      screen.queryByText('This version has not been checked yet, so it cannot be made active.'),
+      screen.queryByText('This has not been checked yet, so it cannot be made active.'),
     ).toBeNull()
   })
 
-  it('checks the stored version and reports a safe verdict', async () => {
+  it('checks the opened version and reports a safe verdict', async () => {
     const calls = await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/ai/prompt-validate': json(SAFE_RESULT),
     })
     selectNarrative()
+    await editVersion(0, EDITED)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
 
-    await screen.findByText('This version still imposes every rule the monthly narrative depends on.')
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
     // The status badge, spelled out rather than left as a raw `status.safe` key: the three
     // statuses this section can report (`safe`, `unsafe`, `cached`) were not in the shared
     // `status.*` vocabulary before #454, and a missing one renders as its own key.
@@ -3908,12 +3962,14 @@ describe('the prompt safety check (#454)', () => {
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/ai/prompt-validate': json(UNSAFE_RESULT),
     })
     selectNarrative()
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
+    await editVersion(0, EDITED)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
 
-    await screen.findByText('This version no longer imposes every rule, so it cannot be made active.')
+    await screen.findByText('This no longer imposes every rule, so it cannot be made active.')
     expect(screen.getByText('Unsafe')).toBeTruthy()
     expect(screen.queryByText(/^status\./)).toBeNull()
     await screen.findByRole('heading', { name: 'Rules it no longer imposes' })
@@ -3938,10 +3994,12 @@ describe('the prompt safety check (#454)', () => {
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/ai/prompt-validate': json(UNSAFE_RESULT),
     })
     selectNarrative()
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
+    await editVersion(0, EDITED)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
 
     const notes = await screen.findByRole('heading', { name: 'What the model said' })
     expect(notes).toBeTruthy()
@@ -3957,53 +4015,167 @@ describe('the prompt safety check (#454)', () => {
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/ai/prompt-validate': json(SAFE_RESULT),
     })
     selectNarrative()
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
-    await screen.findByText('This version still imposes every rule the monthly narrative depends on.')
+    await editVersion(0, EDITED)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
 
     // One character is enough: a verdict is about a body, and this is no longer that body.
     fireEvent.change(screen.getByLabelText('Instructions'), {
       target: { value: `${EDITED} And mention the weather.` },
     })
 
-    await screen.findByText(
-      'The text has changed since this check. Save it as a new version and check that one.',
-    )
+    await screen.findByText('The text has changed since this check. Check it again.')
     expect(
-      screen.queryByText('This version still imposes every rule the monthly narrative depends on.'),
+      screen.queryByText('This still imposes every rule the monthly narrative depends on.'),
     ).toBeNull()
   })
 
-  it('refuses to check an unsaved draft when the only checkable row is the active one', async () => {
-    // The grandfathered state: the active row is itself unvalidated, so it is the target. Typing
-    // over it means the box no longer *is* that row's text, and a check would answer about text
-    // that is not on screen. Saving first is the honest next step — and after a save the target
-    // becomes the new row, which is why this does not reintroduce the deadlock.
-    await open({ ...READS, '/api/settings': json(grandfathered()) })
-    selectNarrative()
-    expect((await screen.findByRole('button', { name: 'Check version 1' })).getAttribute('disabled'))
-      .toBeNull()
-
-    fireEvent.change(screen.getByLabelText('Instructions'), {
-      target: { value: 'Something quite different.' },
-    })
-
-    await screen.findByText(
-      'Save the text as a version first. A check reads a saved version, never the box above — there would be nothing to attach the result to.',
+  it('saves the box as a new version before checking, once it has diverged from the anchor', async () => {
+    // The box may have moved on from the row it was last checked against — even one it was
+    // never checked against, since nothing needs to be saved for the box to diverge. Pressing
+    // Check must save first and check the row that produces, deferred past the shared `busy`
+    // ref in `state.ts` (a same-tick second request would otherwise silently no-op).
+    const FREEHAND = 'Freehand instructions, written straight into the box.'
+    const AFTER_SAVE = narrativeWith(
+      { id: 'n3', version: 3, body: BUILT_IN, gate: 'built_in' },
+      [
+        version({ id: 'n5', version: 5, chars: FREEHAND.length }),
+        version({ id: 'n4', version: 4 }),
+        version({ id: 'n3', version: 3, active: true, gate: 'built_in', chars: BUILT_IN.length }),
+      ],
     )
-    expect((await screen.findByRole('button', { name: 'Check version 1' })).getAttribute('disabled'))
-      .not.toBeNull()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(saved()),
+      '/api/settings/prompts': json(AFTER_SAVE),
+      '/api/ai/prompt-validate': json({ ...SAFE_RESULT, promptId: 'n5', version: 5 }),
+    })
+    selectNarrative()
+
+    fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: FREEHAND } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Save & check' }))
+
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
+    expect(writes(calls)).toEqual([
+      {
+        method: 'POST',
+        path: '/api/settings/prompts',
+        body: { key: 'narrative.system', locale: SHARED_LOCALE, body: FREEHAND },
+      },
+      { method: 'POST', path: '/api/ai/prompt-validate', body: { promptId: 'n5' } },
+    ])
+  })
+
+  it('can save and check a brand-new prompt with no stored versions at all', async () => {
+    // Complaint #1's point extended to checking: the built-in prompt always runs, so there
+    // being no stored version yet must not be why a first edit cannot be checked.
+    const FIRST = 'My very first version of this prompt.'
+    const AFTER_SAVE = narrativeWith(
+      { id: null, version: 0, body: BUILT_IN, gate: 'built_in' },
+      [version({ id: 'n1', version: 1, chars: FIRST.length })],
+    )
+    const calls = await open({
+      ...READS,
+      '/api/settings/prompts': json(AFTER_SAVE),
+      '/api/ai/prompt-validate': json({ ...SAFE_RESULT, promptId: 'n1', version: 1 }),
+    })
+    selectNarrative()
+    expect(screen.queryByRole('button', { name: /^(Check|Save & check)$/ })).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: FIRST } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Save & check' }))
+
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
+    expect(writes(calls)).toEqual([
+      {
+        method: 'POST',
+        path: '/api/settings/prompts',
+        body: { key: 'narrative.system', locale: SHARED_LOCALE, body: FIRST },
+      },
+      { method: 'POST', path: '/api/ai/prompt-validate', body: { promptId: 'n1' } },
+    ])
+  })
+
+  it('deletes a version after a confirm step, and does nothing on cancel', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(
+        narrativeWith(
+          { id: 'n3', version: 3, body: BUILT_IN, gate: 'built_in' },
+          [version({ id: 'n3', version: 3, active: true, gate: 'built_in', chars: BUILT_IN.length })],
+        ),
+      ),
+    })
+    selectNarrative()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0] as HTMLElement)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(writes(calls)).toEqual([])
+    expect(screen.getAllByRole('button', { name: 'Delete' })[0]).toBeTruthy()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0] as HTMLElement)
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, delete this version' }))
+
+    expect(writes(calls)).toEqual([
+      { method: 'DELETE', path: '/api/settings/prompts/n4', body: undefined },
+    ])
+  })
+
+  it("clamps back to the shared tab after deleting a language override's last version", async () => {
+    const NL_BODY = 'Nederlandse tekst.'
+    const nlOverride: Payload = {
+      ...saved(),
+      prompts: [
+        ...saved().prompts,
+        {
+          key: 'narrative.system',
+          locale: 'nl',
+          active: {
+            id: 'nl1',
+            version: 1,
+            locale: 'nl',
+            body: NL_BODY,
+            gate: 'unvalidated',
+            validatedAt: null,
+            rulesVersion: null,
+          },
+          storedBody: NL_BODY,
+          versions: [version({ id: 'nl1', version: 1, active: true, chars: NL_BODY.length })],
+        },
+      ] as Payload['prompts'],
+    }
+
+    await open({
+      ...READS,
+      '/api/settings': json(nlOverride),
+      '/api/settings/prompts/nl1': json(saved()),
+    })
+    selectNarrative()
+    fireEvent.change(screen.getByLabelText('Applies to'), { target: { value: 'nl' } })
+    await screen.findByDisplayValue(NL_BODY)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, delete this version' }))
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Applies to') as HTMLSelectElement).value).toBe(SHARED_LOCALE),
+    )
   })
 
   it('shows the price once a diff has been fetched', async () => {
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
       '/api/settings/prompts/diff': json({ ...DIFF, validationEstimateMicroEur: 1_500 }),
     })
     selectNarrative()
+    await editVersion(0, EDITED)
 
     // The price rides on the free diff request rather than an endpoint of its own, so it
     // appears once that has been asked for — and not before, which is honest about the fact
@@ -4028,50 +4200,31 @@ describe('the prompt safety check (#454)', () => {
     expect(rows[1]?.textContent).toContain("Balancr's own")
   })
 
-  it('says which version a verdict is about, since the box may show other text', async () => {
-    // On a fresh page load with a saved-but-unactivated version, the textarea falls back to the
-    // body *in force* (the built-in) while the check targets the saved row. The client cannot
-    // compare the two — the version list deliberately ships no bodies — so it must not imply
-    // the text on screen is what was cleared. Naming the version is what makes that honest.
+  it('retires a verdict when the box is anchored to a different version', async () => {
+    // A verdict belongs to the row it was about. Opening a different row changes what the
+    // section is about, and the old answer is no longer this section's answer — showing it
+    // would attribute one version's clearance to another.
     await open({
       ...READS,
       '/api/settings': json(saved()),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
+      '/api/settings/prompts/n3': json(
+        promptBody(version({ id: 'n3', version: 3, active: true, gate: 'built_in', chars: BUILT_IN.length }), BUILT_IN),
+      ),
       '/api/ai/prompt-validate': json(SAFE_RESULT),
     })
     selectNarrative()
+    await editVersion(0, EDITED)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
 
-    // Said before the click, beside the button.
-    await screen.findByText(
-      'This checks saved version 4. The box above shows the instructions currently in force, which are not the same text.',
-    )
-    expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe(BUILT_IN)
+    // Opening version 3 re-anchors the box to Balancr's own text, which needs no check.
+    await editVersion(1, BUILT_IN)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
-    // And again on the result itself, unconditionally.
-    await screen.findByText('This is about version 4.')
-  })
-
-  it('retires a verdict when a newer version needs checking instead', async () => {
-    // A verdict belongs to a row. Once a newer save exists, the section is about that row and the
-    // old answer is no longer this section's answer — showing it would attribute one version's
-    // clearance to another.
-    await open({
-      ...READS,
-      '/api/settings': json(saved()),
-      '/api/ai/prompt-validate': json(SAFE_RESULT),
-    })
-    selectNarrative()
-    fireEvent.click(await screen.findByRole('button', { name: 'Check version 4' }))
-    await screen.findByText('This is about version 4.')
-
-    // Editing the box is what a save starts from, and is enough on its own to retire the result.
-    fireEvent.change(screen.getByLabelText('Instructions'), {
-      target: { value: 'A further thought.' },
-    })
-    await screen.findByText(
-      'The text has changed since this check. Save it as a new version and check that one.',
-    )
-    expect(screen.queryByText('This is about version 4.')).toBeNull()
+    expect(
+      screen.queryByText('This still imposes every rule the monthly narrative depends on.'),
+    ).toBeNull()
+    await screen.findByText("These are Balancr's own instructions, so they need no check.")
   })
 
   it('points a language that only inherits the shared text at the shared tab', async () => {
@@ -4105,7 +4258,7 @@ describe('the prompt safety check (#454)', () => {
     await screen.findByText(
       'This language uses the shared instructions, so there is nothing of its own to check — check them under “All languages”.',
     )
-    expect(screen.queryByRole('button', { name: /^Check version/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^(Check|Save & check)$/ })).toBeNull()
     // And no badge: the gate belongs to the shared row, so claiming one here would be a
     // statement about a row this tab does not own.
     expect(screen.queryByText('Not checked')).toBeNull()

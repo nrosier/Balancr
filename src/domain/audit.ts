@@ -181,6 +181,16 @@ export const AUDIT_ACTIONS = [
   'prompt.create',
   'prompt.activate',
   /**
+   * A stored prompt version was removed outright.
+   *
+   * Its own action rather than folded into `prompt.create` the way `settings.loan`/
+   * `settings.debt` fold create/update/delete into one: prompts already split create and
+   * activate into separate actions, so a delete follows that existing per-gesture pattern
+   * instead of introducing a second one. `before` carries the row that is gone —
+   * `key`/`locale`/`version`, never the body — and `after` is null.
+   */
+  'prompt.delete',
+  /**
    * A new household came into being (#373).
    *
    * The creator is unconditionally the tenant's owner — there is no other user
