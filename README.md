@@ -305,7 +305,7 @@ All of it via `.env` — see [.env.example](.env.example) for the full list.
 |---|---|
 | **Actual** | `ACTUAL_SERVER_URL`, `ACTUAL_PASSWORD`, `ACTUAL_SYNC_ID`, `ACTUAL_E2E_PASSWORD` (encrypted budgets only) |
 | **Ghostfolio** | `GHOSTFOLIO_URL`, `GHOSTFOLIO_SECURITY_TOKEN` |
-| **AI bootstrap** | `AI_ENABLED`, legacy first-tenant import through `GEMINI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`; providers are then managed per tenant in Settings |
+| **AI bootstrap** | `AI_ENABLED`, legacy first-tenant import through `GEMINI_PROVIDER`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS` (Vertex only — see below), `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`, `GEMINI_MONTHLY_BUDGET_EUR`; providers are then managed per tenant in Settings |
 | **Auth** | `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, `AUTH_LOCAL_ENABLED`, `AUTH_LOCAL_ALLOWED_CIDRS`, `TRUSTED_PROXY_CIDRS`, `SESSION_SECRET` |
 | **Backups** | `BACKUP_PASSPHRASE`, `BACKUP_DIR`, `BACKUP_KEEP` |
 | **Investing** | `FUND_UNIVERSE_PATH`, `FUND_UNIVERSE_MAX_AGE_DAYS`, `TAX_RULES_PATH` |
@@ -326,6 +326,26 @@ name the variable to set. `AI_ENABLED=false` switches it off with the key left i
 `GEMINI_MONTHLY_BUDGET_EUR=0` does the same. What is refused is a contradiction —
 `GEMINI_PROVIDER=vertex` with only `GEMINI_API_KEY` set, or the reverse — because that
 is a typo rather than a decision.
+
+**Vertex AI credentials.** Vertex authenticates through Google's Application
+Default Credentials (ADC), never through a value Balancr reads from `.env` —
+`GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` say *where* the request goes,
+not *how* it is authorized. To satisfy ADC inside the container:
+
+1. In the target GCP project, create a service account and grant it
+   `roles/aiplatform.user`.
+2. Create a JSON key for that service account and download it.
+3. Mount the key file into the container and point `GOOGLE_APPLICATION_CREDENTIALS`
+   at its in-container path. [compose.yaml](compose.yaml)'s commented-out `secrets:`
+   block does this without baking the key into the image; it works under this
+   service's `read_only: true` root filesystem, since a mounted secret is
+   writable independently of that flag.
+
+Skip all of this with `GEMINI_PROVIDER=aistudio` instead — a plain API key, at
+the cost of the EU-residency and audit-trail guarantees Vertex gives you. A call
+that reaches Vertex with no usable credential fails with a message naming
+`GOOGLE_APPLICATION_CREDENTIALS` and pointing back at this section, rather than
+google-auth-library's bare "could not load the default credentials".
 
 `TRUSTED_PROXY_CIDRS` is the one to get right. Authentik's identity headers are
 honoured only from peers inside that range; without it, anyone who reaches the

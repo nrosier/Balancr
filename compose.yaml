@@ -16,6 +16,13 @@ services:
       ACTUAL_DATA_DIR: /data/actual
     volumes:
       - balancr-data:/data
+    # Vertex AI only (README.md, "Vertex AI credentials"): mounts a GCP
+    # service-account JSON key so Application Default Credentials finds it at
+    # the path .env.example's commented-out GOOGLE_APPLICATION_CREDENTIALS
+    # names. A Compose secret is writable independently of `read_only` below,
+    # unlike a second bind-mounted directory would be.
+    # secrets:
+    #   - vertex-sa
     # Everything writable lives in the volume, so the rest can be immutable.
     read_only: true
     tmpfs:
@@ -54,3 +61,8 @@ networks:
     external: true
   internal:
     external: true
+
+# Vertex AI only — pairs with the commented-out `secrets:` entry above.
+# secrets:
+#   vertex-sa:
+#     file: ./secrets/vertex-sa.json

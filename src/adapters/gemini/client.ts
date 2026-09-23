@@ -415,7 +415,8 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
     const detail = error instanceof Error ? error.message : String(error)
     throw new GeminiError(
       `Gemini call failed after ${Date.now() - started}ms: ${detail}` +
-        schemaHint(call, detail),
+        schemaHint(call, detail) +
+        vertexAuthHint(provider, detail),
       error,
       provider,
     )
@@ -438,5 +439,23 @@ function schemaHint(call: AiCall, detail: string): string {
     ' — this call carried a response schema, and Gemini rejects a schema using ' +
     'keywords outside its supported subset without saying which; check ' +
     'toGeminiSchema in adapters/gemini/json-schema.ts'
+  )
+}
+
+/**
+ * Vertex authenticates through ADC (Application Default Credentials), never
+ * through a value Balancr reads itself (#500) — so a missing or unreadable
+ * service-account key surfaces as google-auth-library's own generic sentence,
+ * identical whether the file is absent, unmounted, or just never granted
+ * Vertex AI access. Naming the variable and pointing back at the setup section
+ * turns that into a one-line fix instead of a search for a stock error string.
+ */
+function vertexAuthHint(provider: AiProvider, detail: string): string {
+  if (provider !== 'gemini-vertex') return ''
+  if (!detail.toLowerCase().includes('could not load the default credentials')) return ''
+  return (
+    ' — Vertex authenticates via Application Default Credentials, not a value in .env; ' +
+    'set GOOGLE_APPLICATION_CREDENTIALS to a mounted service-account key ' +
+    '(see README.md, "Vertex AI credentials")'
   )
 }

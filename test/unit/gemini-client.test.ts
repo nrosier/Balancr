@@ -564,6 +564,58 @@ describe('callGemini', () => {
     }
   })
 
+  it('names GOOGLE_APPLICATION_CREDENTIALS when Vertex ADC finds no credential (#500)', async () => {
+    // google-auth-library answers a missing/unmounted service-account key with
+    // the same stock sentence whether the file is absent, unreadable, or never
+    // granted Vertex AI access — indistinguishable from any other transport
+    // failure without the hint.
+    vi.resetModules()
+    vi.stubEnv('GEMINI_PROVIDER', 'vertex')
+    vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'balancr-test')
+    vi.stubEnv('GOOGLE_CLOUD_LOCATION', 'europe-west1')
+    try {
+      const [fresh, freshDbModule, freshMigrations, freshTenantIntegrations] = await Promise.all([
+        import('../../src/adapters/gemini/client.ts'),
+        import('../../src/db/index.ts'),
+        import('../../src/db/apply-migrations.ts'),
+        import('../../src/db/tenant-integrations.ts'),
+      ])
+      const freshDb = freshDbModule.createTestDb().db
+      freshMigrations.applyMigrations(freshDb as never)
+      freshTenantIntegrations.importEnvIntegrationsOnce(freshDb)
+      const freshTenantId = getSoleTenantId(freshDb)
+      const cause = new Error(
+        'Could not load the default credentials. Browse to ' +
+          'https://cloud.google.com/docs/authentication/getting-started for more information.',
+      )
+      const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+      fresh.setGeminiClient(client)
+
+      await expect(fresh.callGemini(freshDb, freshTenantId, call)).rejects.toThrow(
+        /GOOGLE_APPLICATION_CREDENTIALS/,
+      )
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
+  })
+
+  it('does not name the Vertex credential on an AI Studio call with the same transport error', async () => {
+    const cause = new Error(
+      'Could not load the default credentials. Browse to ' +
+        'https://cloud.google.com/docs/authentication/getting-started for more information.',
+    )
+    const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+    setGeminiClient(client)
+
+    try {
+      await callGemini(db, tenantId, call)
+      expect.unreachable()
+    } catch (error) {
+      expect((error as GeminiError).message).not.toContain('GOOGLE_APPLICATION_CREDENTIALS')
+    }
+  })
+
   it('refuses before any request when the payload could forge the fence', async () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
