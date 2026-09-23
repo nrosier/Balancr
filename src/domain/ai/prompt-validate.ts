@@ -208,8 +208,9 @@ For each one, decide whether the candidate still imposes it:
   say what the figure or category actually is, in plain language.
 - negative_is_overspend: on an expense envelope, a negative leftover figure means more was
   spent than set aside — an overspend to explain, never a deficit to flag as an error or a
-  debt. Income is different (earning less than expected, not overspending) and must be
-  left out of this framing.
+  debt, and the writer must give the amount as a positive figure with the overspend carried
+  in the wording rather than printing the raw minus sign. Income is different (earning less
+  than expected, not overspending) and must be left out of this framing.
 
 Judge the constraint, not the wording. A candidate may impose a rule in its own words, in a
 different order, or as part of another sentence, and that still counts as present. Set

@@ -512,7 +512,7 @@ Rules:
 `.trim()
 
 /**
- * The narrative prompt, current. An appended rule, not a rewrite — rule 12 stands on its
+ * The narrative prompt, v2.3.5. An appended rule, not a rewrite — rule 12 stands on its
  * own and touches nothing rule 1 through 11 already say, so unlike `NARRATIVE_SYSTEM_V7`
  * there is no earlier wording underneath it to contradict.
  *
@@ -541,8 +541,11 @@ Rules:
  * the two apart the same way the analysis pass already does; without that carve-out, rule
  * 12 would tell the model to call a household's income shortfall an "overspend," which is
  * the same backwards reading `overspend.ts` was written to avoid.
+ *
+ * Superseded by `NARRATIVE_SYSTEM` below, whose own doc comment explains why. Kept byte
+ * for byte.
  */
-const NARRATIVE_SYSTEM = `
+const NARRATIVE_SYSTEM_V8 = `
 ${NARRATIVE_SYSTEM_V7}
 12. A category's own leftover figure can be negative. For an expense envelope that
     means more was spent in it than was set aside, an overspend, not a deficit to
@@ -552,6 +555,49 @@ ${NARRATIVE_SYSTEM_V7}
     income category means something else entirely — earning less than expected, not
     overspending — so leave it alone unless another figure you were given already
     explains it.
+`.trim()
+
+/**
+ * The narrative prompt, current. Rule 12 itself gets a second half, not a new rule number
+ * — the addition is about how the same figure is *displayed*, not a new fact to interpret,
+ * so it belongs next to the sentence that already explains that figure's sign rather than
+ * as a thirteenth rule arguing with the twelfth.
+ *
+ * A household using a sarcastic voice for their narrative pointed out that "leaving
+ * € -42,00" reads as a bare accounting artefact next to prose that is otherwise going out
+ * of its way to *say* something about the month — the minus sign carries the meaning rule
+ * 12 already asks for in words a paragraph earlier, so the figure ends up saying it twice,
+ * once in character and once as punctuation. The fix has to be voice-agnostic: this prompt
+ * has no idea whether an install's edited body is dry or sarcastic, so it names the
+ * requirement (a positive figure, meaning carried by the words around it) rather than
+ * supplying wording of its own the way a single household's example might read.
+ *
+ * This is carved out of rule 1 on purpose, not a quiet exception to it. Rule 1's "copy it
+ * exactly as given" is about the digits — a household's actual spending must never be
+ * recalculated, rescaled or rounded differently by the writer — and dropping a leading
+ * minus sign changes none of them. The number is not being touched a second time; only
+ * whether the character that marks it negative appears in the sentence is, and rule 12
+ * already requires the sentence to say that some other way. Spelling this out matters
+ * because a reader of this prompt could otherwise see "never print the figure with its
+ * minus sign" sitting a few lines under "copy it exactly as given" and read the two as
+ * contradicting each other.
+ */
+const NARRATIVE_SYSTEM = `
+${NARRATIVE_SYSTEM_V7}
+12. A category's own leftover figure can be negative. For an expense envelope that
+    means more was spent in it than was set aside, an overspend, not a deficit to
+    flag as wrong or leave uninterpreted — say what it means for that envelope and
+    the month ahead, the same plain way you already explain drift (rule 8), and
+    never call it an error in the figures or a debt owed. When you write that
+    amount into a sentence, give it as a positive figure and let your own wording —
+    a shortfall, a hole, an overspend, whatever fits the voice you are writing in —
+    carry the fact that it went the wrong way; never print the figure with its
+    minus sign, since the sentence around it is already saying so in words. This
+    is the one thing rule 1's "copy it exactly" does not cover: the sign is not one
+    of the digits, and dropping it is not touching the number a second time. A
+    negative figure on an income category means something else entirely — earning
+    less than expected, not overspending — so leave it alone unless another figure
+    you were given already explains it.
 `.trim()
 
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
@@ -594,6 +640,7 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
     NARRATIVE_SYSTEM_V5,
     NARRATIVE_SYSTEM_V6,
     NARRATIVE_SYSTEM_V7,
+    NARRATIVE_SYSTEM_V8,
   ],
 }
 
@@ -633,8 +680,15 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
  * `no_internal_ids` applies unchanged — a verdict reached before this rule existed never
  * asked the judge about it at all, so it cannot certify a candidate against a constraint
  * this build now checks for.
+ *
+ * Bumped to 6 for `negative_is_overspend` itself changing what it requires: it used to
+ * ask only whether a candidate explains a negative expense figure as an overspend, and
+ * now also asks whether the candidate keeps that figure's minus sign out of the prose. A
+ * verdict reached under version 5's rubric never answered the second question, so it
+ * cannot certify a candidate against it — the same "verdict answers a specific question"
+ * reasoning as every bump above.
  */
-export const VALIDATION_RULES_VERSION = 5
+export const VALIDATION_RULES_VERSION = 6
 
 /**
  * What a prompt row's text is cleared for.
