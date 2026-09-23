@@ -434,12 +434,16 @@ describe('recentRuns', () => {
     const last = firstPage[firstPage.length - 1]!
     const secondPage = recentRuns(db, tenantId, 2, undefined, {
       createdAt: last.createdAt,
-      id: last.id,
+      rowid: last.rowid,
     })
     expect(secondPage.map((row) => row.id)).toEqual([third, ids[1]])
   })
 
-  it('breaks a tie on the same millisecond by id, so a cursor built from it is exact (#502)', () => {
+  it('breaks a tie on the same millisecond by insertion order, not id (#510)', () => {
+    // `id` is a random UUID with no relation to insertion order — before #510, two
+    // runs sharing a millisecond broke their tie on it, making "newest first" a coin
+    // flip. `rowid` is assigned in strict insertion order, so `b` (recorded second)
+    // must always come first.
     const same = new Date('2026-03-10T00:00:00Z')
     const a = recordRun(db, tenantId, run())
     const b = recordRun(db, tenantId, run())
@@ -447,11 +451,12 @@ describe('recentRuns', () => {
     backdate(b, same)
 
     const [newest, oldest] = recentRuns(db, tenantId, 2)
-    expect([newest!.id, oldest!.id].sort()).toEqual([a, b].sort())
+    expect(newest!.id).toBe(b)
+    expect(oldest!.id).toBe(a)
 
     const nextPage = recentRuns(db, tenantId, 2, undefined, {
       createdAt: newest!.createdAt,
-      id: newest!.id,
+      rowid: newest!.rowid,
     })
     expect(nextPage.map((row) => row.id)).toEqual([oldest!.id])
   })

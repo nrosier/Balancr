@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, gte, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm'
 import { costMicroEur } from '../../adapters/ai/pricing.ts'
 import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
@@ -255,18 +255,26 @@ export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunR
  * period on the picker, and a ledger row nobody can reach is not an audit. Omit
  * `period` for the spend page, which is about the money and wants every row.
  *
- * Ties on `createdAt` break on `id` rather than being left to chance: two runs
+ * Ties on `createdAt` break on `rowid` rather than being left to chance: two runs
  * recorded synchronously (as tests, and a fast nightly job, both do) can share the
  * same millisecond, and without a second key the `period` filter's index scan
  * ordered them differently from the unfiltered scan — same rows, same requested
- * order, different answer depending on which query plan SQLite picked. `id` also
- * makes the tiebreak expressible in a `before` cursor's `WHERE`, which `rowid`
- * (SQLite-internal, not a selectable column on this row type) does not.
+ * order, different answer depending on which query plan SQLite picked.
+ *
+ * `rowid` rather than `id` (#510): `id` is a random UUID, so its lexicographic
+ * order has nothing to do with insertion order — a tie on `createdAt` broke on it
+ * anyway, which meant "newest of two same-millisecond runs" was a coin flip, not a
+ * fact. `rowid` is assigned by SQLite in strictly increasing insertion order for
+ * this table, because `ai_runs` is append-only: nothing ever deletes a row (the
+ * retention sweep in `clearStaleRunText` only nulls two columns), and a `rowid`
+ * table only reuses a freed id after an actual delete. It is not one of this
+ * table's declared columns, so it is selected here as a raw SQL expression rather
+ * than a typed one.
  *
  * `before` pages backwards from a previously-returned row (#502): the run list has
  * no upper bound on `ai_runs`, so a fixed `limit` alone makes anything past it
- * permanently unreachable through the log. Naming the exact `(createdAt, id)` pair
- * this function's own `ORDER BY` produces, rather than an offset, means a run
+ * permanently unreachable through the log. Naming the exact `(createdAt, rowid)`
+ * pair this function's own `ORDER BY` produces, rather than an offset, means a run
  * recorded between two page fetches shifts nothing already paged past.
  */
 export function recentRuns(
@@ -274,8 +282,8 @@ export function recentRuns(
   tenantId: string,
   limit = 50,
   period?: string | { kind: 'month' | 'year'; value: string },
-  before?: { createdAt: Date; id: string },
-): AiRunRow[] {
+  before?: { createdAt: Date; rowid: number },
+): (AiRunRow & { rowid: number })[] {
   const periodMatch =
     period === undefined
       ? undefined
@@ -287,7 +295,7 @@ export function recentRuns(
       ? undefined
       : or(
           lt(aiRuns.createdAt, before.createdAt),
-          and(eq(aiRuns.createdAt, before.createdAt), lt(aiRuns.id, before.id)),
+          and(eq(aiRuns.createdAt, before.createdAt), sql`rowid < ${before.rowid}`),
         )
   const match = and(
     eq(aiRuns.tenantId, tenantId),
@@ -295,12 +303,34 @@ export function recentRuns(
     ...(cursorMatch === undefined ? [] : [cursorMatch]),
   )
   return db
-    .select()
+    .select({ ...getTableColumns(aiRuns), rowid: sql<number>`rowid` })
     .from(aiRuns)
     .where(match)
-    .orderBy(desc(aiRuns.createdAt), desc(aiRuns.id))
+    .orderBy(desc(aiRuns.createdAt), sql`rowid desc`)
     .limit(limit)
     .all()
+}
+
+/**
+ * The `(createdAt, rowid)` pair `recentRuns`'s `before` cursor needs, resolved
+ * fresh from a run's wire id (#510) — the API's cursor is just an id (see
+ * `GET /api/settings/ai/runs`), never the ordering pair itself, so whoever holds
+ * one has to look the pair up rather than being trusted to have kept it accurate.
+ * Also why an id that no longer resolves for this tenant is `null` rather than an
+ * error: a stale or foreign link should end the log, not restart or crash it.
+ */
+export function loadRunCursor(
+  db: Db,
+  tenantId: string,
+  id: string,
+): { createdAt: Date; rowid: number } | null {
+  return (
+    db
+      .select({ createdAt: aiRuns.createdAt, rowid: sql<number>`rowid` })
+      .from(aiRuns)
+      .where(and(eq(aiRuns.id, id), eq(aiRuns.tenantId, tenantId)))
+      .get() ?? null
+  )
 }
 
 /**
