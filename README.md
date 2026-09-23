@@ -337,9 +337,9 @@ not *how* it is authorized. To satisfy ADC inside the container:
 2. Create a JSON key for that service account and download it.
 3. Mount the key file into the container and point `GOOGLE_APPLICATION_CREDENTIALS`
    at its in-container path. [compose.yaml](compose.yaml)'s commented-out `secrets:`
-   block does this without baking the key into the image; it works under this
-   service's `read_only: true` root filesystem, since a mounted secret is
-   writable independently of that flag.
+   block does this without baking the key into the image; it stays readable
+   under this service's `read_only: true` root filesystem, since a Compose
+   secret is a separate mount that `read_only` does not affect.
 
 Skip all of this with `GEMINI_PROVIDER=aistudio` instead — a plain API key, at
 the cost of the EU-residency and audit-trail guarantees Vertex gives you. A call

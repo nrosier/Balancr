@@ -444,15 +444,25 @@ function schemaHint(call: AiCall, detail: string): string {
 
 /**
  * Vertex authenticates through ADC (Application Default Credentials), never
- * through a value Balancr reads itself (#500) — so a missing or unreadable
- * service-account key surfaces as google-auth-library's own generic sentence,
- * identical whether the file is absent, unmounted, or just never granted
- * Vertex AI access. Naming the variable and pointing back at the setup section
- * turns that into a one-line fix instead of a search for a stock error string.
+ * through a value Balancr reads itself (#500) — so a missing, unmounted or
+ * unreadable service-account key surfaces as one of google-auth-library's own
+ * stock sentences (`googleauth.js`'s `GoogleAuthExceptionMessages`) instead of
+ * anything naming Balancr's own setup. These four cover: no ADC found at all,
+ * no credentials in the environment, a `GOOGLE_APPLICATION_CREDENTIALS` file
+ * that exists but can't be read, and no project id discoverable — the ways
+ * that library actually fails, not a guess at wording.
  */
+const ADC_FAILURE_MESSAGES = [
+  'could not load the default credentials',
+  'unable to find credentials in current environment',
+  'unable to read the credential file specified by the google_application_credentials',
+  'unable to detect a project id',
+]
+
 function vertexAuthHint(provider: AiProvider, detail: string): string {
   if (provider !== 'gemini-vertex') return ''
-  if (!detail.toLowerCase().includes('could not load the default credentials')) return ''
+  const lower = detail.toLowerCase()
+  if (!ADC_FAILURE_MESSAGES.some((message) => lower.includes(message))) return ''
   return (
     ' — Vertex authenticates via Application Default Credentials, not a value in .env; ' +
     'set GOOGLE_APPLICATION_CREDENTIALS to a mounted service-account key ' +
