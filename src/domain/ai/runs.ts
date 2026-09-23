@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, getTableColumns, gte, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm'
 import { costMicroEur } from '../../adapters/ai/pricing.ts'
 import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
@@ -97,6 +97,9 @@ export function recordRun(db: Db, tenantId: string, run: RecordRun): string {
     .insert(aiRuns)
     .values({
       tenantId,
+      // One statement, so this can never race with another insert's own read of
+      // the same max — see the column's doc comment in `schema.ts` (#514).
+      seq: sql`(SELECT COALESCE(MAX(seq), 0) + 1 FROM ai_runs)`,
       kind: run.kind,
       provider: run.provider,
       model: run.model,
@@ -255,25 +258,23 @@ export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunR
  * period on the picker, and a ledger row nobody can reach is not an audit. Omit
  * `period` for the spend page, which is about the money and wants every row.
  *
- * Ties on `createdAt` break on `rowid` rather than being left to chance: two runs
+ * Ties on `createdAt` break on `seq` rather than being left to chance: two runs
  * recorded synchronously (as tests, and a fast nightly job, both do) can share the
  * same millisecond, and without a second key the `period` filter's index scan
  * ordered them differently from the unfiltered scan — same rows, same requested
  * order, different answer depending on which query plan SQLite picked.
  *
- * `rowid` rather than `id` (#510): `id` is a random UUID, so its lexicographic
- * order has nothing to do with insertion order — a tie on `createdAt` broke on it
- * anyway, which meant "newest of two same-millisecond runs" was a coin flip, not a
- * fact. `rowid` is assigned by SQLite in strictly increasing insertion order for
- * this table, because `ai_runs` is append-only: nothing ever deletes a row (the
- * retention sweep in `clearStaleRunText` only nulls two columns), and a `rowid`
- * table only reuses a freed id after an actual delete. It is not one of this
- * table's declared columns, so it is selected here as a raw SQL expression rather
- * than a typed one.
+ * `seq` rather than `id` (#510) or SQLite's implicit `rowid` (#514): `id` is a
+ * random UUID, so its lexicographic order has nothing to do with insertion order.
+ * `rowid` tracked insertion order only until a migration ever rebuilt this table,
+ * which one already has. `seq` is a plain persisted column instead (see its doc
+ * comment in `schema.ts`) — an ordinary data column that any future rebuild's
+ * `INSERT ... SELECT` carries over unchanged, whatever order it reads the old
+ * table in.
  *
  * `before` pages backwards from a previously-returned row (#502): the run list has
  * no upper bound on `ai_runs`, so a fixed `limit` alone makes anything past it
- * permanently unreachable through the log. Naming the exact `(createdAt, rowid)`
+ * permanently unreachable through the log. Naming the exact `(createdAt, seq)`
  * pair this function's own `ORDER BY` produces, rather than an offset, means a run
  * recorded between two page fetches shifts nothing already paged past.
  */
@@ -282,8 +283,8 @@ export function recentRuns(
   tenantId: string,
   limit = 50,
   period?: string | { kind: 'month' | 'year'; value: string },
-  before?: { createdAt: Date; rowid: number },
-): (AiRunRow & { rowid: number })[] {
+  before?: { createdAt: Date; seq: number },
+): AiRunRow[] {
   const periodMatch =
     period === undefined
       ? undefined
@@ -295,7 +296,7 @@ export function recentRuns(
       ? undefined
       : or(
           lt(aiRuns.createdAt, before.createdAt),
-          and(eq(aiRuns.createdAt, before.createdAt), sql`rowid < ${before.rowid}`),
+          and(eq(aiRuns.createdAt, before.createdAt), lt(aiRuns.seq, before.seq)),
         )
   const match = and(
     eq(aiRuns.tenantId, tenantId),
@@ -303,16 +304,16 @@ export function recentRuns(
     ...(cursorMatch === undefined ? [] : [cursorMatch]),
   )
   return db
-    .select({ ...getTableColumns(aiRuns), rowid: sql<number>`rowid` })
+    .select()
     .from(aiRuns)
     .where(match)
-    .orderBy(desc(aiRuns.createdAt), sql`rowid desc`)
+    .orderBy(desc(aiRuns.createdAt), desc(aiRuns.seq))
     .limit(limit)
     .all()
 }
 
 /**
- * The `(createdAt, rowid)` pair `recentRuns`'s `before` cursor needs, resolved
+ * The `(createdAt, seq)` pair `recentRuns`'s `before` cursor needs, resolved
  * fresh from a run's wire id (#510) — the API's cursor is just an id (see
  * `GET /api/settings/ai/runs`), never the ordering pair itself, so whoever holds
  * one has to look the pair up rather than being trusted to have kept it accurate.
@@ -323,10 +324,10 @@ export function loadRunCursor(
   db: Db,
   tenantId: string,
   id: string,
-): { createdAt: Date; rowid: number } | null {
+): { createdAt: Date; seq: number } | null {
   return (
     db
-      .select({ createdAt: aiRuns.createdAt, rowid: sql<number>`rowid` })
+      .select({ createdAt: aiRuns.createdAt, seq: aiRuns.seq })
       .from(aiRuns)
       .where(and(eq(aiRuns.id, id), eq(aiRuns.tenantId, tenantId)))
       .get() ?? null
