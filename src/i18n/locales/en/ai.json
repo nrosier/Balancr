@@ -103,6 +103,8 @@
     },
     "hideTranscript": "Hide the request and response",
     "hint": "The exact text prepared for the model, and the exact text it sent back, for every recorded call.",
+    "loadMore": "Load older calls",
+    "loadingMore": "Loading…",
     "none": "No calls have been made yet.",
     "request": "Request",
     "requestUnavailable": "The request could not be reconstructed.",

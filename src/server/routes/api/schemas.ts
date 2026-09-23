@@ -1283,6 +1283,12 @@ export const aiRunPayloadSchema = aiRunSchema.extend({
 /** `GET /api/settings/ai/runs` — the raw request/response log's own list, all-time. */
 export const aiRunListSchema = z.object({
   runs: z.array(aiRunSchema),
+  /**
+   * The `id` to pass as `?before=` for the next page (#502), or null when this page
+   * came back short of a full page — the only way to tell "that was everything"
+   * apart from "ask again for the same last page" without a separate total count.
+   */
+  nextCursor: z.string().nullable(),
 })
 
 // ---------------------------------------------------------------------------

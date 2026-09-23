@@ -4442,7 +4442,7 @@ describe('the AI log', () => {
   it('lists every recorded call, newest first, without needing a month', async () => {
     await open({
       ...READS,
-      '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN] } satisfies AiRunList),
+      '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN], nextCursor: null } satisfies AiRunList),
     }, '/settings/ai-log')
 
     expect(await screen.findByText('Analysis')).toBeTruthy()
@@ -4455,7 +4455,7 @@ describe('the AI log', () => {
   it('shows the exact request and response text once a row is opened', async () => {
     await open({
       ...READS,
-      '/api/settings/ai/runs': json({ runs: [RUN] } satisfies AiRunList),
+      '/api/settings/ai/runs': json({ runs: [RUN], nextCursor: null } satisfies AiRunList),
       '/api/insights/runs/run-findings/payload': json({
         ...RUN,
         payload: { month: '2026-08' },
@@ -4475,7 +4475,7 @@ describe('the AI log', () => {
   it("shows a capped run's prepared-but-unsent request, with no response to show", async () => {
     await open({
       ...READS,
-      '/api/settings/ai/runs': json({ runs: [CAPPED_RUN] } satisfies AiRunList),
+      '/api/settings/ai/runs': json({ runs: [CAPPED_RUN], nextCursor: null } satisfies AiRunList),
       '/api/insights/runs/run-narrative/payload': json({
         ...CAPPED_RUN,
         payload: {},
@@ -4491,10 +4491,64 @@ describe('the AI log', () => {
   })
 
   it('says no calls have been made yet, rather than drawing an empty table', async () => {
-    await open({ ...READS, '/api/settings/ai/runs': json({ runs: [] } satisfies AiRunList) }, '/settings/ai-log')
+    await open(
+      { ...READS, '/api/settings/ai/runs': json({ runs: [], nextCursor: null } satisfies AiRunList) },
+      '/settings/ai-log',
+    )
 
     expect(await screen.findByText('No calls have been made yet.')).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('has no "load older calls" button once the first page is already everything (#502)', async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN], nextCursor: null } satisfies AiRunList),
+    }, '/settings/ai-log')
+
+    await screen.findByText('Analysis')
+    expect(screen.queryByRole('button', { name: 'Load older calls' })).toBeNull()
+  })
+
+  it('appends the next page onto the first without losing it, then hides the button (#502)', async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [RUN], nextCursor: 'run-findings' } satisfies AiRunList),
+      '/api/settings/ai/runs?before=run-findings': json({
+        runs: [CAPPED_RUN],
+        nextCursor: null,
+      } satisfies AiRunList),
+    }, '/settings/ai-log')
+
+    await screen.findByText('Analysis')
+    fireEvent.click(await screen.findByRole('button', { name: 'Load older calls' }))
+
+    expect(await screen.findByText('Narrative')).toBeTruthy()
+    // The first page's row is still there — "load more" appends, it does not replace.
+    expect(screen.getByText('Analysis')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Load older calls' })).toBeNull()
+  })
+
+  it('lets a failed "load more" be retried without losing the first page (#502)', async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [RUN], nextCursor: 'run-findings' } satisfies AiRunList),
+      '/api/settings/ai/runs?before=run-findings': [
+        new Error('network blip'),
+        json({ runs: [CAPPED_RUN], nextCursor: null } satisfies AiRunList),
+      ],
+    }, '/settings/ai-log')
+
+    await screen.findByText('Analysis')
+    fireEvent.click(await screen.findByRole('button', { name: 'Load older calls' }))
+
+    const retry = await screen.findByRole('button', { name: 'Try again' })
+    expect(screen.getByText('Analysis')).toBeTruthy()
+
+    fireEvent.click(retry)
+
+    expect(await screen.findByText('Narrative')).toBeTruthy()
+    expect(screen.getByText('Analysis')).toBeTruthy()
   })
 })
 

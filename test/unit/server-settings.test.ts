@@ -1695,4 +1695,80 @@ describe('GET /api/settings/ai/runs (#497)', () => {
     const res = await get('/api/settings/ai/runs', viewer)
     expect(res.statusCode).toBe(200)
   })
+
+  it('hands back a cursor once there are more runs than fit on one page, and paging with it reaches the rest (#502)', async () => {
+    // The route's own page is 50 rows; 51 runs is the smallest fixture that
+    // forces a `nextCursor` rather than returning everything on page one.
+    const ids: string[] = []
+    for (let i = 0; i < 51; i += 1) {
+      const id = recordRun(ctx.db, tenantId, run(`run-${i}`))
+      ctx.db.$client
+        .prepare('update ai_runs set created_at = ? where id = ?')
+        .run(new Date(2026, 7, 1, 0, 0, i).getTime(), id)
+      ids.push(id)
+    }
+    const oldest = ids[0]!
+
+    const firstPage = (await get('/api/settings/ai/runs')).json<{
+      runs: { id: string }[]
+      nextCursor: string | null
+    }>()
+    expect(firstPage.runs).toHaveLength(50)
+    expect(firstPage.nextCursor).not.toBeNull()
+    expect(firstPage.runs.map((r) => r.id)).not.toContain(oldest)
+
+    const secondPage = (
+      await get(`/api/settings/ai/runs?before=${firstPage.nextCursor}`)
+    ).json<{ runs: { id: string }[]; nextCursor: string | null }>()
+    expect(secondPage.runs.map((r) => r.id)).toEqual([oldest])
+    expect(secondPage.nextCursor).toBeNull()
+  })
+
+  it('resolves ?before= to that run and returns everything strictly older than it (#502)', async () => {
+    const older = recordRun(ctx.db, tenantId, run('older'))
+    const middle = recordRun(ctx.db, tenantId, run('middle'))
+    const newest = recordRun(ctx.db, tenantId, run('newest'))
+    for (const [id, day] of [
+      [older, '01'],
+      [middle, '02'],
+      [newest, '03'],
+    ] as const) {
+      ctx.db.$client
+        .prepare('update ai_runs set created_at = ? where id = ?')
+        .run(new Date(`2026-08-${day}T00:00:00Z`).getTime(), id)
+    }
+
+    const body = (await get(`/api/settings/ai/runs?before=${newest}`)).json<{
+      runs: { id: string }[]
+      nextCursor: string | null
+    }>()
+    expect(body.runs.map((r) => r.id)).toEqual([middle, older])
+    expect(body.nextCursor).toBeNull()
+  })
+
+  it('treats an unresolvable cursor as the end of the log, not a fresh start (#502)', async () => {
+    recordRun(ctx.db, tenantId, run('only-run'))
+
+    const body = (await get('/api/settings/ai/runs?before=does-not-exist')).json<{
+      runs: unknown[]
+      nextCursor: string | null
+    }>()
+    expect(body.runs).toEqual([])
+    expect(body.nextCursor).toBeNull()
+  })
+
+  it("does not resolve another tenant's run id as a cursor (#502)", async () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    const otherTenantRun = recordRun(ctx.db, otherTenantId, run('other-tenants-run'))
+    recordRun(ctx.db, tenantId, run('mine'))
+
+    const res = await get(`/api/settings/ai/runs?before=${otherTenantRun}`)
+    expect(res.statusCode).toBe(200)
+    expect(res.json<{ runs: unknown[] }>().runs).toEqual([])
+  })
+
+  it('rejects a non-string before', async () => {
+    const res = await get('/api/settings/ai/runs?before=a&before=b')
+    expect(res.statusCode).toBe(400)
+  })
 })

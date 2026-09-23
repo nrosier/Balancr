@@ -103,6 +103,8 @@
     },
     "hideTranscript": "Verberg de vraag en het antwoord",
     "hint": "De exacte tekst die voor het model werd opgesteld, en de exacte tekst die het teruggaf, voor elke geregistreerde aanroep.",
+    "loadMore": "Oudere aanroepen laden",
+    "loadingMore": "Laden…",
     "none": "Er zijn nog geen aanroepen geweest.",
     "request": "Vraag",
     "requestUnavailable": "De vraag kon niet worden gereconstrueerd.",

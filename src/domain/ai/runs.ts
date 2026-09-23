@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, gte, inArray, isNull, like, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, like, lt, or, sql } from 'drizzle-orm'
 import { costMicroEur } from '../../adapters/ai/pricing.ts'
 import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
@@ -255,17 +255,26 @@ export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunR
  * period on the picker, and a ledger row nobody can reach is not an audit. Omit
  * `period` for the spend page, which is about the money and wants every row.
  *
- * Ties on `createdAt` break on `rowid` rather than being left to chance: two runs
+ * Ties on `createdAt` break on `id` rather than being left to chance: two runs
  * recorded synchronously (as tests, and a fast nightly job, both do) can share the
  * same millisecond, and without a second key the `period` filter's index scan
  * ordered them differently from the unfiltered scan — same rows, same requested
- * order, different answer depending on which query plan SQLite picked.
+ * order, different answer depending on which query plan SQLite picked. `id` also
+ * makes the tiebreak expressible in a `before` cursor's `WHERE`, which `rowid`
+ * (SQLite-internal, not a selectable column on this row type) does not.
+ *
+ * `before` pages backwards from a previously-returned row (#502): the run list has
+ * no upper bound on `ai_runs`, so a fixed `limit` alone makes anything past it
+ * permanently unreachable through the log. Naming the exact `(createdAt, id)` pair
+ * this function's own `ORDER BY` produces, rather than an offset, means a run
+ * recorded between two page fetches shifts nothing already paged past.
  */
 export function recentRuns(
   db: Db,
   tenantId: string,
   limit = 50,
   period?: string | { kind: 'month' | 'year'; value: string },
+  before?: { createdAt: Date; id: string },
 ): AiRunRow[] {
   const periodMatch =
     period === undefined
@@ -273,15 +282,23 @@ export function recentRuns(
       : typeof period === 'string' || period.kind === 'month'
         ? eq(aiRuns.period, typeof period === 'string' ? period : period.value)
         : like(aiRuns.period, `${period.value}-%`)
-  const match =
-    periodMatch === undefined
-      ? eq(aiRuns.tenantId, tenantId)
-      : and(eq(aiRuns.tenantId, tenantId), or(periodMatch, isNull(aiRuns.period)))
+  const cursorMatch =
+    before === undefined
+      ? undefined
+      : or(
+          lt(aiRuns.createdAt, before.createdAt),
+          and(eq(aiRuns.createdAt, before.createdAt), lt(aiRuns.id, before.id)),
+        )
+  const match = and(
+    eq(aiRuns.tenantId, tenantId),
+    ...(periodMatch === undefined ? [] : [or(periodMatch, isNull(aiRuns.period))]),
+    ...(cursorMatch === undefined ? [] : [cursorMatch]),
+  )
   return db
     .select()
     .from(aiRuns)
     .where(match)
-    .orderBy(desc(aiRuns.createdAt), desc(sql`rowid`))
+    .orderBy(desc(aiRuns.createdAt), desc(aiRuns.id))
     .limit(limit)
     .all()
 }

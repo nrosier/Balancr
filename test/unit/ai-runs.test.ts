@@ -417,6 +417,43 @@ describe('recentRuns', () => {
     recordRun(db, tenantId, run())
     expect(recentRuns(db, otherTenantId, 50)).toHaveLength(0)
   })
+
+  it('pages backwards from a cursor, picking up exactly where the prior page stopped (#502)', () => {
+    const ids: string[] = []
+    for (let day = 1; day <= 5; day += 1) {
+      const id = recordRun(db, tenantId, run())
+      backdate(id, new Date(`2026-03-0${day}T00:00:00Z`))
+      ids.push(id)
+    }
+    const [, , third, , fifth] = ids as [string, string, string, string, string]
+
+    const firstPage = recentRuns(db, tenantId, 2)
+    expect(firstPage.map((row) => row.id)).toEqual([fifth, ids[3]])
+
+    const last = firstPage[firstPage.length - 1]!
+    const secondPage = recentRuns(db, tenantId, 2, undefined, {
+      createdAt: last.createdAt,
+      id: last.id,
+    })
+    expect(secondPage.map((row) => row.id)).toEqual([third, ids[1]])
+  })
+
+  it('breaks a tie on the same millisecond by id, so a cursor built from it is exact (#502)', () => {
+    const same = new Date('2026-03-10T00:00:00Z')
+    const a = recordRun(db, tenantId, run())
+    const b = recordRun(db, tenantId, run())
+    backdate(a, same)
+    backdate(b, same)
+
+    const [newest, oldest] = recentRuns(db, tenantId, 2)
+    expect([newest!.id, oldest!.id].sort()).toEqual([a, b].sort())
+
+    const nextPage = recentRuns(db, tenantId, 2, undefined, {
+      createdAt: newest!.createdAt,
+      id: newest!.id,
+    })
+    expect(nextPage.map((row) => row.id)).toEqual([oldest!.id])
+  })
 })
 
 describe('ai_spend_monthly', () => {
