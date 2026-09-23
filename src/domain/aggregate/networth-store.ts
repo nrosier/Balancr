@@ -200,11 +200,11 @@ export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | 
 
 /**
  * The latest snapshot on or before `onOrBefore`, rather than the tenant's latest
- * one overall (#498). A bundle built for month `M` must not cite a snapshot from
- * after `M` just because a later month has since been synced — `loadLatestNetWorth`
- * has no such bound, which is right for its "right now" callers (`overview.ts`,
- * `scenario.ts`, `forecast.ts`, `signals.ts`'s live path) but wrong for a bundle
- * that is retroactively about a specific month.
+ * one overall (#498). A bundle — or a rejudged past month's signals (#504) — built
+ * for month `M` must not cite a snapshot from after `M` just because a later month
+ * has since been synced. `loadLatestNetWorth` has no such bound, which is right for
+ * its genuinely "right now" callers (`overview.ts`, `scenario.ts`, `forecast.ts`) but
+ * wrong for anything retroactively about a specific month.
  */
 export function loadNetWorthAsOf(db: Db, tenantId: string, onOrBefore: string): NetWorthSummary | null {
   const latest = db

@@ -28,7 +28,7 @@ import {
   loadUncategorised,
   storedMonths,
 } from '../domain/aggregate/month-store.ts'
-import { loadLatestNetWorth, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
+import { loadNetWorthAsOf, loadNetWorthHistory } from '../domain/aggregate/networth-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { latestDriftPersistence } from '../domain/advice/latest.ts'
 import type { DriftPersistence } from '../domain/advice/persistence.ts'
@@ -39,7 +39,7 @@ import { computeSignals } from '../domain/aggregate/signals.ts'
 import { persistSignals, staleMonths } from '../domain/aggregate/signals-store.ts'
 import { generateBudgetProposals, generateCategoryProposals } from '../domain/ai/proposal-generators.ts'
 import { latestSnapshotDate } from '../domain/portfolio/store.ts'
-import { addMonths, dateIn, isDate, monthProgress } from '../util/month.ts'
+import { addMonths, dateIn, endOfMonth, isDate, monthProgress } from '../util/month.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
 /**
@@ -97,7 +97,6 @@ interface Shared {
   /** The latest stored month — the only one budget-amount proposals ever target (#251). */
   latest: string
   accounts: readonly AccountReconciliation[]
-  netWorth: ReturnType<typeof loadLatestNetWorth>
   netWorthHistory: readonly { date: string; totalCents: number }[]
   latestPortfolioSnapshot: string | null
   params: ReturnType<typeof loadParams>
@@ -158,7 +157,10 @@ export async function judgeMonth(
     monthProgress: monthElapsed,
     facts,
     totalsHistory,
-    netWorth: shared.netWorth,
+    // Bounded to this month's own end date (#504), not shared across the pass like
+    // `accounts` or `benchmark` are: a stale month rejudged tonight must see the net
+    // worth it actually had, not whatever the tenant's balance is today.
+    netWorth: loadNetWorthAsOf(db, tenantId, endOfMonth(month)),
     netWorthHistory: shared.netWorthHistory,
     uncategorised: loadUncategorised(db, tenantId, window),
     // Per month, unlike the backlog: a `recompute_mismatch` names the category and
@@ -212,7 +214,6 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
     today: dateIn(now, config.TZ),
     latest,
     accounts: await collectReconciliations(db, tenantId, config.TZ),
-    netWorth: loadLatestNetWorth(db, tenantId),
     netWorthHistory: loadNetWorthHistory(db, tenantId),
     latestPortfolioSnapshot: latestSnapshot,
     params,
@@ -246,12 +247,16 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
     scoreBp = judged.scoreBp
   }
 
+  // The latest month's own reading, not "right now" (#504): the two agree on every
+  // ordinary night, but only one of them is what this pass actually judged with.
+  const latestNetWorth = loadNetWorthAsOf(db, tenantId, endOfMonth(latest))
+
   return {
     latestMonth: latest,
     months,
     signals,
     hygieneScoreBp: scoreBp,
-    netWorthDate: shared.netWorth?.date ?? null,
+    netWorthDate: latestNetWorth?.date ?? null,
     accounts: shared.accounts.length,
   }
 }
