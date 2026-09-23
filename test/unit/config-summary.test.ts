@@ -118,6 +118,11 @@ describe('configSummary', () => {
     })
   })
 
+  it('names the AI run text retention window (#503)', async () => {
+    // "Why is there no request text on that old row" is answered by this one number.
+    expect(await summary()).toMatchObject({ AI_RUNS_TEXT_RETENTION_DAYS: 90 })
+  })
+
   it('names the tax rules path (#42)', async () => {
     // "Why does that estimate use last year's rate" is answered by which file was read.
     expect(await summary()).toMatchObject({ TAX_RULES_PATH: './config/belgian-tax.yaml' })

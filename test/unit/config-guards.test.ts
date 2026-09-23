@@ -410,6 +410,29 @@ describe('the fund universe settings (#40)', () => {
   })
 })
 
+describe('the AI run text retention window (#503)', () => {
+  it('defaults to ninety days', async () => {
+    expect((await configWith({})).AI_RUNS_TEXT_RETENTION_DAYS).toBe(90)
+  })
+
+  it('reads the window as a whole number of days', async () => {
+    expect((await configWith({ AI_RUNS_TEXT_RETENTION_DAYS: '30' })).AI_RUNS_TEXT_RETENTION_DAYS)
+      .toBe(30)
+  })
+
+  it('refuses zero days, which would clear a run the instant it is written', async () => {
+    expect((await loadWith({ AI_RUNS_TEXT_RETENTION_DAYS: '0' }))?.message)
+      .toContain('AI_RUNS_TEXT_RETENTION_DAYS')
+  })
+
+  it('refuses a decade and a fraction of a day', async () => {
+    expect((await loadWith({ AI_RUNS_TEXT_RETENTION_DAYS: '3651' }))?.message)
+      .toContain('AI_RUNS_TEXT_RETENTION_DAYS')
+    expect((await loadWith({ AI_RUNS_TEXT_RETENTION_DAYS: '30.5' }))?.message)
+      .toContain('AI_RUNS_TEXT_RETENTION_DAYS')
+  })
+})
+
 describe('the tax rules path (#42)', () => {
   it('defaults to the file the image ships, because the rules are not per-install', async () => {
     // The opposite of the fund universe: nobody curates their own tax code, so the

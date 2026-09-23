@@ -14,6 +14,11 @@
  * `ai` is next to last for a second reason: it is the only job that costs money, so it
  * is the one that should be looking at tonight's data rather than yesterday's.
  *
+ * `ai-runs-retention` sits right after `ai`, for the same reason `backup` sits last:
+ * it reads nothing and is read by nothing, so its position is about time, not the
+ * dependency graph. Running it before `backup` means a night's snapshot never
+ * captures text this same tick is about to null out anyway (#503).
+ *
  * `backup` is last, and nothing depends on it either — a backup is read by no job, so
  * its position cannot be derived from the graph. It is last because every nightly job
  * becomes due in the same tick and runs in this order, so anywhere earlier would write
@@ -25,6 +30,7 @@
  * saves the reader from working backwards from a Zod error.
  */
 import { aiJob } from './ai.ts'
+import { aiRunsRetentionJob } from './ai-runs-retention.ts'
 import { backfillJob } from './backfill.ts'
 import { backupJob } from './backup.ts'
 import { netWorthJob } from './networth.ts'
@@ -42,6 +48,7 @@ export const registry: readonly Job[] = [
   backfillJob,
   signalsJob,
   aiJob,
+  aiRunsRetentionJob,
   backupJob,
 ]
 

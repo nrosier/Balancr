@@ -24,6 +24,7 @@ import {
   spendMonthOf,
 } from '../../src/domain/ai/budget.ts'
 import {
+  clearStaleRunText,
   countRunsSince,
   findReusableRun,
   latestSuccessfulRun,
@@ -453,6 +454,97 @@ describe('recentRuns', () => {
       id: newest!.id,
     })
     expect(nextPage.map((row) => row.id)).toEqual([oldest!.id])
+  })
+})
+
+describe('clearStaleRunText (#503)', () => {
+  const CUTOFF = new Date('2026-03-01T00:00:00Z')
+
+  it('nulls the text on a run older than the cutoff', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-02-01T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(1)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBeNull()
+    expect(row?.responseText).toBeNull()
+  })
+
+  it('leaves a recent run’s text untouched', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-03-15T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBe('the request')
+    expect(row?.responseText).toBe('the response')
+  })
+
+  it('leaves cost, status and period on the cleared row untouched', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({
+        requestText: 'the request',
+        responseText: 'the response',
+        period: '2026-01',
+        status: 'ok',
+      }),
+    )
+    backdate(id, new Date('2026-01-15T00:00:00Z'))
+
+    clearStaleRunText(db, tenantId, CUTOFF)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.period).toBe('2026-01')
+    expect(row?.status).toBe('ok')
+    expect(row?.costMicroEur).toBeGreaterThan(0)
+  })
+
+  it('returns 0 and touches nothing when every run is already recent', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-03-15T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+  })
+
+  it('does not cross tenants', () => {
+    const otherTenantId = createSecondTenant(db)
+    const id = recordRun(
+      db,
+      otherTenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-02-01T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+    expect(loadRun(db, otherTenantId, id)?.requestText).toBe('the request')
+  })
+
+  it('returns 0 the second time, once there is nothing left to clear', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-02-01T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(1)
+    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
   })
 })
 

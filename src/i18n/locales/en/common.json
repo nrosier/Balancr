@@ -88,6 +88,7 @@
   },
   "job": {
     "ai": "AI analysis",
+    "ai-runs-retention": "AI run text cleanup",
     "backfill": "History backfill",
     "backup": "Backup",
     "networth": "Net worth",
