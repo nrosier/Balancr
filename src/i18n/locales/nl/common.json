@@ -88,6 +88,7 @@
   },
   "job": {
     "ai": "AI-analyse",
+    "ai-runs-retention": "AI-oproepen opschonen",
     "backfill": "Historiek aanvullen",
     "backup": "Back-up",
     "networth": "Nettovermogen",

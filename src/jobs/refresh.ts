@@ -75,6 +75,7 @@ export const REFRESHABLE = [
   'backfill',
   'signals',
   'ai',
+  'ai-runs-retention',
   'backup',
 ] as const
 
@@ -119,7 +120,9 @@ export const RESET_REFRESH = ['sync', 'portfolio', 'networth', 'backfill', 'sign
  * `backfill` has no dependents: every row it writes is for a month-end in the past,
  * and no job reads those — the charts do, directly. `probe` has none either; it is a
  * diagnosis, not an input. Nor does `backup`, in the strongest sense of the three: a
- * snapshot is read by nothing in this process at all.
+ * snapshot is read by nothing in this process at all. `ai-runs-retention` is the same
+ * shape as `backup` for the same reason — a housekeeping sweep over a column nothing
+ * in this process reads back.
  *
  * And nothing lists `backup` as *its* dependent either, which is the more interesting
  * direction. It would be defensible — a refresh that rewrote a month's facts has changed
@@ -145,6 +148,7 @@ const DEPENDENTS: Readonly<Record<Refreshable, readonly Refreshable[]>> = {
   backfill: [],
   signals: [],
   ai: [],
+  'ai-runs-retention': [],
   backup: [],
 }
 

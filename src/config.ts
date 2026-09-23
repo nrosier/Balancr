@@ -212,6 +212,13 @@ const EnvSchema = z.object({
   JOBS_HISTORY_MONTHS: z.coerce.number().int().min(1).max(120).default(24),
   /** How many past runs to keep per job before the oldest are pruned. */
   JOB_HISTORY_KEEP: z.coerce.number().int().min(1).max(500).default(50),
+  /**
+   * How long `ai_runs.requestText`/`responseText` are kept before being nulled out
+   * (#503). The rest of the row — cost, tokens, status — stays forever for billing;
+   * only the two verbatim-text columns are bounded, since a run's raw payload/response
+   * can run to thousands of tokens and the table has no cap otherwise.
+   */
+  AI_RUNS_TEXT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
 
   // Backups
   /**
@@ -604,6 +611,7 @@ export function configSummary(): Record<string, unknown> {
     JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,
     JOBS_HISTORY_MONTHS: config.JOBS_HISTORY_MONTHS,
     JOB_HISTORY_KEEP: config.JOB_HISTORY_KEEP,
+    AI_RUNS_TEXT_RETENTION_DAYS: config.AI_RUNS_TEXT_RETENTION_DAYS,
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
     BACKUP_KEEP: config.BACKUP_KEEP,

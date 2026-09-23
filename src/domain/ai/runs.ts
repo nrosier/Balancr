@@ -17,7 +17,7 @@
  * would have sent and cost nothing — that is how a missing answer explains itself
  * instead of just being absent.
  */
-import { and, desc, eq, gte, inArray, isNull, like, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lt, or, sql } from 'drizzle-orm'
 import { costMicroEur } from '../../adapters/ai/pricing.ts'
 import { ZERO_USAGE, type AiProvider, type TokenUsage } from '../../adapters/ai/types.ts'
 import type { Db } from '../../db/index.ts'
@@ -301,6 +301,29 @@ export function recentRuns(
     .orderBy(desc(aiRuns.createdAt), desc(aiRuns.id))
     .limit(limit)
     .all()
+}
+
+/**
+ * Nulls `requestText`/`responseText` on every run of this tenant's older than
+ * `olderThan`, leaving the rest of the row untouched (#503) — cost and usage
+ * accounting reads the row forever; only the verbatim text is bounded.
+ *
+ * The `or(isNotNull(...))` guard is not for correctness (nulling an already-null
+ * column is a no-op) — it keeps the returned count meaningful: "rows actually
+ * cleared tonight", not "every old row that happened to still have nothing to clear".
+ */
+export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date): number {
+  return db
+    .update(aiRuns)
+    .set({ requestText: null, responseText: null })
+    .where(
+      and(
+        eq(aiRuns.tenantId, tenantId),
+        lt(aiRuns.createdAt, olderThan),
+        or(isNotNull(aiRuns.requestText), isNotNull(aiRuns.responseText)),
+      ),
+    )
+    .run().changes
 }
 
 /**
