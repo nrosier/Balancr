@@ -41,13 +41,14 @@ import {
   loadTrailingTotals,
   loadUncategorised,
 } from '../aggregate/month-store.ts'
-import { loadLatestNetWorth } from '../aggregate/networth-store.ts'
+import { loadNetWorthAsOf } from '../aggregate/networth-store.ts'
 import { loadHygiene, loadSignals } from '../aggregate/signals-store.ts'
 import { countSnapshotHoldings, latestSnapshotDate, loadPortfolioMetrics } from '../portfolio/store.ts'
 import { latestAdvice, latestDriftPersistence } from '../advice/latest.ts'
 import { loadMonthNote } from './month-note.ts'
 import { loadParams } from '../aggregate/params.ts'
 import type { MonthlyFact } from '../aggregate/spend.ts'
+import { endOfMonth } from '../../util/month.ts'
 import type { AnalysisBundle, BundleCategory, BundleDrift, BundlePortfolio } from './redact.ts'
 
 /**
@@ -148,7 +149,7 @@ export function collectBundle(
     // The month itself is `totals`; repeating it in the history would have the
     // model read the latest point twice when it looks for a trend.
     totalsHistory: history.slice(0, -1),
-    netWorth: loadLatestNetWorth(db, tenantId),
+    netWorth: loadNetWorthAsOf(db, tenantId, endOfMonth(month)),
     hygiene: {
       scoreBp: hygiene.scoreBp,
       uncategorisedCount: uncategorised.reduce((sum, bucket) => sum + bucket.txnCount, 0),

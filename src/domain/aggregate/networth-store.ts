@@ -9,7 +9,7 @@
  * real one would be summed back into the total by the first person to write
  * `SELECT sum(value_cents)`, which defeats the entire point of the dedupe.
  */
-import { and, eq, notInArray, sql } from 'drizzle-orm'
+import { and, eq, lte, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots, type AccountKind } from '../../db/schema.ts'
 import type { AccountBalance } from './accounts.ts'
@@ -164,15 +164,7 @@ export function loadLatestAccountBalances(db: Db, tenantId: string): AccountBala
     .all()
 }
 
-export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | null {
-  const latest = db
-    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
-    .from(netWorthSnapshots)
-    .where(eq(netWorthSnapshots.tenantId, tenantId))
-    .get()
-  const date = latest?.date ?? null
-  if (date === null) return null
-
+function summariseNetWorth(db: Db, tenantId: string, date: string): NetWorthSummary {
   const rows = db
     .select({ kind: accountMap.kind, valueCents: netWorthSnapshots.valueCents })
     .from(netWorthSnapshots)
@@ -194,6 +186,34 @@ export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | 
     if (row.valueCents < 0) summary.debtCents += -row.valueCents
   }
   return summary
+}
+
+export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | null {
+  const latest = db
+    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
+    .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.tenantId, tenantId))
+    .get()
+  const date = latest?.date ?? null
+  return date === null ? null : summariseNetWorth(db, tenantId, date)
+}
+
+/**
+ * The latest snapshot on or before `onOrBefore`, rather than the tenant's latest
+ * one overall (#498). A bundle built for month `M` must not cite a snapshot from
+ * after `M` just because a later month has since been synced — `loadLatestNetWorth`
+ * has no such bound, which is right for its "right now" callers (`overview.ts`,
+ * `scenario.ts`, `forecast.ts`, `signals.ts`'s live path) but wrong for a bundle
+ * that is retroactively about a specific month.
+ */
+export function loadNetWorthAsOf(db: Db, tenantId: string, onOrBefore: string): NetWorthSummary | null {
+  const latest = db
+    .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
+    .from(netWorthSnapshots)
+    .where(and(eq(netWorthSnapshots.tenantId, tenantId), lte(netWorthSnapshots.date, onOrBefore)))
+    .get()
+  const date = latest?.date ?? null
+  return date === null ? null : summariseNetWorth(db, tenantId, date)
 }
 
 export interface OffBudgetAccount {
