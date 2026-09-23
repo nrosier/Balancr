@@ -532,14 +532,26 @@ Rules:
  * deliberately an interpretation rule, not a computation one — nothing here asks the
  * model to add, subtract or estimate anything rule 1 wouldn't already forbid; it only
  * says what a figure it was already given is telling the reader.
+ *
+ * The overspend reading is scoped to expense envelopes on purpose. `categorySignals`
+ * (`overspend.ts`) skips income categories entirely when classifying `over_available` and
+ * `over_assigned` — its own comment says why: "earning more than assigned is not a
+ * finding, and the... signals below would all read backwards." `RedactedCategory` sends
+ * an `income` flag per category (`redact.ts`) precisely so the narrative pass can tell
+ * the two apart the same way the analysis pass already does; without that carve-out, rule
+ * 12 would tell the model to call a household's income shortfall an "overspend," which is
+ * the same backwards reading `overspend.ts` was written to avoid.
  */
 const NARRATIVE_SYSTEM = `
 ${NARRATIVE_SYSTEM_V7}
-12. A category's own leftover figure can be negative — that means more was spent in
-    it than was set aside, an overspend, not a deficit to flag as wrong or leave
-    uninterpreted. Say what it means for that envelope and the month ahead, the same
-    plain way you already explain drift (rule 8); never call it an error in the
-    figures or a debt owed.
+12. A category's own leftover figure can be negative. For an expense envelope that
+    means more was spent in it than was set aside, an overspend, not a deficit to
+    flag as wrong or leave uninterpreted — say what it means for that envelope and
+    the month ahead, the same plain way you already explain drift (rule 8), and
+    never call it an error in the figures or a debt owed. A negative figure on an
+    income category means something else entirely — earning less than expected, not
+    overspending — so leave it alone unless another figure you were given already
+    explains it.
 `.trim()
 
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {

@@ -240,6 +240,12 @@ describe('built-in prompts', () => {
     const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
     expect(body).toMatch(/an overspend/i)
     expect(body).toMatch(/never call it an error in the figures or a debt owed/i)
+    // Scoped to expense envelopes, not income: `overspend.ts`'s own `categorySignals`
+    // skips income categories when classifying `over_available`/`over_assigned` because
+    // "the... signals below would all read backwards" for them, and the same reasoning
+    // applies here — a negative income figure is a shortfall, not an overspend.
+    expect(body).toMatch(/expense envelope/i)
+    expect(body).toMatch(/income category means something else entirely/i)
     // Anchored as new: the version rule 12 was added on top of (the newest superseded
     // body, `NARRATIVE_SYSTEM_V7`) must not already say this.
     const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
