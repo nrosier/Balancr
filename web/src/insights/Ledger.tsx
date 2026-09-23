@@ -37,6 +37,7 @@
 import { Fragment, useId, useState, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
+import { usePrivacy } from '../privacy/PrivacyContext.tsx'
 import {
   formatDateTime,
   formatDecimal,
@@ -161,6 +162,7 @@ export function Ledger({ runs, month }: LedgerProps): ReactNode {
  */
 function RunPayload({ id }: { id: string }): ReactNode {
   const { t } = useT()
+  const { enabled } = usePrivacy()
   const resource = useResource<AiRunPayload>(
     `/api/insights/runs/${encodeURIComponent(id)}/payload`,
   )
@@ -171,7 +173,12 @@ function RunPayload({ id }: { id: string }): ReactNode {
         run.payload === null ? (
           <p className="muted">{t('ai:privacy.unreadable')}</p>
         ) : (
-          <pre className="payload">{JSON.stringify(run.payload, null, 2)}</pre>
+          // The whole redacted bundle — spend, net worth, budget totals — as one JSON
+          // dump with no per-field markup of its own, so it blurs as a block rather
+          // than through `<Money>`/`<Private>` around individual figures (#489).
+          <pre className="payload" data-private tabIndex={enabled ? 0 : undefined}>
+            {JSON.stringify(run.payload, null, 2)}
+          </pre>
         )
       }
     </DataState>

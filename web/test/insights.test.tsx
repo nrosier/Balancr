@@ -34,9 +34,10 @@ import { Ledger } from '../src/insights/Ledger.tsx'
 import { Narrative } from '../src/insights/Narrative.tsx'
 import { CategoryGuesses, Proposals, Questions } from '../src/insights/Pending.tsx'
 import { Insights } from '../src/pages/Insights.tsx'
+import { STORAGE_KEY as PRIVACY_STORAGE_KEY } from '../src/privacy/privacy.ts'
 import { formatMoney } from '../src/shared.ts'
 import type { AiBudgetNudgeRun, AiEstimate, AiRun, Freshness, Insights as InsightsPayload } from '../src/shared.ts'
-import { i18nReady, renderApp, visit } from './helpers.tsx'
+import { i18nReady, renderApp, resetPrivacy, visit } from './helpers.tsx'
 
 const FRESH: Freshness = { stale: false, asOf: null, jobsEnabled: true, jobs: [] }
 
@@ -295,6 +296,9 @@ afterEach(() => {
   // default; the few that navigate elsewhere (#228) would otherwise leak that
   // location into whichever test runs next.
   visit('/')
+  // A handful of tests below turn privacy mode on to check the tab stop it adds
+  // (#489); otherwise it would leak into whichever test runs next.
+  resetPrivacy()
 })
 
 describe('the page', () => {
@@ -659,11 +663,32 @@ describe('the findings', () => {
     renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     // `below_baseline` is an `info` finding whose whole point is that nothing is
-    // wrong, so it must not inherit the stripe of one that needs reading.
-    const good = screen.getByText('Transport is 9% below your usual level.')
-    expect(good.className).toBe('finding finding--positive')
+    // wrong, so it must not inherit the stripe of one that needs reading. The
+    // sentence is now wrapped in `<Private>` (#489), so the class lives on the
+    // enclosing `<li>`, not the text node itself.
+    const good = screen.getByText('Transport is 9% below your usual level.').closest('li')
+    expect(good?.className).toBe('finding finding--positive')
+    const bad = screen
+      .getByText('Groceries is € 125,00 over its available balance.')
+      .closest('li')
+    expect(bad?.className).toBe('finding finding--alert')
+  })
+
+  it('marks every sentence private, with a tab stop only while privacy mode is on (#489)', () => {
+    window.localStorage.setItem(PRIVACY_STORAGE_KEY, 'on')
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
+
     const bad = screen.getByText('Groceries is € 125,00 over its available balance.')
-    expect(bad.className).toBe('finding finding--alert')
+    expect(bad.hasAttribute('data-private')).toBe(true)
+    expect(bad.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('gives the sentence no tab stop while privacy mode is off', () => {
+    renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
+
+    const bad = screen.getByText('Groceries is € 125,00 over its available balance.')
+    expect(bad.hasAttribute('data-private')).toBe(true)
+    expect(bad.hasAttribute('tabindex')).toBe(false)
   })
 
   it('names the month, because it is not always the current one', () => {
@@ -1391,6 +1416,30 @@ describe('the proposal queue', () => {
     expect(document.querySelector('.queue__why')).toBeNull()
   })
 
+  it('marks the before/after values and the reason private, with a tab stop only while privacy mode is on (#489)', () => {
+    window.localStorage.setItem(PRIVACY_STORAGE_KEY, 'on')
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={vi.fn()} />)
+
+    const before = document.querySelector('.change__before')?.closest('[data-private]')
+    const after = document.querySelector('.change__after')?.closest('[data-private]')
+    expect(before).toBeTruthy()
+    expect(after).toBeTruthy()
+    expect(before?.getAttribute('tabindex')).toBe('0')
+    expect(after?.getAttribute('tabindex')).toBe('0')
+
+    const why = document.querySelector('.queue__why [data-private]')
+    expect(why).toBeTruthy()
+    expect(why?.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('gives the before/after values and the reason no tab stop while privacy mode is off', () => {
+    renderApp(<Proposals proposals={[BUDGET_PROPOSAL]} owner={true} onDecided={vi.fn()} />)
+
+    const before = document.querySelector('.change__before')?.closest('[data-private]')
+    expect(before?.hasAttribute('tabindex')).toBe(false)
+    expect(document.querySelector('.queue__why [data-private]')?.hasAttribute('tabindex')).toBe(false)
+  })
+
   it('drops the expiry from the meta line when there is none', () => {
     renderApp(
       <Proposals
@@ -1702,6 +1751,39 @@ describe('the ledger', () => {
     await screen.findByText(/"Groceries"/)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/insights/runs/run-findings/payload')
+  })
+
+  it('marks an opened payload private, with a tab stop only while privacy mode is on (#489)', async () => {
+    window.localStorage.setItem(PRIVACY_STORAGE_KEY, 'on')
+    serve({
+      '/api/insights/runs/run-findings/payload': json({
+        ...RUNS[0]!,
+        payload: { month: '2026-08' },
+      }),
+    })
+    renderApp(<Ledger runs={RUNS} month={null} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show the exact payload' })[0]!)
+    await screen.findByText(/"month"/)
+
+    const pre = document.querySelector('.payload')
+    expect(pre?.hasAttribute('data-private')).toBe(true)
+    expect(pre?.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('gives an opened payload no tab stop while privacy mode is off', async () => {
+    serve({
+      '/api/insights/runs/run-findings/payload': json({
+        ...RUNS[0]!,
+        payload: { month: '2026-08' },
+      }),
+    })
+    renderApp(<Ledger runs={RUNS} month={null} />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show the exact payload' })[0]!)
+    await screen.findByText(/"month"/)
+
+    expect(document.querySelector('.payload')?.hasAttribute('tabindex')).toBe(false)
   })
 
   it('keeps one payload open at a time', async () => {

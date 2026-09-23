@@ -29,6 +29,7 @@ import { useMemo, type ReactNode } from 'react'
 import { renderSignals, type RenderedSignal, type WireSignal } from '../ai/signals.ts'
 import { useT } from '../i18n.ts'
 import { formatMonth, SEVERITY_RANK, type Severity } from '../shared.ts'
+import { Private } from '../ui/Money.tsx'
 import type { Period } from '../ui/PeriodPicker.tsx'
 
 /** Worst first, from the table the server ranks with. */
@@ -136,7 +137,10 @@ function FindingGroups({ rendered }: { rendered: readonly RenderedSignal[] }): R
                   key={`${signal.code}:${signal.categoryId ?? ''}:${index}`}
                   className={`finding finding--${signal.negative ? severity : 'positive'}`}
                 >
-                  {signal.text}
+                  {/* The sentence is assembled client-side from `metrics` (#489): a
+                      figure it names is never a separate node `data-private` could
+                      mark, so the whole sentence is the unit privacy mode blurs. */}
+                  <Private>{signal.text}</Private>
                 </li>
               ))}
             </ul>
