@@ -156,7 +156,7 @@ import {
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
-import { recentRuns } from '../../domain/ai/runs.ts'
+import { loadRun, recentRuns } from '../../domain/ai/runs.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
@@ -1136,6 +1136,9 @@ const toInviteSetting = (invite: TenantInvite): InviteSetting => ({
   redeemedAt: invite.redeemedAt === null ? null : invite.redeemedAt.toISOString(),
   revokedAt: invite.revokedAt === null ? null : invite.revokedAt.toISOString(),
 })
+
+/** One page of the AI log (#502) — small enough that "load more" feels immediate. */
+const AI_LOG_PAGE_SIZE = 50
 
 export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/settings', (request: FastifyRequest) => buildSettings(db, request))
@@ -2572,10 +2575,41 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    *
    * A dedicated endpoint rather than `/api/insights`, which is month-scoped and
    * bundles unrelated data — the wrong shape for an all-time log.
+   *
+   * `before` pages backwards from a previously-returned run's id (#502): `ai_runs`
+   * is never pruned, so a fixed page with no way to reach what is past it made
+   * every transcript older than the 50th permanently unreachable through this
+   * screen. Resolved to that run's own `(createdAt, id)` — the exact pair
+   * `recentRuns` orders by — rather than trusting an offset a concurrent insert
+   * could shift. An id that no longer resolves for this tenant (a bad or stale
+   * link) ends the log rather than silently restarting it from the top.
    */
   app.get('/api/settings/ai/runs', (request: FastifyRequest): AiRunList => {
     const user = requireUser(request)
-    return aiRunListSchema.parse({ runs: recentRuns(db, user.tenantId, 50).map(wireRun) })
+    const query = request.query as { before?: unknown } | undefined
+    const before = query?.before
+    if (before !== undefined && typeof before !== 'string') {
+      throw badRequest('before must be a run id.')
+    }
+
+    const cursorRun = before === undefined ? undefined : loadRun(db, user.tenantId, before)
+    if (before !== undefined && cursorRun === null) {
+      return aiRunListSchema.parse({ runs: [], nextCursor: null })
+    }
+
+    const rows = recentRuns(
+      db,
+      user.tenantId,
+      AI_LOG_PAGE_SIZE,
+      undefined,
+      cursorRun === undefined || cursorRun === null
+        ? undefined
+        : { createdAt: cursorRun.createdAt, id: cursorRun.id },
+    )
+    return aiRunListSchema.parse({
+      runs: rows.map(wireRun),
+      nextCursor: rows.length === AI_LOG_PAGE_SIZE ? (rows[rows.length - 1]?.id ?? null) : null,
+    })
   })
 
   /**
