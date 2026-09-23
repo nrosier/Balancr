@@ -6,6 +6,28 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.6] — 2026-09-23
+
+### Fixed
+
+- **A negative expense-envelope figure in the AI narrative is now written as
+  a positive amount, with the overspend carried in the wording instead of a
+  bare minus sign**
+  ([#494](https://github.com/nrosier/Balancr/issues/494),
+  [#496](https://github.com/nrosier/Balancr/pull/496)). Rule 12 (#493)
+  already told the model that a negative leftover figure on an expense
+  envelope means an overspend, but said nothing about how to print the
+  figure itself, so a sentence built around that explanation still ended
+  in something like "leaving € -42,00" — the sign saying "negative" a
+  second time, in punctuation, right next to prose already saying it in
+  words. The rule now asks for the amount as a positive figure, with the
+  shortfall carried entirely by the sentence around it.
+- **The narrative card's byline, edited-prompt notice, stale banner and
+  rewrite offer now sit below a rule and some spacing instead of running
+  straight into the model's paragraph**
+  ([#495](https://github.com/nrosier/Balancr/issues/495),
+  [#496](https://github.com/nrosier/Balancr/pull/496)).
+
 ## [2.3.5] — 2026-09-23
 
 ### Fixed

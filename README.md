@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.5-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.6-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1061,13 +1061,14 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.3.5` is the current release. The AI narrative no
-longer risks echoing a raw internal field name in its prose, and now reads
-a category's negative leftover figure as an overspend instead of leaving
-it uninterpreted (see [`CHANGELOG.md`](CHANGELOG.md) for details). Existing
-deployments upgrade in place.
+**Where it is now** — `2.3.6` is the current release. A negative
+expense-envelope figure in the AI narrative now reads as a positive amount
+with the overspend carried in the wording, not a bare minus sign, and the
+narrative card's byline sits below a rule of its own instead of running
+into the model's paragraph (see [`CHANGELOG.md`](CHANGELOG.md) for
+details). Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.3.5`; a release candidate is
+`docker pull` now resolves `latest` to `2.3.6`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
