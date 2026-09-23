@@ -659,11 +659,15 @@ describe('the findings', () => {
     renderApp(<Findings signals={SIGNALS} history={[]} month="2026-08" period={null} />)
 
     // `below_baseline` is an `info` finding whose whole point is that nothing is
-    // wrong, so it must not inherit the stripe of one that needs reading.
-    const good = screen.getByText('Transport is 9% below your usual level.')
-    expect(good.className).toBe('finding finding--positive')
-    const bad = screen.getByText('Groceries is € 125,00 over its available balance.')
-    expect(bad.className).toBe('finding finding--alert')
+    // wrong, so it must not inherit the stripe of one that needs reading. The
+    // sentence is now wrapped in `<Private>` (#489), so the class lives on the
+    // enclosing `<li>`, not the text node itself.
+    const good = screen.getByText('Transport is 9% below your usual level.').closest('li')
+    expect(good?.className).toBe('finding finding--positive')
+    const bad = screen
+      .getByText('Groceries is € 125,00 over its available balance.')
+      .closest('li')
+    expect(bad?.className).toBe('finding finding--alert')
   })
 
   it('names the month, because it is not always the current one', () => {

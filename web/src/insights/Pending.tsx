@@ -349,7 +349,12 @@ export function Proposals({ proposals, owner, onDecided }: ProposalsProps): Reac
                         <div className="change__row" key={field.field}>
                           <dt className="change__field">{field.label}</dt>
                           <dd className="change__values">
-                            <span className="change__before">{field.before}</span>
+                            {/* A `budget_amount.set` card's before/after are formatted money
+                                (#489); other card types' fields are not, but `RenderedField`
+                                carries no type tag to tell them apart here, so both blur. */}
+                            <Private>
+                              <span className="change__before">{field.before}</span>
+                            </Private>
                             {/*
                               Decorative: the order carries the meaning, and the group is
                               already headed "Now / proposed". An arrow read aloud between
@@ -358,7 +363,9 @@ export function Proposals({ proposals, owner, onDecided }: ProposalsProps): Reac
                             <span className="change__arrow" aria-hidden="true">
                               →
                             </span>
-                            <span className="change__after">{field.after}</span>
+                            <Private>
+                              <span className="change__after">{field.after}</span>
+                            </Private>
                           </dd>
                           {field.warn === null ? null : (
                             <dd className="change__warn">{field.warn}</dd>
@@ -369,10 +376,15 @@ export function Proposals({ proposals, owner, onDecided }: ProposalsProps): Reac
                     {/*
                       What changes, then why, then the box you can edit (#273). Already
                       localised server-side, and a plain text child, so React escapes
-                      whatever the model wrote — no sanitising step of its own.
+                      whatever the model wrote — no sanitising step of its own. A
+                      model-authored reason (`why.source === 'ai'`) can name a figure with
+                      no marker of its own, so the whole sentence is what privacy mode
+                      blurs, same as the templated reasons that never do (#489).
                     */}
                     {proposal.explanation === null ? null : (
-                      <p className="queue__why">{proposal.explanation}</p>
+                      <p className="queue__why">
+                        <Private>{proposal.explanation}</Private>
+                      </p>
                     )}
                     {proposal.type === 'budget_amount.set' && proposal.amountCents !== null ? (
                       <div className="field proposal__amount">
