@@ -313,9 +313,22 @@ async function cacheFor(
   }
 }
 
-/** Removes a held cache entry so the next call recreates it rather than reusing a stale name. */
-function invalidateCache(db: Db, tenantId: string, model: string, instruction: string): void {
-  tenantState(db, tenantId).cacheNames.delete(cacheKey(model, instruction))
+/**
+ * Removes a held cache entry so the next call recreates it, but only if it is
+ * still the name that was just rejected.
+ *
+ * Two concurrent calls sharing one (model, instruction) can both read the same
+ * stale name before either retries: without the guard, whichever rejection is
+ * handled second would delete the fresh entry the first replaced it with,
+ * losing a cache that is still good and costing a needless extra create.
+ */
+function invalidateCache(db: Db, tenantId: string, model: string, instruction: string, staleName: string): void {
+  const state = tenantState(db, tenantId)
+  const key = cacheKey(model, instruction)
+  const held = state.cacheNames.get(key)
+  if (held !== null && held !== undefined && held.name === staleName) {
+    state.cacheNames.delete(key)
+  }
 }
 
 /**
@@ -374,7 +387,7 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
       // call instead of failing it outright, and clearing the entry stops every
       // later call from repeating the same rejection (#499).
       if (cache === null || !isStaleCachedContent(error)) throw error
-      invalidateCache(db, tenantId, call.model, instruction)
+      invalidateCache(db, tenantId, call.model, instruction, cache)
       usedCache = null
       response = await generate(null)
     }

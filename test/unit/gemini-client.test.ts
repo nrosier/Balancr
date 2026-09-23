@@ -655,6 +655,70 @@ describe('stale cachedContent (#499)', () => {
     expect(recorded.generate).toHaveLength(1)
   })
 
+  it('does not clear a fresher entry that replaced the one it saw rejected', async () => {
+    // The race Greptile flagged on the first version of this fix: two concurrent
+    // calls read the same stale name before either retries. Whichever rejection is
+    // handled first replaces the entry with a fresh cache; the second must not then
+    // delete that fresh entry just because its own, now-outdated name once matched.
+    //
+    // `generateContent` is deferred so the test can hold each call at the point a
+    // real race would leave it, and drive the interleaving explicitly rather than
+    // hoping the event loop happens to order it this way.
+    const pendingGenerate: { resolve: (v: FakeResponse) => void; reject: (e: unknown) => void }[] = []
+    const cacheNames = ['caches/stale', 'caches/replacement']
+    let cacheCalls = 0
+    const client = {
+      models: {
+        generateContent: async () =>
+          new Promise<FakeResponse>((resolve, reject) => pendingGenerate.push({ resolve, reject })),
+      },
+      caches: {
+        create: async () => ({ name: cacheNames[cacheCalls++] }),
+      },
+    } as unknown as GoogleGenAI
+    setGeminiClient(client)
+
+    const flush = async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    }
+
+    const prime = callGemini(db, tenantId, cacheable)
+    await flush()
+    pendingGenerate[0]!.resolve({ text: 'ok' })
+    await prime // installs 'caches/stale'
+
+    const resultA = callGemini(db, tenantId, cacheable)
+    const resultB = callGemini(db, tenantId, cacheable)
+    await flush()
+    expect(pendingGenerate).toHaveLength(3) // both A and B read 'caches/stale' and are in flight
+
+    pendingGenerate[1]!.reject(staleCacheError())
+    await flush()
+    pendingGenerate[3]!.resolve({ text: 'ok' }) // A's inline retry
+    await expect(resultA).resolves.toMatchObject({ cached: false })
+
+    // An unrelated concurrent call recreates the cache while B's rejection is still
+    // unhandled — this is the fresh entry that must survive.
+    const resultC = callGemini(db, tenantId, cacheable)
+    await flush()
+    expect(cacheCalls).toBe(2)
+    pendingGenerate[4]!.resolve({ text: 'ok' })
+    await resultC
+
+    pendingGenerate[2]!.reject(staleCacheError())
+    await flush()
+    pendingGenerate[5]!.resolve({ text: 'ok' }) // B's inline retry
+    await resultB
+
+    // Had B's invalidation wiped 'caches/replacement', this call would have asked
+    // for a third cache instead of reusing the one C installed.
+    const resultD = callGemini(db, tenantId, cacheable)
+    await flush()
+    pendingGenerate[6]!.resolve({ text: 'ok' })
+    await resultD
+    expect(cacheCalls).toBe(2)
+  })
+
   it('does not retry a stale-cache rejection when the call never used a cache', async () => {
     // `cache === null` means there was nothing to invalidate or retry without; a
     // 403 that happens to match the same text on an uncached call is not this bug.
