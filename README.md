@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.4-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.5-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1061,13 +1061,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.3.4` is the current release. The AI narrative now
-masks the figures in its own prose under privacy mode, and the Benchmark
-card's "Difference" column carries an info tooltip explaining what it
-actually compares (see [`CHANGELOG.md`](CHANGELOG.md) for details). Existing
+**Where it is now** — `2.3.5` is the current release. The AI narrative no
+longer risks echoing a raw internal field name in its prose, and now reads
+a category's negative leftover figure as an overspend instead of leaving
+it uninterpreted (see [`CHANGELOG.md`](CHANGELOG.md) for details). Existing
 deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.3.4`; a release candidate is
+`docker pull` now resolves `latest` to `2.3.5`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped

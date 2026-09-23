@@ -6,6 +6,27 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.5] — 2026-09-23
+
+### Fixed
+
+- **The AI narrative no longer leaks a raw internal field name into its
+  prose, and now reads a category's negative leftover figure as an
+  overspend instead of leaving it uninterpreted**
+  ([#492](https://github.com/nrosier/Balancr/issues/492),
+  [#493](https://github.com/nrosier/Balancr/pull/493)). The narrative
+  prompt already told the model not to echo an internal field name
+  verbatim, but that instruction lived only in the editable prompt body,
+  with no backstop for an edit — or a stale, pre-existing install — that
+  dropped it; the rule is now also restated in the code-owned guardrails
+  appended to every call, so it can't be lost either way. Separately, a
+  category's own leftover figure arrives signed, and nothing told the
+  narrative pass what a negative one meant, so it read as an unexplained
+  error rather than what it is: more was spent in that envelope than was
+  set aside. The new rule is scoped to expense envelopes only — an income
+  category's negative figure means a shortfall, not overspending, the same
+  distinction the existing analysis findings already draw.
+
 ## [2.3.4] — 2026-09-23
 
 ### Fixed
