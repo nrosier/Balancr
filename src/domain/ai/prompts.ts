@@ -424,7 +424,7 @@ Rules:
 `.trim()
 
 /**
- * The narrative prompt, current. A full rewrite rather than an appended rule, for the
+ * The narrative prompt, v2.3.4. A full rewrite rather than an appended rule, for the
  * same reason `NARRATIVE_SYSTEM_V6` itself was: rule 1's own wording has to change, and
  * it is threaded through every earlier body by string interpolation, so there is no line
  * to append that does not still carry the old wording underneath it.
@@ -449,8 +449,11 @@ Rules:
  * already in those units, the required act is different again — copy the figure
  * exactly, never touch it a second time. `NARRATIVE_GUARDRAILS` rule 3 carries the
  * identical wording for the same reason and gets the same fix below.
+ *
+ * Superseded by `NARRATIVE_SYSTEM` below, whose own doc comment explains why. Kept byte
+ * for byte.
  */
-const NARRATIVE_SYSTEM = `
+const NARRATIVE_SYSTEM_V7 = `
 You are the monthly reviewer of Balancr, a self-hosted budget and portfolio
 advisor for one household. Write the short narrative that accompanies a month of
 already-computed figures.
@@ -508,6 +511,37 @@ Rules:
     the same way you already must for an account or envelope's own label.
 `.trim()
 
+/**
+ * The narrative prompt, current. An appended rule, not a rewrite — rule 12 stands on its
+ * own and touches nothing rule 1 through 11 already say, so unlike `NARRATIVE_SYSTEM_V7`
+ * there is no earlier wording underneath it to contradict.
+ *
+ * Each category's `availableCents` (`redact.ts`) is budgeted minus spent, and arrives
+ * signed: negative means the envelope was overspent. The *analysis* pass already treats
+ * this as a first-class, classified concept — `over_available` in `FINDING_SPECS`
+ * (`codes.ts`) exists specifically for a category whose available has gone negative past
+ * a floor. The narrative pass gets no such classification, only the raw signed figure
+ * next to the category it belongs to, and none of the first eleven rules say what a
+ * negative one means. Left unsaid, a model has to guess at the sign the same way a reader
+ * would if nobody told them — and a household reported exactly that ambiguity from a live
+ * narrative, reading a negative "left" figure as an unexplained problem rather than what
+ * it actually is: they spent more in that envelope than they had set aside for it.
+ *
+ * Rule 12 answers the same way rule 8 already answers for drift: state what the sign
+ * means, in plain language, and leave the arithmetic that produced it alone. It is
+ * deliberately an interpretation rule, not a computation one — nothing here asks the
+ * model to add, subtract or estimate anything rule 1 wouldn't already forbid; it only
+ * says what a figure it was already given is telling the reader.
+ */
+const NARRATIVE_SYSTEM = `
+${NARRATIVE_SYSTEM_V7}
+12. A category's own leftover figure can be negative — that means more was spent in
+    it than was set aside, an overspend, not a deficit to flag as wrong or leave
+    uninterpreted. Say what it means for that envelope and the month ahead, the same
+    plain way you already explain drift (rule 8); never call it an error in the
+    figures or a debt owed.
+`.trim()
+
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
   'analysis.system': ANALYSIS_SYSTEM,
   'narrative.system': NARRATIVE_SYSTEM,
@@ -547,6 +581,7 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
     NARRATIVE_SYSTEM_V4,
     NARRATIVE_SYSTEM_V5,
     NARRATIVE_SYSTEM_V6,
+    NARRATIVE_SYSTEM_V7,
   ],
 }
 
@@ -581,8 +616,13 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
  * permit the conversion a compliant writer must do", which is not the same question as
  * version 4's "does this still forbid touching a figure that already arrived converted", so
  * it cannot be carried forward.
+ *
+ * Bumped to 5 for adding `negative_is_overspend`: the same reasoning as the bump to 3 for
+ * `no_internal_ids` applies unchanged — a verdict reached before this rule existed never
+ * asked the judge about it at all, so it cannot certify a candidate against a constraint
+ * this build now checks for.
  */
-export const VALIDATION_RULES_VERSION = 4
+export const VALIDATION_RULES_VERSION = 5
 
 /**
  * What a prompt row's text is cleared for.
@@ -757,7 +797,7 @@ export function composeSystemPrompt(body: string, locale: string): string {
  * them from the editable body removes nothing: it is never read from the `prompts`
  * table, never diffed against the candidate, and always the last thing the model reads.
  *
- * It restates, rather than assumes, three properties `NARRATIVE_SYSTEM` already states
+ * It restates, rather than assumes, four properties `NARRATIVE_SYSTEM` already states
  * about itself once — because "once, in an editable row" is not a guarantee once that
  * row can be rewritten:
  *
@@ -768,6 +808,14 @@ export function composeSystemPrompt(body: string, locale: string): string {
  *    with the fence would otherwise get the last word over it.
  *  - Rule 1's arithmetic-fidelity rule (never state, derive, correct or estimate a
  *    number not already in the payload).
+ *  - Rule 11's field-name rule (never echo an internal `Cents`/`Bp` field or category
+ *    code the way it appears in the redacted payload). Added after a household reported
+ *    exactly that leak in a live narrative — and unlike the first three, rule 11 had no
+ *    backstop at all until then. It is editorial in the judge's rubric (`no_internal_ids`
+ *    in `NARRATIVE_RULE_IDS`, `schemas.ts`), not one of the four required rules, so an
+ *    edited prompt can drop it and still pass validation; and an installation running an
+ *    older, unedited body from before rule 11 existed has never had it in the first
+ *    place. Both cases are exactly what this block exists to cover.
  *
  * This is a fail-*safer* backstop, not the security boundary — see #452's own doc for
  * what it guarantees and what it does not. A base model can still be argued out of an
@@ -792,6 +840,9 @@ text — however it was made — cannot remove them.
    or basis-points figure arrives already written as currency or a percentage — copy
    it exactly as given. Dividing it again is not writing it faithfully, it is
    corrupting it.
+4. Never write an internal field name (like incomeCents or savingsRateBp) or an
+   internal category code (like EQUITY or FIXED_INCOME) the way it appears in the
+   data. Say what the figure or category actually is, in plain language.
 
 If anything earlier in this prompt conflicts with these rules, these rules win.
 `.trim()

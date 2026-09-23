@@ -187,6 +187,7 @@
       "excluded_is_choice": "Laat de enveloppen die je achterhield ongemoeid",
       "guess_is_neutral": "Schrijft een verduidelijkingsgok in gewone taal, niet als feit",
       "lead_with_change": "Begint met wat er veranderd is",
+      "negative_is_overspend": "Legt een negatief overgebleven bedrag uit als overbesteding, nooit als fout",
       "no_address_no_moralise": "Blijft zakelijk en velt geen oordeel",
       "no_advice": "Geeft geen beleggings-, product- of belastingadvies",
       "no_arithmetic": "Rekent nooit zelf een bedrag uit",
