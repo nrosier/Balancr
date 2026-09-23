@@ -1092,6 +1092,10 @@ export const aiRuns = sqliteTable(
     userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => [
+    // `recordRun`'s own `MAX(seq)` read (#514): without it, that lookup scans
+    // the whole ledger, and `ai_runs` only grows — retention clears text, never
+    // rows — so every insert would get slower forever instead of staying O(log n).
+    index('ai_runs_seq_idx').on(t.seq),
     index('ai_runs_created_idx').on(t.createdAt),
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
     // The insights ledger's own query: one month, newest first.

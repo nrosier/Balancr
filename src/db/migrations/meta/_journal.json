@@ -281,6 +281,13 @@
       "when": 1790199227234,
       "tag": "0039_steady_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790200103011,
+      "tag": "0040_premium_landau",
+      "breakpoints": true
     }
   ]
 }

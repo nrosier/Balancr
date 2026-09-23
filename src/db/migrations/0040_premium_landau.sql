@@ -1,0 +1,1 @@
+CREATE INDEX `ai_runs_seq_idx` ON `ai_runs` (`seq`);
