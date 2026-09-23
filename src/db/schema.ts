@@ -1311,6 +1311,16 @@ export const jobs = sqliteTable(
       .default('idle'),
     lastDurationMs: integer('last_duration_ms'),
     error: text(),
+    /**
+     * A job's own bookmark for how far it has swept, opaque to everything but
+     * that job (#512) — e.g. `ai-runs-retention`'s last cutoff, so a nightly
+     * sweep over a table that only grows can scan the delta since last night
+     * instead of the whole table again. Null for a job that has never set one,
+     * which every job but `ai-runs-retention` leaves true forever. Written only
+     * on a successful run, same as `lastSuccessAt`: a failed run's cursor is
+     * not trustworthy proof of how far the sweep actually got.
+     */
+    cursor: text(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
 )

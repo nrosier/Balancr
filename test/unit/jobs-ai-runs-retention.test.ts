@@ -83,7 +83,7 @@ describe('aiRunsRetentionJob', () => {
 
     const detail = await job.run(context(new Date('2026-09-01T00:00:00Z')))
 
-    expect(detail).toEqual({ cleared: 1, cutoffDays: 90 })
+    expect(detail).toEqual({ cleared: 1, cutoffDays: 90, cursor: '2026-06-03T00:00:00.000Z' })
     expect(loadRun(db, tenantId, old)?.requestText).toBeNull()
     expect(loadRun(db, tenantId, old)?.responseText).toBeNull()
     expect(loadRun(db, tenantId, recent)?.requestText).toBe('the request')
@@ -96,7 +96,7 @@ describe('aiRunsRetentionJob', () => {
 
     const detail = await job.run(context(new Date('2026-09-01T00:00:00Z')))
 
-    expect(detail).toEqual({ cleared: 0, cutoffDays: 90 })
+    expect(detail).toEqual({ cleared: 0, cutoffDays: 90, cursor: '2026-06-03T00:00:00.000Z' })
   })
 
   it('honours a configured retention window narrower than the default', async () => {
@@ -106,7 +106,39 @@ describe('aiRunsRetentionJob', () => {
 
     const detail = await job.run(context(new Date('2026-09-01T00:00:00Z')))
 
-    expect(detail).toEqual({ cleared: 1, cutoffDays: 7 })
+    expect(detail).toEqual({ cleared: 1, cutoffDays: 7, cursor: '2026-08-25T00:00:00.000Z' })
     expect(loadRun(db, tenantId, id)?.requestText).toBeNull()
+  })
+
+  it('only rescans the delta since its last cursor, not the whole table (#512)', async () => {
+    const job = await freshJob({ AI_RUNS_TEXT_RETENTION_DAYS: '90' })
+    // Older than a cursor set by a previous night's run — already swept, and
+    // still has its text intact only because nothing re-clears an already-null
+    // column; the point is this row must never be reached by the query at all
+    // once a cursor bounds it from below, so leaving its text in place is what
+    // proves the lower bound actually excluded it.
+    const beforeCursor = withText()
+    backdate(beforeCursor, new Date('2026-01-01T00:00:00Z'))
+    // In the one-day delta window a cursor from last night's run newly covers.
+    const inDelta = withText()
+    backdate(inDelta, new Date('2026-03-02T12:00:00Z'))
+
+    const ctx: JobContext = { ...context(new Date('2026-06-01T00:00:00Z')), cursor: '2026-03-02T00:00:00.000Z' }
+    const detail = await job.run(ctx)
+
+    expect(detail).toEqual({ cleared: 1, cutoffDays: 90, cursor: '2026-03-03T00:00:00.000Z' })
+    expect(loadRun(db, tenantId, inDelta)?.requestText).toBeNull()
+    expect(loadRun(db, tenantId, beforeCursor)?.requestText).toBe('the request')
+  })
+
+  it('does the first, full sweep when no cursor has ever been set', async () => {
+    const job = await freshJob({ AI_RUNS_TEXT_RETENTION_DAYS: '90' })
+    const old = withText()
+    backdate(old, new Date('2026-01-01T00:00:00Z'))
+
+    const detail = await job.run({ ...context(new Date('2026-06-01T00:00:00Z')), cursor: null })
+
+    expect(detail).toEqual({ cleared: 1, cutoffDays: 90, cursor: '2026-03-03T00:00:00.000Z' })
+    expect(loadRun(db, tenantId, old)?.requestText).toBeNull()
   })
 })

@@ -96,9 +96,21 @@ export interface JobContext {
    * has to catch it itself.
    */
   readonly step: <T>(name: string, fn: () => Promise<T>) => Promise<T>
+  /**
+   * This job's own bookmark from its last successful run, or null if it has
+   * never set one (#512) — meaningless to every job but `ai-runs-retention`,
+   * same reasoning as `force` above. Optional so a test building a `JobContext`
+   * literal by hand does not have to invent one.
+   */
+  readonly cursor?: string | null
 }
 
-/** Counts and dates worth logging. Never a payee, never an amount. */
+/**
+ * Counts and dates worth logging. Never a payee, never an amount.
+ *
+ * A `cursor` key is not just logged: `runJob` persists it to `jobs.cursor` on
+ * success, for that job's next run to read back via `ctx.cursor` (#512).
+ */
 export type JobDetail = Record<string, string | number | boolean | null>
 
 export interface Job {
@@ -224,6 +236,12 @@ export function runJob(
     const started = Date.now()
     const runId = crypto.randomUUID()
     const steps: JobStep[] = []
+    const priorCursor =
+      db
+        .select({ cursor: jobsTable.cursor })
+        .from(jobsTable)
+        .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.name, job.name)))
+        .get()?.cursor ?? null
 
     upsert(db, tenantId, job.name, { status: 'running', lastRunAt: now, error: null })
     db.insert(jobRunsTable)
@@ -246,10 +264,15 @@ export function runJob(
           log: jobLog,
           force: options.force ?? false,
           step: makeStep(steps),
+          cursor: priorCursor,
         })) ?? {}
       const durationMs = Date.now() - started
       const finished = new Date()
       const runStatus = deriveRunStatus(true, steps)
+      // Only a string or null overwrites the cursor — a job that never mentions
+      // one (every job but `ai-runs-retention`) leaves it exactly as it was.
+      const cursor =
+        typeof detail.cursor === 'string' || detail.cursor === null ? { cursor: detail.cursor } : {}
       upsert(db, tenantId, job.name, {
         status: 'ok',
         lastRunAt: now,
@@ -257,6 +280,7 @@ export function runJob(
         nextRunAt: nextRunAt(job.schedule, finished, finished, config.TZ),
         lastDurationMs: durationMs,
         error: null,
+        ...cursor,
       })
       updateJobRun(db, runId, {
         status: runStatus,

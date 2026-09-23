@@ -120,6 +120,77 @@ describe('runJob', () => {
     expect(seenForced).toBe(true)
   })
 
+  it('defaults cursor to null on a job that has never set one, and persists what a job returns (#512)', async () => {
+    let seen: string | null | undefined
+    await runJob(
+      ctx.db,
+      job('probe', async (jobCtx) => {
+        seen = jobCtx.cursor
+        return { cursor: '2026-03-03T00:00:00.000Z' }
+      }),
+      TENANT_ID,
+    )
+    expect(seen).toBeNull()
+    expect(row('probe')!.cursor).toBe('2026-03-03T00:00:00.000Z')
+  })
+
+  it('reads back the cursor a previous successful run persisted', async () => {
+    await runJob(
+      ctx.db,
+      job('probe', async () => ({ cursor: '2026-03-03T00:00:00.000Z' })),
+      TENANT_ID,
+    )
+
+    let seen: string | null | undefined
+    await runJob(
+      ctx.db,
+      job('probe', async (jobCtx) => {
+        seen = jobCtx.cursor
+      }),
+      TENANT_ID,
+    )
+    expect(seen).toBe('2026-03-03T00:00:00.000Z')
+  })
+
+  it('leaves the cursor untouched when a job never mentions one', async () => {
+    await runJob(
+      ctx.db,
+      job('probe', async () => ({ cursor: '2026-03-03T00:00:00.000Z' })),
+      TENANT_ID,
+    )
+    await runJob(ctx.db, job('probe', async () => ({ facts: 1 })), TENANT_ID)
+
+    expect(row('probe')!.cursor).toBe('2026-03-03T00:00:00.000Z')
+  })
+
+  it('lets a job clear its cursor back to null', async () => {
+    await runJob(
+      ctx.db,
+      job('probe', async () => ({ cursor: '2026-03-03T00:00:00.000Z' })),
+      TENANT_ID,
+    )
+    await runJob(ctx.db, job('probe', async () => ({ cursor: null })), TENANT_ID)
+
+    expect(row('probe')!.cursor).toBeNull()
+  })
+
+  it('never persists a cursor from a failed run', async () => {
+    await runJob(
+      ctx.db,
+      job('probe', async () => ({ cursor: '2026-03-03T00:00:00.000Z' })),
+      TENANT_ID,
+    )
+    await runJob(
+      ctx.db,
+      job('probe', async () => {
+        throw new Error('nope')
+      }),
+      TENANT_ID,
+    )
+
+    expect(row('probe')!.cursor).toBe('2026-03-03T00:00:00.000Z')
+  })
+
   it('returns a failure instead of throwing', async () => {
     // If this threw, one Ghostfolio timeout would take the ticker down and the
     // app would serve three-week-old figures without saying so.
