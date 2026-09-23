@@ -213,7 +213,10 @@ describe('built-in prompts', () => {
     expect(body).not.toMatch(/divide by 100/i)
     // And the previous default is the text that had the bug, not a body that always wrote
     // this correctly — anchoring the fix as new rather than restating an old guarantee.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    // `.at(-2)`, not `.at(-1)`: rule 12 (#negative_is_overspend) put a newer body,
+    // `NARRATIVE_SYSTEM_V7`, on top of this one, so the version that actually carries the
+    // bug this test anchors against is one further back.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
     expect(previous).toBeDefined()
     expect(previous).toMatch(/divide by 100 and write it as currency/i)
   })
@@ -223,10 +226,30 @@ describe('built-in prompts', () => {
     expect(body).toMatch(/never write an internal field name/i)
     expect(body).toMatch(/internal category code/i)
     // Rule 11 (the one under test here) is unrelated to the cents/bp payload-format fix
-    // (#480) that produced the newest superseded body, so it is `.at(-2)` — the version
-    // rule 11 was actually added on top of — that must predate it, not `.at(-1)`.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
+    // (#480) and to rule 12's negative-figure fix, both of which sit on top of it in
+    // `SUPERSEDED_PROMPTS`, so it is `.at(-3)` — the version rule 11 was actually added
+    // on top of — that must predate it, not `.at(-1)` or `.at(-2)`.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-3)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/internal field name/i)
+  })
+
+  it('tells the narrative pass a negative leftover figure means overspend, not an error', () => {
+    // A category's `availableCents` (redact.ts) arrives signed; nothing before rule 12
+    // told the writer what a negative one means, so a household reading a live narrative
+    // saw it treated as an unexplained problem rather than what it actually is.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/an overspend/i)
+    expect(body).toMatch(/never call it an error in the figures or a debt owed/i)
+    // Scoped to expense envelopes, not income: `overspend.ts`'s own `categorySignals`
+    // skips income categories when classifying `over_available`/`over_assigned` because
+    // "the... signals below would all read backwards" for them, and the same reasoning
+    // applies here — a negative income figure is a shortfall, not an overspend.
+    expect(body).toMatch(/expense envelope/i)
+    expect(body).toMatch(/income category means something else entirely/i)
+    // Anchored as new: the version rule 12 was added on top of (the newest superseded
+    // body, `NARRATIVE_SYSTEM_V7`) must not already say this.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).not.toMatch(/an overspend/i)
   })
 })
 
@@ -368,6 +391,16 @@ describe('NARRATIVE_GUARDRAILS', () => {
     expect(guardrails).not.toMatch(/divided by 100/i)
     expect(guardrails).toMatch(/copy it exactly as given/i)
     expect(guardrails).toMatch(/corrupting it/i)
+  })
+
+  it('backstops the field-name rule too, so an edit or a stale prompt cannot drop it', () => {
+    // Unlike rule 1's arithmetic fidelity and rule 6's advice boundary, rule 11's
+    // field-name rule (`no_internal_ids`) had no backstop here at all until a household
+    // reported a raw `Cents` field leaking into a live narrative — and it is editorial in
+    // the judge's rubric, not required, so an edited prompt could drop it and still pass.
+    const guardrails = NARRATIVE_GUARDRAILS.replace(/\s+/g, ' ')
+    expect(guardrails).toMatch(/never write an internal field name/i)
+    expect(guardrails).toMatch(/internal category code/i)
   })
 })
 

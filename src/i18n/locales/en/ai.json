@@ -187,6 +187,7 @@
       "excluded_is_choice": "Leaves the envelopes you withheld alone",
       "guess_is_neutral": "Writes a clarification guess in plain language, not as fact",
       "lead_with_change": "Leads with what changed",
+      "negative_is_overspend": "Explains a negative leftover figure as overspending, never as an error",
       "no_address_no_moralise": "Stays impersonal and passes no judgement",
       "no_advice": "Gives no investment, product or tax advice",
       "no_arithmetic": "Never works out a figure of its own",

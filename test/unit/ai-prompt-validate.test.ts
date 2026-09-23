@@ -958,7 +958,7 @@ describe('validatePrompt — concurrency (#454)', () => {
 
 describe('the judge’s own constants (#454)', () => {
   it('expects a small answer, because the judge replies in codes', () => {
-    // Far below a narrative's own ceiling: eleven short objects, a conflict array and one
+    // Far below a narrative's own ceiling: twelve short objects, a conflict array and one
     // sentence. An estimate sized for prose would cap runs that were affordable.
     expect(JUDGE_EXPECTED_OUTPUT_TOKENS).toBeLessThan(2_000)
   })
