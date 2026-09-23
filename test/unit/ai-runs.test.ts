@@ -551,6 +551,50 @@ describe('clearStaleRunText (#503)', () => {
     expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(1)
     expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
   })
+
+  it('ignores a run older than `since`, the lower bound (#512)', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-01-01T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(0)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBe('the request')
+  })
+
+  it('clears a run inside the [since, olderThan) window', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-01-20T00:00:00Z'))
+
+    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(1)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBeNull()
+  })
+
+  it('matches nothing when `since` falls after `olderThan`, rather than skipping rows', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'the request', responseText: 'the response' }),
+    )
+    backdate(id, new Date('2026-02-01T00:00:00Z'))
+
+    // A `since` after `olderThan` — the shape a shortened retention window can
+    // produce for one run — must not be treated as "clear everything below it".
+    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-02-15T00:00:00Z'))).toBe(0)
+
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBe('the request')
+  })
 })
 
 describe('ai_spend_monthly', () => {

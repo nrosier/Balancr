@@ -341,8 +341,16 @@ export function loadRunCursor(
  * The `or(isNotNull(...))` guard is not for correctness (nulling an already-null
  * column is a no-op) — it keeps the returned count meaningful: "rows actually
  * cleared tonight", not "every old row that happened to still have nothing to clear".
+ *
+ * `since`, when given, adds a lower bound (#512): the caller's promise that
+ * every row older than it was already cleared by an earlier successful sweep,
+ * so this run only has to scan the delta since then rather than the whole
+ * table again. Both bounds are applied together, so a `since` that turns out
+ * to be *after* `olderThan` — which a shortened retention window can produce —
+ * simply matches nothing rather than skipping rows that now qualify; it is
+ * always safe to omit, only ever an optimisation to include.
  */
-export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date): number {
+export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date, since?: Date): number {
   return db
     .update(aiRuns)
     .set({ requestText: null, responseText: null })
@@ -350,6 +358,7 @@ export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date): nu
       and(
         eq(aiRuns.tenantId, tenantId),
         lt(aiRuns.createdAt, olderThan),
+        ...(since === undefined ? [] : [gte(aiRuns.createdAt, since)]),
         or(isNotNull(aiRuns.requestText), isNotNull(aiRuns.responseText)),
       ),
     )

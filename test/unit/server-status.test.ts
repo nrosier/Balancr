@@ -329,6 +329,7 @@ describe('the two verdicts that depend on more than a row', () => {
     nextRunAt: null,
     lastDurationMs: 120,
     error: null,
+    cursor: null,
     ...over,
   })
 
