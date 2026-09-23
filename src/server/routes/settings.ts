@@ -156,7 +156,7 @@ import {
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
-import { loadRun, recentRuns } from '../../domain/ai/runs.ts'
+import { loadRunCursor, recentRuns } from '../../domain/ai/runs.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
@@ -2579,10 +2579,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * `before` pages backwards from a previously-returned run's id (#502): `ai_runs`
    * is never pruned, so a fixed page with no way to reach what is past it made
    * every transcript older than the 50th permanently unreachable through this
-   * screen. Resolved to that run's own `(createdAt, id)` — the exact pair
-   * `recentRuns` orders by — rather than trusting an offset a concurrent insert
-   * could shift. An id that no longer resolves for this tenant (a bad or stale
-   * link) ends the log rather than silently restarting it from the top.
+   * screen. Resolved to that run's own `(createdAt, rowid)` — the exact pair
+   * `recentRuns` orders by (#510) — rather than trusting an offset a concurrent
+   * insert could shift. An id that no longer resolves for this tenant (a bad or
+   * stale link) ends the log rather than silently restarting it from the top.
    */
   app.get('/api/settings/ai/runs', (request: FastifyRequest): AiRunList => {
     const user = requireUser(request)
@@ -2592,20 +2592,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       throw badRequest('before must be a run id.')
     }
 
-    const cursorRun = before === undefined ? undefined : loadRun(db, user.tenantId, before)
-    if (before !== undefined && cursorRun === null) {
+    const cursor = before === undefined ? undefined : loadRunCursor(db, user.tenantId, before)
+    if (before !== undefined && cursor === null) {
       return aiRunListSchema.parse({ runs: [], nextCursor: null })
     }
 
-    const rows = recentRuns(
-      db,
-      user.tenantId,
-      AI_LOG_PAGE_SIZE,
-      undefined,
-      cursorRun === undefined || cursorRun === null
-        ? undefined
-        : { createdAt: cursorRun.createdAt, id: cursorRun.id },
-    )
+    const rows = recentRuns(db, user.tenantId, AI_LOG_PAGE_SIZE, undefined, cursor ?? undefined)
     return aiRunListSchema.parse({
       runs: rows.map(wireRun),
       nextCursor: rows.length === AI_LOG_PAGE_SIZE ? (rows[rows.length - 1]?.id ?? null) : null,
