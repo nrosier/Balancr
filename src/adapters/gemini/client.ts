@@ -23,7 +23,7 @@
  *    falls back to sending the instruction inline.
  */
 import { createHash } from 'node:crypto'
-import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
+import { ApiError, GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
@@ -126,10 +126,21 @@ export function clientOptions(db: Db, tenantId: string): GoogleGenAIOptions {
   return { apiKey: ai.apiKey as string }
 }
 
+/** A live cache resource, and when Google's own TTL says it stops being one. */
+interface CacheEntry {
+  name: string
+  expiresAt: number
+}
+
 interface TenantGeminiState {
   client: GoogleGenAI
-  /** Cache resource name per (model, system instruction), keyed by content hash. */
-  cacheNames: Map<string, string>
+  /**
+   * Cache entry per (model, system instruction), keyed by content hash. `null`
+   * means "known uncacheable" — below the token floor, or the provider rejected
+   * the create — which does not depend on Google's TTL and is never re-attempted
+   * on `expiresAt` alone.
+   */
+  cacheNames: Map<string, CacheEntry | null>
 }
 
 const tenants = new Map<string, TenantGeminiState>()
@@ -253,7 +264,14 @@ async function cacheFor(
   const state = tenantState(db, tenantId)
   const key = cacheKey(model, instruction)
   const held = state.cacheNames.get(key)
-  if (held !== undefined) return held === '' ? null : held
+  if (held !== undefined) {
+    if (held === null) return null
+    // Google deletes the resource server-side once its own TTL elapses; a held
+    // name past that point is a name for content that no longer exists (#499).
+    // Falling through re-attempts the create rather than sending a doomed name.
+    if (Date.now() < held.expiresAt) return held.name
+    state.cacheNames.delete(key)
+  }
 
   const estimated = estimateTokens(instruction)
   if (config.GEMINI_CACHE_MIN_TOKENS > 0 && estimated < config.GEMINI_CACHE_MIN_TOKENS) {
@@ -263,7 +281,7 @@ async function cacheFor(
       { model, estimated, minimum: config.GEMINI_CACHE_MIN_TOKENS },
       'context caching does not apply at this prompt size; sending it inline',
     )
-    state.cacheNames.set(key, '')
+    state.cacheNames.set(key, null)
     return null
   }
 
@@ -277,10 +295,10 @@ async function cacheFor(
       },
     })
     if (cache.name === undefined || cache.name === '') {
-      state.cacheNames.set(key, '')
+      state.cacheNames.set(key, null)
       return null
     }
-    state.cacheNames.set(key, cache.name)
+    state.cacheNames.set(key, { name: cache.name, expiresAt: Date.now() + CACHE_TTL_SECONDS * 1_000 })
     log.debug({ model, cache: cache.name }, 'cached system prompt')
     return cache.name
   } catch (error) {
@@ -290,9 +308,40 @@ async function cacheFor(
       { model, err: error instanceof Error ? error.message : String(error) },
       'context caching unavailable; sending the system prompt inline',
     )
-    state.cacheNames.set(key, '')
+    state.cacheNames.set(key, null)
     return null
   }
+}
+
+/**
+ * Removes a held cache entry so the next call recreates it, but only if it is
+ * still the name that was just rejected.
+ *
+ * Two concurrent calls sharing one (model, instruction) can both read the same
+ * stale name before either retries: without the guard, whichever rejection is
+ * handled second would delete the fresh entry the first replaced it with,
+ * losing a cache that is still good and costing a needless extra create.
+ */
+function invalidateCache(db: Db, tenantId: string, model: string, instruction: string, staleName: string): void {
+  const state = tenantState(db, tenantId)
+  const key = cacheKey(model, instruction)
+  const held = state.cacheNames.get(key)
+  if (held !== null && held !== undefined && held.name === staleName) {
+    state.cacheNames.delete(key)
+  }
+}
+
+/**
+ * Whether `error` is Google rejecting a `cachedContent` name it no longer
+ * recognises — the response `cacheFor`'s own TTL check is meant to pre-empt, but
+ * cannot guarantee against clock drift or an operator-side cache deletion (#499).
+ */
+function isStaleCachedContent(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.message.includes('CachedContent not found')
+  )
 }
 
 /**
@@ -308,13 +357,12 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
   const prompt = `${call.instruction.trim()}\n\n${fenceData(call.payload, provider)}`
   const cache = await cacheFor(db, tenantId, call.model, instruction)
 
-  const started = Date.now()
-  try {
-    const response = await genai(db, tenantId).models.generateContent({
+  const generate = (cachedContent: string | null) =>
+    genai(db, tenantId).models.generateContent({
       model: call.model,
       contents: prompt,
       config: {
-        ...(cache === null ? { systemInstruction: instruction } : { cachedContent: cache }),
+        ...(cachedContent === null ? { systemInstruction: instruction } : { cachedContent }),
         temperature: call.temperature ?? 0.2,
         ...(call.maxOutputTokens === undefined ? {} : { maxOutputTokens: call.maxOutputTokens }),
         ...(call.responseJsonSchema === undefined
@@ -326,6 +374,23 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
         abortSignal: call.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
     })
+
+  const started = Date.now()
+  try {
+    let usedCache = cache
+    let response
+    try {
+      response = await generate(cache)
+    } catch (error) {
+      // The TTL check in `cacheFor` is a prediction, not a guarantee — Google can
+      // still reject a name it deleted moments ago. One inline retry recovers the
+      // call instead of failing it outright, and clearing the entry stops every
+      // later call from repeating the same rejection (#499).
+      if (cache === null || !isStaleCachedContent(error)) throw error
+      invalidateCache(db, tenantId, call.model, instruction, cache)
+      usedCache = null
+      response = await generate(null)
+    }
 
     const text = response.text
     if (text === undefined || text.trim() === '') {
@@ -341,7 +406,7 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
       text,
       usage: readUsage(response.usageMetadata),
       model: response.modelVersion ?? call.model,
-      cached: cache !== null,
+      cached: usedCache !== null,
       durationMs: Date.now() - started,
       finishReason: response.candidates?.[0]?.finishReason ?? null,
     }

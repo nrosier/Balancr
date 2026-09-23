@@ -12,7 +12,7 @@
  */
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { GoogleGenAI } from '@google/genai'
+import { ApiError, type GoogleGenAI } from '@google/genai'
 import {
   callGemini,
   clientOptions,
@@ -53,13 +53,25 @@ interface Recorded {
  */
 function fakeClient(
   response: FakeResponse,
-  options: { cacheName?: string | null; generateError?: Error } = {},
+  options: {
+    cacheName?: string | null
+    generateError?: Error
+    /** Thrown on the first `generateContent` call only; every later call succeeds. */
+    failFirstGenerateWith?: Error
+  } = {},
 ): { client: GoogleGenAI; recorded: Recorded } {
   const recorded: Recorded = { generate: [], caches: [] }
+  // Counted separately from `recorded.generate`, which some tests truncate for their
+  // own bookkeeping — truncating it must not make this fire a second time.
+  let generateCalls = 0
   const client = {
     models: {
       generateContent: async (request: unknown) => {
         recorded.generate.push(request)
+        generateCalls += 1
+        if (options.failFirstGenerateWith !== undefined && generateCalls === 1) {
+          throw options.failFirstGenerateWith
+        }
         if (options.generateError !== undefined) throw options.generateError
         return response
       },
@@ -560,6 +572,164 @@ describe('callGemini', () => {
       callGemini(db, tenantId, { ...call, payload: { name: `x ${DATA_CLOSE} y` } }),
     ).rejects.toThrow(GeminiError)
     expect(recorded.generate).toHaveLength(0)
+  })
+})
+
+describe('stale cachedContent (#499)', () => {
+  /** The exact shape Google returns for a cache resource it has already deleted. */
+  const staleCacheError = () =>
+    new ApiError({
+      message: JSON.stringify({
+        error: { code: 403, message: 'CachedContent not found (or permission denied)', status: 'PERMISSION_DENIED' },
+      }),
+      status: 403,
+    })
+
+  it('recreates the cache once Google’s own TTL has elapsed, before it can be rejected', async () => {
+    const { client, recorded } = fakeClient({ text: 'ok' }, { cacheName: 'caches/abc123' })
+    setGeminiClient(client)
+
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+      await callGemini(db, tenantId, cacheable)
+      // One hour, the TTL requested from `caches.create`, plus a second: Google will
+      // already have deleted the resource server-side by this point.
+      vi.setSystemTime(new Date('2026-01-01T01:00:01Z'))
+      await callGemini(db, tenantId, cacheable)
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(recorded.caches).toHaveLength(2)
+  })
+
+  it('retries inline instead of failing the call when the held name is rejected anyway', async () => {
+    // The TTL check is a prediction, not a guarantee — this is the belt-and-suspenders
+    // path for whatever gap remains (clock drift, an operator deleting the resource).
+    const { client, recorded } = fakeClient(
+      { text: 'ok' },
+      { cacheName: 'caches/abc123', failFirstGenerateWith: staleCacheError() },
+    )
+    setGeminiClient(client)
+
+    const result = await callGemini(db, tenantId, cacheable)
+
+    expect(result.text).toBe('ok')
+    expect(result.cached).toBe(false)
+    expect(recorded.generate).toHaveLength(2)
+    // The first, rejected attempt still carried the stale name; the retry is the
+    // one that must have fallen back to sending the instruction inline.
+    const retry = recorded.generate[1] as { config: Record<string, unknown> }
+    expect(retry.config['cachedContent']).toBeUndefined()
+    expect(retry.config['systemInstruction']).toContain(FENCE_CONTRACT)
+  })
+
+  it('forgets the stale name, so the very next call asks for a fresh cache rather than repeating the rejection', async () => {
+    const { client, recorded } = fakeClient(
+      { text: 'ok' },
+      { cacheName: 'caches/abc123', failFirstGenerateWith: staleCacheError() },
+    )
+    setGeminiClient(client)
+
+    await callGemini(db, tenantId, cacheable)
+    expect(recorded.caches).toHaveLength(1)
+
+    recorded.generate.length = 0
+    await callGemini(db, tenantId, cacheable)
+
+    expect(recorded.caches).toHaveLength(2)
+    expect(recorded.generate).toHaveLength(1)
+    expect(configOf(recorded)['cachedContent']).toBe('caches/abc123')
+  })
+
+  it('does not retry a plain transport failure as though it were a stale cache', async () => {
+    const cause = new Error('socket hang up')
+    const { client, recorded } = fakeClient(
+      { text: 'ok' },
+      { cacheName: 'caches/abc123', failFirstGenerateWith: cause },
+    )
+    setGeminiClient(client)
+
+    await expect(callGemini(db, tenantId, cacheable)).rejects.toThrow(GeminiError)
+    expect(recorded.generate).toHaveLength(1)
+  })
+
+  it('does not clear a fresher entry that replaced the one it saw rejected', async () => {
+    // The race Greptile flagged on the first version of this fix: two concurrent
+    // calls read the same stale name before either retries. Whichever rejection is
+    // handled first replaces the entry with a fresh cache; the second must not then
+    // delete that fresh entry just because its own, now-outdated name once matched.
+    //
+    // `generateContent` is deferred so the test can hold each call at the point a
+    // real race would leave it, and drive the interleaving explicitly rather than
+    // hoping the event loop happens to order it this way.
+    const pendingGenerate: { resolve: (v: FakeResponse) => void; reject: (e: unknown) => void }[] = []
+    const cacheNames = ['caches/stale', 'caches/replacement']
+    let cacheCalls = 0
+    const client = {
+      models: {
+        generateContent: async () =>
+          new Promise<FakeResponse>((resolve, reject) => pendingGenerate.push({ resolve, reject })),
+      },
+      caches: {
+        create: async () => ({ name: cacheNames[cacheCalls++] }),
+      },
+    } as unknown as GoogleGenAI
+    setGeminiClient(client)
+
+    const flush = async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    }
+
+    const prime = callGemini(db, tenantId, cacheable)
+    await flush()
+    pendingGenerate[0]!.resolve({ text: 'ok' })
+    await prime // installs 'caches/stale'
+
+    const resultA = callGemini(db, tenantId, cacheable)
+    const resultB = callGemini(db, tenantId, cacheable)
+    await flush()
+    expect(pendingGenerate).toHaveLength(3) // both A and B read 'caches/stale' and are in flight
+
+    pendingGenerate[1]!.reject(staleCacheError())
+    await flush()
+    pendingGenerate[3]!.resolve({ text: 'ok' }) // A's inline retry
+    await expect(resultA).resolves.toMatchObject({ cached: false })
+
+    // An unrelated concurrent call recreates the cache while B's rejection is still
+    // unhandled — this is the fresh entry that must survive.
+    const resultC = callGemini(db, tenantId, cacheable)
+    await flush()
+    expect(cacheCalls).toBe(2)
+    pendingGenerate[4]!.resolve({ text: 'ok' })
+    await resultC
+
+    pendingGenerate[2]!.reject(staleCacheError())
+    await flush()
+    pendingGenerate[5]!.resolve({ text: 'ok' }) // B's inline retry
+    await resultB
+
+    // Had B's invalidation wiped 'caches/replacement', this call would have asked
+    // for a third cache instead of reusing the one C installed.
+    const resultD = callGemini(db, tenantId, cacheable)
+    await flush()
+    pendingGenerate[6]!.resolve({ text: 'ok' })
+    await resultD
+    expect(cacheCalls).toBe(2)
+  })
+
+  it('does not retry a stale-cache rejection when the call never used a cache', async () => {
+    // `cache === null` means there was nothing to invalidate or retry without; a
+    // 403 that happens to match the same text on an uncached call is not this bug.
+    const { client, recorded } = fakeClient(
+      { text: 'ok' },
+      { failFirstGenerateWith: staleCacheError() },
+    )
+    setGeminiClient(client)
+
+    await expect(callGemini(db, tenantId, call)).rejects.toThrow(GeminiError)
+    expect(recorded.generate).toHaveLength(1)
   })
 })
 
