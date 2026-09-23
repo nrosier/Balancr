@@ -53,6 +53,7 @@ import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import { AccountsPanel } from '../settings/Accounts.tsx'
+import { AiLog } from '../settings/AiLog.tsx'
 import { BenchmarkSection } from '../settings/Benchmark.tsx'
 import { IntegrationsPanel } from '../settings/Integrations.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
@@ -186,6 +187,7 @@ export function Settings(): ReactNode {
                 {section === 'general' && <GeneralSection {...props} />}
 
                 {section === 'prompts' && <PromptsPanel {...props} />}
+                {section === 'ai-log' && <AiLog />}
                 {section === 'risk' && <RiskPanel {...props} />}
                 {section === 'thresholds' && <ThresholdsSection {...props} />}
                 {section === 'accounts' && <AccountsPanel {...props} />}

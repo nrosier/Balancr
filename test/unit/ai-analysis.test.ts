@@ -369,6 +369,8 @@ describe('runAnalysis', () => {
     expect(row?.inputTokens).toBe(2_500)
     expect(row?.costMicroEur).toBeGreaterThan(0)
     expect(loadRunPayload(db, tenantId, row?.id ?? '')).not.toBeNull()
+    // The raw reply, verbatim (#497).
+    expect(row?.responseText).toBe(response([]))
   })
 })
 
@@ -402,6 +404,9 @@ describe('runAnalysis when it cannot ask the model', () => {
     // audit view shows what would have gone out.
     expect(row?.costMicroEur).toBe(0)
     expect(loadRunPayload(db, tenantId, row?.id ?? '')).not.toBeNull()
+    // Prepared but never sent (#497): a request without a call.
+    expect(row?.requestText).not.toBeNull()
+    expect(row?.responseText).toBeNull()
   })
 
   it('degrades on a transport failure without throwing', async () => {

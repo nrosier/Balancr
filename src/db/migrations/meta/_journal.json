@@ -260,6 +260,13 @@
       "when": 1790100207296,
       "tag": "0036_dapper_night_nurse",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790180142483,
+      "tag": "0037_silky_maddog",
+      "breakpoints": true
     }
   ]
 }

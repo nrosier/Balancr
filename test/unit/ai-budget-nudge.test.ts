@@ -217,6 +217,9 @@ describe('runBudgetNudge', () => {
     expect(rows[0]?.status).toBe('capped')
     expect(rows[0]?.kind).toBe('budget_nudge')
     expect(rows[0]?.period).toBe(MONTH)
+    // Prepared but never sent (#497): a request without a call.
+    expect(rows[0]?.requestText).not.toBeNull()
+    expect(rows[0]?.responseText).toBeNull()
   })
 
   it('records a failed call without throwing', async () => {
@@ -262,6 +265,10 @@ describe('runBudgetNudge', () => {
     expect(recentRuns(db, tenantId)[0]?.status).toBe('ok')
     expect(recentRuns(db, tenantId)[0]?.kind).toBe('budget_nudge')
     expect(recentRuns(db, tenantId)[0]?.period).toBe(MONTH)
+    // The raw reply, verbatim (#497).
+    expect(recentRuns(db, tenantId)[0]?.responseText).toBe(
+      '{"adjustments":[{"label":"c1","amountCents":18000}]}',
+    )
   })
 
   it('drops an adjustment outside the magnitude bound, rather than clamping it', async () => {

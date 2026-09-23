@@ -1646,3 +1646,53 @@ describe('the narrative activation gate (#454)', () => {
     expect(res.json<PromptDiff>().validationEstimateMicroEur).toBeGreaterThan(0)
   })
 })
+
+describe('GET /api/settings/ai/runs (#497)', () => {
+  const run = (payloadHash: string, status: 'ok' | 'capped' = 'ok') => ({
+    kind: 'findings' as const,
+    provider: 'gemini-aistudio' as const,
+    model: 'gemini-3.7-flash',
+    locale: 'en',
+    payload: { month: '2026-09' },
+    payloadHash,
+    status,
+    requestText: `request for ${payloadHash}`,
+    responseText: status === 'ok' ? `response for ${payloadHash}` : null,
+  })
+
+  it('refuses without a session', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/settings/ai/runs' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('lists every run, newest first, with no month scoping', async () => {
+    const older = recordRun(ctx.db, tenantId, run('older'))
+    const newer = recordRun(ctx.db, tenantId, run('newer', 'capped'))
+    ctx.db.$client
+      .prepare('update ai_runs set created_at = ? where id = ?')
+      .run(new Date('2026-08-01T00:00:00Z').getTime(), older)
+    ctx.db.$client
+      .prepare('update ai_runs set created_at = ? where id = ?')
+      .run(new Date('2026-09-01T00:00:00Z').getTime(), newer)
+
+    const res = await get('/api/settings/ai/runs')
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json<{ runs: { id: string; status: string }[] }>()
+    expect(body.runs.map((r) => r.id)).toEqual([newer, older])
+  })
+
+  it("does not carry another tenant's runs", async () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    recordRun(ctx.db, otherTenantId, run('other-tenant'))
+
+    const body = (await get('/api/settings/ai/runs')).json<{ runs: unknown[] }>()
+    expect(body.runs).toHaveLength(0)
+  })
+
+  it('is readable by a viewer, like the payload route it complements', async () => {
+    recordRun(ctx.db, tenantId, run('viewer-visible'))
+    const res = await get('/api/settings/ai/runs', viewer)
+    expect(res.statusCode).toBe(200)
+  })
+})

@@ -44,7 +44,7 @@
  */
 import { callAi } from '../../adapters/ai/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
-import { fenceData } from '../../adapters/ai/prompt.ts'
+import { fenceData, tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
 import { AiError } from '../../adapters/ai/types.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -586,6 +586,12 @@ async function validateOnce(
       ? { key, locale, version: row.version, base: DEFAULT_PROMPTS[key], addition: row.body }
       : { key, locale, version: row.version, body: row.body }
   const payloadHash = hashPayload(payload)
+  // Moved up from the `callAi` call site (#497): both are pure string builders,
+  // and `requestText` has to exist for a `blocked`/`capped` row too, since
+  // neither reaches that call. Reused below rather than recomputed.
+  const systemPrompt = judgeSystemFor(key, checkKind)
+  const instruction = judgeInstruction(key, checkKind)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
 
   // 4. The daily cap, tenant-scoped, off the run ledger rather than an IP bucket — see
   //    `countRunsSince`. `ok` and `error` count because both spent something; `blocked`
@@ -610,6 +616,7 @@ async function validateOnce(
       status: 'blocked',
       promptId: row.id,
       error: 'daily_cap_reached',
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ promptId: row.id, spent }, 'prompt validation refused: daily cap reached')
@@ -682,6 +689,7 @@ async function validateOnce(
       status: 'capped',
       promptId: row.id,
       error: reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ promptId: row.id, reason }, 'prompt validation capped by the monthly AI budget')
@@ -695,8 +703,8 @@ async function validateOnce(
       model,
       // Not `composeSystemPrompt`: no `languageDirective`, because the judge reasons in
       // English about an English rubric whatever language the candidate is written in.
-      systemPrompt: judgeSystemFor(key, checkKind),
-      instruction: judgeInstruction(key, checkKind),
+      systemPrompt,
+      instruction,
       // The candidate, and only here. Never `systemPrompt`, never `instruction`.
       payload,
       responseJsonSchema: judgeJsonSchema(key, checkKind),
@@ -715,6 +723,7 @@ async function validateOnce(
       status: 'error',
       promptId: row.id,
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ promptId: row.id, err: message }, 'prompt validation call failed')
@@ -746,6 +755,8 @@ async function validateOnce(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: message,
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ promptId: row.id, err: message }, 'prompt validation response rejected')
@@ -766,6 +777,8 @@ async function validateOnce(
     usage: result.usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
   storePromptValidation(db, tenantId, row.id, {

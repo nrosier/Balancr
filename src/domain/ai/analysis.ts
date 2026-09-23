@@ -24,6 +24,7 @@
 import { eq } from 'drizzle-orm'
 import { callAi } from '../../adapters/ai/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
 import { AiError } from '../../adapters/ai/types.ts'
 import {
   analysisJsonSchema,
@@ -583,6 +584,12 @@ export async function runAnalysis(
   // the reuse key, and the reuse check has to run before a free answer could be
   // wrongly refused for being "over budget" (#160).
   const prompt = resolvePromptFor(db, tenantId, locale, options.promptId)
+  // Moved up from the `callAi` call site (#497): both are pure string builders,
+  // and `requestText` has to exist for a `blocked`/`capped`/`reused` row too,
+  // since none of those reach that call. Reused below rather than recomputed.
+  const systemPrompt = composeAnalysisSystemPrompt(prompt.body, locale, config.PROMPT_EDITING)
+  const instruction = analysisInstruction(payload)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
 
   // The enforcement boundary (#455's, extended to this key by #468). Checked before the
   // reuse lookup and the budget guard, same reasoning as `runNarrative`: a run that cannot
@@ -608,6 +615,7 @@ export async function runAnalysis(
       promptId: prompt.id,
       status: 'blocked',
       error: 'prompt_unvalidated',
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ month, gate: prompt.gate }, 'analysis prompt has no safe verdict; refusing to run')
@@ -643,6 +651,7 @@ export async function runAnalysis(
         promptId: prompt.id,
         status: 'reused',
         reusedFromRunId: reused.id,
+        requestText,
         userId: options.userId ?? null,
       })
       log.info({ month, reusedFromRunId: reused.id }, 'analysis served from a matching past run')
@@ -679,6 +688,7 @@ export async function runAnalysis(
       payloadHash,
       status: 'capped',
       error: decision.reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ month, reason: decision.reason }, 'analysis capped by the monthly AI budget')
@@ -697,8 +707,8 @@ export async function runAnalysis(
   try {
     result = await callAi(db, tenantId, {
       model,
-      systemPrompt: composeAnalysisSystemPrompt(prompt.body, locale, config.PROMPT_EDITING),
-      instruction: analysisInstruction(payload),
+      systemPrompt,
+      instruction,
       payload,
       responseJsonSchema: analysisJsonSchema(),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -716,6 +726,7 @@ export async function runAnalysis(
       status: 'error',
       promptId: prompt.id,
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ month, err: message }, 'analysis call failed')
@@ -753,6 +764,8 @@ export async function runAnalysis(
       // The tokens were spent whether or not the answer parsed, so the row is
       // billed. That is the number the cost guard has to see.
       error: message,
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ month, err: message }, 'analysis response rejected')
@@ -781,6 +794,8 @@ export async function runAnalysis(
     usage: result.usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
   if (persist) persistFindings(db, tenantId, runId, month, grounded.findings, sources)

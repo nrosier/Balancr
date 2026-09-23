@@ -1267,6 +1267,22 @@ export const insightsSchema = z.object({
  */
 export const aiRunPayloadSchema = aiRunSchema.extend({
   payload: z.json(),
+  /**
+   * The exact system+instruction+data text prepared for this attempt (#497),
+   * verbatim. Null for a row written before this column existed, or for the
+   * rare fence-marker refusal that could not even be assembled.
+   */
+  requestText: z.string().nullable(),
+  /**
+   * The provider's raw reply, verbatim. Null for `capped`/`blocked` rows
+   * (nothing was sent) and for a `reused` row whose source has since aged out.
+   */
+  responseText: z.string().nullable(),
+})
+
+/** `GET /api/settings/ai/runs` — the raw request/response log's own list, all-time. */
+export const aiRunListSchema = z.object({
+  runs: z.array(aiRunSchema),
 })
 
 // ---------------------------------------------------------------------------
@@ -2381,6 +2397,7 @@ export type DriftLine = z.infer<typeof driftLineSchema>
 export type Insights = z.infer<typeof insightsSchema>
 export type AiRun = z.infer<typeof aiRunSchema>
 export type AiRunPayload = z.infer<typeof aiRunPayloadSchema>
+export type AiRunList = z.infer<typeof aiRunListSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type Status = z.infer<typeof statusSchema>
 export type CheckReason = (typeof checkReasons)[number]

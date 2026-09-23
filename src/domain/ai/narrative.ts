@@ -40,6 +40,7 @@ import {
   costMicroEur,
   estimateCostMicroEur,
 } from '../../adapters/ai/pricing.ts'
+import { tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
 import { addUsage, AiError, type AiCall, type AiResult, type TokenUsage } from '../../adapters/ai/types.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -701,6 +702,12 @@ export async function runNarrative(
   // prepared payload goes on the row anyway, because "what would have been sent" is the
   // audit question this ledger exists to answer.
   const prompt = resolvePrompt(db, tenantId, 'narrative.system', locale)
+  // Moved up from the `callNarrativeModel` call site (#497): both are pure string
+  // builders, and `requestText` has to exist for a `blocked`/`capped` row too, since
+  // those never reach that call. Reused below rather than recomputed.
+  const systemPrompt = composeNarrativeSystemPrompt(prompt.body, locale, config.PROMPT_EDITING)
+  const instruction = narrativeInstruction(payload)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
   if (prompt.gate === 'unvalidated' || prompt.gate === 'unsafe') {
     const runId = recordRun(db, tenantId, {
       kind: 'narrative',
@@ -713,6 +720,7 @@ export async function runNarrative(
       status: 'blocked',
       promptId: prompt.id,
       error: 'prompt_unvalidated',
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ period, gate: prompt.gate }, 'narrative prompt has no safe verdict; refusing to run')
@@ -738,6 +746,7 @@ export async function runNarrative(
       payloadHash,
       status: 'capped',
       error: decision.reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ period, reason: decision.reason }, 'narrative capped by the monthly AI budget')
@@ -752,8 +761,8 @@ export async function runNarrative(
       // backstop (#453) is appended after the language directive, unconditionally, so an
       // edited (or maliciously "disclaimed") body never gets the last word. Every other
       // caller of `composeSystemPrompt` in this file passes a code-owned constant instead.
-      systemPrompt: composeNarrativeSystemPrompt(prompt.body, locale, config.PROMPT_EDITING),
-      instruction: narrativeInstruction(payload),
+      systemPrompt,
+      instruction,
       payload,
       temperature: NARRATIVE_TEMPERATURE,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -771,6 +780,7 @@ export async function runNarrative(
       status: 'error',
       promptId: prompt.id,
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ period, err: message }, 'narrative call failed')
@@ -798,6 +808,8 @@ export async function runNarrative(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model output still truncated after retrying at a higher token ceiling',
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ period }, 'narrative response was truncated twice; not stored')
@@ -821,6 +833,8 @@ export async function runNarrative(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ period }, 'narrative response held no renderable text')
@@ -840,6 +854,8 @@ export async function runNarrative(
     usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
   const row = storeNarrative(db, tenantId, { runId, period, locale, bodyMd })
@@ -907,6 +923,11 @@ export async function translateNarrative(
 
   const payload = { period, from, to, bodyMd: source.bodyMd }
   const payloadHash = hashPayload(payload)
+  // Moved up (#497), same reasoning as `runNarrative`: needed for `requestText`
+  // even on a `capped` row that never reaches `callNarrativeModel`.
+  const systemPrompt = composeSystemPrompt(TRANSLATION_SYSTEM, to)
+  const instruction = translationInstruction(from, to)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
   const estimate = estimateCostMicroEur(
     ai.provider,
     model,
@@ -926,6 +947,7 @@ export async function translateNarrative(
       payloadHash,
       status: 'capped',
       error: decision.reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ period, to, reason: decision.reason }, 'translation capped by the monthly AI budget')
@@ -939,8 +961,8 @@ export async function translateNarrative(
       // No gate check here, and none is missing (#455): `TRANSLATION_SYSTEM` is a code-owned
       // constant that was never a `PROMPT_KEYS` entry, so there is no editable body to check
       // and nothing an owner could have edited away.
-      systemPrompt: composeSystemPrompt(TRANSLATION_SYSTEM, to),
-      instruction: translationInstruction(from, to),
+      systemPrompt,
+      instruction,
       payload,
       temperature: TRANSLATION_TEMPERATURE,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -957,6 +979,7 @@ export async function translateNarrative(
       payloadHash,
       status: 'error',
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ period, to, err: message }, 'translation call failed')
@@ -981,6 +1004,8 @@ export async function translateNarrative(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model output still truncated after retrying at a higher token ceiling',
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ period, to }, 'translation was truncated twice; not stored')
@@ -1001,6 +1026,8 @@ export async function translateNarrative(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: 'model returned no renderable text',
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     return failed(period, to, 'error', 'empty_response', runId, cost)
@@ -1018,6 +1045,8 @@ export async function translateNarrative(
     usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
   const row = storeNarrative(db, tenantId, { runId, period, locale: to, bodyMd })

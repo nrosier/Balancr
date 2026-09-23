@@ -156,6 +156,7 @@ import {
   type PromptKey,
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
+import { recentRuns } from '../../domain/ai/runs.ts'
 import { recordAudit } from '../../domain/audit.ts'
 import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
@@ -169,6 +170,7 @@ import { fieldIssues, parseBody } from '../validate.ts'
 import { APP_REVISION, APP_VERSION } from '../version.ts'
 import {
   accountSettingSchema,
+  aiRunListSchema,
   integrationsSettingSchema,
   integrationTestSchema,
   inviteCreatedSchema,
@@ -177,6 +179,7 @@ import {
   promptSchema,
   settingsSchema,
   type AccountSetting,
+  type AiRunList,
   type IntegrationsSetting,
   type IntegrationTest,
   type InviteCreated,
@@ -186,6 +189,7 @@ import {
   type PromptSetting,
   type Settings,
 } from './api/schemas.ts'
+import { wireRun } from './api/insights.ts'
 import { busyError } from './refresh.ts'
 
 // ---------------------------------------------------------------------------
@@ -2557,6 +2561,21 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     })
 
     return buildSettings(db, request)
+  })
+
+  /**
+   * The AI log's own list (#497) — every recorded run, newest first, no month
+   * scoping. A session, not `requireOwner`, same reasoning as the payload route
+   * in `api/insights.ts`: this is an audit view of data the session can already
+   * see elsewhere, and gating the log harder than the numbers it explains would
+   * only mean the person who can read the conclusions cannot check them.
+   *
+   * A dedicated endpoint rather than `/api/insights`, which is month-scoped and
+   * bundles unrelated data — the wrong shape for an all-time log.
+   */
+  app.get('/api/settings/ai/runs', (request: FastifyRequest): AiRunList => {
+    const user = requireUser(request)
+    return aiRunListSchema.parse({ runs: recentRuns(db, user.tenantId, 50).map(wireRun) })
   })
 
   /**

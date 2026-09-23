@@ -92,6 +92,25 @@
     "uncategorised_backlog": "{{count}} transactions are still uncategorised.",
     "unreconciled_account": "{{account}} has not been reconciled in {{days}}."
   },
+  "log": {
+    "caption_one": "The most recent recorded call.",
+    "caption_other": "The {{value}} most recent recorded calls, newest first.",
+    "column": {
+      "kind": "Kind",
+      "model": "Model",
+      "status": "Result",
+      "when": "When"
+    },
+    "hideTranscript": "Hide the request and response",
+    "hint": "The exact text prepared for the model, and the exact text it sent back, for every recorded call.",
+    "none": "No calls have been made yet.",
+    "request": "Request",
+    "requestUnavailable": "The request could not be reconstructed.",
+    "response": "Response",
+    "responseUnavailable": "No response is recorded for this run.",
+    "title": "Request and response log",
+    "viewTranscript": "Show the request and response"
+  },
   "narrative": {
     "capped": "Monthly AI budget reached — showing the last analysis.",
     "generatedAt": "Written {{when}} by {{model}}",

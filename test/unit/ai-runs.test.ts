@@ -166,6 +166,24 @@ describe('recordRun', () => {
     const id = recordRun(db, tenantId, run())
     expect(loadRun(db, tenantId, id)?.promptId).toBeNull()
   })
+
+  it('stores the exact request and response text verbatim (#497)', () => {
+    const id = recordRun(
+      db,
+      tenantId,
+      run({ requestText: 'system + instruction + data, exactly as sent', responseText: '{"findings":[]}' }),
+    )
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBe('system + instruction + data, exactly as sent')
+    expect(row?.responseText).toBe('{"findings":[]}')
+  })
+
+  it('defaults request and response text to null (#497)', () => {
+    const id = recordRun(db, tenantId, run())
+    const row = loadRun(db, tenantId, id)
+    expect(row?.requestText).toBeNull()
+    expect(row?.responseText).toBeNull()
+  })
 })
 
 describe('loadRun and loadRunPayload', () => {

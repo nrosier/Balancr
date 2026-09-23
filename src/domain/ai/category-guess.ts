@@ -21,6 +21,7 @@
  */
 import { callAi } from '../../adapters/ai/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
 import { AiError } from '../../adapters/ai/types.ts'
 import {
   guessJsonSchema,
@@ -278,6 +279,13 @@ export async function runCategoryGuess(
   const resultsFor = (reason: string): CategoryGuessItemResult[] =>
     options.ids.map((id) => ({ id, ok: false, reason: candidateIdSet.has(id) ? reason : 'no_candidate' }))
 
+  // Moved up from the `callAi` call site (#497): both are pure string builders,
+  // and `requestText` has to exist for a `capped` row too, since it never
+  // reaches that call. Reused below rather than recomputed.
+  const systemPrompt = composeSystemPrompt(CATEGORY_GUESS_SYSTEM, locale)
+  const instruction = categoryGuessInstruction(payload)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
+
   const estimate = estimateCostMicroEur(
     ai.provider,
     model,
@@ -296,6 +304,7 @@ export async function runCategoryGuess(
       payloadHash,
       status: 'capped',
       error: decision.reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ reason: decision.reason }, 'category guess capped by the monthly AI budget')
@@ -315,8 +324,8 @@ export async function runCategoryGuess(
   try {
     result = await callAi(db, tenantId, {
       model,
-      systemPrompt: composeSystemPrompt(CATEGORY_GUESS_SYSTEM, locale),
-      instruction: categoryGuessInstruction(payload),
+      systemPrompt,
+      instruction,
       payload,
       responseJsonSchema: guessJsonSchema(),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -332,6 +341,7 @@ export async function runCategoryGuess(
       payloadHash,
       status: 'error',
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ err: message }, 'category guess call failed')
@@ -366,6 +376,8 @@ export async function runCategoryGuess(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: message,
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ err: message }, 'category guess response rejected')
@@ -392,6 +404,8 @@ export async function runCategoryGuess(
     usage: result.usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
 

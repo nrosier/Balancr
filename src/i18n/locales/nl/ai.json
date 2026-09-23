@@ -92,6 +92,25 @@
     "uncategorised_backlog": "{{count}} verrichtingen zijn nog niet gecategoriseerd.",
     "unreconciled_account": "{{account}} is al {{days}} niet meer afgepunt."
   },
+  "log": {
+    "caption_one": "De meest recente geregistreerde aanroep.",
+    "caption_other": "De {{value}} meest recente geregistreerde aanroepen, nieuwste eerst.",
+    "column": {
+      "kind": "Soort",
+      "model": "Model",
+      "status": "Resultaat",
+      "when": "Wanneer"
+    },
+    "hideTranscript": "Verberg de vraag en het antwoord",
+    "hint": "De exacte tekst die voor het model werd opgesteld, en de exacte tekst die het teruggaf, voor elke geregistreerde aanroep.",
+    "none": "Er zijn nog geen aanroepen geweest.",
+    "request": "Vraag",
+    "requestUnavailable": "De vraag kon niet worden gereconstrueerd.",
+    "response": "Antwoord",
+    "responseUnavailable": "Voor deze aanroep is geen antwoord geregistreerd.",
+    "title": "Vraag- en antwoordlog",
+    "viewTranscript": "Toon de vraag en het antwoord"
+  },
   "narrative": {
     "capped": "Maandelijks AI-budget bereikt — dit is de laatste analyse.",
     "generatedAt": "Geschreven op {{when}} door {{model}}",

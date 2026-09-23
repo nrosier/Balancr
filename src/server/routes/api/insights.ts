@@ -268,7 +268,7 @@ function wireCandidates(
 }
 
 /** One ledger row, minus `payloadJson` and `promptId`. */
-function wireRun(row: AiRunRow): AiRun {
+export function wireRun(row: AiRunRow): AiRun {
   return {
     id: row.id,
     kind: row.kind,
@@ -303,8 +303,19 @@ export function buildRunPayload(db: Db, tenantId: string, id: string): AiRunPayl
   const row = loadRun(db, tenantId, id)
   if (row === null) return null
 
+  // A `reused` row never called a model itself (#497), so its own `responseText`
+  // is null — the answer it served lives on the run it points to via
+  // `reusedFromRunId`. Mirrors how `reconstructFindings` already rebuilds a
+  // reused row's findings from the original rather than duplicating them.
+  const responseText =
+    row.status === 'reused' && row.reusedFromRunId !== null
+      ? (loadRun(db, tenantId, row.reusedFromRunId)?.responseText ?? null)
+      : row.responseText
+
   return aiRunPayloadSchema.parse({
     ...wireRun(row),
+    requestText: row.requestText,
+    responseText,
     // `null` for a row whose JSON will not parse. That is the audit view's own
     // finding to report, not a 500: the row exists and the rest of it is readable.
     payload: loadRunPayload(db, tenantId, id),

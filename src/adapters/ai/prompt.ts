@@ -29,3 +29,36 @@ export function fenceData(payload: unknown, provider: AiProvider): string {
 export function systemInstruction(systemPrompt: string): string {
   return `${FENCE_CONTRACT}\n\n${systemPrompt.trim()}`
 }
+
+/**
+ * The exact text Balancr assembles for a call (#497) — the system instruction
+ * and the fenced instruction+payload, concatenated the same way every adapter
+ * builds its own request from these two pieces. Not the literal wire body (that
+ * varies by provider, and a cache hit omits the system half entirely) but the
+ * two ingredients that vary per call, which is the audit question this exists
+ * to answer.
+ */
+export function assembleRequestText(
+  call: { systemPrompt: string; instruction: string; payload: unknown },
+  provider: AiProvider,
+): string {
+  return `${systemInstruction(call.systemPrompt)}\n\n${call.instruction.trim()}\n\n${fenceData(call.payload, provider)}`
+}
+
+/**
+ * `assembleRequestText`, but for a `blocked`/`capped` row recorded before any
+ * call is attempted: the same fence-marker refusal `fenceData` uses to protect
+ * a real call must not crash a refusal decision that was never going to send
+ * anything anyway. Null rather than a thrown `AiError` — the row still gets
+ * written, just without a request to show for it.
+ */
+export function tryAssembleRequestText(
+  call: { systemPrompt: string; instruction: string; payload: unknown },
+  provider: AiProvider,
+): string | null {
+  try {
+    return assembleRequestText(call, provider)
+  } catch {
+    return null
+  }
+}
