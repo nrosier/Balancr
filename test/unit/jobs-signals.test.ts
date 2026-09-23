@@ -12,9 +12,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import { syncAccountMap, loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
 import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
-import { loadHygiene, persistSignals } from '../../src/domain/aggregate/signals-store.ts'
+import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
+import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
+import { loadHygiene, loadSignals, persistSignals } from '../../src/domain/aggregate/signals-store.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
 import { decodeBudgetTarget, pendingProposals } from '../../src/domain/ai/proposals.ts'
 import { signalsJob } from '../../src/jobs/signals.ts'
@@ -166,5 +169,44 @@ describe('budget-amount proposals only ever target the current month (#251)', ()
       .map((row) => decodeBudgetTarget(row.targetRef).month)
 
     expect(targets).toEqual(['2026-03'])
+  })
+})
+
+describe('net worth is read as of the month being judged, not today (#504)', () => {
+  it('rejudges a stale past month against its own snapshot, not the latest one on file', async () => {
+    syncAccountMap(db, TENANT_ID, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
+    const accountMapId = loadAccountMap(db, TENANT_ID)[0]!.id
+    const account = (valueCents: number): AccountValue => ({
+      accountMapId,
+      source: 'actual',
+      externalId: 'a1',
+      name: 'Zichtrekening',
+      kind: 'checking',
+      valueCents,
+      includeInNetWorth: true,
+      dedupeGroup: null,
+      isSourceOfTruth: true,
+    })
+
+    // A prior high for `net_worth_high` to compare January against.
+    persistNetWorth(db, TENANT_ID, computeNetWorth('2025-12-31', [account(100_000)]))
+    // January's own figure: a new high over December.
+    persistNetWorth(db, TENANT_ID, computeNetWorth('2026-01-31', [account(150_000)]))
+    // Synced after January closed, and far larger — must not leak into January's
+    // rejudge just because it is the tenant's latest snapshot on file.
+    persistNetWorth(db, TENANT_ID, computeNetWorth('2026-03-20', [account(999_000)]))
+
+    // 2026-01 is outside the two-month floor and has never been judged, so
+    // `staleMonths` picks it up on the very first run.
+    seed('2026-01', 'hash-a')
+    seed('2026-02', 'hash-b')
+    seed('2026-03', 'hash-c')
+
+    await run(new Date('2026-03-20T02:00:00Z'))
+
+    const netWorthHigh = loadSignals(db, TENANT_ID, '2026-01').find(
+      (signal) => signal.code === 'net_worth_high',
+    )
+    expect(netWorthHigh?.metrics.amountCents).toBe(150_000)
   })
 })
