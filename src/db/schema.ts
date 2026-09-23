@@ -1044,6 +1044,19 @@ export const aiRuns = sqliteTable(
      * attempt with the same inputs that nothing has changed (#160).
      */
     payloadHash: text('payload_hash'),
+    /**
+     * The exact system+instruction text assembled for this attempt (#497) — sent,
+     * or that would have been sent, since a `capped`/`blocked` row's text is
+     * prepared just like its payload is. Null only for rows written before this
+     * column existed.
+     */
+    requestText: text('request_text'),
+    /**
+     * The provider's raw reply, verbatim, for whichever attempt actually reached
+     * it. Null for `capped`/`blocked`/`reused` rows (nothing came back) and for
+     * an `error` before any response existed.
+     */
+    responseText: text('response_text'),
     /** The `ok` run this one served for free instead of calling the model. */
     reusedFromRunId: text('reused_from_run_id').references((): AnySQLiteColumn => aiRuns.id, {
       onDelete: 'set null',

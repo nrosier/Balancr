@@ -81,6 +81,7 @@ export type {
   AiEstimate,
   AiNarrativeRun,
   AiRun,
+  AiRunList,
   AiRunPayload,
   BandsSetting,
   BenchmarkGroupLine,

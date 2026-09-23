@@ -17,6 +17,7 @@ import { sectionFor as sectionForGeneric, type Section } from '../ui/sections.ts
 export type SettingsSectionId =
   | 'general'
   | 'prompts'
+  | 'ai-log'
   | 'risk'
   | 'thresholds'
   | 'accounts'
@@ -30,6 +31,7 @@ export type SettingsSectionId =
 export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
   { id: 'prompts', path: '/settings/prompts', labelKey: 'settings:nav.prompts' },
+  { id: 'ai-log', path: '/settings/ai-log', labelKey: 'settings:nav.aiLog' },
   { id: 'risk', path: '/settings/risk', labelKey: 'settings:nav.risk' },
   { id: 'thresholds', path: '/settings/thresholds', labelKey: 'settings:nav.thresholds' },
   { id: 'accounts', path: '/settings/accounts', labelKey: 'settings:nav.accounts' },

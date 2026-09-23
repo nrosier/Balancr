@@ -193,6 +193,9 @@ describe('runCategoryGuess', () => {
     expect(rows[0]?.status).toBe('capped')
     expect(rows[0]?.kind).toBe('category_guess')
     expect(rows[0]?.period).toBeNull()
+    // Prepared but never sent (#497): a request without a call.
+    expect(rows[0]?.requestText).not.toBeNull()
+    expect(rows[0]?.responseText).toBeNull()
   })
 
   it('records a failed call without throwing', async () => {
@@ -241,6 +244,10 @@ describe('runCategoryGuess', () => {
     expect(recentRuns(db, tenantId)[0]?.status).toBe('ok')
     expect(recentRuns(db, tenantId)[0]?.kind).toBe('category_guess')
     expect(recentRuns(db, tenantId)[0]?.period).toBeNull()
+    // The raw reply, verbatim (#497).
+    expect(recentRuns(db, tenantId)[0]?.responseText).toBe(
+      '{"guesses":[{"clientId":"t1","categoryLabel":"c1"}]}',
+    )
   })
 
   it('drops a guess for a label that candidate was never offered, rather than mapping it', async () => {

@@ -27,6 +27,7 @@
  */
 import { callAi } from '../../adapters/ai/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
+import { tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
 import { AiError } from '../../adapters/ai/types.ts'
 import {
   groundNudgeResponse,
@@ -317,6 +318,12 @@ export async function runBudgetNudge(
 
   const { payload, categoryIdFor } = redaction
   const payloadHash = hashPayload(payload)
+  // Moved up from the `callAi` call site (#497): both are pure string builders,
+  // and `requestText` has to exist for a `capped` row too, since it never
+  // reaches that call. Reused below rather than recomputed.
+  const systemPrompt = composeSystemPrompt(BUDGET_NUDGE_SYSTEM, locale)
+  const instruction = budgetNudgeInstruction(payload)
+  const requestText = tryAssembleRequestText({ systemPrompt, instruction, payload }, ai.provider)
 
   const estimate = estimateCostMicroEur(
     ai.provider,
@@ -337,6 +344,7 @@ export async function runBudgetNudge(
       payloadHash,
       status: 'capped',
       error: decision.reason,
+      requestText,
       userId: options.userId ?? null,
     })
     log.warn({ month, reason: decision.reason }, 'budget nudge capped by the monthly AI budget')
@@ -357,8 +365,8 @@ export async function runBudgetNudge(
   try {
     result = await callAi(db, tenantId, {
       model,
-      systemPrompt: composeSystemPrompt(BUDGET_NUDGE_SYSTEM, locale),
-      instruction: budgetNudgeInstruction(payload),
+      systemPrompt,
+      instruction,
       payload,
       responseJsonSchema: nudgeJsonSchema(),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -375,6 +383,7 @@ export async function runBudgetNudge(
       payloadHash,
       status: 'error',
       error: message,
+      requestText,
       userId: options.userId ?? null,
     })
     log.error({ month, err: message }, 'budget nudge call failed')
@@ -411,6 +420,8 @@ export async function runBudgetNudge(
       costMicroEurOverride: cost,
       durationMs: result.durationMs,
       error: message,
+      requestText,
+      responseText: result.text,
       userId: options.userId ?? null,
     })
     log.error({ month, err: message }, 'budget nudge response rejected')
@@ -439,6 +450,8 @@ export async function runBudgetNudge(
     usage: result.usage,
     costMicroEurOverride: cost,
     durationMs: result.durationMs,
+    requestText,
+    responseText: result.text,
     userId: options.userId ?? null,
   })
 

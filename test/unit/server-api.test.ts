@@ -1541,6 +1541,8 @@ describe('the AI ledger', () => {
       status: 'ok',
       usage: { inputTokens: 2_800, outputTokens: 320, cachedTokens: 0, cacheWriteTokens: 0 },
       durationMs: 1_400,
+      requestText: 'system + instruction + fenced data, exactly as sent',
+      responseText: '{"findings":[]}',
     })
     const capped = recordRun(ctx.db, TENANT_ID, {
       kind: 'narrative',
@@ -1551,6 +1553,7 @@ describe('the AI ledger', () => {
       payloadHash: 'capped-hash',
       status: 'capped',
       error: 'the month budget is exhausted',
+      requestText: 'prepared but never sent',
     })
     return { ok, capped }
   }
@@ -1604,6 +1607,9 @@ describe('the AI ledger', () => {
     expect(body.id).toBe(ok)
     expect(body.model).toBe('gemini-3.7-flash')
     expect(body.locale).toBe('en')
+    // The exact request and response text, verbatim (#497).
+    expect(body.requestText).toBe('system + instruction + fenced data, exactly as sent')
+    expect(body.responseText).toBe('{"findings":[]}')
   })
 
   it('serves the payload of a call that never went out', async () => {
@@ -1614,6 +1620,29 @@ describe('the AI ledger', () => {
     const body = (await get(`/api/insights/runs/${capped}/payload`)).json()
     expect(body.status).toBe('capped')
     expect(body.payload).toEqual({ month: MONTH, categories: [] })
+    // Prepared but never sent (#497): a request without a call.
+    expect(body.requestText).toBe('prepared but never sent')
+    expect(body.responseText).toBeNull()
+  })
+
+  it("resolves a reused row's response from the run it points to (#497)", async () => {
+    const { ok } = ledger()
+    const reused = recordRun(ctx.db, TENANT_ID, {
+      kind: 'findings',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: MONTH, categories: [{ label: 'c1', spentCents: 72_000 }] },
+      payloadHash: 'ok-hash',
+      status: 'reused',
+      reusedFromRunId: ok,
+    })
+
+    const body = (await get(`/api/insights/runs/${reused}/payload`)).json()
+    expect(body.status).toBe('reused')
+    // A reused row never called a model itself — its answer lives on the run it
+    // points to.
+    expect(body.responseText).toBe('{"findings":[]}')
   })
 
   it('answers null for a payload that will not parse, rather than failing', async () => {

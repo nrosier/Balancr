@@ -1271,3 +1271,44 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.05em;
 }
+
+/* ---------------------------------------------------------------------------
+   The AI log (#497)
+   --------------------------------------------------------------------------- */
+
+.ai-log__drawer {
+  background: var(--surface-sunken);
+  white-space: normal;
+}
+
+.ai-log__transcript {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .ai-log__transcript {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ai-log__transcriptTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--type-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.ai-log__pre {
+  max-height: 24rem;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: var(--lead-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}

@@ -495,6 +495,10 @@ describe('validatePrompt — the cases that never reach a model', () => {
     const row = saveNarrative('My own cleared instructions.')
     expect((await validatePrompt(db, tenantId, { promptId: row.id })).status).toBe('safe')
     expect(first.calls).toBe(1)
+    // The raw reply, verbatim, and the request it answered (#497).
+    const okRow = runRows().find((run) => run.status === 'ok')
+    expect(okRow?.responseText).toBe(SAFE_REPLY)
+    expect(okRow?.requestText).toContain('My own cleared instructions.')
 
     const second = fakeGemini(SAFE_REPLY)
     const again = await validatePrompt(db, tenantId, { promptId: row.id })
@@ -583,6 +587,9 @@ describe('validatePrompt — the daily cap', () => {
     expect(blocked).toHaveLength(1)
     expect(blocked[0]?.error).toBe('daily_cap_reached')
     expect(blocked[0]?.costMicroEur).toBe(0)
+    // Prepared but never sent (#497): a request without a call.
+    expect(blocked[0]?.requestText).not.toBeNull()
+    expect(blocked[0]?.responseText).toBeNull()
   })
 
   it('does not count a row older than the window', async () => {

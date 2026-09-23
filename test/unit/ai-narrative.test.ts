@@ -404,6 +404,10 @@ describe('runNarrative', () => {
     // Rendered with the name, and the heading flattened to h3 by the renderer.
     expect(outcome.html).toContain('Groceries')
     expect(outcome.html).toContain('<h3>March</h3>')
+    // The raw reply, verbatim (#497) — not the substituted/rendered form above.
+    const row = recentRuns(db, tenantId)[0]
+    expect(row?.responseText).toBe(`## March\n\nSpending in ${label} ran over its balance.`)
+    expect(row?.requestText).toContain(label)
   })
 
   it('uses the deep model, asks for prose rather than JSON, and bounds the length', async () => {
@@ -487,7 +491,11 @@ describe('runNarrative', () => {
     expect(outcome.reason).toBe('month_budget_exceeded')
     expect(outcome.html).toBeNull()
     expect(recorded.prompts).toHaveLength(0)
-    expect(recentRuns(db, tenantId)[0]?.status).toBe('capped')
+    const row = recentRuns(db, tenantId)[0]
+    expect(row?.status).toBe('capped')
+    // Prepared but never sent (#497): a request without a call.
+    expect(row?.requestText).not.toBeNull()
+    expect(row?.responseText).toBeNull()
     expect(loadNarrative(db, tenantId, MONTH, 'en')).toBeNull()
   })
 

@@ -37,7 +37,16 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Settings } from '../src/pages/Settings.tsx'
 import { ACCOUNT_KINDS } from '../src/settings/kinds.ts'
 import { SHARED_LOCALE } from '../src/shared.ts'
-import type { AiDryRun, AiEstimate, PromptBody, PromptDiff, Settings as Payload } from '../src/shared.ts'
+import type {
+  AiDryRun,
+  AiEstimate,
+  AiRun,
+  AiRunList,
+  AiRunPayload,
+  PromptBody,
+  PromptDiff,
+  Settings as Payload,
+} from '../src/shared.ts'
 import { i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
 /**
@@ -518,6 +527,7 @@ type Replies = Record<string, Response | Error | (Response | Error)[]>
 const SECTION_HEADING: Record<string, string> = {
   '/settings': 'Account',
   '/settings/prompts': 'Assistant instructions',
+  '/settings/ai-log': 'Request and response log',
   '/settings/risk': 'Risk profile',
   '/settings/thresholds': 'Thresholds',
   '/settings/accounts': 'Accounts',
@@ -4385,6 +4395,106 @@ describe('AI spend', () => {
     // No price on a run that cannot start.
     expect(screen.queryByText(/would cost about/)).toBeNull()
     expect(screen.getByText('€ 2,50 of € 15,00 this month')).toBeTruthy()
+  })
+})
+
+/**
+ * The AI log (#497): the debug view of the exact text sent to the model and the exact
+ * text it sent back, on its own tab.
+ *
+ * `Ledger.tsx`'s own tests already cover the list/expand mechanics this reuses — what
+ * is worth pinning here is the two things that are new to this endpoint: it is not
+ * part of the settings payload (its own `/api/settings/ai/runs` fetch, like Status'
+ * own panel), and a `capped` row's transcript is a request with no response rather
+ * than an error.
+ */
+describe('the AI log', () => {
+  const RUN: AiRun = {
+    id: 'run-findings',
+    kind: 'findings',
+    period: '2026-08',
+    model: 'gemini-3.7-flash',
+    locale: 'en',
+    status: 'ok',
+    inputTokens: 3_120,
+    outputTokens: 480,
+    cachedTokens: 2_048,
+    costMicroEur: 1_240,
+    durationMs: 1_900,
+    error: null,
+    reusedFromRunId: null,
+    createdAt: '2026-09-01T04:12:00Z',
+  }
+
+  const CAPPED_RUN: AiRun = {
+    ...RUN,
+    id: 'run-narrative',
+    kind: 'narrative',
+    status: 'capped',
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedTokens: 0,
+    costMicroEur: 0,
+    durationMs: null,
+    createdAt: '2026-08-31T23:05:00Z',
+  }
+
+  it('lists every recorded call, newest first, without needing a month', async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN] } satisfies AiRunList),
+    }, '/settings/ai-log')
+
+    expect(await screen.findByText('Analysis')).toBeTruthy()
+    expect(screen.getByText('Narrative')).toBeTruthy()
+    expect(screen.getByText('OK')).toBeTruthy()
+    expect(screen.getByText('Budget cap reached')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Show the request and response' })).toHaveLength(2)
+  })
+
+  it('shows the exact request and response text once a row is opened', async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [RUN] } satisfies AiRunList),
+      '/api/insights/runs/run-findings/payload': json({
+        ...RUN,
+        payload: { month: '2026-08' },
+        requestText: 'system + instruction + fenced data, exactly as sent',
+        responseText: '{"findings":[]}',
+      } satisfies AiRunPayload),
+    }, '/settings/ai-log')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
+
+    expect(
+      await screen.findByText('system + instruction + fenced data, exactly as sent'),
+    ).toBeTruthy()
+    expect(screen.getByText('{"findings":[]}')).toBeTruthy()
+  })
+
+  it("shows a capped run's prepared-but-unsent request, with no response to show", async () => {
+    await open({
+      ...READS,
+      '/api/settings/ai/runs': json({ runs: [CAPPED_RUN] } satisfies AiRunList),
+      '/api/insights/runs/run-narrative/payload': json({
+        ...CAPPED_RUN,
+        payload: {},
+        requestText: 'prepared but never sent',
+        responseText: null,
+      } satisfies AiRunPayload),
+    }, '/settings/ai-log')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
+
+    expect(await screen.findByText('prepared but never sent')).toBeTruthy()
+    expect(screen.getByText('No response is recorded for this run.')).toBeTruthy()
+  })
+
+  it('says no calls have been made yet, rather than drawing an empty table', async () => {
+    await open({ ...READS, '/api/settings/ai/runs': json({ runs: [] } satisfies AiRunList) }, '/settings/ai-log')
+
+    expect(await screen.findByText('No calls have been made yet.')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 })
 

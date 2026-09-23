@@ -43,6 +43,18 @@ export interface RecordRun {
    */
   payloadHash: string
   status: RunStatus
+  /**
+   * The exact system+instruction+data text prepared for this attempt (#497),
+   * or null if it could not be assembled (a fence-marker refusal on a
+   * `blocked`/`capped` row that was never going to send anything anyway).
+   */
+  requestText?: string | null
+  /**
+   * The provider's raw reply, verbatim, wherever a result was actually
+   * received — null for `capped`/`blocked`/`reused` rows and for an `error`
+   * before any response existed.
+   */
+  responseText?: string | null
   /** The `ok` run this one served for free instead of calling the model. */
   reusedFromRunId?: string | null
   /** Null for a run that used the built-in prompt rather than a stored version. */
@@ -93,6 +105,8 @@ export function recordRun(db: Db, tenantId: string, run: RecordRun): string {
       period: run.period ?? null,
       payloadJson: JSON.stringify(run.payload),
       payloadHash: run.payloadHash,
+      requestText: run.requestText ?? null,
+      responseText: run.responseText ?? null,
       reusedFromRunId: run.reusedFromRunId ?? null,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
