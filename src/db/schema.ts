@@ -988,15 +988,14 @@ export const AI_RUN_KINDS = [
  * `payloadJson` is exactly what left the machine — it is the record that lets
  * you verify by hand that no payee name was ever sent.
  *
- * **`recentRuns` (`src/domain/ai/runs.ts`) breaks a same-millisecond tie on this
- * table's implicit `rowid` (#510)**, which only stays in insertion order because
- * nothing ever deletes a row. A migration that rebuilds this table — as
- * `0025_unknown_brother_voodoo.sql` already did once, via `CREATE __new_ai_runs` +
- * `INSERT ... SELECT` + rename — reassigns every `rowid` from scratch, in the
- * order SQLite happens to read the old table, which is not a guarantee. If this
- * table is ever rebuilt again, add an explicit `ORDER BY rowid` to that
- * migration's `INSERT ... SELECT` (or backfill a real sequence column instead) —
- * otherwise two runs that once tied on `createdAt` can silently swap places.
+ * `seq` is a persisted insertion-order counter (#514) — `recentRuns` breaks a
+ * same-millisecond tie on `createdAt` with it, so two runs recorded in the same
+ * millisecond (routine in tests, possible in a fast nightly job) still have a
+ * real "which came first" answer rather than a coin flip (#510). It replaced
+ * SQLite's implicit `rowid` for exactly this, because `rowid` does not survive
+ * a migration that rebuilds this table with an unordered `INSERT ... SELECT` —
+ * `0025_unknown_brother_voodoo.sql` already did that once — while `seq`, an
+ * ordinary data column, is carried through any such rebuild unchanged.
  */
 export const aiRuns = sqliteTable(
   'ai_runs',
@@ -1005,6 +1004,15 @@ export const aiRuns = sqliteTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id),
+    /**
+     * Set by `recordRun` as `(SELECT MAX(seq) FROM ai_runs) + 1`, evaluated inside
+     * the same `INSERT` — safe without a lock because this app has one SQLite
+     * connection in one process (`db/index.ts`), and every write to it is already
+     * serialised by SQLite itself. Global across every tenant, the same as `rowid`
+     * was: it is only ever compared within one tenant's own rows, so two tenants
+     * sharing no ordering relation costs nothing.
+     */
+    seq: integer().notNull().default(0),
     kind: text({
       enum: AI_RUN_KINDS,
     }).notNull(),
@@ -1084,6 +1092,10 @@ export const aiRuns = sqliteTable(
     userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => [
+    // `recordRun`'s own `MAX(seq)` read (#514): without it, that lookup scans
+    // the whole ledger, and `ai_runs` only grows — retention clears text, never
+    // rows — so every insert would get slower forever instead of staying O(log n).
+    index('ai_runs_seq_idx').on(t.seq),
     index('ai_runs_created_idx').on(t.createdAt),
     index('ai_runs_kind_idx').on(t.kind, t.createdAt),
     // The insights ledger's own query: one month, newest first.

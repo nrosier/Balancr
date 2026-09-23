@@ -2579,8 +2579,8 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * `before` pages backwards from a previously-returned run's id (#502): `ai_runs`
    * is never pruned, so a fixed page with no way to reach what is past it made
    * every transcript older than the 50th permanently unreachable through this
-   * screen. Resolved to that run's own `(createdAt, rowid)` — the exact pair
-   * `recentRuns` orders by (#510) — rather than trusting an offset a concurrent
+   * screen. Resolved to that run's own `(createdAt, seq)` — the exact pair
+   * `recentRuns` orders by (#510, #514) — rather than trusting an offset a concurrent
    * insert could shift. An id that no longer resolves for this tenant (a bad or
    * stale link) ends the log rather than silently restarting it from the top.
    */
