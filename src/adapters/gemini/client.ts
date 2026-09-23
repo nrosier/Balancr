@@ -415,7 +415,8 @@ export async function callGemini(db: Db, tenantId: string, call: AiCall): Promis
     const detail = error instanceof Error ? error.message : String(error)
     throw new GeminiError(
       `Gemini call failed after ${Date.now() - started}ms: ${detail}` +
-        schemaHint(call, detail),
+        schemaHint(call, detail) +
+        vertexAuthHint(provider, detail),
       error,
       provider,
     )
@@ -438,5 +439,33 @@ function schemaHint(call: AiCall, detail: string): string {
     ' — this call carried a response schema, and Gemini rejects a schema using ' +
     'keywords outside its supported subset without saying which; check ' +
     'toGeminiSchema in adapters/gemini/json-schema.ts'
+  )
+}
+
+/**
+ * Vertex authenticates through ADC (Application Default Credentials), never
+ * through a value Balancr reads itself (#500) — so a missing, unmounted or
+ * unreadable service-account key surfaces as one of google-auth-library's own
+ * stock sentences (`googleauth.js`'s `GoogleAuthExceptionMessages`) instead of
+ * anything naming Balancr's own setup. These four cover: no ADC found at all,
+ * no credentials in the environment, a `GOOGLE_APPLICATION_CREDENTIALS` file
+ * that exists but can't be read, and no project id discoverable — the ways
+ * that library actually fails, not a guess at wording.
+ */
+const ADC_FAILURE_MESSAGES = [
+  'could not load the default credentials',
+  'unable to find credentials in current environment',
+  'unable to read the credential file specified by the google_application_credentials',
+  'unable to detect a project id',
+]
+
+function vertexAuthHint(provider: AiProvider, detail: string): string {
+  if (provider !== 'gemini-vertex') return ''
+  const lower = detail.toLowerCase()
+  if (!ADC_FAILURE_MESSAGES.some((message) => lower.includes(message))) return ''
+  return (
+    ' — Vertex authenticates via Application Default Credentials, not a value in .env; ' +
+    'set GOOGLE_APPLICATION_CREDENTIALS to a mounted service-account key ' +
+    '(see README.md, "Vertex AI credentials")'
   )
 }

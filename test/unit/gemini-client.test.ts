@@ -564,6 +564,70 @@ describe('callGemini', () => {
     }
   })
 
+  it.each([
+    // google-auth-library's own stock sentences — see `googleauth.js`'s
+    // `GoogleAuthExceptionMessages` — for the ADC failure modes that actually
+    // occur: no ADC discoverable at all, and a GOOGLE_APPLICATION_CREDENTIALS
+    // file that exists but can't be read (wrong path, wrong permissions).
+    // Different wording, same missing setup step, so both need the hint.
+    [
+      'no ADC found',
+      'Could not load the default credentials. Browse to ' +
+        'https://cloud.google.com/docs/authentication/getting-started for more information.',
+    ],
+    [
+      'credential file unreadable',
+      'Unable to read the credential file specified by the GOOGLE_APPLICATION_CREDENTIALS ' +
+        "environment variable: ENOENT: no such file or directory, open '/run/secrets/vertex-sa.json'",
+    ],
+  ])(
+    'names GOOGLE_APPLICATION_CREDENTIALS on a Vertex call failing with: %s (#500)',
+    async (_label, message) => {
+      vi.resetModules()
+      vi.stubEnv('GEMINI_PROVIDER', 'vertex')
+      vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'balancr-test')
+      vi.stubEnv('GOOGLE_CLOUD_LOCATION', 'europe-west1')
+      try {
+        const [fresh, freshDbModule, freshMigrations, freshTenantIntegrations] = await Promise.all([
+          import('../../src/adapters/gemini/client.ts'),
+          import('../../src/db/index.ts'),
+          import('../../src/db/apply-migrations.ts'),
+          import('../../src/db/tenant-integrations.ts'),
+        ])
+        const freshDb = freshDbModule.createTestDb().db
+        freshMigrations.applyMigrations(freshDb as never)
+        freshTenantIntegrations.importEnvIntegrationsOnce(freshDb)
+        const freshTenantId = getSoleTenantId(freshDb)
+        const cause = new Error(message)
+        const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+        fresh.setGeminiClient(client)
+
+        await expect(fresh.callGemini(freshDb, freshTenantId, call)).rejects.toThrow(
+          /GOOGLE_APPLICATION_CREDENTIALS/,
+        )
+      } finally {
+        vi.unstubAllEnvs()
+        vi.resetModules()
+      }
+    },
+  )
+
+  it('does not name the Vertex credential on an AI Studio call with the same transport error', async () => {
+    const cause = new Error(
+      'Could not load the default credentials. Browse to ' +
+        'https://cloud.google.com/docs/authentication/getting-started for more information.',
+    )
+    const { client } = fakeClient({ text: 'ok' }, { generateError: cause })
+    setGeminiClient(client)
+
+    try {
+      await callGemini(db, tenantId, call)
+      expect.unreachable()
+    } catch (error) {
+      expect((error as GeminiError).message).not.toContain('GOOGLE_APPLICATION_CREDENTIALS')
+    }
+  })
+
   it('refuses before any request when the payload could forge the fence', async () => {
     const { client, recorded } = fakeClient({ text: 'ok' })
     setGeminiClient(client)
