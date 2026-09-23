@@ -15,6 +15,7 @@ import { createTestDb } from '../../src/db/index.ts'
 import { accountMap, netWorthSnapshots } from '../../src/db/schema.ts'
 import {
   loadLatestAccountBalances,
+  loadNetWorthAsOf,
   loadNetWorthHistory,
   loadOffBudgetAccounts,
   persistNetWorth,
@@ -162,6 +163,34 @@ describe('loadNetWorthHistory', () => {
 
   it('is empty before the first pass', () => {
     expect(loadNetWorthHistory(ctx.db, TENANT_ID)).toEqual([])
+  })
+})
+
+describe('loadNetWorthAsOf (#498)', () => {
+  it('ignores a snapshot after the bound, unlike the latest-overall reading', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-06-30', [account('a1', 200_000)]))
+    // Synced after the bound below — a later month's figure, not August's.
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-09-15', [account('a1', 900_000)]))
+
+    expect(loadNetWorthAsOf(ctx.db, TENANT_ID, '2026-08-31')).toMatchObject({
+      date: '2026-06-30',
+      totalCents: 200_000,
+    })
+  })
+
+  it('reads the bound date itself, inclusive', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-08-31', [account('a1', 300_000)]))
+
+    expect(loadNetWorthAsOf(ctx.db, TENANT_ID, '2026-08-31')).toMatchObject({
+      date: '2026-08-31',
+      totalCents: 300_000,
+    })
+  })
+
+  it('returns null when nothing has been synced yet as of the bound', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-09-15', [account('a1', 900_000)]))
+
+    expect(loadNetWorthAsOf(ctx.db, TENANT_ID, '2026-08-31')).toBeNull()
   })
 })
 

@@ -13,8 +13,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
-import { syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
+import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
+import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
 import { persistSignals } from '../../src/domain/aggregate/signals-store.ts'
 import type { RecomputeMismatch } from '../../src/domain/aggregate/spend.ts'
 import { clean, fact, seedMonth } from '../fixtures/month.ts'
@@ -229,6 +230,56 @@ describe('collectBundle hygiene', () => {
       mismatches: [mismatch('2026-03', 'food'), mismatch('2026-03', 'rent')],
     })
     expect(collectBundle(ctx.db, tenantId, '2026-03')?.hygiene.mismatchCount).toBe(2)
+  })
+})
+
+describe('collectBundle net worth (#498)', () => {
+  it('reads the snapshot as of the month being analysed, not the tenant latest overall', () => {
+    syncAccountMap(ctx.db, tenantId, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
+    const accountMapId = loadAccountMap(ctx.db, tenantId)[0]!.id
+    const contribution: AccountValue = {
+      accountMapId,
+      source: 'actual',
+      externalId: 'a1',
+      name: 'Zichtrekening',
+      kind: 'checking',
+      valueCents: 250_000,
+      includeInNetWorth: true,
+      dedupeGroup: null,
+      isSourceOfTruth: true,
+    }
+    seedMonth(ctx.db, tenantId, '2026-03')
+    persistNetWorth(ctx.db, tenantId, computeNetWorth('2026-03-31', [contribution]))
+    // Synced after the month being analysed — April's figure must not leak into March's bundle.
+    persistNetWorth(ctx.db, tenantId, computeNetWorth('2026-04-15', [{ ...contribution, valueCents: 900_000 }]))
+
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
+    expect(bundle?.netWorth).toMatchObject({ date: '2026-03-31', totalCents: 250_000 })
+  })
+
+  it('is null when nothing was synced as of the month, even though a later snapshot exists', () => {
+    syncAccountMap(ctx.db, tenantId, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
+    const accountMapId = loadAccountMap(ctx.db, tenantId)[0]!.id
+    seedMonth(ctx.db, tenantId, '2026-03')
+    persistNetWorth(
+      ctx.db,
+      tenantId,
+      computeNetWorth('2026-04-15', [
+        {
+          accountMapId,
+          source: 'actual',
+          externalId: 'a1',
+          name: 'Zichtrekening',
+          kind: 'checking',
+          valueCents: 900_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.netWorth).toBeNull()
   })
 })
 
