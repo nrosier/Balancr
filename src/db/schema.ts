@@ -987,6 +987,16 @@ export const AI_RUN_KINDS = [
  * One row per AI call: the audit log and the cost ledger in one place.
  * `payloadJson` is exactly what left the machine — it is the record that lets
  * you verify by hand that no payee name was ever sent.
+ *
+ * **`recentRuns` (`src/domain/ai/runs.ts`) breaks a same-millisecond tie on this
+ * table's implicit `rowid` (#510)**, which only stays in insertion order because
+ * nothing ever deletes a row. A migration that rebuilds this table — as
+ * `0025_unknown_brother_voodoo.sql` already did once, via `CREATE __new_ai_runs` +
+ * `INSERT ... SELECT` + rename — reassigns every `rowid` from scratch, in the
+ * order SQLite happens to read the old table, which is not a guarantee. If this
+ * table is ever rebuilt again, add an explicit `ORDER BY rowid` to that
+ * migration's `INSERT ... SELECT` (or backfill a real sequence column instead) —
+ * otherwise two runs that once tied on `createdAt` can silently swap places.
  */
 export const aiRuns = sqliteTable(
   'ai_runs',
