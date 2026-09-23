@@ -213,10 +213,11 @@ describe('built-in prompts', () => {
     expect(body).not.toMatch(/divide by 100/i)
     // And the previous default is the text that had the bug, not a body that always wrote
     // this correctly — anchoring the fix as new rather than restating an old guarantee.
-    // `.at(-2)`, not `.at(-1)`: rule 12 (#negative_is_overspend) put a newer body,
-    // `NARRATIVE_SYSTEM_V7`, on top of this one, so the version that actually carries the
-    // bug this test anchors against is one further back.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
+    // `.at(-3)`, not `.at(-1)` or `.at(-2)`: rule 12 (#negative_is_overspend) put two newer
+    // bodies on top of this one — `NARRATIVE_SYSTEM_V7` and, since #493's follow-up on the
+    // minus-sign wording, `NARRATIVE_SYSTEM_V8` — so the version that actually carries the
+    // bug this test anchors against is two further back.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-3)?.replace(/\s+/g, ' ')
     expect(previous).toBeDefined()
     expect(previous).toMatch(/divide by 100 and write it as currency/i)
   })
@@ -226,10 +227,10 @@ describe('built-in prompts', () => {
     expect(body).toMatch(/never write an internal field name/i)
     expect(body).toMatch(/internal category code/i)
     // Rule 11 (the one under test here) is unrelated to the cents/bp payload-format fix
-    // (#480) and to rule 12's negative-figure fix, both of which sit on top of it in
-    // `SUPERSEDED_PROMPTS`, so it is `.at(-3)` — the version rule 11 was actually added
-    // on top of — that must predate it, not `.at(-1)` or `.at(-2)`.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-3)?.replace(/\s+/g, ' ')
+    // (#480) and to rule 12's two negative-figure fixes, all three of which sit on top of
+    // it in `SUPERSEDED_PROMPTS`, so it is `.at(-4)` — the version rule 11 was actually
+    // added on top of — that must predate it, not `.at(-1)`, `.at(-2)` or `.at(-3)`.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-4)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/internal field name/i)
   })
 
@@ -246,10 +247,31 @@ describe('built-in prompts', () => {
     // applies here — a negative income figure is a shortfall, not an overspend.
     expect(body).toMatch(/expense envelope/i)
     expect(body).toMatch(/income category means something else entirely/i)
-    // Anchored as new: the version rule 12 was added on top of (the newest superseded
-    // body, `NARRATIVE_SYSTEM_V7`) must not already say this.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    // Anchored as new against `NARRATIVE_SYSTEM_V7` (`.at(-2)`, the version this reading
+    // was actually added on top of) rather than `.at(-1)` (`NARRATIVE_SYSTEM_V8`, which
+    // already carries this same wording since it is only the minus-sign half of rule 12
+    // that came later).
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/an overspend/i)
+  })
+
+  it('tells the narrative pass to write a negative expense figure as positive, meaning carried in the wording', () => {
+    // A household using a sarcastic voice for their narrative reported that "leaving
+    // € -42,00" still read as a bare accounting artefact even after rule 12 started
+    // explaining the sign in prose — the figure said "negative" twice, once in character
+    // and once in punctuation. This is the second half of rule 12, not a new rule number:
+    // same figure, same envelope, a display requirement rather than a new fact to explain.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/give it as a positive figure/i)
+    expect(body).toMatch(/never print the figure with its minus sign/i)
+    // Deliberately not a quiet exception to rule 1: spelled out as the one thing "copy it
+    // exactly" does not cover, so an edited prompt can't read the two as contradictory.
+    expect(body).toMatch(/not one of the digits/i)
+    // Anchored as new against `NARRATIVE_SYSTEM_V8`, which has the overspend framing but
+    // not yet the positive-figure requirement.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).toMatch(/an overspend/i)
+    expect(previous).not.toMatch(/give it as a positive figure/i)
   })
 })
 

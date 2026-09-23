@@ -138,68 +138,77 @@ export function Narrative({
         <>
           {/* Sanitised server-side by `util/markdown.ts`; see the note above. */}
           <div className="prose" dangerouslySetInnerHTML={{ __html: narrative.html }} />
-          <p className="muted">
-            {narrative.model === null
-              ? t('time.lastUpdated', { when: formatDateTime(narrative.generatedAt) })
-              : t('ai:narrative.generatedAt', {
-                  when: formatDateTime(narrative.generatedAt),
-                  model: narrative.model,
-                })}
-          </p>
           {/*
-            Q3 of #452: every reader, owner and viewer alike, is told when *this* review was
-            written from instructions the household had edited. Beside the byline because it
-            is the same kind of fact as the model's name — what produced these words — and
-            the server derived it from the run's own prompt row, so rolling the prompt back
-            afterwards does not quietly un-say it.
+            Everything below is about the review, not part of it — the byline, the
+            edited-prompt disclosure, the stale banner, the rewrite offer. `.narrative__meta`
+            rules a line under the prose for the same reason `.pace__row` and `.metric__rows`
+            do it between a figure and what follows: without it, the byline read as the
+            paragraph's own last line rather than as a separate fact about it.
           */}
-          {narrative.promptCustom ? (
-            <p className="muted">{t('ai:narrative.promptCustom')}</p>
-          ) : null}
-          {/*
-            An edit landed in this month after this review was written (#162). The
-            review itself is still shown above — it is not wrong, just about facts
-            that have since moved — and the offer beneath it is the same two-press,
-            owner-gated control as the "no narrative yet" case, mounted fresh so its
-            own estimate call is for a rewrite, not the first write.
-          */}
-          {stale && month !== null && aiEnabled && ended ? (
-            <>
-              <p className="muted">
-                {noteMoved && !factsMoved
-                  ? t('ai:narrative.staleNote')
-                  : t('ai:narrative.stale', { when: formatDateTime(factsChangedAt!) })}
-              </p>
-              {/*
-                `force`, which this control did not pass before. A narrative is cached per
-                period and locale and nothing deletes the row, so an unforced request for a
-                month that already has one comes straight back as `cached` — this banner
-                offered a rewrite that returned the very paragraph it was complaining about.
-                Both reasons for being stale need the same thing: the row replaced.
-              */}
-              <PromptState prompt={narrativePrompt} />
-              {promptRefuses ? null : (
-                <Offer month={month} owner={owner} onWritten={onWritten} force />
-              )}
-            </>
-          ) : null}
-          {/*
-            Nothing has moved since this review was written — no stale banner, nothing
-            wrong with it — but a reader who just switched the deep model or edited the
-            narrative prompt (#226) still has no way to ask for a new one short of the
-            server clearing the row by hand. `rewriteCopy` is what makes this read as a
-            rewrite rather than as the "nothing to show yet" offer above: same two-press
-            control, different sentence. `force` is on here as it is on the stale branch —
-            there is a row, and it has to be replaced.
-          */}
-          {!stale && month !== null && aiEnabled && ended ? (
-            <>
-              <PromptState prompt={narrativePrompt} />
-              {promptRefuses ? null : (
-                <Offer month={month} owner={owner} onWritten={onWritten} force rewriteCopy />
-              )}
-            </>
-          ) : null}
+          <div className="narrative__meta">
+            <p className="muted">
+              {narrative.model === null
+                ? t('time.lastUpdated', { when: formatDateTime(narrative.generatedAt) })
+                : t('ai:narrative.generatedAt', {
+                    when: formatDateTime(narrative.generatedAt),
+                    model: narrative.model,
+                  })}
+            </p>
+            {/*
+              Q3 of #452: every reader, owner and viewer alike, is told when *this* review was
+              written from instructions the household had edited. Beside the byline because it
+              is the same kind of fact as the model's name — what produced these words — and
+              the server derived it from the run's own prompt row, so rolling the prompt back
+              afterwards does not quietly un-say it.
+            */}
+            {narrative.promptCustom ? (
+              <p className="muted">{t('ai:narrative.promptCustom')}</p>
+            ) : null}
+            {/*
+              An edit landed in this month after this review was written (#162). The
+              review itself is still shown above — it is not wrong, just about facts
+              that have since moved — and the offer beneath it is the same two-press,
+              owner-gated control as the "no narrative yet" case, mounted fresh so its
+              own estimate call is for a rewrite, not the first write.
+            */}
+            {stale && month !== null && aiEnabled && ended ? (
+              <>
+                <p className="muted">
+                  {noteMoved && !factsMoved
+                    ? t('ai:narrative.staleNote')
+                    : t('ai:narrative.stale', { when: formatDateTime(factsChangedAt!) })}
+                </p>
+                {/*
+                  `force`, which this control did not pass before. A narrative is cached per
+                  period and locale and nothing deletes the row, so an unforced request for a
+                  month that already has one comes straight back as `cached` — this banner
+                  offered a rewrite that returned the very paragraph it was complaining about.
+                  Both reasons for being stale need the same thing: the row replaced.
+                */}
+                <PromptState prompt={narrativePrompt} />
+                {promptRefuses ? null : (
+                  <Offer month={month} owner={owner} onWritten={onWritten} force />
+                )}
+              </>
+            ) : null}
+            {/*
+              Nothing has moved since this review was written — no stale banner, nothing
+              wrong with it — but a reader who just switched the deep model or edited the
+              narrative prompt (#226) still has no way to ask for a new one short of the
+              server clearing the row by hand. `rewriteCopy` is what makes this read as a
+              rewrite rather than as the "nothing to show yet" offer above: same two-press
+              control, different sentence. `force` is on here as it is on the stale branch —
+              there is a row, and it has to be replaced.
+            */}
+            {!stale && month !== null && aiEnabled && ended ? (
+              <>
+                <PromptState prompt={narrativePrompt} />
+                {promptRefuses ? null : (
+                  <Offer month={month} owner={owner} onWritten={onWritten} force rewriteCopy />
+                )}
+              </>
+            ) : null}
+          </div>
         </>
       )}
     </section>
