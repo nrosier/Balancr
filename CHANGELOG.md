@@ -6,6 +6,97 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.7] — 2026-09-24
+
+### Added
+
+- **Settings → AI gained a log tab: every recorded call, with its exact raw
+  request and response text**
+  ([#497](https://github.com/nrosier/Balancr/issues/497),
+  [#501](https://github.com/nrosier/Balancr/pull/501)). `ai_runs` now stores
+  the exact system+instruction+data text prepared for the provider and the
+  exact raw reply on every row, including `blocked`/`capped` calls (recorded
+  as "prepared but never sent"); a `reused` row resolves its response from
+  the run it points to rather than duplicating the text. The new tab lets a
+  call be expanded to see both verbatim, the closest thing this app has to
+  a debugger for what actually left the machine.
+
+### Fixed
+
+- **A rejudged past month's `net_worth_high` and `emergency_fund_short`
+  signals, and the narrative bundle for a past month, no longer cite a net
+  worth synced after that month closed**
+  ([#498](https://github.com/nrosier/Balancr/issues/498),
+  [#504](https://github.com/nrosier/Balancr/issues/504),
+  [#505](https://github.com/nrosier/Balancr/pull/505),
+  [#508](https://github.com/nrosier/Balancr/pull/508)). Both the narrative
+  bundle and the nightly signals job read the tenant's *latest* net-worth
+  snapshot regardless of which month was being analysed, so an earlier
+  month's narrative or a rejudged past month could pick up a balance from
+  well after that month ended — August's narrative citing September's net
+  worth once September synced, or an emergency-fund signal for January
+  judged against today's balance instead of January's own. Both now read
+  the latest snapshot on or before the month's own end.
+- **A stale Gemini prompt cache no longer fails every call until the
+  process restarts**
+  ([#499](https://github.com/nrosier/Balancr/issues/499),
+  [#506](https://github.com/nrosier/Balancr/pull/506)). Google deletes a
+  `caches.create()` resource server-side after its own TTL (one hour), but
+  the held cache name was reused forever; a call made after the TTL sent a
+  now-deleted name and failed outright with 403 `CachedContent not found`,
+  with no retry or invalidation. A held cache is now treated as absent past
+  its own TTL and recreated proactively, and — belt and suspenders — that
+  specific 403 is caught once and retried with the instruction sent inline
+  instead of failing the call.
+- **Privacy mode now masks the figures in Findings, Pending and Ledger, the
+  same as it already did for the Narrative**
+  ([#489](https://github.com/nrosier/Balancr/issues/489),
+  [#507](https://github.com/nrosier/Balancr/pull/507)). Narrative's own
+  masking shipped in 2.3.4; these three render through
+  normal React rather than raw markdown, so they reuse the existing
+  `<Private>`/`data-private` mechanism instead of Narrative's `<amount>`
+  tag — a sentence assembled from signals, a proposal's before/after
+  fields and AI explanation, and the raw redacted request/response JSON
+  are all wrapped now.
+- **The AI log's run list can reach transcripts past the first 50**
+  ([#502](https://github.com/nrosier/Balancr/issues/502),
+  [#509](https://github.com/nrosier/Balancr/pull/509)). The log always
+  asked for the newest 50 runs with no way to page past them, so once a
+  tenant passed 50 recorded calls, everything older became permanently
+  unreachable through the screen. A "Load older calls" button now pages
+  backwards from a cursor.
+- **`ai_runs`'s stored request/response text is now cleared after a
+  retention window instead of growing forever**
+  ([#503](https://github.com/nrosier/Balancr/issues/503),
+  [#511](https://github.com/nrosier/Balancr/pull/511),
+  [#512](https://github.com/nrosier/Balancr/issues/512),
+  [#515](https://github.com/nrosier/Balancr/pull/515)). A new nightly job
+  nulls the two text columns on rows older than
+  `AI_RUNS_TEXT_RETENTION_DAYS` (default 90) — cost, tokens and status stay
+  on the row forever, since the spend ledger and audit trail read those
+  indefinitely. The nightly sweep now also remembers how far it swept last
+  time, so it only rescans what's newly crossed the cutoff rather than
+  the whole ledger every night.
+- **A same-millisecond tie in the AI log no longer sorts in a coin-flipped
+  order, and that ordering now survives any future migration that rebuilds
+  the table**
+  ([#510](https://github.com/nrosier/Balancr/issues/510),
+  [#513](https://github.com/nrosier/Balancr/pull/513),
+  [#514](https://github.com/nrosier/Balancr/issues/514),
+  [#519](https://github.com/nrosier/Balancr/pull/519)). Two AI runs
+  recorded in the same millisecond — routine in tests, possible for a fast
+  nightly job — used to break their tie on a random UUID, an effective
+  coin flip for "newest first." The tiebreak now uses a persisted `seq`
+  column that reflects true insertion order and, unlike SQLite's implicit
+  `rowid` it replaces, is carried through unchanged by any future
+  migration that rebuilds the table.
+
+### Changed
+
+- Production image rebuilt against the current `cgr.dev/chainguard/node`
+  base and Node 26.10.0, picking up upstream patches published since
+  2.3.6.
+
 ## [2.3.6] — 2026-09-23
 
 ### Fixed
