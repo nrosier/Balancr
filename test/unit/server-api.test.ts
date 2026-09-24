@@ -60,7 +60,7 @@ import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { createDebt } from '../../src/domain/debt/debts.ts'
-import { createGoal } from '../../src/domain/goal/goals.ts'
+import { createGoal, markGoalDone } from '../../src/domain/goal/goals.ts'
 import { createLoan } from '../../src/domain/loan/loans.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
@@ -609,6 +609,22 @@ describe('GET /api/budget', () => {
     // A single month of history is not enough to observe a rate, so pace is
     // unresolved rather than a guess — progressBp is still meaningful on its own.
     expect(entry.goals).toEqual([{ id: created.id, label: 'New fridge', progressBp: 5_000, pace: null }])
+  })
+
+  it('drops a done goal from its category badge, even within its undo grace window', async () => {
+    seedGoalCategory(ctx.db, TENANT_ID, 'cat-fridge')
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'New fridge',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 90_000,
+      targetDate: futureTargetDate(),
+    })
+    markGoalDone(ctx.db, TENANT_ID, created.id)
+
+    const body = (await get('/api/budget')).json()
+    expect(body.goalsByCategory).toEqual([])
   })
 
   it('never lists a net-worth-kind goal, since it names no category', async () => {

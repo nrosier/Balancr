@@ -75,6 +75,8 @@
   "goals": {
     "amounts": "{{current}} of {{target}}",
     "amountsUnknown": "Not synced yet.",
+    "doneBadge": "Done",
+    "doneNote": "Marked done on {{date}}.",
     "eta": {
       "ahead": "On pace to reach it around {{eta}}, ahead of the {{target}} target.",
       "behind": "On pace to reach it around {{eta}}, behind the {{target}} target.",
@@ -94,6 +96,8 @@
     "title": "Savings goals",
     "trend_one": "Based on the last month of net worth, {{from}}.",
     "trend_other": "Based on the last {{value}} months of net worth, {{from}} to {{to}}.",
+    "trendCategory_one": "Based on the last month of this category's balance, {{from}}.",
+    "trendCategory_other": "Based on the last {{value}} months of this category's balance, {{from}} to {{to}}.",
     "unknownProgress": "Not enough data yet"
   },
   "holding": {

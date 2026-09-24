@@ -149,7 +149,7 @@ export function buildBudget(
     { id: string; label: string; progressBp: number | null; pace: (typeof goalsWithProgress)[number]['pace'] }[]
   >()
   for (const goal of goalsWithProgress) {
-    if (goal.kind !== 'category' || goal.categoryId === null) continue
+    if (goal.status !== 'active' || goal.kind !== 'category' || goal.categoryId === null) continue
     const list = goalsByCategory.get(goal.categoryId) ?? []
     list.push({ id: goal.id, label: goal.label, progressBp: goal.progressBp, pace: goal.pace })
     goalsByCategory.set(goal.categoryId, list)

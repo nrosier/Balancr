@@ -49,59 +49,73 @@ export function GoalsCard({ goals }: GoalsCardProps): ReactNode {
         <p className="muted">{t('portfolio:goals.none')}</p>
       ) : (
         <dl className="metric__rows">
-          {goals.map((goal) => (
-            <div className="metric__row-group" key={goal.id}>
-              <div className="metric__row">
-                <dt>
-                  {goal.label}
-                  {goal.pace !== null && (
-                    <span className={`badge ${PACE_BADGE_CLASS[goal.pace]}`}>
-                      {t(`portfolio:goals.pace.${goal.pace}`)}
-                    </span>
-                  )}
-                </dt>
-                <dd className="num">
-                  {goal.progressBp === null ? t('portfolio:goals.unknownProgress') : formatBp(goal.progressBp)}
-                </dd>
+          {goals.map((goal) =>
+            goal.status === 'done' ? (
+              <div className="metric__row-group" key={goal.id}>
+                <div className="metric__row">
+                  <dt>
+                    {goal.label}
+                    <span className="badge badge--ok">{t('portfolio:goals.doneBadge')}</span>
+                  </dt>
+                </div>
+                <p className="metric__note muted">
+                  {t('portfolio:goals.doneNote', { date: formatDate(goal.doneAt as string) })}
+                </p>
               </div>
-              <p className="metric__note muted">
-                {goal.currentCents === null ? (
-                  t('portfolio:goals.amountsUnknown')
-                ) : (
-                  <Private>
-                    {t('portfolio:goals.amounts', {
-                      current: formatMoney(goal.currentCents),
-                      target: formatMoney(goal.targetCents),
-                    })}
-                  </Private>
+            ) : (
+              <div className="metric__row-group" key={goal.id}>
+                <div className="metric__row">
+                  <dt>
+                    {goal.label}
+                    {goal.pace !== null && (
+                      <span className={`badge ${PACE_BADGE_CLASS[goal.pace]}`}>
+                        {t(`portfolio:goals.pace.${goal.pace}`)}
+                      </span>
+                    )}
+                  </dt>
+                  <dd className="num">
+                    {goal.progressBp === null ? t('portfolio:goals.unknownProgress') : formatBp(goal.progressBp)}
+                  </dd>
+                </div>
+                <p className="metric__note muted">
+                  {goal.currentCents === null ? (
+                    t('portfolio:goals.amountsUnknown')
+                  ) : (
+                    <Private>
+                      {t('portfolio:goals.amounts', {
+                        current: formatMoney(goal.currentCents),
+                        target: formatMoney(goal.targetCents),
+                      })}
+                    </Private>
+                  )}
+                </p>
+                {goal.requiredMonthlyCents !== null && (
+                  <p className="metric__note muted">
+                    <Private>
+                      {t('portfolio:goals.required', { amount: formatMoney(goal.requiredMonthlyCents) })}
+                    </Private>
+                  </p>
                 )}
-              </p>
-              {goal.requiredMonthlyCents !== null && (
-                <p className="metric__note muted">
-                  <Private>
-                    {t('portfolio:goals.required', { amount: formatMoney(goal.requiredMonthlyCents) })}
-                  </Private>
-                </p>
-              )}
-              {goal.categorySiblingCount > 0 && (
-                <p className="metric__note muted">
-                  {t('portfolio:goals.sharing', { count: goal.categorySiblingCount })}
-                </p>
-              )}
-              {goal.trendMonths > 0 && goal.trendFrom !== null && goal.trendTo !== null && (
-                <p className="metric__note muted">
-                  {t('portfolio:goals.trend', {
-                    count: goal.trendMonths,
-                    from: formatMonth(goal.trendFrom, language),
-                    to: formatMonth(goal.trendTo, language),
-                  })}
-                </p>
-              )}
-              {goal.etaMonth !== null && (
-                <p className="metric__note muted">{etaLine(goal, goal.etaMonth, language, t)}</p>
-              )}
-            </div>
-          ))}
+                {goal.categorySiblingCount > 0 && (
+                  <p className="metric__note muted">
+                    {t('portfolio:goals.sharing', { count: goal.categorySiblingCount })}
+                  </p>
+                )}
+                {goal.trendMonths > 0 && goal.trendFrom !== null && goal.trendTo !== null && (
+                  <p className="metric__note muted">
+                    {t(goal.kind === 'category' ? 'portfolio:goals.trendCategory' : 'portfolio:goals.trend', {
+                      count: goal.trendMonths,
+                      from: formatMonth(goal.trendFrom, language),
+                      to: formatMonth(goal.trendTo, language),
+                    })}
+                  </p>
+                )}
+                {goal.etaMonth !== null && (
+                  <p className="metric__note muted">{etaLine(goal, goal.etaMonth, language, t)}</p>
+                )}
+              </div>
+            ),
+          )}
         </dl>
       )}
     </section>

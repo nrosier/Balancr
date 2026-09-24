@@ -75,6 +75,8 @@
   "goals": {
     "amounts": "{{current}} van {{target}}",
     "amountsUnknown": "Nog niet gesynchroniseerd.",
+    "doneBadge": "Klaar",
+    "doneNote": "Als klaar gemarkeerd op {{date}}.",
     "eta": {
       "ahead": "Op koers om het rond {{eta}} te bereiken, eerder dan het streefdoel van {{target}}.",
       "behind": "Op koers om het rond {{eta}} te bereiken, later dan het streefdoel van {{target}}.",
@@ -94,6 +96,8 @@
     "title": "Spaardoelen",
     "trend_one": "Gebaseerd op de laatste maand nettovermogen, {{from}}.",
     "trend_other": "Gebaseerd op de laatste {{value}} maanden nettovermogen, {{from}} tot {{to}}.",
+    "trendCategory_one": "Gebaseerd op de laatste maand van het saldo van deze categorie, {{from}}.",
+    "trendCategory_other": "Gebaseerd op de laatste {{value}} maanden van het saldo van deze categorie, {{from}} tot {{to}}.",
     "unknownProgress": "Nog niet genoeg gegevens"
   },
   "holding": {

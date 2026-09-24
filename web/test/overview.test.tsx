@@ -588,10 +588,41 @@ describe('the goals card', () => {
     expect(screen.getByText('Based on the last 6 months of net worth, March 2026 to August 2026.')).toBeTruthy()
   })
 
+  it('credits a category goal\'s trend to the category, not net worth', () => {
+    show([{ ...GOAL, kind: 'category', categoryId: 'cat-tv', categoryName: 'TV fund' }])
+
+    expect(
+      screen.getByText("Based on the last 6 months of this category's balance, March 2026 to August 2026."),
+    ).toBeTruthy()
+  })
+
   it('leaves out the trend line when there is not enough history for one', () => {
     show([{ ...GOAL, trendMonths: 0, trendFrom: null, trendTo: null }])
 
     expect(screen.queryByText(/Based on the last/)).toBeNull()
+  })
+
+  it('acknowledges a done goal instead of showing its frozen, dataless progress', () => {
+    show([
+      {
+        ...GOAL,
+        status: 'done',
+        doneAt: '2026-09-20',
+        currentCents: null,
+        progressBp: null,
+        requiredMonthlyCents: null,
+        pace: null,
+        trendMonths: 0,
+        trendFrom: null,
+        trendTo: null,
+        etaMonth: null,
+      },
+    ])
+
+    expect(screen.getByText('Done')).toBeTruthy()
+    expect(screen.getByText('Marked done on 20/09/2026.')).toBeTruthy()
+    expect(screen.queryByText('Not enough data yet')).toBeNull()
+    expect(screen.queryByText('Not synced yet.')).toBeNull()
   })
 
   it('says a goal that has been reached is reached, not projected', () => {
