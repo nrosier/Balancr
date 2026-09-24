@@ -1000,6 +1000,23 @@ last one is what the network layer is for, and it is worth having as well: Docke
 networks cannot express this application-level host allowlist, so that version of the
 rule lives on the host firewall or in whatever egress gateway the network already has.
 
+An allowlist rather than a blocklist, because the question this answers — which few
+hosts may this process reach — is small and enumerable, while "which hosts are
+dangerous" is not: a blocklist could never keep up with an unknown compromised
+dependency reaching for an address nobody thought to list. The trade-off is that every
+check here is a hostname string match, never a check of the IP that name resolves to —
+so a host already on the list (an `EGRESS_EXTRA_HOSTS` entry, or Actual/Ghostfolio's own
+configured URL) whose DNS record is later hijacked would still pass (#467). This is a
+different trust assumption than the "attacker who already runs code here" one just
+above: rebinding an approved host needs no code running in this process at all, only
+control of the DNS record for a name the operator already trusted when they added it —
+a compromised registrar or DNS provider, or a domain that lapsed and was re-registered
+by someone else. That gap is left undefended on purpose: closing it needs a `fetch`
+dispatcher that inspects the resolved socket address before the handshake completes,
+which is real ongoing complexity for a threat that requires the attacker to first gain
+that DNS control. A hostname nobody approved is refused regardless of what it resolves
+to; that part never depends on DNS at all.
+
 ### The `.env` file
 
 It holds the Actual password, the Ghostfolio token, the initial Gemini key, the session

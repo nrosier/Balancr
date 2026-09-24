@@ -45,6 +45,11 @@ export function baseUrlFor(
 /**
  * Custom endpoints are an operator decision, never a tenant-created egress rule.
  * HTTP is accepted only for an explicitly approved loopback runtime such as Ollama.
+ *
+ * A hostname string match against `EGRESS_EXTRA_HOSTS`, same as `src/egress.ts`'s
+ * allowlist and for the same reason — see that file's module docstring for the
+ * allowlist-over-blocklist rationale and the DNS-rebinding trade-off that comes
+ * with checking a hostname rather than the IP it resolves to (#467).
  */
 export function validateCustomBaseUrl(
   value: string,

@@ -30,6 +30,24 @@
  * So: a real barrier against accidental and casual exfiltration, an audit trail for
  * anything unexpected, and no claim to stop an attacker who has already won. The
  * network-level restriction is what stops that one, which is why both exist.
+ *
+ * Allowlist rather than blocklist: the question here is "which few hosts may this
+ * process reach", not "which hosts are dangerous" — the first is small and
+ * enumerable, the second is not, and a blocklist could never keep pace with an
+ * unknown compromised dependency reaching for an address nobody thought to list.
+ *
+ * Every check below is a hostname string match against `allowedHosts`, never a check
+ * of the IP a hostname resolves to (#467). So an already-approved host — an
+ * `EGRESS_EXTRA_HOSTS` entry, or Actual/Ghostfolio's own configured URL — whose DNS
+ * record is later hijacked would still pass; nothing here re-resolves and pins the IP
+ * at connect time. That is a different trust assumption than "an attacker who has
+ * already won" above: rebinding an approved host needs no code running in this
+ * process at all, only control of the DNS record for a name the operator already
+ * trusted when they added it. Left undefended on purpose anyway: closing it needs a
+ * custom `fetch` dispatcher that inspects the resolved socket address before the
+ * handshake completes, which is real ongoing complexity for a threat that requires
+ * the attacker to first gain that DNS control. A hostname nobody approved is refused
+ * regardless of what it resolves to; that part never touches DNS.
  */
 import { config } from './config.ts'
 import type { Db } from './db/index.ts'
