@@ -20,6 +20,7 @@
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import { loadCategoryTrends, loadFacts } from '../../../domain/aggregate/facts.ts'
+import { loadGoalsWithProgress } from '../../../domain/aggregate/goal-store.ts'
 import {
   latestStoredMonth,
   loadMonthTotals,
@@ -137,6 +138,23 @@ export function buildBudget(
       ? facts
       : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m, locale))))
 
+  // Present-tense (#407): today's real month, not `resolved` — a goal is tied to
+  // its envelope right now, independent of which historical month this page is
+  // showing. `netWorth` is null on purpose: only `category`-kind goals are used
+  // below, and those never read it.
+  const today = new Date().toISOString().slice(0, 10)
+  const goalsWithProgress = loadGoalsWithProgress(db, tenantId, null, today.slice(0, 7), today)
+  const goalsByCategory = new Map<
+    string,
+    { id: string; label: string; progressBp: number | null; pace: (typeof goalsWithProgress)[number]['pace'] }[]
+  >()
+  for (const goal of goalsWithProgress) {
+    if (goal.kind !== 'category' || goal.categoryId === null) continue
+    const list = goalsByCategory.get(goal.categoryId) ?? []
+    list.push({ id: goal.id, label: goal.label, progressBp: goal.progressBp, pace: goal.pace })
+    goalsByCategory.set(goal.categoryId, list)
+  }
+
   return budgetSchema.parse({
     freshness: freshness(db, tenantId),
     owner,
@@ -208,5 +226,6 @@ export function buildBudget(
         ? null
         : { txnCount: uncategorised.txnCount, amountCents: uncategorised.amountCents },
     actualConfigured: integrationAvailability(db, tenantId).actual,
+    goalsByCategory: [...goalsByCategory].map(([categoryId, goals]) => ({ categoryId, goals })),
   })
 }

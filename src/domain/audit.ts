@@ -149,6 +149,17 @@ export const AUDIT_ACTIONS = [
    */
   'settings.debt',
   /**
+   * A savings goal created, edited or deleted (#407) — a target amount and,
+   * optionally, a target date.
+   *
+   * Same shape as `settings.loan`'s entry and for the same reason: one action for
+   * all three gestures, `before`/`after` already saying which happened,
+   * `entityRef` naming the goal either way. On this list because a goal is a
+   * household's own stated target, which nothing elsewhere in the app could
+   * regenerate.
+   */
+  'settings.goal',
+  /**
    * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
    *
    * `before`/`after` never carry a secret — only the same `*Configured` shape the

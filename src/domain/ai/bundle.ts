@@ -36,12 +36,14 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { loadAccountMap } from '../aggregate/accounts.ts'
 import { loadCategoryMeta, loadFacts } from '../aggregate/facts.ts'
+import { loadGoalsWithProgress } from '../aggregate/goal-store.ts'
 import {
   loadMismatches,
   loadTrailingTotals,
   loadUncategorised,
 } from '../aggregate/month-store.ts'
 import { loadNetWorthAsOf } from '../aggregate/networth-store.ts'
+import type { NetWorthSummary } from '../aggregate/networth.ts'
 import { loadHygiene, loadSignals } from '../aggregate/signals-store.ts'
 import { countSnapshotHoldings, latestSnapshotDate, loadPortfolioMetrics } from '../portfolio/store.ts'
 import { latestAdvice, latestDriftPersistence } from '../advice/latest.ts'
@@ -49,7 +51,7 @@ import { loadMonthNote } from './month-note.ts'
 import { loadParams } from '../aggregate/params.ts'
 import type { MonthlyFact } from '../aggregate/spend.ts'
 import { endOfMonth } from '../../util/month.ts'
-import type { AnalysisBundle, BundleCategory, BundleDrift, BundlePortfolio } from './redact.ts'
+import type { AnalysisBundle, BundleCategory, BundleDrift, BundleGoal, BundlePortfolio } from './redact.ts'
 
 /**
  * A hidden category with nothing in it is dropped.
@@ -110,6 +112,39 @@ export function collectDrift(db: Db, tenantId: string): BundleDrift | null {
 }
 
 /**
+ * Every goal's progress and projection, as of the same month the narrative
+ * covers — the same orchestration `GET /api/overview` uses (`goal-store.ts`),
+ * so the figures the narrative states are the figures the goal card already
+ * shows (#407), category-pooled shares included.
+ *
+ * `today` is real wall-clock, not `month` — the lifecycle/grace-window filter
+ * inside `loadGoalsWithProgress` is present-tense regardless of which month is
+ * being narrated, same as every other caller.
+ */
+export function collectGoals(
+  db: Db,
+  tenantId: string,
+  netWorth: NetWorthSummary | null,
+  month: string,
+): BundleGoal[] {
+  const today = new Date().toISOString().slice(0, 10)
+  return loadGoalsWithProgress(db, tenantId, netWorth, month, today).map((goal) => ({
+    label: goal.label,
+    kind: goal.kind,
+    priority: goal.priority,
+    categoryId: goal.categoryId,
+    targetCents: goal.targetCents,
+    targetDate: goal.targetDate,
+    currentCents: goal.currentCents,
+    progressBp: goal.progressBp,
+    met: goal.met,
+    monthlyRateCents: goal.monthlyRateCents,
+    monthsToTarget: goal.monthsToTarget,
+    etaMonth: goal.etaMonth,
+  }))
+}
+
+/**
  * The month's facts, findings and context, or null when it has not been judged.
  *
  * The trailing window comes from `loadTrailingTotals`, the same call the signals
@@ -138,6 +173,7 @@ export function collectBundle(
 
   const window = history.map((entry) => entry.month)
   const uncategorised = loadUncategorised(db, tenantId, window)
+  const netWorth = loadNetWorthAsOf(db, tenantId, endOfMonth(month))
 
   return {
     month,
@@ -149,7 +185,8 @@ export function collectBundle(
     // The month itself is `totals`; repeating it in the history would have the
     // model read the latest point twice when it looks for a trend.
     totalsHistory: history.slice(0, -1),
-    netWorth: loadNetWorthAsOf(db, tenantId, endOfMonth(month)),
+    netWorth,
+    goals: collectGoals(db, tenantId, netWorth, month),
     hygiene: {
       scoreBp: hygiene.scoreBp,
       uncategorisedCount: uncategorised.reduce((sum, bucket) => sum + bucket.txnCount, 0),

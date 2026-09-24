@@ -20,6 +20,7 @@ import { persistSignals } from '../../src/domain/aggregate/signals-store.ts'
 import type { RecomputeMismatch } from '../../src/domain/aggregate/spend.ts'
 import { clean, fact, seedMonth } from '../fixtures/month.ts'
 import { collectBundle, collectPortfolio } from '../../src/domain/ai/bundle.ts'
+import { createGoal } from '../../src/domain/goal/goals.ts'
 import { PAYLOAD_KEYS, redact } from '../../src/domain/ai/redact.ts'
 import type { HoldingSnapshot } from '../../src/domain/portfolio/snapshot.ts'
 import {
@@ -280,6 +281,75 @@ describe('collectBundle net worth (#498)', () => {
     )
 
     expect(collectBundle(ctx.db, tenantId, '2026-03')?.netWorth).toBeNull()
+  })
+})
+
+describe('collectBundle goals (#407)', () => {
+  it('is an empty array when the tenant tracks no goal', () => {
+    seedMonth(ctx.db, tenantId, '2026-03')
+    expect(collectBundle(ctx.db, tenantId, '2026-03')?.goals).toEqual([])
+  })
+
+  it('reads progress off the net worth as of the month being analysed, through the same functions the overview card uses', () => {
+    syncAccountMap(ctx.db, tenantId, [{ source: 'actual', externalId: 'a1', name: 'Zichtrekening' }])
+    const accountMapId = loadAccountMap(ctx.db, tenantId)[0]!.id
+    const contribution: AccountValue = {
+      accountMapId,
+      source: 'actual',
+      externalId: 'a1',
+      name: 'Zichtrekening',
+      kind: 'checking',
+      valueCents: 600_000,
+      includeInNetWorth: true,
+      dedupeGroup: null,
+      isSourceOfTruth: true,
+    }
+    seedMonth(ctx.db, tenantId, '2026-03')
+    persistNetWorth(ctx.db, tenantId, computeNetWorth('2026-03-31', [contribution]))
+    createGoal(ctx.db, tenantId, { label: 'Emergency fund', kind: 'liquid', targetCents: 1_000_000 })
+
+    const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
+    expect(goals).toHaveLength(1)
+    expect(goals?.[0]).toMatchObject({
+      label: 'Emergency fund',
+      targetCents: 1_000_000,
+      currentCents: 600_000,
+      progressBp: 6_000,
+      met: false,
+    })
+  })
+
+  it('reports null progress for a goal when there is no net worth yet, rather than a fabricated zero', () => {
+    seedMonth(ctx.db, tenantId, '2026-03')
+    createGoal(ctx.db, tenantId, { label: 'House deposit', kind: 'total', targetCents: 2_000_000 })
+
+    const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
+    expect(goals?.[0]).toMatchObject({ currentCents: null, progressBp: null, met: null })
+  })
+
+  it('carries a category-kind goal, priced against its own envelope rather than net worth', () => {
+    // No net worth persisted at all here — proof this goal's figure came from the
+    // category's own availableCents, not a net-worth fallback nobody asked for.
+    seedMonth(ctx.db, tenantId, '2026-03', {
+      facts: [fact('2026-03', 'food', { availableCents: 12_000 })],
+    })
+    createGoal(ctx.db, tenantId, {
+      label: 'New oven',
+      kind: 'category',
+      categoryId: 'food',
+      targetCents: 24_000,
+      targetDate: '2026-06-01',
+    })
+
+    const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
+    expect(goals).toHaveLength(1)
+    expect(goals?.[0]).toMatchObject({
+      kind: 'category',
+      categoryId: 'food',
+      currentCents: 12_000,
+      progressBp: 5_000,
+      met: false,
+    })
   })
 })
 

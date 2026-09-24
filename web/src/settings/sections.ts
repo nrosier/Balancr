@@ -25,6 +25,7 @@ export type SettingsSectionId =
   | 'property'
   | 'loans'
   | 'debts'
+  | 'goals'
   | 'integrations'
   | 'members'
 
@@ -39,6 +40,7 @@ export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
   { id: 'loans', path: '/settings/loans', labelKey: 'settings:nav.loans' },
   { id: 'debts', path: '/settings/debts', labelKey: 'settings:nav.debts' },
+  { id: 'goals', path: '/settings/goals', labelKey: 'settings:nav.goals' },
   { id: 'integrations', path: '/settings/integrations', labelKey: 'settings:nav.integrations' },
   { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
 ]

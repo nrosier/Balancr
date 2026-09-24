@@ -24,8 +24,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionExpiryProvider } from '../src/api/resource.tsx'
 import { Overview } from '../src/pages/Overview.tsx'
-import type { Freshness, Hygiene, Overview as OverviewPayload } from '../src/shared.ts'
+import type { Freshness, Hygiene, Overview as OverviewPayload, OverviewGoal } from '../src/shared.ts'
+import { PrivacyProvider } from '../src/privacy/PrivacyContext.tsx'
 import { FreshnessNote } from '../src/ui/Freshness.tsx'
+import { GoalsCard } from '../src/ui/Goals.tsx'
 import { HygieneCard } from '../src/ui/Hygiene.tsx'
 import { i18nReady, renderApp } from './helpers.tsx'
 
@@ -91,6 +93,7 @@ const FULL: OverviewPayload = {
   hygiene: { scoreBp: 8_750, deductions: [{ reason: 'uncategorised', bp: 750 }], signals: [] },
   actualConfigured: true,
   ghostfolioConfigured: true,
+  goals: [],
 }
 
 /** What a deployment that has never run a job answers. Every field null, no rows. */
@@ -106,6 +109,7 @@ const EMPTY: OverviewPayload = {
   hygiene: null,
   actualConfigured: true,
   ghostfolioConfigured: true,
+  goals: [],
 }
 
 const json = (body: unknown, status = 200): Response =>
@@ -351,7 +355,7 @@ describe('when the server answers with a month', () => {
     // A missing key renders as itself, which is the failure this catches — including in
     // the three namespaces this page reads across.
     const text = document.body.textContent ?? ''
-    expect(text).not.toMatch(/\b(metric|hygiene|chart|freshness|empty|time)\.[a-zA-Z]/)
+    expect(text).not.toMatch(/\b(metric|hygiene|chart|freshness|empty|time|goals)\.[a-zA-Z]/)
   })
 })
 
@@ -519,6 +523,117 @@ describe('the hygiene card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Recomputed totals disagree with Actual' }))
 
     expect(screen.getByText("Groceries does not reconcile: our own sum is € 50,00 away from Actual's.")).toBeTruthy()
+  })
+})
+
+describe('the goals card', () => {
+  const show = (goals: readonly OverviewGoal[]): void => {
+    render(
+      <PrivacyProvider>
+        <GoalsCard goals={goals} />
+      </PrivacyProvider>,
+    )
+  }
+
+  /** Every field populated, so a single test can override just the one it is about. */
+  const GOAL: OverviewGoal = {
+    id: 'goal-1',
+    label: 'Emergency fund',
+    kind: 'liquid',
+    priority: 'normal',
+    categoryId: null,
+    targetCents: 500_000,
+    targetDate: '2027-06-01',
+    status: 'active',
+    doneAt: null,
+    currentCents: 250_000,
+    progressBp: 5_000,
+    met: false,
+    monthlyRateCents: 10_000,
+    monthsToTarget: 3,
+    etaMonth: '2027-03',
+    trendMonths: 6,
+    trendFrom: '2026-03',
+    trendTo: '2026-08',
+    requiredMonthlyCents: 20_833,
+    pace: 'onTrack',
+    categoryName: null,
+    categorySiblingCount: 0,
+  }
+
+  it('says so when there are no goals', () => {
+    show([])
+
+    expect(screen.getByText('No savings goals yet. Add one in Settings to track progress here.')).toBeTruthy()
+  })
+
+  it('shows the label, the percentage and the amounts', () => {
+    show([GOAL])
+
+    expect(screen.getByText('Emergency fund')).toBeTruthy()
+    expect(screen.getByText('50%')).toBeTruthy()
+    expect(screen.getByText('€ 2.500,00 of € 5.000,00')).toBeTruthy()
+  })
+
+  it('says progress is not known rather than printing a percentage it does not have', () => {
+    show([{ ...GOAL, currentCents: null, progressBp: null }])
+
+    expect(screen.getByText('Not enough data yet')).toBeTruthy()
+    expect(screen.getByText('Not synced yet.')).toBeTruthy()
+  })
+
+  it('states the trend window behind a projection', () => {
+    show([GOAL])
+
+    expect(screen.getByText('Based on the last 6 months of net worth, March 2026 to August 2026.')).toBeTruthy()
+  })
+
+  it('leaves out the trend line when there is not enough history for one', () => {
+    show([{ ...GOAL, trendMonths: 0, trendFrom: null, trendTo: null }])
+
+    expect(screen.queryByText(/Based on the last/)).toBeNull()
+  })
+
+  it('says a goal that has been reached is reached, not projected', () => {
+    show([{ ...GOAL, met: true }])
+
+    expect(screen.getByText('Target reached.')).toBeTruthy()
+  })
+
+  it('compares the projected date against the target when the eta is ahead of it', () => {
+    show([{ ...GOAL, etaMonth: '2027-03', targetDate: '2027-06-01' }])
+
+    expect(
+      screen.getByText('On pace to reach it around March 2027, ahead of the 01/06/2027 target.'),
+    ).toBeTruthy()
+  })
+
+  it('compares the projected date against the target when the eta lands on it', () => {
+    show([{ ...GOAL, etaMonth: '2027-06', targetDate: '2027-06-01' }])
+
+    expect(
+      screen.getByText('On pace to reach it around June 2027, on track for the 01/06/2027 target.'),
+    ).toBeTruthy()
+  })
+
+  it('compares the projected date against the target when the eta is behind it', () => {
+    show([{ ...GOAL, etaMonth: '2027-09', targetDate: '2027-06-01' }])
+
+    expect(
+      screen.getByText('On pace to reach it around September 2027, behind the 01/06/2027 target.'),
+    ).toBeTruthy()
+  })
+
+  it('gives an eta with no comparison when no target date was set', () => {
+    show([{ ...GOAL, etaMonth: '2027-03', targetDate: null }])
+
+    expect(screen.getByText('On pace to reach it around March 2027.')).toBeTruthy()
+  })
+
+  it('leaves out the eta line entirely when the trend does not support one', () => {
+    show([{ ...GOAL, etaMonth: null, monthlyRateCents: null, monthsToTarget: null }])
+
+    expect(screen.queryByText(/On pace|reached/)).toBeNull()
   })
 })
 

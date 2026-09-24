@@ -582,7 +582,7 @@ ${NARRATIVE_SYSTEM_V7}
  * minus sign" sitting a few lines under "copy it exactly as given" and read the two as
  * contradicting each other.
  */
-const NARRATIVE_SYSTEM = `
+const NARRATIVE_SYSTEM_V9 = `
 ${NARRATIVE_SYSTEM_V7}
 12. A category's own leftover figure can be negative. For an expense envelope that
     means more was spent in it than was set aside, an overspend, not a deficit to
@@ -598,6 +598,39 @@ ${NARRATIVE_SYSTEM_V7}
     negative figure on an income category means something else entirely — earning
     less than expected, not overspending — so leave it alone unless another figure
     you were given already explains it.
+`.trim()
+
+/**
+ * The narrative prompt, current. An appended rule, not a rewrite — rule 13 stands on its
+ * own the same way rule 12 did when it first landed, and touches nothing rules 1 through 12
+ * already say, so there is no earlier wording underneath it to contradict.
+ *
+ * A tracked goal (#407) is the first figure in the payload that carries its own projection
+ * — `monthlyRateCents`, `monthsToTarget`, `etaMonth` — rather than a single computed amount
+ * like every other field this prompt already knows how to quote. Nothing in rules 1 through
+ * 12 says what to do with a *pair* of numbers that describe the same goal from two different
+ * angles (where it stands today, and where its own trend says it is heading), and a model
+ * left to guess has exactly one number it is tempted to invent: an ETA for a goal whose
+ * trend was too short or too flat to support one. `projectGoal`
+ * (`domain/aggregate/goals.ts`) already refuses to produce that ETA in exactly those cases
+ * — it reports `etaMonth: null` — so the rule this prompt needs is not "do not calculate",
+ * which rule 1 already covers, but "a missing projection is not yours to fill in".
+ *
+ * Rule 13 answers the same way rule 8 already answers for drift: state the figures you were
+ * given, plainly, and leave a missing one alone rather than reasoning your way to it. It also
+ * says what to do with a target date once an ETA exists — compare the two, ahead, on pace or
+ * behind — because a household that set one wants to read that comparison in words, not
+ * recompute it themselves from two raw dates.
+ */
+const NARRATIVE_SYSTEM = `
+${NARRATIVE_SYSTEM_V9}
+13. A tracked goal's progress toward its target is a fact to state, never to calculate: the
+    percentage and the current figure were computed before they reached you. Where a monthly
+    rate and a projected month are also given, say what they mean for the goal — and, only
+    when the goal also names a target date, whether the projected month lands ahead of it, on
+    pace with it or behind it. Where no projected month is given, there is not yet enough
+    history to support one: say that plainly rather than estimating one yourself or treating
+    the absence as bad news.
 `.trim()
 
 export const DEFAULT_PROMPTS: Record<PromptKey, string> = {
@@ -641,6 +674,7 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
     NARRATIVE_SYSTEM_V6,
     NARRATIVE_SYSTEM_V7,
     NARRATIVE_SYSTEM_V8,
+    NARRATIVE_SYSTEM_V9,
   ],
 }
 
@@ -687,8 +721,14 @@ export const SUPERSEDED_PROMPTS: Record<PromptKey, readonly string[]> = {
  * verdict reached under version 5's rubric never answered the second question, so it
  * cannot certify a candidate against it — the same "verdict answers a specific question"
  * reasoning as every bump above.
+ *
+ * Bumped to 7 for adding `goal_progress_is_grounded` (#407): the same reasoning as the
+ * bump to 5 for `negative_is_overspend` applies unchanged — a verdict reached before a
+ * tracked goal's projection existed in the payload never asked the judge whether a
+ * candidate invents a missing one, so it cannot certify a candidate against a constraint
+ * this build now checks for.
  */
-export const VALIDATION_RULES_VERSION = 6
+export const VALIDATION_RULES_VERSION = 7
 
 /**
  * What a prompt row's text is cleared for.

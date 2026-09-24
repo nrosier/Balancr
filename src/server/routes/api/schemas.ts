@@ -33,6 +33,8 @@ import { CUSTODY_BASES, CUSTODY_UNAVAILABLE } from '../../../domain/aggregate/cu
 import { EXCLUSION_REASONS } from '../../../domain/aggregate/networth.ts'
 import { loanKinds } from '../../../domain/loan/vocabulary.ts'
 import { debtKinds } from '../../../domain/debt/vocabulary.ts'
+import { goalPaces } from '../../../domain/aggregate/goals.ts'
+import { goalKinds, goalPriorities, goalStatuses } from '../../../domain/goal/vocabulary.ts'
 import { BENCHMARK_BASES, BENCHMARK_PERIODS } from '../../../domain/benchmark/compare.ts'
 import { AI_VISIBILITY_CHOICES } from '../../../domain/benchmark/mapping.ts'
 import {
@@ -198,6 +200,53 @@ export const monthFlowsSchema = z.object({
   committedApproximate: z.boolean(),
 })
 
+/**
+ * One savings goal (#407) on the overview page: its progress against whichever of
+ * `netWorth`'s figures it names, or — for a `category`-kind goal — its pooled share
+ * of a shared envelope, plus — only when there is enough trend to support one — a
+ * projection.
+ *
+ * `currentCents`/`progressBp`/`met` are null exactly when the underlying figure
+ * (net worth, or the category's `availableCents`) is not known yet: a goal can
+ * never disagree with the balance it is measured against, so with nothing to
+ * compare against there is nothing for it to report either. `monthlyRateCents`,
+ * `monthsToTarget` and `etaMonth` are each independently null per
+ * `domain/aggregate/goals.ts`'s `projectGoal` — never a fabricated rate or ETA
+ * where the trend behind it doesn't support one. `requiredMonthlyCents`/`pace` are
+ * likewise null with no target date or no current figure yet.
+ *
+ * Every field here — including a done goal's frozen nulls and grace-window
+ * visibility — comes from `domain/aggregate/goal-store.ts`'s `loadGoalsWithProgress`,
+ * the one place `/api/overview`, `/api/budget` and the AI bundle all price a goal.
+ */
+export const overviewGoalSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(goalKinds),
+  priority: z.enum(goalPriorities),
+  categoryId: z.string().nullable(),
+  targetCents: cents(),
+  targetDate: dateKey().nullable(),
+  status: z.enum(goalStatuses),
+  doneAt: dateKey().nullable(),
+  currentCents: cents().nullable(),
+  progressBp: basisPoints().nullable(),
+  met: z.boolean().nullable(),
+  monthlyRateCents: cents().nullable(),
+  monthsToTarget: z.int().nullable(),
+  etaMonth: monthKey().nullable(),
+  /** How many of the trend window's months actually had data — for the caveat line. */
+  trendMonths: z.int(),
+  trendFrom: monthKey().nullable(),
+  trendTo: monthKey().nullable(),
+  requiredMonthlyCents: cents().nullable(),
+  pace: z.enum(goalPaces).nullable(),
+  /** Resolved via `loadCategoryNames`; null for a non-`category` goal. */
+  categoryName: z.string().nullable(),
+  /** How many other active goals share this goal's category; 0 for a non-`category` goal. */
+  categorySiblingCount: z.int().nonnegative(),
+})
+
 export const overviewSchema = z.object({
   freshness: freshnessSchema,
   netWorth: z
@@ -285,6 +334,8 @@ export const overviewSchema = z.object({
    */
   actualConfigured: z.boolean(),
   ghostfolioConfigured: z.boolean(),
+  /** Every tracked savings goal (#407), highest priority first — see `overviewGoalSchema`. */
+  goals: z.array(overviewGoalSchema),
 })
 
 // ---------------------------------------------------------------------------
@@ -568,6 +619,27 @@ export const budgetSchema = z.object({
     .nullable(),
   /** Whether Actual is set up for this tenant (#370). */
   actualConfigured: z.boolean(),
+  /**
+   * Every active `category`-kind goal targeting one of this month's envelopes
+   * (#407), grouped by category. Present-tense rather than scoped to `month`
+   * above — a goal is tied to its envelope right now, independent of which
+   * historical month the page happens to be showing, so this is populated from
+   * today's real month, not `?month=`. Piggybacked on this response rather than
+   * a second endpoint: every category row it badges is already here.
+   */
+  goalsByCategory: z.array(
+    z.object({
+      categoryId: z.string(),
+      goals: z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          progressBp: basisPoints().nullable(),
+          pace: z.enum(goalPaces).nullable(),
+        }),
+      ),
+    }),
+  ),
 })
 
 // ---------------------------------------------------------------------------
@@ -1782,6 +1854,30 @@ export const debtSettingSchema = z.object({
 })
 
 /**
+ * One stored savings goal, as `/api/settings` lists it (#407). The stored record,
+ * sent as-is — there is no derived-versus-echo split to make here the way
+ * `loanSettingSchema` needs against `portfolioLoanSchema`: a goal has no amortized
+ * figure at all, only the target itself, and progress against it lives on
+ * `overviewGoalSchema` instead, computed fresh from net worth (or a category's
+ * pooled balance) rather than stored.
+ *
+ * `status`/`doneAt` are the stored lifecycle state, unfiltered by the grace
+ * window `isGoalVisible` applies elsewhere — this list is Settings' own archive,
+ * and shows every done goal forever, per `buildSettings`'s own doc comment.
+ */
+export const goalSettingSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(goalKinds),
+  categoryId: z.string().nullable(),
+  priority: z.enum(goalPriorities),
+  targetCents: cents(),
+  targetDate: dateKey().nullable(),
+  status: z.enum(goalStatuses),
+  doneAt: dateKey().nullable(),
+})
+
+/**
  * The Actual/Ghostfolio/AI connection this tenant uses (#369, #422).
  *
  * A secret is never on this wire, in either direction: `passwordConfigured` and
@@ -1914,6 +2010,11 @@ export const settingsSchema = z.object({
    * these either.
    */
   debts: z.array(debtSettingSchema),
+  /**
+   * Savings goals (#407), highest priority first. A flat array for the same reason
+   * `loans`/`debts` are: there is no whole-list patch for these either.
+   */
+  goals: z.array(goalSettingSchema),
   /** The Actual/Ghostfolio/AI connection this tenant uses (#369, #422). */
   integrations: integrationsSettingSchema,
   /**
@@ -2425,6 +2526,8 @@ export type BenchmarkSetting = z.infer<typeof benchmarkSettingSchema>
 export type PropertiesSetting = z.infer<typeof propertiesSettingSchema>
 export type LoanSetting = z.infer<typeof loanSettingSchema>
 export type DebtSetting = z.infer<typeof debtSettingSchema>
+export type GoalSetting = z.infer<typeof goalSettingSchema>
+export type OverviewGoal = z.infer<typeof overviewGoalSchema>
 export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
 export type InviteSetting = z.infer<typeof inviteSettingSchema>
 export type InviteCreated = z.infer<typeof inviteCreatedSchema>

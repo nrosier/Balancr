@@ -382,6 +382,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     promptEditing: 'full',
     loans: [],
     debts: [],
+    goals: [],
     params,
     paramDefaults: params,
     advice: {

@@ -98,6 +98,20 @@ import {
   updateDebt,
 } from '../../domain/debt/debts.ts'
 import {
+  createGoal,
+  deleteGoal,
+  goalKinds,
+  goalPriorities,
+  listGoals,
+  loadGoal,
+  markGoalDone,
+  MAX_GOALS,
+  reactivateGoal,
+  TooManyGoalsError,
+  UnknownCategoryError,
+  updateGoal,
+} from '../../domain/goal/goals.ts'
+import {
   createLoan,
   deleteLoan,
   listLoans,
@@ -442,6 +456,23 @@ const debtRequest = z.strictObject({
   balanceCents: z.number().int(),
   minimumPaymentCents: z.number().int(),
   aprBp: z.number().int().nullable().optional(),
+})
+
+/**
+ * One savings goal (#407): the whole goal, every time, on both the create and the
+ * edit — same reasoning `loanRequest`/`debtRequest` give: a form has no gesture for
+ * "leave this one alone", and an omitted `targetDate` would be ambiguous between
+ * "unchanged" and "no longer tracking an ETA". The cap and non-negative bounds live
+ * in `goalInputSchema` and are enforced by `createGoal`/`updateGoal`, the same
+ * division every other patch on this page explains.
+ */
+const goalRequest = z.strictObject({
+  label: z.string().max(80).optional(),
+  kind: z.enum(goalKinds).optional(),
+  categoryId: z.string().min(1).nullable().optional(),
+  priority: z.enum(goalPriorities).optional(),
+  targetCents: z.number().int(),
+  targetDate: z.string().nullable().optional(),
 })
 
 /**
@@ -1008,6 +1039,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     property: loadProperties(db, user.tenantId),
     loans: listLoans(db, user.tenantId),
     debts: listDebts(db, user.tenantId),
+    goals: listGoals(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId),
     categoryTranslations: loadCategoryTranslationRows(db, user.tenantId),
     invites: listInvites(db, user.tenantId).map(toInviteSetting),
@@ -1589,6 +1621,170 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       before: { ...before },
       // Null rather than the row: what was recorded is that this debt stopped existing.
       after: null,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * A new savings goal (#407) — a target amount and, optionally, a target date.
+   *
+   * Three routes rather than one whole-list PATCH, same reasoning as loans/debts
+   * above: a goal is a row with its own id. There is no `currentCents` to
+   * amortize here — progress is read fresh off net worth on every request, so
+   * unlike a loan or a debt this write changes nothing about the number itself,
+   * only which target it is measured against.
+   */
+  app.post('/api/settings/goals', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const body = parseBody(goalRequest, request.body)
+
+    let created
+    try {
+      created = createGoal(db, user.tenantId, body)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      // Not a fact about the body: the same request would have been accepted one
+      // goal ago, which is what a 409 says and a 400 would not.
+      if (error instanceof TooManyGoalsError) {
+        throw conflict(`A household may track at most ${String(MAX_GOALS)} goals.`)
+      }
+      if (error instanceof UnknownCategoryError) {
+        throw invalidBody(error.message, [{ path: 'categoryId', message: error.message }])
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.goal',
+      entity: 'goals',
+      entityRef: created.id,
+      actorId: user.id,
+      // Null before, the goal after: the entry reads as "this came into being".
+      before: null,
+      after: { ...created },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /** Replaces one goal — a raised target, a moved date, a re-prioritized row. */
+  app.patch('/api/settings/goals/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+    const body = parseBody(goalRequest, request.body)
+
+    // Read first, so a goal belonging to another tenant is a 404 rather than an
+    // update that silently matches nothing and answers 200.
+    const before = loadGoal(db, user.tenantId, id)
+    if (before === null) throw notFound('No such goal.')
+
+    let after
+    try {
+      after = updateGoal(db, user.tenantId, id, body)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      if (error instanceof UnknownCategoryError) {
+        throw invalidBody(error.message, [{ path: 'categoryId', message: error.message }])
+      }
+      throw error
+    }
+    if (after === null) throw notFound('No such goal.')
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.goal',
+      entity: 'goals',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      after: { ...after },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Drops a goal — reached, abandoned, or entered by mistake.
+   *
+   * The only DELETE this panel needs, same reasoning as loans/debts: "remove this
+   * one" cannot be expressed as a patch of a list that no longer contains it.
+   */
+  app.delete('/api/settings/goals/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadGoal(db, user.tenantId, id)
+    if (before === null) throw notFound('No such goal.')
+    deleteGoal(db, user.tenantId, id)
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.goal',
+      entity: 'goals',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      // Null rather than the row: what was recorded is that this goal stopped existing.
+      after: null,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Ticks a goal done — its own route, not a `PATCH`, because `updateGoal` is a
+   * whole-row replace and this is a manual, immediate action like `DELETE`, the
+   * same reasoning `markGoalDone`'s own doc comment gives.
+   */
+  app.post('/api/settings/goals/:id/done', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadGoal(db, user.tenantId, id)
+    if (before === null) throw notFound('No such goal.')
+    const after = markGoalDone(db, user.tenantId, id)
+    if (after === null) throw notFound('No such goal.')
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.goal',
+      entity: 'goals',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      after: { ...after },
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Undoes a `done` tick, at any time — not only within the grace window that
+   * governs whether an already-done goal still shows on Overview/Budget.
+   */
+  app.post('/api/settings/goals/:id/reactivate', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+
+    const before = loadGoal(db, user.tenantId, id)
+    if (before === null) throw notFound('No such goal.')
+    const after = reactivateGoal(db, user.tenantId, id)
+    if (after === null) throw notFound('No such goal.')
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.goal',
+      entity: 'goals',
+      entityRef: id,
+      actorId: user.id,
+      before: { ...before },
+      after: { ...after },
     })
 
     return buildSettings(db, request)

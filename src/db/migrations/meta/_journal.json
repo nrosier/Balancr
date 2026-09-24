@@ -288,6 +288,20 @@
       "when": 1790200103011,
       "tag": "0040_premium_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1790256239970,
+      "tag": "0041_living_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1790271263395,
+      "tag": "0042_lively_jubilee",
+      "breakpoints": true
     }
   ]
 }

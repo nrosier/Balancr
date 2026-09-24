@@ -1154,6 +1154,76 @@
   gap: var(--space-3);
 }
 
+/* ---------------------------------------------------------------------------
+   Savings goals (#407)
+
+   The same proportions as `.debts-form`/`.debts`/`.debt` above, for the same reason:
+   one stored row per card, addressed by id, each with its own Save/Remove. No
+   read-back arithmetic here at all — a goal's progress is `ui/Goals.tsx`'s own
+   `GoalsCard`, which reuses the global `.metric__rows`/`.metric__row` classes rather
+   than defining its own, so `.goal__reads` carries only the target-date hint and,
+   when it applies, the "not a valid number yet" line.
+   --------------------------------------------------------------------------- */
+
+.goals-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.goals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.goal__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.goal__reads {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.goals__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The done->archived disclosure (#407 extension) — same `.status__disclosureButton`
+   toggle as `Status.tsx`'s probe report, so a household learns the pattern once. */
+.goals-archive {
+  margin-top: var(--space-4);
+}
+
+.goal--archived {
+  opacity: 0.75;
+}
+
 .provenance {
   display: flex;
   flex-direction: column;

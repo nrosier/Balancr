@@ -63,7 +63,9 @@ export function resolveLocale(request: FastifyRequest): string {
 }
 
 export function registerApiRoutes(app: FastifyInstance, db: Db): void {
-  app.get('/api/overview', (request: FastifyRequest) => buildOverview(db, requireUser(request).tenantId))
+  app.get('/api/overview', (request: FastifyRequest) =>
+    buildOverview(db, requireUser(request).tenantId, resolveLocale(request)),
+  )
 
   app.get('/api/budget', (request: FastifyRequest) => {
     const query = request.query as

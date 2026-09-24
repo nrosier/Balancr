@@ -350,6 +350,42 @@ export function loadCategoryTrends(
   return { months, byCategory }
 }
 
+/**
+ * `availableCents` per month for one category, ascending, over the trailing
+ * `windowMonths` ending at `asOfMonth` — mirrors `loadNetWorthComponentHistory`/
+ * `monthlyGoalTrend`'s shape for the net-worth goal kinds, so a `category`-kind
+ * goal's rate is measured the same way theirs is.
+ *
+ * A month with no fact row is omitted, not zero-filled — unlike `loadCategoryTrends`'
+ * dense spend history, "no fact row" here means the category did not exist yet or
+ * the month has not been synced, neither of which is a real zero balance to plot.
+ */
+export function loadCategoryAvailableTrend(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  asOfMonth: string,
+  windowMonths: number,
+): { month: string; valueCents: number }[] {
+  const months = monthsBefore(asOfMonth, windowMonths - 1).concat(asOfMonth)
+  const rows = db
+    .select({ month: monthlyCategoryFacts.month, availableCents: monthlyCategoryFacts.availableCents })
+    .from(monthlyCategoryFacts)
+    .where(
+      and(
+        eq(monthlyCategoryFacts.tenantId, tenantId),
+        eq(monthlyCategoryFacts.categoryId, categoryId),
+        inArray(monthlyCategoryFacts.month, months),
+      ),
+    )
+    .all()
+
+  const byMonth = new Map(rows.map((row) => [row.month, row.availableCents]))
+  return months
+    .filter((month) => byMonth.has(month))
+    .map((month) => ({ month, valueCents: byMonth.get(month) as number }))
+}
+
 /** Every category with a stored meta row, keyed by id. */
 export function loadCategoryMeta(
   db: Db,

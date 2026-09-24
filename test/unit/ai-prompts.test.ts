@@ -213,11 +213,11 @@ describe('built-in prompts', () => {
     expect(body).not.toMatch(/divide by 100/i)
     // And the previous default is the text that had the bug, not a body that always wrote
     // this correctly — anchoring the fix as new rather than restating an old guarantee.
-    // `.at(-3)`, not `.at(-1)` or `.at(-2)`: rule 12 (#negative_is_overspend) put two newer
-    // bodies on top of this one — `NARRATIVE_SYSTEM_V7` and, since #493's follow-up on the
-    // minus-sign wording, `NARRATIVE_SYSTEM_V8` — so the version that actually carries the
-    // bug this test anchors against is two further back.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-3)?.replace(/\s+/g, ' ')
+    // `.at(-4)`, not `.at(-1)`, `.at(-2)` or `.at(-3)`: three newer bodies sit on top of this
+    // one — `NARRATIVE_SYSTEM_V7`, `NARRATIVE_SYSTEM_V8` (#493's minus-sign follow-up) and
+    // `NARRATIVE_SYSTEM_V9` (the goal-progress rule, #407) — so the version that actually
+    // carries the bug this test anchors against is three further back.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-4)?.replace(/\s+/g, ' ')
     expect(previous).toBeDefined()
     expect(previous).toMatch(/divide by 100 and write it as currency/i)
   })
@@ -227,10 +227,11 @@ describe('built-in prompts', () => {
     expect(body).toMatch(/never write an internal field name/i)
     expect(body).toMatch(/internal category code/i)
     // Rule 11 (the one under test here) is unrelated to the cents/bp payload-format fix
-    // (#480) and to rule 12's two negative-figure fixes, all three of which sit on top of
-    // it in `SUPERSEDED_PROMPTS`, so it is `.at(-4)` — the version rule 11 was actually
-    // added on top of — that must predate it, not `.at(-1)`, `.at(-2)` or `.at(-3)`.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-4)?.replace(/\s+/g, ' ')
+    // (#480), to rule 12's two negative-figure fixes, and to rule 13's goal-progress
+    // addition (#407) — all four of which sit on top of it in `SUPERSEDED_PROMPTS`, so it
+    // is `.at(-5)` — the version rule 11 was actually added on top of — that must predate
+    // it, not `.at(-1)`, `.at(-2)`, `.at(-3)` or `.at(-4)`.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-5)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/internal field name/i)
   })
 
@@ -247,11 +248,11 @@ describe('built-in prompts', () => {
     // applies here — a negative income figure is a shortfall, not an overspend.
     expect(body).toMatch(/expense envelope/i)
     expect(body).toMatch(/income category means something else entirely/i)
-    // Anchored as new against `NARRATIVE_SYSTEM_V7` (`.at(-2)`, the version this reading
-    // was actually added on top of) rather than `.at(-1)` (`NARRATIVE_SYSTEM_V8`, which
-    // already carries this same wording since it is only the minus-sign half of rule 12
-    // that came later).
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
+    // Anchored as new against `NARRATIVE_SYSTEM_V7` (`.at(-3)`, the version this reading
+    // was actually added on top of) rather than `.at(-1)` or `.at(-2)` (`NARRATIVE_SYSTEM_V8`
+    // and `NARRATIVE_SYSTEM_V9`, which already carry this same wording since only the
+    // minus-sign half of rule 12 and rule 13's goal addition came later).
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-3)?.replace(/\s+/g, ' ')
     expect(previous).not.toMatch(/an overspend/i)
   })
 
@@ -268,10 +269,28 @@ describe('built-in prompts', () => {
     // exactly" does not cover, so an edited prompt can't read the two as contradictory.
     expect(body).toMatch(/not one of the digits/i)
     // Anchored as new against `NARRATIVE_SYSTEM_V8`, which has the overspend framing but
-    // not yet the positive-figure requirement.
-    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    // not yet the positive-figure requirement. `.at(-2)`, not `.at(-1)`
+    // (`NARRATIVE_SYSTEM_V9`, which already carries the positive-figure requirement and
+    // only lacks rule 13's goal addition).
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-2)?.replace(/\s+/g, ' ')
     expect(previous).toMatch(/an overspend/i)
     expect(previous).not.toMatch(/give it as a positive figure/i)
+  })
+
+  it('tells the narrative pass to state a tracked goal\'s progress and never invent a missing projection', () => {
+    // #407: a goal's payload carries a percentage and a current figure like any other
+    // computed amount, but also a projection (`monthlyRateCents`/`monthsToTarget`/
+    // `etaMonth`) that `projectGoal` deliberately leaves null when the trend behind it is
+    // too short or too flat to support one — the one case rules 1 through 12 never spoke
+    // to, and the one a model is otherwise tempted to fill in itself.
+    const body = DEFAULT_PROMPTS['narrative.system'].replace(/\s+/g, ' ')
+    expect(body).toMatch(/tracked goal's progress toward its target/i)
+    expect(body).toMatch(/not yet enough\s*\n?\s*history to support one/i)
+    expect(body).toMatch(/ahead of it, on\s*\n?\s*pace with it or behind it/i)
+    // Anchored as new against `NARRATIVE_SYSTEM_V9`, which has every rule up to and
+    // including the positive-figure requirement but nothing about goals.
+    const previous = SUPERSEDED_PROMPTS['narrative.system'].at(-1)?.replace(/\s+/g, ' ')
+    expect(previous).not.toMatch(/tracked goal/i)
   })
 })
 
