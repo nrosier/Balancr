@@ -21,10 +21,11 @@
  * active siblings. A done goal past its grace window is omitted entirely.
  *
  * A `category`-kind goal's trend is the category's own `availableCents` history,
- * scaled by this goal's current share of the pool at `asOfMonth` — the scaling
- * keeps the trend's latest point equal to `currentCents` by construction, so
- * `projectGoal`'s rate is measured on the same series its ETA is stated against,
- * not a second, unscaled one.
+ * scaled by this goal's urgency-weight share of the pool, with its latest point
+ * pinned to the same `currentCents` figure the pool split itself reports (the two
+ * can disagree by a rounding cent otherwise — see the comment at the trend's
+ * construction below) — so `projectGoal`'s rate is measured on the same series
+ * its ETA is stated against, not a second, unscaled one.
  */
 import type { Db } from '../../db/index.ts'
 import { listGoals, type Goal } from '../goal/goals.ts'
@@ -168,12 +169,20 @@ export function loadGoalsWithProgress(
           ? 0
           // Non-null by the same write-time invariant `candidates` above relies on.
           : goalPoolShareRatio({ targetCents: goal.targetCents, targetDate: goal.targetDate as string }, candidates, asOfMonth)
+      // The last point (asOfMonth itself, guaranteed by the `poolCents` check above)
+      // is pinned to the same `share` `currentCents` reports, not re-derived by
+      // rounding `scale` against it — `scale` is a continuous urgency-weight ratio
+      // while `share` is `splitCategoryPool`'s largest-remainder integer-cent split,
+      // and the two can disagree by a cent. Left unpinned, that disagreement shows
+      // up as a spurious month-over-month rate on an otherwise-flat balance, which
+      // can inflate `monthsToTarget`/`etaMonth` into an invalid, far-future date.
       const trend =
         poolCents === null
           ? []
-          : rawTrend.map((point) => ({
+          : rawTrend.map((point, index) => ({
               month: point.month,
-              valueCents: Math.round(point.valueCents * scale),
+              valueCents:
+                index === rawTrend.length - 1 ? share ?? 0 : Math.round(point.valueCents * scale),
             }))
       const projection = projectGoal(progress, trend, asOfMonth)
       const requiredMonthlyCents = requiredMonthlySavingsCents(progress, asOfMonth)

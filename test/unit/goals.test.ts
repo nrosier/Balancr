@@ -153,6 +153,29 @@ describe('the stored goals', () => {
     expect(() => createGoal(ctx.db, TENANT_ID, input({ label: 'One more' }))).not.toThrow()
   })
 
+  it('refuses to reactivate a done goal once its tenant is back at the cap', () => {
+    for (let i = 0; i < MAX_GOALS; i++) {
+      createGoal(ctx.db, TENANT_ID, input({ label: `Goal ${String(i)}` }))
+    }
+    const [first] = listGoals(ctx.db, TENANT_ID)
+    if (!first) throw new Error('expected a seeded goal')
+    const done = markGoalDone(ctx.db, TENANT_ID, first.id)
+    if (!done) throw new Error('expected markGoalDone to find the goal')
+    // The freed slot lets a replacement in, back to a full MAX_GOALS active goals.
+    createGoal(ctx.db, TENANT_ID, input({ label: 'Replacement' }))
+
+    expect(() => reactivateGoal(ctx.db, TENANT_ID, done.id)).toThrow(TooManyGoalsError)
+    expect(loadGoal(ctx.db, TENANT_ID, done.id)?.status).toBe('done')
+  })
+
+  it('allows reactivating a done goal when the tenant is under the cap', () => {
+    const created = createGoal(ctx.db, TENANT_ID, input())
+    const done = markGoalDone(ctx.db, TENANT_ID, created.id)
+    if (!done) throw new Error('expected markGoalDone to find the goal')
+
+    expect(() => reactivateGoal(ctx.db, TENANT_ID, done.id)).not.toThrow()
+  })
+
   function seedCategory(id = 'cat-tv', overrides: { isIncome?: boolean } = {}): void {
     ctx.db
       .insert(categoryMeta)

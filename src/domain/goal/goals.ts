@@ -223,8 +223,21 @@ export function markGoalDone(db: Db, tenantId: string, id: string): Goal | null 
  * the undo side of `markGoalDone`, available at any time, not only within the
  * grace window (`isGoalVisible` only governs whether an already-done goal keeps
  * showing on Overview/Budget, not whether it can be reactivated).
+ *
+ * Subject to the same `MAX_GOALS` cap `createGoal` enforces — done goals don't
+ * count against it (`createGoal` only counts `active` ones), so reactivating one
+ * can push an already-full tenant over the limit otherwise. Only checked when the
+ * goal isn't already active, so a no-op reactivate-of-an-active-goal never trips
+ * on a cap the tenant may have already been at before this call.
  */
 export function reactivateGoal(db: Db, tenantId: string, id: string): Goal | null {
+  const existing = loadGoal(db, tenantId, id)
+  if (existing === null) return null
+  if (existing.status !== 'active') {
+    const activeGoalCount = listGoals(db, tenantId).filter((goal) => goal.status === 'active').length
+    if (activeGoalCount >= MAX_GOALS) throw new TooManyGoalsError()
+  }
+
   const updated = db
     .update(goals)
     .set({ status: 'active', doneAt: null, updatedAt: new Date() })

@@ -229,6 +229,43 @@ describe('a lone category goal whose pool is exactly zero this month', () => {
   })
 })
 
+describe('two equally-weighted goals sharing a pool that gains exactly one cent', () => {
+  it('does not report a spurious rate for the goal that received none of it', () => {
+    seedCategory('cat-tv', 1_000_000, '2026-08')
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month: '2026-09', categoryId: 'cat-tv', availableCents: 1_000_001 })
+      .run()
+    const a = createGoal(
+      ctx.db,
+      TENANT_ID,
+      goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+    )
+    const b = createGoal(
+      ctx.db,
+      TENANT_ID,
+      goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+    )
+
+    const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
+    const resultA = results.find((row) => row.id === a.id)
+    const resultB = results.find((row) => row.id === b.id)
+
+    // Exactly one of the two picks up the pool's single extra cent (largest-remainder
+    // tie-break); together their currentCents still sum to the whole pool.
+    expect([resultA?.currentCents, resultB?.currentCents].sort((x, y) => (x ?? 0) - (y ?? 0))).toEqual([
+      500_000, 500_001,
+    ])
+    const loser = resultA?.currentCents === 500_000 ? resultA : resultB
+    // Its own balance never moved — flat at 500 000 both months — so the rate must
+    // read as flat too, not a phantom one-cent gain borrowed from the ratio scale
+    // used for earlier trend points (`goalPoolShareRatio` rounds .5 the same way for
+    // both goals, regardless of which one the pool split's remainder actually went to).
+    expect(loser?.monthlyRateCents).toBe(0)
+    expect(loser?.monthsToTarget).toBeNull()
+  })
+})
+
 describe('a done goal past its grace window', () => {
   it('is excluded from the result array and from its siblings\' pool split', () => {
     seedCategory('cat-tv', 30_000)

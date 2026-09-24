@@ -1774,7 +1774,18 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
 
     const before = loadGoal(db, user.tenantId, id)
     if (before === null) throw notFound('No such goal.')
-    const after = reactivateGoal(db, user.tenantId, id)
+
+    let after
+    try {
+      after = reactivateGoal(db, user.tenantId, id)
+    } catch (error) {
+      // Same reasoning as the create route's TooManyGoalsError mapping: reactivating
+      // a done goal is subject to the same MAX_GOALS cap createGoal enforces.
+      if (error instanceof TooManyGoalsError) {
+        throw conflict(`A household may track at most ${String(MAX_GOALS)} goals.`)
+      }
+      throw error
+    }
     if (after === null) throw notFound('No such goal.')
 
     recordAudit(db, {

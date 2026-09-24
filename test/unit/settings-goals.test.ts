@@ -399,6 +399,21 @@ describe('POST /api/settings/goals/:id/reactivate', () => {
     expect(res.statusCode).toBe(404)
   })
 
+  it('answers 409 once the tenant is back at the cap, leaving the goal done', async () => {
+    const done = createGoal(ctx.db, tenantId, { ...BODY, label: 'Goal 0' })
+    await send('POST', `/api/settings/goals/${done.id}/done`)
+    for (let i = 1; i < MAX_GOALS; i++) {
+      createGoal(ctx.db, tenantId, { ...BODY, label: `Goal ${String(i)}` })
+    }
+    // The freed slot lets a replacement in, back to a full MAX_GOALS active goals.
+    createGoal(ctx.db, tenantId, { ...BODY, label: 'Replacement' })
+
+    const res = await send('POST', `/api/settings/goals/${done.id}/reactivate`)
+
+    expect(res.statusCode).toBe(409)
+    expect(listGoals(ctx.db, tenantId).find((goal) => goal.id === done.id)?.status).toBe('done')
+  })
+
   it('refuses a viewer', async () => {
     const created = createGoal(ctx.db, tenantId, BODY)
     await send('POST', `/api/settings/goals/${created.id}/done`)
