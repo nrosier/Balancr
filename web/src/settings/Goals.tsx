@@ -67,13 +67,15 @@ const draftOf = (goal: GoalSetting): Draft => ({
 })
 
 /**
- * The row as a `Goal`, or null when something in it isn't valid yet: not a number,
- * or a category-kind goal missing the category or target date it requires.
+ * The row as a `Goal`, minus `createdAt` — a draft never has one to state, and the
+ * write path below (`bodyOf`) never sends it either — or null when something in it
+ * isn't valid yet: not a number, or a category-kind goal missing the category or
+ * target date it requires.
  *
  * `id` is the empty string for an unsaved draft — the request that creates the row
  * doesn't carry one.
  */
-function parseRow(row: Draft): Goal | null {
+function parseRow(row: Draft): Omit<Goal, 'createdAt'> | null {
   const targetCents = parseMoneyToCents(row.targetCents)
   if (targetCents === null || targetCents <= 0) return null
 
@@ -98,7 +100,7 @@ function parseRow(row: Draft): Goal | null {
  * and minus `status`/`doneAt` — `goalRequest` on the server deliberately has no
  * such fields, per the module doc comment.
  */
-const bodyOf = (goal: Goal): Omit<Goal, 'id' | 'status' | 'doneAt'> => ({
+const bodyOf = (goal: Omit<Goal, 'createdAt'>): Omit<Goal, 'id' | 'status' | 'doneAt' | 'createdAt'> => ({
   kind: goal.kind,
   categoryId: goal.categoryId,
   priority: goal.priority,

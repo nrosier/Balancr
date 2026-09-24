@@ -170,6 +170,10 @@ export function collectBundle(
   const categories: BundleCategory[] = loadFacts(db, tenantId, month, locale)
     .filter(worthSending)
     .map((fact) => ({ fact, meta: meta.get(fact.categoryId) ?? null }))
+  // Independent of `worthSending` above: a hidden, activity-less `aiExcluded`
+  // category never gets a `categories` row for this month, but a `category`-kind
+  // goal can still name it, so the goals filter below needs the complete set.
+  const excludedCategoryIds = [...meta.values()].filter((row) => row.aiExcluded).map((row) => row.categoryId)
 
   const window = history.map((entry) => entry.month)
   const uncategorised = loadUncategorised(db, tenantId, window)
@@ -181,6 +185,7 @@ export function collectBundle(
     currency: config.BASE_CURRENCY,
     formatLocale: config.FORMAT_LOCALE,
     categories,
+    excludedCategoryIds,
     totals,
     // The month itself is `totals`; repeating it in the history would have the
     // model read the latest point twice when it looks for a trend.

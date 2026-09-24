@@ -22,12 +22,19 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, goals } from '../../db/schema.ts'
+import { isDate } from '../../util/month.ts'
 import { goalKinds, goalPriorities, MAX_GOALS, type Goal } from './vocabulary.ts'
 
 export { goalKinds, goalPriorities, goalStatuses, GOAL_DONE_GRACE_DAYS, MAX_GOALS } from './vocabulary.ts'
 export type { Goal, GoalKind, GoalPriority, GoalStatus } from './vocabulary.ts'
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+/**
+ * Shape *and* calendar validity — `month.ts`'s arithmetic (`monthOf`, `monthsBetween`,
+ * ...) throws on a date its own `isDate` rejects, so a shape-only regex here would let
+ * something like `2026-13-45` past this schema only to crash the first time progress
+ * is computed for it, instead of being refused cleanly at create/update time.
+ */
+const isoDate = z.string().refine(isDate, { message: 'invalid date' })
 
 /**
  * One goal as it may be written.
@@ -89,10 +96,11 @@ export class TooManyGoalsError extends Error {
 
 /**
  * Thrown when a `category`-kind goal's `categoryId` names no category this tenant
- * has ever seen. Its own error rather than a `ZodError`, for the same reason
- * `TooManyGoalsError` is: it is not a fact the shape of the body can tell, and a
- * stale or bogus id would otherwise produce a goal that can never resolve a name
- * or a balance. The route maps it to 400, same as a `ZodError`.
+ * has ever seen, or names an income category. Its own error rather than a
+ * `ZodError`, for the same reason `TooManyGoalsError` is: it is not a fact the shape
+ * of the body can tell, and a stale/bogus/income id would otherwise produce a goal
+ * that can never resolve a name or a balance a household would recognise as
+ * something to save toward. The route maps it to 400, same as a `ZodError`.
  */
 export class UnknownCategoryError extends Error {
   constructor(categoryId: string) {
@@ -101,15 +109,15 @@ export class UnknownCategoryError extends Error {
   }
 }
 
-/** Throws `UnknownCategoryError` when `categoryId` is set but unrecognised. */
+/** Throws `UnknownCategoryError` when `categoryId` is set but unrecognised, or names an income category. */
 function assertKnownCategory(db: Db, tenantId: string, categoryId: string | null): void {
   if (categoryId === null) return
   const row = db
-    .select({ categoryId: categoryMeta.categoryId })
+    .select({ isIncome: categoryMeta.isIncome })
     .from(categoryMeta)
     .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
     .get()
-  if (row === undefined) throw new UnknownCategoryError(categoryId)
+  if (row === undefined || row.isIncome) throw new UnknownCategoryError(categoryId)
 }
 
 type GoalRow = typeof goals.$inferSelect
@@ -124,6 +132,7 @@ const toGoal = (row: GoalRow): Goal => ({
   targetDate: row.targetDate,
   status: row.status,
   doneAt: row.doneAt,
+  createdAt: row.createdAt.toISOString().slice(0, 10),
 })
 
 /**
@@ -165,7 +174,8 @@ export function loadGoal(db: Db, tenantId: string, id: string): Goal | null {
 
 export function createGoal(db: Db, tenantId: string, input: GoalInput): Goal {
   const next = goalInputSchema.parse(input)
-  if (listGoals(db, tenantId).length >= MAX_GOALS) throw new TooManyGoalsError()
+  const activeGoalCount = listGoals(db, tenantId).filter((goal) => goal.status === 'active').length
+  if (activeGoalCount >= MAX_GOALS) throw new TooManyGoalsError()
   assertKnownCategory(db, tenantId, next.categoryId)
 
   const created = db.insert(goals).values({ tenantId, ...next }).returning().all()[0]

@@ -281,6 +281,7 @@ function bundle(overrides: Partial<AnalysisBundle> = {}): AnalysisBundle {
         meta: null,
       },
     ],
+    excludedCategoryIds: ['cat-withheld'],
     totals: totals('2026-08'),
     totalsHistory: [totals('2026-06'), totals('2026-07')],
     netWorth: {
@@ -618,6 +619,7 @@ describe('an excluded category (#278)', () => {
   const nothingExcluded = () =>
     bundle({
       categories: bundle().categories.filter((c) => c.fact.categoryId !== 'cat-withheld'),
+      excludedCategoryIds: [],
       signals: bundle().signals.filter((s) => s.categoryId !== 'cat-withheld'),
     })
 
@@ -786,6 +788,39 @@ describe('a category-linked goal (#407)', () => {
       }),
     ).payload
     expect(payload.goals.some((g) => g.label === 'Secret goal')).toBe(false)
+    expect(JSON.stringify(payload.goals)).not.toContain('cat-withheld')
+  })
+
+  it('is dropped even when its envelope has no activity this month, so no `categories` row exists for it', () => {
+    // The bug this pins: `excludedCategoryIds` names every aiExcluded category the
+    // tenant has, not just the ones that also made it into `categories` this month
+    // (an envelope with no spend/budget/transactions this month never gets a row
+    // there at all — see `worthSending` in bundle.ts). A goal naming that quiet
+    // envelope must still be dropped, or it leaks the one thing exclusion withholds.
+    const payload = redact(
+      bundle({
+        categories: bundle().categories.filter((c) => c.fact.categoryId !== 'cat-withheld'),
+        excludedCategoryIds: ['cat-withheld'],
+        goals: [
+          ...bundle().goals,
+          {
+            label: 'Quiet secret goal',
+            kind: 'category',
+            priority: 'normal',
+            categoryId: 'cat-withheld',
+            targetCents: 100_000,
+            targetDate: '2026-12-01',
+            currentCents: 10_000,
+            progressBp: 1_000,
+            met: false,
+            monthlyRateCents: 5_000,
+            monthsToTarget: 18,
+            etaMonth: '2028-06',
+          },
+        ],
+      }),
+    ).payload
+    expect(payload.goals.some((g) => g.label === 'Quiet secret goal')).toBe(false)
     expect(JSON.stringify(payload.goals)).not.toContain('cat-withheld')
   })
 })

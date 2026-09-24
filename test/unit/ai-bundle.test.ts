@@ -9,9 +9,11 @@
  * window the score was computed over, and nothing here recomputes a number that
  * another pass already owns.
  */
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
+import { categoryMeta, goals } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
@@ -36,6 +38,21 @@ beforeEach(() => {
   applyMigrations(ctx.db as never)
   tenantId = getSoleTenantId(ctx.db)
 })
+
+/**
+ * `createGoal` always stamps `createdAt` as real wall-clock "now" — fine for
+ * every other test here, but a goal analysed for a month in the past (as most of
+ * `collectBundle goals` below does) needs one that predates that month, or
+ * `existedAsOf`'s historical-existence filter drops it same as it would drop a
+ * goal genuinely created after the narrated month.
+ */
+function backdateGoal(id: string, createdAt: string): void {
+  ctx.db
+    .update(goals)
+    .set({ createdAt: new Date(createdAt) })
+    .where(eq(goals.id, id))
+    .run()
+}
 
 function holding(overrides: Partial<HoldingSnapshot> = {}): HoldingSnapshot {
   return {
@@ -176,6 +193,25 @@ describe('collectBundle categories', () => {
     })
     expect(collectBundle(ctx.db, tenantId, '2026-03')?.categories).toHaveLength(1)
   })
+
+  it('names an aiExcluded category in excludedCategoryIds even once it drops out of categories', () => {
+    // #278's own exclusion has to survive a quiet month: an envelope with no
+    // spend/budget/transactions this month never gets a `categories` row (see
+    // "drops a hidden category with nothing in it" above), so deriving the excluded
+    // set from `categories` alone would forget it was ever excluded the moment it
+    // went quiet — exactly the gap a `category`-kind goal naming it could exploit.
+    seedMonth(ctx.db, tenantId, '2026-02', { facts: [fact('2026-02', 'therapy')] })
+    ctx.db
+      .update(categoryMeta)
+      .set({ aiExcluded: true })
+      .where(eq(categoryMeta.categoryId, 'therapy'))
+      .run()
+    seedMonth(ctx.db, tenantId, '2026-03', { facts: [fact('2026-03', 'food')] })
+
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
+    expect(bundle?.categories.map((c) => c.fact.categoryId)).toEqual(['food'])
+    expect(bundle?.excludedCategoryIds).toEqual(['therapy'])
+  })
 })
 
 describe('collectBundle hygiene', () => {
@@ -306,7 +342,12 @@ describe('collectBundle goals (#407)', () => {
     }
     seedMonth(ctx.db, tenantId, '2026-03')
     persistNetWorth(ctx.db, tenantId, computeNetWorth('2026-03-31', [contribution]))
-    createGoal(ctx.db, tenantId, { label: 'Emergency fund', kind: 'liquid', targetCents: 1_000_000 })
+    const created = createGoal(ctx.db, tenantId, {
+      label: 'Emergency fund',
+      kind: 'liquid',
+      targetCents: 1_000_000,
+    })
+    backdateGoal(created.id, '2026-01-01')
 
     const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
     expect(goals).toHaveLength(1)
@@ -321,7 +362,12 @@ describe('collectBundle goals (#407)', () => {
 
   it('reports null progress for a goal when there is no net worth yet, rather than a fabricated zero', () => {
     seedMonth(ctx.db, tenantId, '2026-03')
-    createGoal(ctx.db, tenantId, { label: 'House deposit', kind: 'total', targetCents: 2_000_000 })
+    const created = createGoal(ctx.db, tenantId, {
+      label: 'House deposit',
+      kind: 'total',
+      targetCents: 2_000_000,
+    })
+    backdateGoal(created.id, '2026-01-01')
 
     const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
     expect(goals?.[0]).toMatchObject({ currentCents: null, progressBp: null, met: null })
@@ -333,13 +379,14 @@ describe('collectBundle goals (#407)', () => {
     seedMonth(ctx.db, tenantId, '2026-03', {
       facts: [fact('2026-03', 'food', { availableCents: 12_000 })],
     })
-    createGoal(ctx.db, tenantId, {
+    const created = createGoal(ctx.db, tenantId, {
       label: 'New oven',
       kind: 'category',
       categoryId: 'food',
       targetCents: 24_000,
       targetDate: '2026-06-01',
     })
+    backdateGoal(created.id, '2026-01-01')
 
     const goals = collectBundle(ctx.db, tenantId, '2026-03')?.goals
     expect(goals).toHaveLength(1)
@@ -350,6 +397,32 @@ describe('collectBundle goals (#407)', () => {
       progressBp: 5_000,
       met: false,
     })
+  })
+
+  it('still names the categoryId of a goal targeting a quiet, aiExcluded envelope — redact() is the one that drops it', () => {
+    // The collector's job is only to make a figure available, never to withhold
+    // one — `bundle.excludedCategoryIds` (verified above) is what lets `redact()`
+    // do the actual dropping. This pins that the collector itself does not also
+    // need to filter, which would make the exclusion boundary live in two places.
+    seedMonth(ctx.db, tenantId, '2026-02', { facts: [fact('2026-02', 'therapy')] })
+    ctx.db
+      .update(categoryMeta)
+      .set({ aiExcluded: true })
+      .where(eq(categoryMeta.categoryId, 'therapy'))
+      .run()
+    seedMonth(ctx.db, tenantId, '2026-03', { facts: [fact('2026-03', 'food')] })
+    const created = createGoal(ctx.db, tenantId, {
+      label: 'Quiet secret goal',
+      kind: 'category',
+      categoryId: 'therapy',
+      targetCents: 24_000,
+      targetDate: '2026-06-01',
+    })
+    backdateGoal(created.id, '2026-01-01')
+
+    const bundle = collectBundle(ctx.db, tenantId, '2026-03')
+    expect(bundle?.goals.some((g) => g.categoryId === 'therapy')).toBe(true)
+    expect(bundle?.excludedCategoryIds).toContain('therapy')
   })
 })
 

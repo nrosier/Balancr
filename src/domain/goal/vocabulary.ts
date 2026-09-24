@@ -48,4 +48,11 @@ export interface Goal {
   status: GoalStatus
   /** YYYY-MM-DD, set iff `status === 'done'` — anchors the undo grace window. */
   doneAt: string | null
+  /**
+   * YYYY-MM-DD this goal was created. Not bookkeeping to drop the way
+   * `loan/vocabulary.ts` drops it — a historical rejudge of a past month (AI
+   * narrative) must not surface a goal that did not exist yet as of that month,
+   * and `createdAt` is the only signal that says so. See `existedAsOf`.
+   */
+  createdAt: string
 }

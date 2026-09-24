@@ -12,7 +12,7 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
-import { loadGoalsWithProgress } from '../../src/domain/aggregate/goal-store.ts'
+import { categorySiblingCount, loadGoalsWithProgress } from '../../src/domain/aggregate/goal-store.ts'
 import { createGoal, updateGoal, type GoalInput } from '../../src/domain/goal/goals.ts'
 import type { NetWorthSummary } from '../../src/domain/aggregate/networth.ts'
 
@@ -168,6 +168,64 @@ describe('a done goal within its grace window', () => {
     // The done goal no longer shares the pool, so the sole remaining active goal
     // draws all of it rather than half.
     expect(results.find((row) => row.id === active.id)?.currentCents).toBe(30_000)
+
+    // Nor does it still count as a sibling — it's frozen, not an active co-tenant of the pool.
+    const activeResult = results.find((row) => row.id === active.id)
+    expect(activeResult && categorySiblingCount(results, activeResult)).toBe(0)
+  })
+})
+
+describe('a goal created after the month being narrated', () => {
+  it('does not appear in a rejudge of a month before it existed', () => {
+    const created = createGoal(ctx.db, TENANT_ID, goal({ kind: 'liquid' }))
+
+    // createGoal stamps createdAt as real wall-clock "now"; asking for a month
+    // years before that must not surface a goal that did not exist yet.
+    const results = loadGoalsWithProgress(ctx.db, TENANT_ID, netWorth(), '2020-01', '2026-09-24')
+
+    expect(results.find((row) => row.id === created.id)).toBeUndefined()
+  })
+})
+
+describe('a category with no fact row for the month being narrated', () => {
+  it('answers null rather than falling back to an earlier month\'s stale balance', () => {
+    // Only August has a fact row; September (the narrated month) has none.
+    seedCategory('cat-tv', 30_000, '2026-08')
+    const created = createGoal(
+      ctx.db,
+      TENANT_ID,
+      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' }),
+    )
+
+    const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
+    const result = results.find((row) => row.id === created.id)
+
+    expect(result?.currentCents).toBeNull()
+  })
+})
+
+describe('a lone category goal whose pool is exactly zero this month', () => {
+  it('still scales its historical trend by its full share (1), rather than flattening it to zero', () => {
+    seedCategory('cat-tv', 20_000, '2026-08')
+    // Same category, a second month — not a second categoryMeta row (that column
+    // pair is the table's primary key).
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month: '2026-09', categoryId: 'cat-tv', availableCents: 0 })
+      .run()
+    const created = createGoal(
+      ctx.db,
+      TENANT_ID,
+      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' }),
+    )
+
+    const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
+    const result = results.find((row) => row.id === created.id)
+
+    expect(result?.currentCents).toBe(0)
+    // A lone goal's share ratio is 1 regardless of the current pool's size, so the
+    // trend behind it is the category's own history, unscaled to zero.
+    expect(result?.monthlyRateCents).toBe(-20_000)
   })
 })
 

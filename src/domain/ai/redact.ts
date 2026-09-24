@@ -84,6 +84,15 @@ export interface AnalysisBundle {
   formatLocale: string
   /** One entry per category in the month, with whatever is known about it. */
   categories: readonly BundleCategory[]
+  /**
+   * Every `aiExcluded` category id this tenant has, regardless of whether it had any
+   * activity this month — not derivable from `categories` above, which already
+   * dropped a hidden, activity-less category before this bundle was built (#278's
+   * `worthSending`). A `category`-kind goal can name one of those with no activity of
+   * its own, so the goals filter below needs the complete set, not just the subset
+   * that happened to also have a `categories` row.
+   */
+  excludedCategoryIds: readonly string[]
   totals: MonthTotals
   /** Trailing months, oldest first, for the model to see a trend. */
   totalsHistory: readonly MonthTotals[]
@@ -728,12 +737,11 @@ export function redact(bundle: AnalysisBundle): Redaction {
   // to state the block below, so they cannot be un-collected; and this file is the one
   // whose review is a review of everything that leaves, so the one place that drops a
   // row is the one place a reader has to check.
-  const excludedIds = new Set<string>()
+  const excludedIds = new Set<string>(bundle.excludedCategoryIds)
   const excludedEntries: BundleCategory[] = []
   const visible: BundleCategory[] = []
   for (const entry of bundle.categories) {
     if (entry.meta?.aiExcluded === true) {
-      excludedIds.add(entry.fact.categoryId)
       excludedEntries.push(entry)
     } else {
       visible.push(entry)

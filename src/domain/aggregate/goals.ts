@@ -258,8 +258,9 @@ export function computeGoalPace(
   requiredMonthlyCents: number | null,
   observedMonthlyRateCents: number | null,
 ): GoalPace | null {
-  if (requiredMonthlyCents === null || observedMonthlyRateCents === null) return null
+  if (requiredMonthlyCents === null) return null
   if (requiredMonthlyCents <= 0) return 'onTrack'
+  if (observedMonthlyRateCents === null) return null
   const rateBp = Math.round((observedMonthlyRateCents / requiredMonthlyCents) * 10_000)
   if (rateBp >= PACE_ON_TRACK_BP) return 'onTrack'
   if (rateBp >= PACE_AT_RISK_BP) return 'atRisk'
@@ -275,4 +276,38 @@ export function computeGoalPace(
 export function isGoalVisible(goal: Pick<Goal, 'status' | 'doneAt'>, today: string): boolean {
   if (goal.status === 'active' || goal.doneAt === null) return true
   return daysBetween(goal.doneAt, today) <= GOAL_DONE_GRACE_DAYS
+}
+
+/**
+ * True when this goal already existed as of `asOfMonth`. `isGoalVisible` answers a
+ * present-tense lifecycle question ("is this goal currently archived") and is the
+ * same regardless of which month is being narrated; this answers the orthogonal,
+ * historical one — a goal created in June has no business appearing in a rejudge
+ * of March, even though it is visible today. Only `goal-store.ts`'s AI-narrative
+ * path can ever see `asOfMonth < today`'s month; Overview/Budget always pass the
+ * current month, where this is true by construction.
+ */
+export function existedAsOf(goal: Pick<Goal, 'createdAt'>, asOfMonth: string): boolean {
+  return monthOf(goal.createdAt) <= asOfMonth
+}
+
+/**
+ * This goal's fractional share of a shared category's pool — the same urgency
+ * weight ratio `splitCategoryPool` applies to `poolCents`, exposed on its own so a
+ * historical trend can be scaled by it even when the *current* pool is exactly
+ * zero. `share / poolCents` degenerates to `0` at that boundary and would flatten
+ * every past month of the trend along with it; the weight ratio itself has no
+ * such dependency on the pool's size, only on the siblings' relative urgency.
+ */
+export function goalPoolShareRatio(
+  goal: { targetCents: number; targetDate: string },
+  candidates: readonly CategoryPoolCandidate[],
+  asOfMonth: string,
+): number {
+  const totalWeight = candidates.reduce(
+    (sum, candidate) => sum + goalUrgencyWeight(candidate.targetCents, candidate.targetDate, asOfMonth),
+    0,
+  )
+  if (totalWeight === 0) return 0
+  return goalUrgencyWeight(goal.targetCents, goal.targetDate, asOfMonth) / totalWeight
 }

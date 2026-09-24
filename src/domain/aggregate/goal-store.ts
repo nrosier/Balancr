@@ -33,7 +33,9 @@ import {
   computeGoalPace,
   computeGoalProgress,
   currentCentsFor,
+  existedAsOf,
   GOAL_TREND_WINDOW_MONTHS,
+  goalPoolShareRatio,
   isGoalVisible,
   monthlyGoalTrend,
   projectGoal,
@@ -85,7 +87,9 @@ export function loadGoalsWithProgress(
   asOfMonth: string,
   today: string,
 ): GoalWithProgress[] {
-  const visible = listGoals(db, tenantId).filter((goal) => isGoalVisible(goal, today))
+  const visible = listGoals(db, tenantId).filter(
+    (goal) => isGoalVisible(goal, today) && existedAsOf(goal, asOfMonth),
+  )
   const results = new Map<string, GoalWithProgress>()
 
   for (const goal of visible) {
@@ -134,10 +138,14 @@ export function loadGoalsWithProgress(
       asOfMonth,
       GOAL_TREND_WINDOW_MONTHS + 1,
     )
-    // No fact row at all for this category means "not known yet", the same reason
-    // a goal's currentCents is null before the first net-worth sync — not a zero
-    // balance to split.
-    const poolCents = rawTrend.length === 0 ? null : (rawTrend.at(-1) as { valueCents: number }).valueCents
+    // No fact row for `asOfMonth` itself — either none at all, or `rawTrend` (which
+    // omits months with no row, see `loadCategoryAvailableTrend`) ends on some
+    // earlier month — means "not known yet as of the month being narrated", the
+    // same reason a goal's currentCents is null before the first net-worth sync.
+    // Falling back to a stale prior month's balance here would report an old
+    // figure as if it were current.
+    const latest = rawTrend.at(-1)
+    const poolCents = latest?.month === asOfMonth ? latest.valueCents : null
 
     const candidates: CategoryPoolCandidate[] = siblings.map((goal) => ({
       goalId: goal.id,
@@ -151,7 +159,15 @@ export function loadGoalsWithProgress(
     for (const goal of siblings) {
       const share = shares?.get(goal.id) ?? null
       const progress = computeGoalProgress(goal, share)
-      const scale = poolCents === null || poolCents === 0 || share === null ? 0 : share / poolCents
+      // The urgency weight ratio, not `share / poolCents` — that degenerates to `0`
+      // whenever this month's pool happens to be exactly `0` (an ordinary "fully
+      // spent this envelope" state), which would flatten every past month of the
+      // trend along with the current one instead of just reporting `currentCents: 0`.
+      const scale =
+        poolCents === null
+          ? 0
+          // Non-null by the same write-time invariant `candidates` above relies on.
+          : goalPoolShareRatio({ targetCents: goal.targetCents, targetDate: goal.targetDate as string }, candidates, asOfMonth)
       const trend =
         poolCents === null
           ? []
@@ -186,6 +202,10 @@ export function loadGoalsWithProgress(
 export function categorySiblingCount(goals: readonly GoalWithProgress[], goal: GoalWithProgress): number {
   if (goal.kind !== 'category' || goal.categoryId === null) return 0
   return goals.filter(
-    (other) => other.id !== goal.id && other.kind === 'category' && other.categoryId === goal.categoryId,
+    (other) =>
+      other.id !== goal.id &&
+      other.status === 'active' &&
+      other.kind === 'category' &&
+      other.categoryId === goal.categoryId,
   ).length
 }

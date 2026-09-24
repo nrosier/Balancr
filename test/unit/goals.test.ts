@@ -117,6 +117,13 @@ describe('the stored goals', () => {
     expect(() => createGoal(ctx.db, TENANT_ID, input({ kind: 'cash' as never }))).toThrow()
   })
 
+  it('refuses a calendar-invalid date, not just a malshaped one', () => {
+    // Right shape (\d{4}-\d{2}-\d{2}), but month 13 and day 45 don't exist — a
+    // shape-only regex would let this through, then crash the first time
+    // `month.ts`'s arithmetic (which does check the calendar) touched it.
+    expect(() => createGoal(ctx.db, TENANT_ID, input({ targetDate: '2026-13-45' }))).toThrow()
+  })
+
   it('refuses an unknown field rather than dropping it', () => {
     expect(() =>
       createGoal(ctx.db, TENANT_ID, { ...input(), stretch: true } as never),
@@ -136,10 +143,26 @@ describe('the stored goals', () => {
     expect(listGoals(ctx.db, TENANT_ID)).toHaveLength(MAX_GOALS)
   })
 
-  function seedCategory(id = 'cat-tv'): void {
+  it('does not count an archived goal against the cap', () => {
+    for (let i = 0; i < MAX_GOALS; i++) {
+      createGoal(ctx.db, TENANT_ID, input({ label: `Goal ${String(i)}` }))
+    }
+    const [first] = listGoals(ctx.db, TENANT_ID)
+    if (first) markGoalDone(ctx.db, TENANT_ID, first.id)
+
+    expect(() => createGoal(ctx.db, TENANT_ID, input({ label: 'One more' }))).not.toThrow()
+  })
+
+  function seedCategory(id = 'cat-tv', overrides: { isIncome?: boolean } = {}): void {
     ctx.db
       .insert(categoryMeta)
-      .values({ tenantId: TENANT_ID, categoryId: id, nameSnapshot: 'TV', isIncome: false, hidden: false })
+      .values({
+        tenantId: TENANT_ID,
+        categoryId: id,
+        nameSnapshot: 'TV',
+        isIncome: overrides.isIncome ?? false,
+        hidden: false,
+      })
       .run()
   }
 
@@ -158,6 +181,13 @@ describe('the stored goals', () => {
   it('refuses a category-kind goal naming an unknown category', () => {
     expect(() =>
       createGoal(ctx.db, TENANT_ID, input({ kind: 'category', categoryId: 'nope', targetDate: '2027-01-01' })),
+    ).toThrow(UnknownCategoryError)
+  })
+
+  it('refuses a category-kind goal naming an income category', () => {
+    seedCategory('cat-salary', { isIncome: true })
+    expect(() =>
+      createGoal(ctx.db, TENANT_ID, input({ kind: 'category', categoryId: 'cat-salary', targetDate: '2027-01-01' })),
     ).toThrow(UnknownCategoryError)
   })
 

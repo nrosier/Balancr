@@ -16,6 +16,8 @@ import {
   computeGoalPace,
   computeGoalProgress,
   currentCentsFor,
+  existedAsOf,
+  goalPoolShareRatio,
   isGoalVisible,
   monthlyGoalTrend,
   projectGoal,
@@ -35,6 +37,7 @@ const GOAL: Goal = {
   targetDate: null,
   status: 'active',
   doneAt: null,
+  createdAt: '2026-01-01',
 }
 
 const netWorth = (overrides: Partial<NetWorthSummary> = {}): NetWorthSummary => ({
@@ -228,6 +231,13 @@ describe('computeGoalPace', () => {
     expect(computeGoalPace(0, -50_000)).toBe('onTrack')
   })
 
+  it('is onTrack even when no observed rate exists yet, once nothing more is required', () => {
+    // projectGoal never reports a monthlyRateCents once a goal is met (there is
+    // nothing left to project a rate for), so requiredMonthlyCents <= 0 must win
+    // over the "no observed rate" null-out — a met goal always reads as onTrack.
+    expect(computeGoalPace(0, null)).toBe('onTrack')
+  })
+
   it('is onTrack at exactly 100% of the required rate', () => {
     expect(computeGoalPace(100_000, 100_000)).toBe('onTrack')
   })
@@ -260,5 +270,43 @@ describe('isGoalVisible', () => {
 
   it('is false the day after the grace window closes', () => {
     expect(isGoalVisible({ status: 'done', doneAt: '2026-09-16' }, '2026-09-24')).toBe(false)
+  })
+})
+
+describe('existedAsOf', () => {
+  it('is true for a goal created before the narrated month', () => {
+    expect(existedAsOf({ createdAt: '2026-06-15' }, '2026-09')).toBe(true)
+  })
+
+  it('is true for a goal created within the narrated month', () => {
+    expect(existedAsOf({ createdAt: '2026-09-15' }, '2026-09')).toBe(true)
+  })
+
+  it('is false for a goal created after the narrated month — it has no business in a past rejudge', () => {
+    expect(existedAsOf({ createdAt: '2026-10-01' }, '2026-09')).toBe(false)
+  })
+})
+
+describe('goalPoolShareRatio', () => {
+  it('gives a lone candidate the whole pool, ratio 1, regardless of the pool size', () => {
+    const candidates = [{ goalId: 'a', targetCents: 500_00, targetDate: '2026-12-01' }]
+    expect(goalPoolShareRatio({ targetCents: 500_00, targetDate: '2026-12-01' }, candidates, '2026-09')).toBe(1)
+  })
+
+  it('splits two goals of equal urgency evenly', () => {
+    const candidates = [
+      { goalId: 'a', targetCents: 500_00, targetDate: '2026-10-01' },
+      { goalId: 'b', targetCents: 500_00, targetDate: '2026-10-01' },
+    ]
+    expect(goalPoolShareRatio(candidates[0] as never, candidates, '2026-09')).toBe(0.5)
+  })
+
+  it('stays well-defined even when the pool this ratio would scale is exactly zero', () => {
+    // The whole point of exposing this separately from `share / poolCents`: the
+    // weight ratio has no dependency on the pool's current size at all.
+    const candidates = [{ goalId: 'a', targetCents: 500_00, targetDate: '2026-12-01' }]
+    const ratio = goalPoolShareRatio({ targetCents: 500_00, targetDate: '2026-12-01' }, candidates, '2026-09')
+    expect(ratio).toBe(1)
+    expect(Number.isFinite(ratio)).toBe(true)
   })
 })
