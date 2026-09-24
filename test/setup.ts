@@ -17,3 +17,7 @@ process.env.GEMINI_API_KEY = 'test-key'
 process.env.SESSION_SECRET = 'x'.repeat(48)
 process.env.CONFIG_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64')
 process.env.AUTH_LOCAL_ENABLED = 'true'
+// Pinned rather than left to whatever a developer's own .env happens to say — a test
+// that bursts past this limit needs its runtime bounded, not tied to a value that can
+// go as high as 1000 (#47).
+process.env.RATE_LIMIT_AI_PER_HOUR = '30'
