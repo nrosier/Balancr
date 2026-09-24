@@ -1006,13 +1006,16 @@ dangerous" is not: a blocklist could never keep up with an unknown compromised
 dependency reaching for an address nobody thought to list. The trade-off is that every
 check here is a hostname string match, never a check of the IP that name resolves to —
 so a host already on the list (an `EGRESS_EXTRA_HOSTS` entry, or Actual/Ghostfolio's own
-configured URL) whose DNS record is later hijacked would still pass (#467). That gap is
-left undefended on purpose: closing it needs a `fetch` dispatcher that
-inspects the resolved socket address before the handshake completes, for a threat that
-first requires an attacker to gain DNS control over a name the operator already
-trusts — which sits on the far side of the "attacker who already runs code here" line
-just above, not outside it. A hostname nobody approved is refused regardless of what it
-resolves to; that part never depends on DNS at all.
+configured URL) whose DNS record is later hijacked would still pass (#467). This is a
+different trust assumption than the "attacker who already runs code here" one just
+above: rebinding an approved host needs no code running in this process at all, only
+control of the DNS record for a name the operator already trusted when they added it —
+a compromised registrar or DNS provider, or a domain that lapsed and was re-registered
+by someone else. That gap is left undefended on purpose: closing it needs a `fetch`
+dispatcher that inspects the resolved socket address before the handshake completes,
+which is real ongoing complexity for a threat that requires the attacker to first gain
+that DNS control. A hostname nobody approved is refused regardless of what it resolves
+to; that part never depends on DNS at all.
 
 ### The `.env` file
 
