@@ -6,6 +6,26 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.8] — 2026-09-25
+
+### Added
+
+- **Savings goals: category-linked goals, a required-monthly-savings figure,
+  a pace status, and a done/archive lifecycle**
+  ([#407](https://github.com/nrosier/Balancr/issues/407),
+  [#522](https://github.com/nrosier/Balancr/pull/522),
+  [#524](https://github.com/nrosier/Balancr/pull/524)). Alongside the
+  existing net-worth-kind goals (`liquid`/`invested`/`total`), a goal can now
+  target a specific Actual Budget envelope's rolling balance, and several
+  goals can share one envelope — the pool splits proportional to urgency
+  (target amount over months remaining), not raw target size. Every goal
+  with a target date gets a required-monthly-savings figure and a
+  green/orange/red pace status against it. Marking a goal done archives it
+  after a 7-day undo grace window rather than deleting it outright. Shown on
+  Overview and as a per-category badge on the Budget page; category-linked
+  goals route through the existing AI redaction so no raw category id or
+  name reaches a narrative prompt.
+
 ## [2.3.7] — 2026-09-24
 
 ### Added
