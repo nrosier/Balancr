@@ -26,6 +26,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
+import { config } from '../../src/config.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -602,6 +603,22 @@ describe('POST /api/ai/prompt-validate (#454)', () => {
   it('answers 404 for an id that does not exist', async () => {
     const fake = fakeGemini(SAFE_REPLY)
     expect((await validate({ promptId: 'nope' })).statusCode).toBe(404)
+    expect(fake.calls).toBe(0)
+  })
+
+  it('trips the AI rate limit on a real route without ever reaching the model (#47)', async () => {
+    // The 404 above proves this request never calls out; bursting it past
+    // `RATE_LIMIT_AI_PER_HOUR` proves the limiter trips on a real production route,
+    // through the real owner/CSRF path, at zero AI cost — not just on the synthetic
+    // stand-in route in server-rate-limit.test.ts.
+    const fake = fakeGemini(SAFE_REPLY)
+    for (let i = 0; i < config.RATE_LIMIT_AI_PER_HOUR; i += 1) {
+      expect((await validate({ promptId: 'nope' })).statusCode).toBe(404)
+    }
+
+    const blocked = await validate({ promptId: 'nope' })
+    expect(blocked.statusCode).toBe(429)
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('rate_limited')
     expect(fake.calls).toBe(0)
   })
 
