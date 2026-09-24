@@ -260,6 +260,12 @@ const FULL: BudgetPayload = {
   custody: { kind: 'unavailable', reason: 'no_shared', paidCents: null },
   uncategorised: { txnCount: 3, amountCents: 12_500 },
   actualConfigured: true,
+  goalsByCategory: [
+    {
+      categoryId: 'cat-groceries',
+      goals: [{ id: 'goal-tv', label: 'New TV', progressBp: 4_500, pace: 'atRisk' }],
+    },
+  ],
 }
 
 /** A deployment whose jobs have never run: no months at all. */
@@ -283,6 +289,7 @@ const EMPTY: BudgetPayload = {
   custody: { kind: 'unavailable', reason: 'no_month', paidCents: null },
   uncategorised: null,
   actualConfigured: true,
+  goalsByCategory: [],
 }
 
 /** A month that exists in the picker and was never aggregated. */

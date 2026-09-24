@@ -109,6 +109,7 @@
     "sankeySummary": "Er kwam {{income}} binnen en er ging {{spent}} uit. De grootste envelope was {{largest}} met {{amount}}.",
     "sankeyTitle": "Waar het geld naartoe gaat",
     "sankeyTotals": "Er kwam {{income}} binnen en er ging {{spent}} uit.",
+    "trendGoalLink": "Spaardoel",
     "trendSummary": "{{category}}: {{amount}} in {{month}}, tegenover een gemiddelde van {{baseline}}.",
     "trendSummaryPlain": "{{category}}: {{amount}} in {{month}}.",
     "trendTitle": "Uitgaven per categorie",

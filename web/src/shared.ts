@@ -97,6 +97,7 @@ export type {
   DriftLine,
   Forecast,
   Freshness,
+  GoalSetting,
   Hygiene,
   Insights,
   IntegrationsSetting,
@@ -110,6 +111,7 @@ export type {
   DebtSetting,
   LoanSetting,
   Overview,
+  OverviewGoal,
   Portfolio,
   PromptBody,
   PromptDiff,
@@ -226,6 +228,25 @@ export {
   totalMinimumPaymentCents,
 } from '../../src/domain/debt/vocabulary.ts'
 export type { Debt, DebtKind } from '../../src/domain/debt/vocabulary.ts'
+
+// The savings-goal vocabulary (#407). Re-exported for the same reason the loan and
+// debt vocabularies above are: the settings panel and the overview card both need
+// `goalKinds`/`goalPriorities`/`goalStatuses` to draw their pickers, and a goal has no
+// arithmetic of its own to duplicate — `currentCents` is always read fresh, pre-resolved
+// server-side (a `category` goal's own pooled share included), which is why nothing from
+// `domain/aggregate/goal-store.ts` needs re-exporting here. `goalPaces` is the one
+// exception: it is pure vocabulary, not a DB read, and the goal card needs it to draw
+// the pace badge's three CSS classes off the same list the server validates against.
+export {
+  goalKinds,
+  goalPriorities,
+  goalStatuses,
+  GOAL_DONE_GRACE_DAYS,
+  MAX_GOALS,
+} from '../../src/domain/goal/vocabulary.ts'
+export type { Goal, GoalKind, GoalPriority, GoalStatus } from '../../src/domain/goal/vocabulary.ts'
+export { goalPaces } from '../../src/domain/aggregate/goals.ts'
+export type { GoalPace } from '../../src/domain/aggregate/goals.ts'
 
 export { BAND_CLASSES, PRESET_IDS } from '../../src/domain/advice/vocabulary.ts'
 export type { BandClass, PresetId, ProfileId } from '../../src/domain/advice/vocabulary.ts'

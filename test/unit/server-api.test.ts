@@ -32,6 +32,7 @@ import {
   accountMap,
   categoryMeta,
   clarificationQueue,
+  monthlyCategoryFacts,
   prompts,
   proposals,
   tenantIntegrations,
@@ -59,10 +60,28 @@ import { persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
 import { computeNetWorth } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { createDebt } from '../../src/domain/debt/debts.ts'
+import { createGoal, markGoalDone } from '../../src/domain/goal/goals.ts'
 import { createLoan } from '../../src/domain/loan/loans.ts'
 import { saveProperties } from '../../src/domain/property/properties.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH, SNAPSHOT_DATE } from '../helpers/api-fixture.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+
+/**
+ * `/api/overview` and `/api/budget` both price category-kind goals (#407) against
+ * *right now*, not the fixture's fixed `MONTH`/`PREVIOUS_MONTH` — so a goal test
+ * seeds a fact row for today's real month rather than reusing the fixture's months.
+ */
+function todayParts(): { date: string; month: string } {
+  const date = new Date().toISOString().slice(0, 10)
+  return { date, month: date.slice(0, 7) }
+}
+
+/** A date a couple of months out from today, for a goal's targetDate. */
+function futureTargetDate(): string {
+  const future = new Date()
+  future.setUTCMonth(future.getUTCMonth() + 2)
+  return future.toISOString().slice(0, 10)
+}
 
 const ENDPOINTS = [
   '/api/overview',
@@ -268,6 +287,83 @@ describe('GET /api/overview', () => {
     const body = (await get('/api/overview')).json()
     expect(body.actualConfigured).toBe(true)
     expect(body.ghostfolioConfigured).toBe(false)
+  })
+})
+
+/**
+ * A category with no fixture history of its own — `cat-groceries`/`cat-energy`
+ * already carry facts for the fixture's fixed `PREVIOUS_MONTH`/`MONTH`, which would
+ * fall inside the goal trend's trailing window too (both are recent relative to
+ * today) and inflate a fresh goal's trend past one point. A goal-only category
+ * keeps the trend at exactly the one row this test seeds, so the assertions don't
+ * quietly depend on how far today has drifted from the fixture's fixed months.
+ */
+function seedGoalCategory(db: Db, tenantId: string, categoryId: string): void {
+  db.insert(categoryMeta)
+    .values({ tenantId, categoryId, nameSnapshot: 'New fridge fund', isIncome: false, hidden: false })
+    .run()
+}
+
+describe('a category-kind goal on GET /api/overview (#407)', () => {
+  it('prices it against the category it names, with a resolved name and sibling count', async () => {
+    const { month } = todayParts()
+    seedGoalCategory(ctx.db, TENANT_ID, 'cat-fridge')
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month, categoryId: 'cat-fridge', availableCents: 45_000 })
+      .run()
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'New fridge',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 90_000,
+      targetDate: futureTargetDate(),
+    })
+
+    const body = (await get('/api/overview')).json()
+    const goal = body.goals.find((row: { id: string }) => row.id === created.id)
+
+    expect(goal.currentCents).toBe(45_000)
+    expect(goal.progressBp).toBe(5_000)
+    expect(goal.categoryName).toBe('New fridge fund')
+    expect(goal.categorySiblingCount).toBe(0)
+    expect(goal.requiredMonthlyCents).not.toBeNull()
+    expect(goal.status).toBe('active')
+    expect(goal.doneAt).toBeNull()
+  })
+
+  it('splits a shared category between two goals and reports the sibling count on each', async () => {
+    const { month } = todayParts()
+    seedGoalCategory(ctx.db, TENANT_ID, 'cat-fridge')
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month, categoryId: 'cat-fridge', availableCents: 40_000 })
+      .run()
+    const a = createGoal(ctx.db, TENANT_ID, {
+      label: 'A',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 50_000,
+      targetDate: futureTargetDate(),
+    })
+    const b = createGoal(ctx.db, TENANT_ID, {
+      label: 'B',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 50_000,
+      targetDate: futureTargetDate(),
+    })
+
+    const body = (await get('/api/overview')).json()
+    const goalA = body.goals.find((row: { id: string }) => row.id === a.id)
+    const goalB = body.goals.find((row: { id: string }) => row.id === b.id)
+
+    expect(goalA.categorySiblingCount).toBe(1)
+    expect(goalB.categorySiblingCount).toBe(1)
+    expect(goalA.currentCents + goalB.currentCents).toBe(40_000)
   })
 })
 
@@ -480,6 +576,68 @@ describe('GET /api/budget', () => {
 
     unconfigure(ctx.db, 'actual')
     expect((await get('/api/budget')).json().actualConfigured).toBe(false)
+  })
+
+  it('is an empty array with no category-kind goal on file', async () => {
+    const body = (await get('/api/budget')).json()
+    expect(body.goalsByCategory).toEqual([])
+  })
+
+  it("groups a category-kind goal under the envelope it targets, independent of the page's own ?month= (#407)", async () => {
+    const { month } = todayParts()
+    seedGoalCategory(ctx.db, TENANT_ID, 'cat-fridge')
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month, categoryId: 'cat-fridge', availableCents: 45_000 })
+      .run()
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'New fridge',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 90_000,
+      targetDate: futureTargetDate(),
+    })
+
+    // Ask for the fixture's older month; the goal still shows up, present-tense.
+    const body = (await get(`/api/budget?month=${PREVIOUS_MONTH}`)).json()
+    const entry = body.goalsByCategory.find(
+      (row: { categoryId: string }) => row.categoryId === 'cat-fridge',
+    )
+
+    expect(entry).toBeDefined()
+    // A single month of history is not enough to observe a rate, so pace is
+    // unresolved rather than a guess — progressBp is still meaningful on its own.
+    expect(entry.goals).toEqual([{ id: created.id, label: 'New fridge', progressBp: 5_000, pace: null }])
+  })
+
+  it('drops a done goal from its category badge, even within its undo grace window', async () => {
+    seedGoalCategory(ctx.db, TENANT_ID, 'cat-fridge')
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'New fridge',
+      kind: 'category',
+      priority: 'normal',
+      categoryId: 'cat-fridge',
+      targetCents: 90_000,
+      targetDate: futureTargetDate(),
+    })
+    markGoalDone(ctx.db, TENANT_ID, created.id)
+
+    const body = (await get('/api/budget')).json()
+    expect(body.goalsByCategory).toEqual([])
+  })
+
+  it('never lists a net-worth-kind goal, since it names no category', async () => {
+    createGoal(ctx.db, TENANT_ID, {
+      label: 'Emergency fund',
+      kind: 'liquid',
+      priority: 'normal',
+      targetCents: 1_000_000,
+      targetDate: null,
+    })
+
+    const body = (await get('/api/budget')).json()
+    expect(body.goalsByCategory).toEqual([])
   })
 })
 
@@ -1741,6 +1899,9 @@ describe('a deployment that has never run a job', () => {
     expect(overview.totals).toBeNull()
     expect(overview.emergencyFundCentimonths).toBeNull()
     expect(overview.hygiene).toBeNull()
+    // No goal exists yet, which is a different fact from "a goal with no net worth
+    // to compare against" — the array is empty rather than absent (#407).
+    expect(overview.goals).toEqual([])
 
     const portfolio = (await get('/api/portfolio')).json()
     expect(portfolio.date).toBeNull()

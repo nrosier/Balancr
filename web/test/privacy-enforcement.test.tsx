@@ -42,9 +42,16 @@
  *    spending report) and `settings/Loans.tsx` (#441 — the same category, one form
  *    later: a loan's balance, payment and extra payment, each either filling an
  *    editable `<input value>` or building a `{{value}}` for a translated read-back
- *    sentence, neither of which `<Money>` can wrap) and `settings/Debts.tsx` (#442 — the
+ *    sentence, neither of which `<Money>` can wrap), `settings/Debts.tsx` (#442 — the
  *    same category again: a revolving debt's balance, minimum payment and estimated
- *    monthly interest, same two unwrappable shapes as the loan case).
+ *    monthly interest, same two unwrappable shapes as the loan case) and
+ *    `settings/Goals.tsx` (#407 — a goal's target amount, filling the same kind of
+ *    editable `<input value>`).
+ *  - `ui/Goals.tsx` (#407) — the overview card's own amounts line, the same
+ *    `{{current}} of {{target}}`-into-`t()` shape as the `insights/` entries above:
+ *    the two `formatMoney` calls build vars for a translated sentence with no
+ *    sub-string DOM node left to wrap, so the whole rendered line is wrapped in
+ *    `<Private>` at the call site instead (verified by reading the file).
  *  - `settings/Benchmark.tsx` — the average Belgian household's monthly spending (#290).
  *    Published national statistics rather than this household's money, so there is
  *    nothing about it to blur in the first place; and both calls are unwrappable anyway,
@@ -88,6 +95,8 @@ const ALLOWED = new Set(
     'settings/Property.tsx',
     'settings/Loans.tsx',
     'settings/Debts.tsx',
+    'settings/Goals.tsx',
+    'ui/Goals.tsx',
     'settings/Benchmark.tsx',
     'pages/Budget.tsx',
     'charts/ScenarioChart.tsx',

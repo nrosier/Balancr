@@ -366,6 +366,7 @@ const PAYLOAD: Payload = {
   property: { properties: [] },
   loans: [],
   debts: [],
+  goals: [],
   invites: [],
   integrations: {
     actual: {
@@ -535,6 +536,7 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/property': 'Property',
   '/settings/loans': 'Loans',
   '/settings/debts': 'Credit cards',
+  '/settings/goals': 'Savings goals',
 }
 
 /**
@@ -2963,6 +2965,200 @@ describe('debts (#442)', () => {
     expect((screen.getByLabelText('Outstanding balance') as HTMLInputElement).disabled).toBe(true)
     expect(saveExisting().disabled).toBe(true)
     expect(boxValue('Outstanding balance')).toBe('€ 2.000,00')
+  })
+})
+
+describe('goals (#407)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/goals')
+
+  const goals = (): HTMLElement => form('goals-form')
+
+  const addGoal = (): void => {
+    fireEvent.click(within(goals()).getByRole('button', { name: 'Add a goal' }))
+  }
+
+  const saveNew = (): HTMLButtonElement =>
+    within(goals()).getByRole('button', { name: 'Add this goal' }) as HTMLButtonElement
+
+  const saveExisting = (): HTMLButtonElement =>
+    within(goals()).getByRole('button', { name: 'Save this goal' }) as HTMLButtonElement
+
+  const removeGoal = (): void => {
+    fireEvent.click(within(goals()).getByRole('button', { name: 'Remove this goal' }))
+  }
+
+  const boxValue = (label: string): string =>
+    (screen.getByLabelText(label) as HTMLInputElement).value.replace(/[  ]/g, ' ')
+
+  /** A stored goal, as `/api/settings` sends it. */
+  const STORED: Payload['goals'][number] = {
+    id: 'goal-1',
+    kind: 'liquid',
+    categoryId: null,
+    priority: 'normal',
+    label: 'Emergency fund',
+    targetCents: 500_000,
+    targetDate: '2027-06-01',
+    status: 'active',
+    doneAt: null,
+  }
+
+  const withOneGoal = (extra: Partial<Payload['goals'][number]> = {}): Payload => ({
+    ...PAYLOAD,
+    goals: [{ ...STORED, ...extra }],
+  })
+
+  /** Fills every required box of the row just added. */
+  const fillNewRow = (): void => {
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Emergency fund' } })
+    fireEvent.change(screen.getByLabelText('Target amount'), { target: { value: '5000' } })
+  }
+
+  it('shows the empty state when nothing is stored yet', async () => {
+    await open(READS)
+
+    expect(
+      within(goals()).getByText(
+        'No savings goals yet. Add one to track progress toward it on the overview page.',
+      ),
+    ).toBeTruthy()
+    expect(within(goals()).queryByRole('button', { name: 'Save this goal' })).toBeNull()
+  })
+
+  it('offers every kind and priority', async () => {
+    await open(READS)
+
+    addGoal()
+    const kindSelect = screen.getByLabelText('Measured against') as HTMLSelectElement
+    expect(Array.from(kindSelect.options, (option) => option.value)).toEqual([
+      'liquid',
+      'invested',
+      'total',
+      'category',
+    ])
+    const prioritySelect = screen.getByLabelText('Priority') as HTMLSelectElement
+    expect(Array.from(prioritySelect.options, (option) => option.value)).toEqual([
+      'high',
+      'normal',
+      'low',
+    ])
+  })
+
+  it('POSTs a new row, with no id of its own — the server assigns that', async () => {
+    const calls = await open({ ...READS, '/api/settings/goals': json(withOneGoal({ targetDate: null })) })
+
+    addGoal()
+    fillNewRow()
+    fireEvent.click(saveNew())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/goals',
+          method: 'POST',
+          body: {
+            kind: 'liquid',
+            categoryId: null,
+            priority: 'normal',
+            label: 'Emergency fund',
+            targetCents: 500_000,
+            targetDate: null,
+          },
+        },
+      ])
+    })
+  })
+
+  it('has nothing to save until a stored row is actually changed', async () => {
+    await open({ ...READS, '/api/settings': json(withOneGoal()) })
+
+    expect(saveExisting().disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('Target amount'), { target: { value: '6000' } })
+    expect(saveExisting().disabled).toBe(false)
+  })
+
+  it('PATCHes the one goal it edited, at its own URL', async () => {
+    const stored = withOneGoal()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/goals/goal-1': json(stored),
+    })
+
+    fireEvent.change(screen.getByLabelText('Target amount'), { target: { value: '6000' } })
+    fireEvent.click(saveExisting())
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/goals/goal-1',
+          method: 'PATCH',
+          body: {
+            kind: 'liquid',
+            categoryId: null,
+            priority: 'normal',
+            label: 'Emergency fund',
+            targetCents: 600_000,
+            targetDate: '2027-06-01',
+          },
+        },
+      ])
+    })
+  })
+
+  it('DELETEs a stored row rather than patching a list without it', async () => {
+    const stored = withOneGoal()
+    const calls = await open({
+      ...READS,
+      '/api/settings': json(stored),
+      '/api/settings/goals/goal-1': json({ ...PAYLOAD, goals: [] }),
+    })
+
+    removeGoal()
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        { path: '/api/settings/goals/goal-1', method: 'DELETE', body: undefined },
+      ])
+    })
+  })
+
+  it('drops an unsaved row locally, with no request at all', async () => {
+    const calls = await open(READS)
+
+    addGoal()
+    removeGoal()
+
+    expect(writes(calls)).toEqual([])
+    expect(
+      within(goals()).getByText(
+        'No savings goals yet. Add one to track progress toward it on the overview page.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('refuses to send a row whose target amount does not parse yet', async () => {
+    await open({ ...READS, '/api/settings': json(withOneGoal()) })
+
+    fireEvent.change(screen.getByLabelText('Target amount'), { target: { value: 'not a number' } })
+
+    expect(saveExisting().disabled).toBe(true)
+    expect(within(goals()).getByText("Something in this row isn't valid yet.")).toBeTruthy()
+  })
+
+  it('leaves every control read-only for a viewer, and still readable', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...withOneGoal(),
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect((screen.getByLabelText('Target amount') as HTMLInputElement).disabled).toBe(true)
+    expect(saveExisting().disabled).toBe(true)
+    expect(boxValue('Target amount')).toBe(eur('5.000,00'))
   })
 })
 

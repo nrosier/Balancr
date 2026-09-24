@@ -261,6 +261,44 @@
     "save": "Save this card",
     "title": "Credit cards"
   },
+  "goals": {
+    "add": "Add a goal",
+    "archive": {
+      "doneOn": "Marked done on {{date}}.",
+      "toggle_one": "Show {{value}} archived goal",
+      "toggle_other": "Show {{value}} archived goals"
+    },
+    "categoryLabel": "Budget category",
+    "categoryPlaceholder": "Choose a category…",
+    "create": "Add this goal",
+    "done": "Mark done",
+    "hint": "A target amount, measured against one of Balancr's own net-worth figures, or against one Actual Budget category's own balance. Add a target date if you have one; leave it blank to track progress with no deadline. Shown on the overview page the next time it loads; nothing here recomputes.",
+    "invalid": "Something in this row isn't valid yet.",
+    "kind": {
+      "category": "A budget category",
+      "invested": "Invested",
+      "liquid": "Directly available",
+      "total": "Net worth"
+    },
+    "kindLabel": "Measured against",
+    "label": "Name",
+    "labelPlaceholder": "e.g. Emergency fund, House deposit",
+    "none": "No savings goals yet. Add one to track progress toward it on the overview page.",
+    "priority": {
+      "high": "High",
+      "low": "Low",
+      "normal": "Normal"
+    },
+    "priorityLabel": "Priority",
+    "reactivate": "Reactivate",
+    "remove": "Remove this goal",
+    "save": "Save this goal",
+    "target": "Target amount",
+    "targetDate": "Target date",
+    "targetDateHint": "Optional. Leave blank to track progress with no deadline.",
+    "targetDateHintCategory": "Required for a category goal — it is what a required-monthly-savings figure is measured against.",
+    "title": "Savings goals"
+  },
   "history": {
     "coverage": "Coverage",
     "coverageValue": "{{earliest}} – {{latest}}",
@@ -387,6 +425,7 @@
     "benchmark": "Benchmark",
     "debts": "Credit cards",
     "general": "General",
+    "goals": "Goals",
     "integrations": "Integrations",
     "loans": "Loans",
     "members": "Members",

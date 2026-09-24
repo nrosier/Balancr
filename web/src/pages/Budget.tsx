@@ -68,7 +68,7 @@ import { BudgetBullet, type BulletCategory } from '../charts/BudgetBullet.tsx'
 import { CategoryTrend } from '../charts/CategoryTrend.tsx'
 import { SpendSankey } from '../charts/SpendSankey.tsx'
 import { useT, type TFunction } from '../i18n.ts'
-import { useRouter } from '../router.tsx'
+import { Link, useRouter } from '../router.tsx'
 import {
   absolutePeriodSavings,
   formatBp,
@@ -79,6 +79,7 @@ import {
   resolveYearAnchor,
   type Budget as BudgetPayload,
   type BenchmarkPeriodKind,
+  type GoalPace,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
@@ -214,6 +215,7 @@ function Figures({
     benchmark,
     categories,
     custody,
+    goalsByCategory,
     history,
     month,
     months,
@@ -342,7 +344,12 @@ function Figures({
               </section>
 
               <Pace signals={rendered} t={t} />
-              <TrendWall categories={trend} months={trendMonths} signals={rendered} />
+              <TrendWall
+                categories={trend}
+                months={trendMonths}
+                signals={rendered}
+                goalsByCategory={goalsByCategory}
+              />
             </>
           )}
         </>
@@ -620,6 +627,13 @@ interface TrendWallProps {
   categories: readonly CategoryFact[]
   months: readonly string[]
   signals: readonly RenderedSignal[]
+  goalsByCategory: BudgetPayload['goalsByCategory']
+}
+
+const TREND_GOAL_DOT_CLASS: Record<GoalPace, string> = {
+  onTrack: 'badge--ok',
+  atRisk: 'badge--warn',
+  behind: 'badge--alert',
 }
 
 /**
@@ -628,8 +642,11 @@ interface TrendWallProps {
  * The burn-rate findings are filtered out because they have their own section above
  * with a bar that says the same thing better; every other finding about a category is
  * the one line of context that turns its shape into a statement.
+ *
+ * Goals sharing this envelope (#407) render as plain links to Settings rather than a
+ * query-param-filtered deep link — v1 has nowhere for that filter to land yet.
  */
-function TrendWall({ categories, months, signals }: TrendWallProps): ReactNode {
+function TrendWall({ categories, months, signals, goalsByCategory }: TrendWallProps): ReactNode {
   const { t } = useT()
   const [expanded, setExpanded] = useState(false)
 
@@ -684,6 +701,22 @@ function TrendWall({ categories, months, signals }: TrendWallProps): ReactNode {
                   {signal.text}
                 </p>
               ))}
+            {(goalsByCategory.find((g) => g.categoryId === category.categoryId)?.goals ?? []).map((goal) => (
+              <p className="trend__note" key={goal.id}>
+                <Link to="/settings/goals" className="trend__goal">
+                  <span className="sr-only">{t('budget:chart.trendGoalLink')}</span>
+                  {goal.label}
+                  {goal.pace !== null && (
+                    <span className={`badge ${TREND_GOAL_DOT_CLASS[goal.pace]}`}>
+                      {t(`portfolio:goals.pace.${goal.pace}`)}
+                    </span>
+                  )}
+                  {goal.progressBp !== null && (
+                    <span className="num"> {formatBp(goal.progressBp)}</span>
+                  )}
+                </Link>
+              </p>
+            ))}
           </article>
         ))}
       </div>

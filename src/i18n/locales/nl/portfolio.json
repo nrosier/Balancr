@@ -72,6 +72,34 @@
     "hint": "Deze rekening staat in beide tools; alleen de brongegevens tellen mee voor het nettovermogen.",
     "title": "Eenmaal geteld"
   },
+  "goals": {
+    "amounts": "{{current}} van {{target}}",
+    "amountsUnknown": "Nog niet gesynchroniseerd.",
+    "doneBadge": "Klaar",
+    "doneNote": "Als klaar gemarkeerd op {{date}}.",
+    "eta": {
+      "ahead": "Op koers om het rond {{eta}} te bereiken, eerder dan het streefdoel van {{target}}.",
+      "behind": "Op koers om het rond {{eta}} te bereiken, later dan het streefdoel van {{target}}.",
+      "noTarget": "Op koers om het rond {{eta}} te bereiken.",
+      "onTrack": "Op koers om het rond {{eta}} te bereiken, op schema voor het streefdoel van {{target}}.",
+      "reached": "Doel bereikt."
+    },
+    "none": "Nog geen spaardoelen. Voeg er een toe in Instellingen om hier de vooruitgang te volgen.",
+    "pace": {
+      "atRisk": "Risico",
+      "behind": "Achterstand",
+      "onTrack": "Op schema"
+    },
+    "required": "{{amount}}/maand nodig om op schema te blijven.",
+    "sharing_one": "Deelt deze budgetcategorie met {{value}} ander doel.",
+    "sharing_other": "Deelt deze budgetcategorie met {{value}} andere doelen.",
+    "title": "Spaardoelen",
+    "trend_one": "Gebaseerd op de laatste maand nettovermogen, {{from}}.",
+    "trend_other": "Gebaseerd op de laatste {{value}} maanden nettovermogen, {{from}} tot {{to}}.",
+    "trendCategory_one": "Gebaseerd op de laatste maand van het saldo van deze categorie, {{from}}.",
+    "trendCategory_other": "Gebaseerd op de laatste {{value}} maanden van het saldo van deze categorie, {{from}} tot {{to}}.",
+    "unknownProgress": "Nog niet genoeg gegevens"
+  },
   "holding": {
     "caption_one": "Eén positie.",
     "caption_other": "{{value}} posities, grootste eerst.",

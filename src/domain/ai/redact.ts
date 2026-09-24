@@ -39,6 +39,7 @@ import type { AccountKind, categoryMeta } from '../../db/schema.ts'
 import type { AccountMapRow } from '../aggregate/accounts.ts'
 import type { NetWorthSummary } from '../aggregate/networth.ts'
 import type { Signal } from '../aggregate/overspend.ts'
+import type { GoalKind, GoalPriority } from '../goal/vocabulary.ts'
 import type { MonthlyFact, MonthTotals } from '../aggregate/spend.ts'
 import type { DriftState } from '../advice/drift.ts'
 import type { DriftPersistence } from '../advice/persistence.ts'
@@ -83,10 +84,21 @@ export interface AnalysisBundle {
   formatLocale: string
   /** One entry per category in the month, with whatever is known about it. */
   categories: readonly BundleCategory[]
+  /**
+   * Every `aiExcluded` category id this tenant has, regardless of whether it had any
+   * activity this month — not derivable from `categories` above, which already
+   * dropped a hidden, activity-less category before this bundle was built (#278's
+   * `worthSending`). A `category`-kind goal can name one of those with no activity of
+   * its own, so the goals filter below needs the complete set, not just the subset
+   * that happened to also have a `categories` row.
+   */
+  excludedCategoryIds: readonly string[]
   totals: MonthTotals
   /** Trailing months, oldest first, for the model to see a trend. */
   totalsHistory: readonly MonthTotals[]
   netWorth: NetWorthSummary | null
+  /** Every household-stated savings goal, with its progress and projection (#407). */
+  goals: readonly BundleGoal[]
   hygiene: BundleHygiene
   portfolio: BundlePortfolio | null
   /**
@@ -116,6 +128,27 @@ export interface BundleCategory {
   fact: MonthlyFact
   /** Null until the first sync has created the row. */
   meta: CategoryMetaRow | null
+}
+
+/**
+ * A savings goal's progress and projection, already computed by
+ * `domain/aggregate/goals.ts` — the same figures `GET /api/overview` shows, not a
+ * second reading of the net-worth history (#407).
+ */
+export interface BundleGoal {
+  label: string
+  kind: GoalKind
+  priority: GoalPriority
+  /** Set iff `kind === 'category'` — the envelope this goal pools with its siblings in. */
+  categoryId: string | null
+  targetCents: number
+  targetDate: string | null
+  currentCents: number | null
+  progressBp: number | null
+  met: boolean | null
+  monthlyRateCents: number | null
+  monthsToTarget: number | null
+  etaMonth: string | null
 }
 
 export interface BundleHygiene {
@@ -332,6 +365,35 @@ export interface RedactedNetWorth {
   debtCents: string
 }
 
+/**
+ * `RedactedPayload.goals`'s own shape — see `BundleGoal` for the pre-redaction one.
+ *
+ * `label` crosses in the clear, like a category name: it is the household's own
+ * wording for what they are saving toward, not an identifier. `monthsToTarget` and
+ * `met` cross as-is — narrative rule 9 already forbids inventing a projection the
+ * payload did not send, so there is nothing to redact out of a number that is
+ * either a fact or null.
+ *
+ * `category` is the same opaque `c1`…`cN` label `redactedCategories` already
+ * assigned to the envelope this goal pools with — never `categoryId` itself. A
+ * `category`-kind goal whose envelope is `aiExcluded` is dropped by `redact()`
+ * before this runs at all (#278) — the same treatment the envelope's own row gets.
+ */
+export interface RedactedGoal {
+  label: string
+  kind: GoalKind
+  priority: GoalPriority
+  category: string | null
+  targetCents: string
+  targetDate: string | null
+  currentCents: string | null
+  progressBp: string | null
+  met: boolean | null
+  monthlyRateCents: string | null
+  monthsToTarget: number | null
+  etaMonth: string | null
+}
+
 /** `RedactedPayload.hygiene`'s own shape — see `BundleHygiene` for the pre-redaction one. */
 export interface RedactedHygiene {
   scoreBp: string
@@ -348,6 +410,8 @@ export interface RedactedPayload {
   totals: RedactedMonthTotals
   history: RedactedMonthTotals[]
   netWorth: RedactedNetWorth | null
+  /** Every savings goal, in the household's own priority order (#407). */
+  goals: RedactedGoal[]
   hygiene: RedactedHygiene
   categories: RedactedCategory[]
   /**
@@ -445,6 +509,29 @@ function toNetWorth(
     liquidCents: money(netWorth.liquidCents),
     investedCents: money(netWorth.investedCents),
     debtCents: money(netWorth.debtCents),
+  }
+}
+
+function toGoal(
+  goal: BundleGoal,
+  labelFor: ReadonlyMap<string, string>,
+  currency: string,
+  formatLocale: string,
+): RedactedGoal {
+  const money = (cents: number) => formatCentsAsCurrency(cents, currency, formatLocale)
+  return {
+    label: categoryName(goal.label),
+    kind: goal.kind,
+    priority: goal.priority,
+    category: goal.categoryId === null ? null : labelFor.get(goal.categoryId) ?? null,
+    targetCents: money(goal.targetCents),
+    targetDate: goal.targetDate,
+    currentCents: goal.currentCents === null ? null : money(goal.currentCents),
+    progressBp: goal.progressBp === null ? null : formatBpAsPercent(goal.progressBp, formatLocale),
+    met: goal.met,
+    monthlyRateCents: goal.monthlyRateCents === null ? null : money(goal.monthlyRateCents),
+    monthsToTarget: goal.monthsToTarget,
+    etaMonth: goal.etaMonth,
   }
 }
 
@@ -650,12 +737,11 @@ export function redact(bundle: AnalysisBundle): Redaction {
   // to state the block below, so they cannot be un-collected; and this file is the one
   // whose review is a review of everything that leaves, so the one place that drops a
   // row is the one place a reader has to check.
-  const excludedIds = new Set<string>()
+  const excludedIds = new Set<string>(bundle.excludedCategoryIds)
   const excludedEntries: BundleCategory[] = []
   const visible: BundleCategory[] = []
   for (const entry of bundle.categories) {
     if (entry.meta?.aiExcluded === true) {
-      excludedIds.add(entry.fact.categoryId)
       excludedEntries.push(entry)
     } else {
       visible.push(entry)
@@ -692,6 +778,13 @@ export function redact(bundle: AnalysisBundle): Redaction {
       history: bundle.totalsHistory.map((totals) => toTotals(totals, currency, formatLocale)),
       netWorth:
         bundle.netWorth === null ? null : toNetWorth(bundle.netWorth, currency, formatLocale),
+      // A `category`-kind goal pooling with an excluded envelope is dropped whole
+      // (#278) — same treatment the envelope's own row gets, and for the same
+      // reason: its `categoryId` is the only thing that says what it's for, and
+      // that is exactly what exclusion withholds.
+      goals: bundle.goals
+        .filter((goal) => goal.categoryId === null || !excludedIds.has(goal.categoryId))
+        .map((goal) => toGoal(goal, labelFor, currency, formatLocale)),
       hygiene: toHygiene(bundle.hygiene, currency, formatLocale),
       categories: redactedCategories,
       excluded: toExcluded(excludedEntries, currency, formatLocale),
@@ -886,6 +979,7 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'totals',
   'history',
   'netWorth',
+  'goals',
   'hygiene',
   'categories',
   'excluded',
@@ -908,6 +1002,17 @@ export const PAYLOAD_KEYS: readonly string[] = [
   'liquidCents',
   'investedCents',
   'debtCents',
+  // goals (#407) — `label` and `kind` are declared already, for a category and an account
+  'priority',
+  'category',
+  'targetCents',
+  'targetDate',
+  'currentCents',
+  'progressBp',
+  'met',
+  'monthlyRateCents',
+  'monthsToTarget',
+  'etaMonth',
   // hygiene
   'scoreBp',
   'uncategorisedCount',

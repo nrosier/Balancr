@@ -41,8 +41,11 @@
  * amortized, so today's figure is whatever the owner last confirmed against a statement.
  * `history` is left alone for the same reason as the other two.
  */
+import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
+import { loadCategoryNames } from '../../../domain/aggregate/facts.ts'
+import { categorySiblingCount, loadGoalsWithProgress } from '../../../domain/aggregate/goal-store.ts'
 import { HYGIENE_CODES } from '../../../domain/aggregate/hygiene.ts'
 import {
   loadLatestNetWorth,
@@ -93,7 +96,11 @@ export function emergencyFundCentimonths(
 /** How many months of spend the cover figure averages over. A year, seasonality and all. */
 export const COVER_WINDOW_MONTHS = 12
 
-export function buildOverview(db: Db, tenantId: string): Overview {
+export function buildOverview(
+  db: Db,
+  tenantId: string,
+  locale: string = config.DEFAULT_LOCALE,
+): Overview {
   const month = latestStoredMonth(db, tenantId)
   const totals = month === null ? null : (loadMonthTotals(db, tenantId, [month])[0] ?? null)
   const hygiene = month === null ? null : loadHygiene(db, tenantId, month)
@@ -119,6 +126,36 @@ export function buildOverview(db: Db, tenantId: string): Overview {
   const debtBalance = totalDebtBalanceCents(debts)
   const liquidOffBudgetCents = netWorth === null ? null : loadOffBudgetLiquidCents(db, tenantId)
   const integrations = integrationAvailability(db, tenantId)
+  // Priced against right now, like the loan/debt/property figures above — a goal is
+  // measured against the calendar, not against whichever night the net-worth job last
+  // ran, so the trend `projectGoal` measures a rate over always ends at today's month.
+  const asOfMonth = today.slice(0, 7)
+  const goalsWithProgress = loadGoalsWithProgress(db, tenantId, netWorth, asOfMonth, today)
+  const categoryNames = loadCategoryNames(db, tenantId, locale)
+  const goals = goalsWithProgress.map((goal) => ({
+    id: goal.id,
+    label: goal.label,
+    kind: goal.kind,
+    priority: goal.priority,
+    categoryId: goal.categoryId,
+    targetCents: goal.targetCents,
+    targetDate: goal.targetDate,
+    status: goal.status,
+    doneAt: goal.doneAt,
+    currentCents: goal.currentCents,
+    progressBp: goal.progressBp,
+    met: goal.met,
+    monthlyRateCents: goal.monthlyRateCents,
+    monthsToTarget: goal.monthsToTarget,
+    etaMonth: goal.etaMonth,
+    trendMonths: goal.trendMonths,
+    trendFrom: goal.trendFrom,
+    trendTo: goal.trendTo,
+    requiredMonthlyCents: goal.requiredMonthlyCents,
+    pace: goal.pace,
+    categoryName: goal.categoryId === null ? null : categoryNames.get(goal.categoryId) ?? null,
+    categorySiblingCount: categorySiblingCount(goalsWithProgress, goal),
+  }))
 
   return overviewSchema.parse({
     freshness: freshness(db, tenantId),
@@ -186,5 +223,6 @@ export function buildOverview(db: Db, tenantId: string): Overview {
           },
     actualConfigured: integrations.actual,
     ghostfolioConfigured: integrations.ghostfolio,
+    goals,
   })
 }

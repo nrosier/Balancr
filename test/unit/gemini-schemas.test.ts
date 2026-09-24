@@ -57,6 +57,7 @@ function payload(overrides: Partial<RedactedPayload> = {}): RedactedPayload {
     },
     history: [],
     netWorth: null,
+    goals: [],
     hygiene: {
       scoreBp: pct(10_000),
       uncategorisedCount: 0,

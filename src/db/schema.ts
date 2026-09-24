@@ -1546,6 +1546,53 @@ export const revolvingDebts = sqliteTable(
 )
 
 /**
+ * A household-stated savings goal (#407): a target amount, measured against one of
+ * Balancr's own already-computed net-worth figures — never a separately tracked
+ * balance. There is deliberately no `current_cents` column here: "how close is it"
+ * is always read fresh off `netWorthSnapshots`/`accountMap` at request time, the same
+ * figures the Overview page already shows, so a goal can never disagree with the net
+ * worth it is a goal about.
+ *
+ * A real table rather than a `settings` blob, for the same reason `loans` is one: a
+ * goal has an identity that outlives one edit and is created, edited and deleted one
+ * at a time.
+ */
+export const goals = sqliteTable(
+  'goals',
+  {
+    id: uuid().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    label: text().notNull().default(''),
+    /** Which of `NetWorthSummary`'s figures this goal is measured against, or `category`. */
+    kind: text({ enum: ['liquid', 'invested', 'total', 'category'] })
+      .notNull()
+      .default('liquid'),
+    /**
+     * Actual's own category id, set iff `kind === 'category'`. No FK — category ids
+     * are plain unreferenced text everywhere else too (`monthlyCategoryFacts`,
+     * `categoryMeta`).
+     */
+    categoryId: text('category_id'),
+    priority: text({ enum: ['high', 'normal', 'low'] })
+      .notNull()
+      .default('normal'),
+    targetCents: integer('target_cents').notNull(),
+    /** YYYY-MM-DD, or null — "track progress with no ETA" is a supported goal (#407). */
+    targetDate: text('target_date'),
+    status: text({ enum: ['active', 'done'] })
+      .notNull()
+      .default('active'),
+    /** YYYY-MM-DD, set iff `status === 'done'` — anchors the undo grace window. */
+    doneAt: text('done_at'),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
+  },
+  (t) => [index('goals_tenant_idx').on(t.tenantId, t.priority, t.createdAt)],
+)
+
+/**
  * One row per tenant: the Actual/Ghostfolio/AI credentials that used to
  * live only in `.env` (#369). `*Enc` columns are AES-256-GCM via
  * `db/field-crypto.ts`; everything else here is the non-secret half of the
@@ -1622,6 +1669,7 @@ export const schema = {
   settings,
   loans,
   revolvingDebts,
+  goals,
   tenantIntegrations,
   upstreamProbes,
 }

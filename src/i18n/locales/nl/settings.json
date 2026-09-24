@@ -261,6 +261,44 @@
     "save": "Deze kaart opslaan",
     "title": "Kredietkaarten"
   },
+  "goals": {
+    "add": "Doel toevoegen",
+    "archive": {
+      "doneOn": "Op {{date}} als voltooid gemarkeerd.",
+      "toggle_one": "{{value}} gearchiveerd doel tonen",
+      "toggle_other": "{{value}} gearchiveerde doelen tonen"
+    },
+    "categoryLabel": "Budgetcategorie",
+    "categoryPlaceholder": "Kies een categorie…",
+    "create": "Dit doel toevoegen",
+    "done": "Als voltooid markeren",
+    "hint": "Een streefbedrag, afgezet tegen een van Balancrs eigen nettovermogenscijfers, of tegen het saldo van één Actual Budget-categorie. Voeg een streefdatum toe als je die hebt; laat het veld leeg om de vooruitgang zonder deadline te volgen. Zichtbaar op de overzichtspagina de volgende keer dat die laadt; niets hier wordt herrekend.",
+    "invalid": "Iets in deze rij is nog niet geldig.",
+    "kind": {
+      "category": "Een budgetcategorie",
+      "invested": "Geïnvesteerd",
+      "liquid": "Direct beschikbaar",
+      "total": "Nettovermogen"
+    },
+    "kindLabel": "Afgezet tegen",
+    "label": "Naam",
+    "labelPlaceholder": "bv. Noodfonds, Voorschot woning",
+    "none": "Nog geen spaardoelen. Voeg er een toe om de vooruitgang op de overzichtspagina te volgen.",
+    "priority": {
+      "high": "Hoog",
+      "low": "Laag",
+      "normal": "Normaal"
+    },
+    "priorityLabel": "Prioriteit",
+    "reactivate": "Heractiveren",
+    "remove": "Dit doel verwijderen",
+    "save": "Dit doel opslaan",
+    "target": "Streefbedrag",
+    "targetDate": "Streefdatum",
+    "targetDateHint": "Optioneel. Laat leeg om de vooruitgang zonder deadline te volgen.",
+    "targetDateHintCategory": "Verplicht voor een categoriedoel — hierop wordt het vereiste maandelijkse spaarbedrag afgezet.",
+    "title": "Spaardoelen"
+  },
   "history": {
     "coverage": "Dekking",
     "coverageValue": "{{earliest}} – {{latest}}",
@@ -387,6 +425,7 @@
     "benchmark": "Vergelijking",
     "debts": "Kredietkaarten",
     "general": "Algemeen",
+    "goals": "Doelen",
     "integrations": "Integraties",
     "loans": "Leningen",
     "members": "Leden",

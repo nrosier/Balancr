@@ -9,7 +9,7 @@
  * real one would be summed back into the total by the first person to write
  * `SELECT sum(value_cents)`, which defeats the entire point of the dedupe.
  */
-import { and, eq, lte, notInArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, lte, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { accountMap, netWorthSnapshots, type AccountKind } from '../../db/schema.ts'
 import type { AccountBalance } from './accounts.ts'
@@ -119,6 +119,53 @@ export function loadNetWorthHistory(
     })
     .from(netWorthSnapshots)
     .where(eq(netWorthSnapshots.tenantId, tenantId))
+    .groupBy(netWorthSnapshots.date)
+    .orderBy(netWorthSnapshots.date)
+    .all()
+}
+
+export type NetWorthComponent = 'liquid' | 'invested' | 'total'
+
+/**
+ * Per-date totals for one of `NetWorthSummary`'s figures, ascending — the series a
+ * savings goal (#407) is measured against, before `monthlyGoalTrend`
+ * (`domain/aggregate/goals.ts`) resamples it into monthly points.
+ *
+ * `'total'` sums every stored row with no kind filter, the same as `totalCents` in
+ * `summariseNetWorth` below: `net_worth_snapshots` only ever holds accounts that
+ * already counted, so there is nothing left to exclude. `'liquid'`/`'invested'`
+ * join `account_map` to classify by `kind`, the same sets `LIQUID`/`'investment'`
+ * use everywhere else net worth is summarised.
+ */
+export function loadNetWorthComponentHistory(
+  db: Db,
+  tenantId: string,
+  component: NetWorthComponent,
+): { date: string; valueCents: number }[] {
+  if (component === 'total') {
+    return db
+      .select({
+        date: netWorthSnapshots.date,
+        valueCents: sql<number>`sum(${netWorthSnapshots.valueCents})`,
+      })
+      .from(netWorthSnapshots)
+      .where(eq(netWorthSnapshots.tenantId, tenantId))
+      .groupBy(netWorthSnapshots.date)
+      .orderBy(netWorthSnapshots.date)
+      .all()
+  }
+
+  const kindFilter =
+    component === 'liquid' ? inArray(accountMap.kind, [...LIQUID]) : eq(accountMap.kind, 'investment')
+
+  return db
+    .select({
+      date: netWorthSnapshots.date,
+      valueCents: sql<number>`sum(${netWorthSnapshots.valueCents})`,
+    })
+    .from(netWorthSnapshots)
+    .innerJoin(accountMap, eq(accountMap.id, netWorthSnapshots.accountMapId))
+    .where(and(eq(netWorthSnapshots.tenantId, tenantId), kindFilter))
     .groupBy(netWorthSnapshots.date)
     .orderBy(netWorthSnapshots.date)
     .all()

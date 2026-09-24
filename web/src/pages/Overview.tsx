@@ -36,6 +36,7 @@ import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
 import { formatDate, type Overview as OverviewPayload } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
+import { GoalsCard } from '../ui/Goals.tsx'
 import { HygieneCard } from '../ui/Hygiene.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
@@ -105,7 +106,7 @@ function Figures({
   const { t } = useT()
   const unknown = t('empty.unknown')
 
-  const { flows, history, hygiene, month, months, netWorth } = data
+  const { flows, goals, history, hygiene, month, months, netWorth } = data
   const cover = data.emergencyFundCentimonths
 
   // Independent of the Budget page's own copy of this card (#345) — this page has no
@@ -241,6 +242,8 @@ function Figures({
           <NetWorthChart history={history} />
         )}
       </section>
+
+      <GoalsCard goals={goals} />
 
       {hygiene === null ? null : <HygieneCard hygiene={hygiene} />}
     </>
