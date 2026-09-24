@@ -291,23 +291,3 @@ export function existedAsOf(goal: Pick<Goal, 'createdAt'>, asOfMonth: string): b
   return monthOf(goal.createdAt) <= asOfMonth
 }
 
-/**
- * This goal's fractional share of a shared category's pool — the same urgency
- * weight ratio `splitCategoryPool` applies to `poolCents`, exposed on its own so a
- * historical trend can be scaled by it even when the *current* pool is exactly
- * zero. `share / poolCents` degenerates to `0` at that boundary and would flatten
- * every past month of the trend along with it; the weight ratio itself has no
- * such dependency on the pool's size, only on the siblings' relative urgency.
- */
-export function goalPoolShareRatio(
-  goal: { targetCents: number; targetDate: string },
-  candidates: readonly CategoryPoolCandidate[],
-  asOfMonth: string,
-): number {
-  const totalWeight = candidates.reduce(
-    (sum, candidate) => sum + goalUrgencyWeight(candidate.targetCents, candidate.targetDate, asOfMonth),
-    0,
-  )
-  if (totalWeight === 0) return 0
-  return goalUrgencyWeight(goal.targetCents, goal.targetDate, asOfMonth) / totalWeight
-}

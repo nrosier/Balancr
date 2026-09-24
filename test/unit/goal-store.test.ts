@@ -7,13 +7,14 @@
  * rest of this file is the category-pool orchestration that only exists here,
  * where a DB read of sibling goals and category history is possible.
  */
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
+import { categoryMeta, goals, monthlyCategoryFacts } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { categorySiblingCount, loadGoalsWithProgress } from '../../src/domain/aggregate/goal-store.ts'
-import { createGoal, updateGoal, type GoalInput } from '../../src/domain/goal/goals.ts'
+import { createGoal, updateGoal, type Goal, type GoalInput } from '../../src/domain/goal/goals.ts'
 import type { NetWorthSummary } from '../../src/domain/aggregate/networth.ts'
 
 let ctx: ReturnType<typeof createTestDb>
@@ -24,6 +25,23 @@ beforeEach(() => {
   applyMigrations(ctx.db as never)
   TENANT_ID = getSoleTenantId(ctx.db)
 })
+
+/**
+ * `createGoal` stamps `createdAt` as real wall-clock "now", but every test below
+ * (bar the one that exercises `existedAsOf` itself) rejudges a fixed month —
+ * `'2026-09'` — regardless of when the suite actually runs. Backdating keeps
+ * these tests from expiring the day real "now" rolls past that fixed month, the
+ * same fix `ai-bundle.test.ts`'s own `backdateGoal` helper applies for the same
+ * reason.
+ */
+function backdateGoal(goal: Goal): Goal {
+  ctx.db
+    .update(goals)
+    .set({ createdAt: new Date('2026-01-01') })
+    .where(eq(goals.id, goal.id))
+    .run()
+  return { ...goal, createdAt: '2026-01-01' }
+}
 
 const netWorth = (overrides: Partial<NetWorthSummary> = {}): NetWorthSummary => ({
   date: '2026-09-01',
@@ -56,7 +74,7 @@ const goal = (overrides: Partial<GoalInput> = {}): GoalInput => ({
 
 describe('a net-worth-kind goal', () => {
   it('resolves currentCents from the given net-worth summary, same as before the refactor', () => {
-    const created = createGoal(ctx.db, TENANT_ID, goal({ kind: 'liquid' }))
+    const created = backdateGoal(createGoal(ctx.db, TENANT_ID, goal({ kind: 'liquid' })))
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, netWorth(), '2026-09', '2026-09-24')
     const result = results.find((row) => row.id === created.id)
@@ -68,7 +86,7 @@ describe('a net-worth-kind goal', () => {
   })
 
   it('answers null throughout with no net worth yet', () => {
-    const created = createGoal(ctx.db, TENANT_ID, goal())
+    const created = backdateGoal(createGoal(ctx.db, TENANT_ID, goal()))
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
     const result = results.find((row) => row.id === created.id)
@@ -83,10 +101,12 @@ describe('a net-worth-kind goal', () => {
 describe('a lone category-kind goal', () => {
   it('draws the whole pool', () => {
     seedCategory('cat-tv', 30_000)
-    const created = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const created = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -101,10 +121,8 @@ describe('a lone category-kind goal', () => {
       .insert(categoryMeta)
       .values({ tenantId: TENANT_ID, categoryId: 'cat-tv', nameSnapshot: 'TV', isIncome: false, hidden: false })
       .run()
-    const created = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' }),
+    const created = backdateGoal(
+      createGoal(ctx.db, TENANT_ID, goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' })),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -118,16 +136,20 @@ describe('two goals sharing one category', () => {
   it('split the pool proportional to urgency, not raw target size', () => {
     seedCategory('cat-tv', 30_000)
     // A: due this month, target €500 -> weight 50 000/1mo.
-    const a = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-09-30', targetCents: 50_000 }),
+    const a = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-09-30', targetCents: 50_000 }),
+      ),
     )
     // B: due two months out, target €1000 -> the same weight, 100 000/2mo.
-    const b = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const b = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -140,15 +162,19 @@ describe('two goals sharing one category', () => {
 describe('a done goal within its grace window', () => {
   it('returns every progress field null, with status/doneAt intact, and frees its pool share', () => {
     seedCategory('cat-tv', 30_000)
-    const active = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'Active', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const active = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'Active', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
-    const done = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'Done', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const done = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'Done', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
     updateGoal(ctx.db, TENANT_ID, done.id, {
       ...goal({ categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
@@ -191,10 +217,8 @@ describe('a category with no fact row for the month being narrated', () => {
   it('answers null rather than falling back to an earlier month\'s stale balance', () => {
     // Only August has a fact row; September (the narrated month) has none.
     seedCategory('cat-tv', 30_000, '2026-08')
-    const created = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' }),
+    const created = backdateGoal(
+      createGoal(ctx.db, TENANT_ID, goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' })),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -213,10 +237,8 @@ describe('a lone category goal whose pool is exactly zero this month', () => {
       .insert(monthlyCategoryFacts)
       .values({ tenantId: TENANT_ID, month: '2026-09', categoryId: 'cat-tv', availableCents: 0 })
       .run()
-    const created = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' }),
+    const created = backdateGoal(
+      createGoal(ctx.db, TENANT_ID, goal({ kind: 'category', categoryId: 'cat-tv', targetDate: '2026-11-30' })),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -236,15 +258,19 @@ describe('two equally-weighted goals sharing a pool that gains exactly one cent'
       .insert(monthlyCategoryFacts)
       .values({ tenantId: TENANT_ID, month: '2026-09', categoryId: 'cat-tv', availableCents: 1_000_001 })
       .run()
-    const a = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+    const a = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+      ),
     )
-    const b = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+    const b = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+      ),
     )
 
     const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
@@ -258,26 +284,64 @@ describe('two equally-weighted goals sharing a pool that gains exactly one cent'
     ])
     const loser = resultA?.currentCents === 500_000 ? resultA : resultB
     // Its own balance never moved — flat at 500 000 both months — so the rate must
-    // read as flat too, not a phantom one-cent gain borrowed from the ratio scale
-    // used for earlier trend points (`goalPoolShareRatio` rounds .5 the same way for
-    // both goals, regardless of which one the pool split's remainder actually went to).
+    // read as flat too, not a phantom one-cent gain from a ratio scale that has no
+    // notion of "which goal gets the leftover cent" (each trend point re-runs the
+    // exact split against that point's own balance instead).
     expect(loser?.monthlyRateCents).toBe(0)
     expect(loser?.monthsToTarget).toBeNull()
+  })
+})
+
+describe('two equally-weighted goals sharing a pool that never changes', () => {
+  it('reports a flat rate for both, even when the remainder cent could round either way', () => {
+    seedCategory('cat-tv', 1_000_001, '2026-08')
+    ctx.db
+      .insert(monthlyCategoryFacts)
+      .values({ tenantId: TENANT_ID, month: '2026-09', categoryId: 'cat-tv', availableCents: 1_000_001 })
+      .run()
+    const a = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'A', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+      ),
+    )
+    const b = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'B', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-12-01', targetCents: 5_000_000 }),
+      ),
+    )
+
+    const results = loadGoalsWithProgress(ctx.db, TENANT_ID, null, '2026-09', '2026-09-24')
+    const resultA = results.find((row) => row.id === a.id)
+    const resultB = results.find((row) => row.id === b.id)
+
+    // Same odd-cent balance both months — re-splitting each trend point
+    // independently must land the remainder on the same goal at both points, so
+    // neither sees a phantom gain or loss from a balance that never moved.
+    expect(resultA?.monthlyRateCents).toBe(0)
+    expect(resultB?.monthlyRateCents).toBe(0)
   })
 })
 
 describe('a done goal past its grace window', () => {
   it('is excluded from the result array and from its siblings\' pool split', () => {
     seedCategory('cat-tv', 30_000)
-    const active = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'Active', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const active = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'Active', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
-    const done = createGoal(
-      ctx.db,
-      TENANT_ID,
-      goal({ label: 'Done', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+    const done = backdateGoal(
+      createGoal(
+        ctx.db,
+        TENANT_ID,
+        goal({ label: 'Done', categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),
+      ),
     )
     updateGoal(ctx.db, TENANT_ID, done.id, {
       ...goal({ categoryId: 'cat-tv', kind: 'category', targetDate: '2026-11-30', targetCents: 100_000 }),

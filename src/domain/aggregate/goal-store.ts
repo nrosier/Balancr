@@ -21,11 +21,11 @@
  * active siblings. A done goal past its grace window is omitted entirely.
  *
  * A `category`-kind goal's trend is the category's own `availableCents` history,
- * scaled by this goal's urgency-weight share of the pool, with its latest point
- * pinned to the same `currentCents` figure the pool split itself reports (the two
- * can disagree by a rounding cent otherwise — see the comment at the trend's
- * construction below) — so `projectGoal`'s rate is measured on the same series
- * its ETA is stated against, not a second, unscaled one.
+ * re-split by `splitCategoryPool` at each historical point using this goal's
+ * current-month weight — so every point, including the latest, is exactly the
+ * split's own answer rather than a second, independently-rounded approximation
+ * of it, and `projectGoal`'s rate is measured on the same series its ETA is
+ * stated against.
  */
 import type { Db } from '../../db/index.ts'
 import { listGoals, type Goal } from '../goal/goals.ts'
@@ -36,7 +36,6 @@ import {
   currentCentsFor,
   existedAsOf,
   GOAL_TREND_WINDOW_MONTHS,
-  goalPoolShareRatio,
   isGoalVisible,
   monthlyGoalTrend,
   projectGoal,
@@ -160,29 +159,27 @@ export function loadGoalsWithProgress(
     for (const goal of siblings) {
       const share = shares?.get(goal.id) ?? null
       const progress = computeGoalProgress(goal, share)
-      // The urgency weight ratio, not `share / poolCents` — that degenerates to `0`
+      // Each historical point re-runs the same `splitCategoryPool` split against
+      // that month's own balance, rather than scaling by a single ratio derived
+      // from the current month — two reasons. First, a ratio degenerates to `0`
       // whenever this month's pool happens to be exactly `0` (an ordinary "fully
       // spent this envelope" state), which would flatten every past month of the
-      // trend along with the current one instead of just reporting `currentCents: 0`.
-      const scale =
-        poolCents === null
-          ? 0
-          // Non-null by the same write-time invariant `candidates` above relies on.
-          : goalPoolShareRatio({ targetCents: goal.targetCents, targetDate: goal.targetDate as string }, candidates, asOfMonth)
-      // The last point (asOfMonth itself, guaranteed by the `poolCents` check above)
-      // is pinned to the same `share` `currentCents` reports, not re-derived by
-      // rounding `scale` against it — `scale` is a continuous urgency-weight ratio
-      // while `share` is `splitCategoryPool`'s largest-remainder integer-cent split,
-      // and the two can disagree by a cent. Left unpinned, that disagreement shows
-      // up as a spurious month-over-month rate on an otherwise-flat balance, which
-      // can inflate `monthsToTarget`/`etaMonth` into an invalid, far-future date.
+      // trend along with the current one instead of just reporting `currentCents:
+      // 0`. Second, `splitCategoryPool`'s largest-remainder integer-cent rounding
+      // can assign the pool's leftover cent to a different goal at two different
+      // balances even when neither goal's own weight changed, so a fixed ratio
+      // (which has no notion of "leftover") can disagree with it by a cent — on
+      // an unchanged balance, that shows up as a phantom gain or loss. Re-running
+      // the exact split per point keeps every point, including the last, exactly
+      // consistent with the `currentCents` the pool split itself reports, and
+      // keeps a flat balance flat regardless of which sibling the remainder
+      // lands on.
       const trend =
         poolCents === null
           ? []
-          : rawTrend.map((point, index) => ({
+          : rawTrend.map((point) => ({
               month: point.month,
-              valueCents:
-                index === rawTrend.length - 1 ? share ?? 0 : Math.round(point.valueCents * scale),
+              valueCents: splitCategoryPool(point.valueCents, candidates, asOfMonth).get(goal.id) ?? 0,
             }))
       const projection = projectGoal(progress, trend, asOfMonth)
       const requiredMonthlyCents = requiredMonthlySavingsCents(progress, asOfMonth)
