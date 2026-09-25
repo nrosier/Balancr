@@ -529,16 +529,16 @@ type Replies = Record<string, Response | Error | (Response | Error)[]>
  */
 const SECTION_HEADING: Record<string, string> = {
   '/settings': 'Account',
-  '/settings/prompts': 'Assistant instructions',
-  '/settings/ai-log': 'Request and response log',
+  '/settings/ai/prompts': 'Assistant instructions',
+  '/settings/ai/log': 'Request and response log',
   '/settings/risk': 'Risk profile',
   '/settings/thresholds': 'Thresholds',
-  '/settings/accounts': 'Accounts',
+  '/settings/net-worth': 'Accounts',
   '/settings/benchmark': 'Household',
-  '/settings/property': 'Property',
-  '/settings/loans': 'Loans',
-  '/settings/debts': 'Credit cards',
-  '/settings/goals': 'Savings goals',
+  '/settings/net-worth/property': 'Property',
+  '/settings/net-worth/loans': 'Loans',
+  '/settings/net-worth/debts': 'Credit cards',
+  '/settings/net-worth/goals': 'Savings goals',
 }
 
 /**
@@ -681,9 +681,9 @@ describe('the shape of the page', () => {
   })
 
   it.each([
-    ['/settings/prompts', 'Assistant instructions'],
+    ['/settings/ai/prompts', 'Assistant instructions'],
     ['/settings/thresholds', 'Thresholds'],
-    ['/settings/accounts', 'Accounts'],
+    ['/settings/net-worth', 'Accounts'],
   ] as const)('shows only %s’s panel on its own tab, not General’s', async (path, title) => {
     await open(READS, path)
 
@@ -752,7 +752,7 @@ describe('the shape of the page', () => {
   })
 
   it('does not fetch the running instance status on a tab that does not show it', async () => {
-    const calls = await open(READS, '/settings/prompts')
+    const calls = await open(READS, '/settings/ai/prompts')
     await screen.findByRole('button', { name: /^Test on/ })
 
     // `/api/ai/estimate` is asked for regardless of tab — both Prompts' test run and
@@ -761,6 +761,28 @@ describe('the shape of the page', () => {
     // reads it (#262).
     expect(calls.map((call) => call.path)).toEqual(['/api/settings', '/api/ai/estimate'])
   })
+})
+
+describe('legacy settings paths (#528, #533)', () => {
+  it.each([
+    ['/settings/prompts', '/settings/ai/prompts', 'Assistant instructions'],
+    ['/settings/ai-log', '/settings/ai/log', 'Request and response log'],
+    ['/settings/accounts', '/settings/net-worth', 'Accounts'],
+    ['/settings/property', '/settings/net-worth/property', 'Property'],
+    ['/settings/loans', '/settings/net-worth/loans', 'Loans'],
+    ['/settings/debts', '/settings/net-worth/debts', 'Credit cards'],
+    ['/settings/goals', '/settings/net-worth/goals', 'Savings goals'],
+  ] as const)(
+    'redirects a bookmarked %s to its new home at %s, rather than falling back to General',
+    async (from, to, heading) => {
+      await openPage(READS, from, heading)
+
+      expect(screen.getByRole('heading', { level: 2, name: heading })).toBeTruthy()
+      expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
+      // `replace`, not `push` — the old path never belonged on the page's own history.
+      expect(window.location.pathname).toBe(to)
+    },
+  )
 })
 
 describe('language', () => {
@@ -786,10 +808,12 @@ describe('language', () => {
 
     // Belgian formatting is not a language setting: the euro sign and the comma stay,
     // on a tab that has a euro figure to check it against. AI usage moved from its own
-    // nav entry to Status's AI subtab (#325's Spend-into-Status move), so getting there
-    // now takes two clicks — General's own Status tab, then Status's own AI tab.
+    // nav entry to Status's "AI usage" subtab (#325's Spend-into-Status move, renamed
+    // by #528 so it reads differently from the top-level AI configuration tab), so
+    // getting there now takes two clicks — General's own Status tab, then Status's
+    // own AI usage tab.
     fireEvent.click(screen.getByRole('link', { name: 'Status van deze instantie' }))
-    fireEvent.click(await screen.findByRole('link', { name: 'AI' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'AI-gebruik' }))
     expect(await screen.findByText('€ 2,50')).toBeTruthy()
   })
 
@@ -1136,7 +1160,7 @@ describe('the risk profile', () => {
 })
 
 describe('accounts', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/accounts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth')
 
   it('names the pair that may be counted twice and lets either side win', async () => {
     const calls = await open({ ...READS, '/api/settings/accounts/group': json(PAYLOAD) })
@@ -1247,7 +1271,7 @@ describe('accounts', () => {
  * linked pair now renders — and behaves — as exactly one block.
  */
 describe('a linked pair of accounts', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/accounts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth')
 
   const LINKED_PAYLOAD: Payload = {
     ...PAYLOAD,
@@ -1949,7 +1973,7 @@ describe('the household', () => {
 })
 
 describe('property', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/property')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth/property')
 
   const property = (): HTMLElement => form('property-form')
 
@@ -2213,6 +2237,21 @@ describe('property', () => {
     expect(saveProperty().disabled).toBe(true)
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Home')
   })
+
+  it('keeps an unsaved row after a visit to a sibling Net worth subtab (#533)', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cabin' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Loans' }))
+    await screen.findByRole('heading', { level: 2, name: 'Loans' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Property' }))
+    await screen.findByRole('heading', { level: 2, name: 'Property' })
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Cabin')
+  })
 })
 
 describe('integrations', () => {
@@ -2251,65 +2290,6 @@ describe('integrations', () => {
 
     expect(saveButton('Actual').disabled).toBe(true)
     expect(saveButton('Ghostfolio').disabled).toBe(true)
-    expect(saveButton('AI provider').disabled).toBe(true)
-  })
-
-  it('shows certified OpenAI and Anthropic settings separately from best-effort compatible endpoints', async () => {
-    await open(READS)
-
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai' } })
-    const official = screen.getByLabelText('Base URL') as HTMLInputElement
-    expect(official.value).toBe('https://api.openai.com/v1')
-    expect(official.readOnly).toBe(true)
-    expect(screen.queryByLabelText('Google Cloud project')).toBeNull()
-    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('gpt-5.4-mini')
-    expect(within(panel('AI provider')).getByRole('button', {
-      name: 'Test model + structured output (small paid call)',
-    })).toBeTruthy()
-
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai-compatible' } })
-    const custom = screen.getByLabelText('Base URL') as HTMLInputElement
-    expect(custom.readOnly).toBe(false)
-    expect(within(panel('AI provider')).getByText(/Best-effort compatibility/)).toBeTruthy()
-    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
-
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
-    const anthropic = screen.getByLabelText('Base URL') as HTMLInputElement
-    expect(anthropic.value).toBe('https://api.anthropic.com/v1')
-    expect(anthropic.readOnly).toBe(true)
-    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('claude-sonnet-5')
-    expect((screen.getByLabelText('Narrative model') as HTMLInputElement).value).toBe('claude-opus-5')
-    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
-    expect(within(panel('AI provider')).getByRole('button', {
-      name: 'Test model + structured output (small paid call)',
-    })).toBeTruthy()
-  })
-
-  it('tests Anthropic with the native preset candidate shown on screen', async () => {
-    const calls = await open({
-      ...READS,
-      '/api/settings/integrations/ai/test': json({ ok: true, message: null }),
-    })
-
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: 'candidate-claude-key' } })
-    fireEvent.click(within(panel('AI provider')).getByRole('button', {
-      name: 'Test model + structured output (small paid call)',
-    }))
-
-    await screen.findByText('Connected successfully.')
-    expect(writes(calls)).toEqual([
-      {
-        path: '/api/settings/integrations/ai/test',
-        method: 'POST',
-        body: {
-          provider: 'anthropic',
-          apiKey: 'candidate-claude-key',
-          baseUrl: null,
-          model: 'claude-sonnet-5',
-        },
-      },
-    ])
   })
 
   it('saves only what changed, and sends no password at all rather than a blank one', async () => {
@@ -2437,6 +2417,100 @@ describe('integrations', () => {
     })
   })
 
+  it('leaves every field read-only for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, profile: { ...PAYLOAD.profile, role: 'viewer' } }),
+    })
+
+    expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
+    expect((screen.getByLabelText('Server URL') as HTMLInputElement).disabled).toBe(true)
+    expect(saveButton('Actual').disabled).toBe(true)
+    expect(testButton('Actual').disabled).toBe(true)
+  })
+})
+
+/**
+ * The AI provider sub-form moved off Integrations onto its own section (#528),
+ * alongside Prompts and the AI log — see `Ai.tsx`. These cases used to live in
+ * the `integrations` describe above; only their path and heading changed.
+ */
+describe('ai provider (#528)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai', 'AI provider')
+
+  const panel = (title: string): HTMLElement => {
+    const found = screen.getByRole('heading', { level: 2, name: title }).closest('section')
+    if (found === null) throw new Error(`no ${title} panel on the page`)
+    return found as HTMLElement
+  }
+
+  const saveButton = (title: string): HTMLButtonElement =>
+    within(panel(title)).getByRole('button', { name: 'Save' }) as HTMLButtonElement
+
+  it('has nothing to save until a field is touched', async () => {
+    await open(READS)
+
+    expect(saveButton('AI provider').disabled).toBe(true)
+  })
+
+  it('shows certified OpenAI and Anthropic settings separately from best-effort compatible endpoints', async () => {
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai' } })
+    const official = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(official.value).toBe('https://api.openai.com/v1')
+    expect(official.readOnly).toBe(true)
+    expect(screen.queryByLabelText('Google Cloud project')).toBeNull()
+    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('gpt-5.4-mini')
+    expect(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai-compatible' } })
+    const custom = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(custom.readOnly).toBe(false)
+    expect(within(panel('AI provider')).getByText(/Best-effort compatibility/)).toBeTruthy()
+    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    const anthropic = screen.getByLabelText('Base URL') as HTMLInputElement
+    expect(anthropic.value).toBe('https://api.anthropic.com/v1')
+    expect(anthropic.readOnly).toBe(true)
+    expect((screen.getByLabelText('Analysis model') as HTMLInputElement).value).toBe('claude-sonnet-5')
+    expect((screen.getByLabelText('Narrative model') as HTMLInputElement).value).toBe('claude-opus-5')
+    expect(within(panel('AI provider')).getByText('Prices in EUR per 1M tokens')).toBeTruthy()
+    expect(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    })).toBeTruthy()
+  })
+
+  it('tests Anthropic with the native preset candidate shown on screen', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings/integrations/ai/test': json({ ok: true, message: null }),
+    })
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: 'candidate-claude-key' } })
+    fireEvent.click(within(panel('AI provider')).getByRole('button', {
+      name: 'Test model + structured output (small paid call)',
+    }))
+
+    await screen.findByText('Connected successfully.')
+    expect(writes(calls)).toEqual([
+      {
+        path: '/api/settings/integrations/ai/test',
+        method: 'POST',
+        body: {
+          provider: 'anthropic',
+          apiKey: 'candidate-claude-key',
+          baseUrl: null,
+          model: 'claude-sonnet-5',
+        },
+      },
+    ])
+  })
+
   it('sends null rather than an empty string once the Google Cloud project is cleared', async () => {
     const calls = await open({ ...READS, '/api/settings/integrations/ai': json(PAYLOAD) })
 
@@ -2469,9 +2543,22 @@ describe('integrations', () => {
     })
 
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
-    expect((screen.getByLabelText('Server URL') as HTMLInputElement).disabled).toBe(true)
-    expect(saveButton('Actual').disabled).toBe(true)
-    expect(testButton('Actual').disabled).toBe(true)
+    expect((screen.getByLabelText('Provider') as HTMLSelectElement).disabled).toBe(true)
+    expect(saveButton('AI provider').disabled).toBe(true)
+  })
+
+  it('keeps an unsaved provider change after a visit to a sibling AI subtab (#533)', async () => {
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: 'candidate-key' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Prompts' }))
+    await screen.findByRole('heading', { level: 2, name: 'Assistant instructions' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'AI provider' }))
+    await screen.findByRole('heading', { level: 2, name: 'AI provider' })
+
+    expect((screen.getByLabelText(/^API key/) as HTMLInputElement).value).toBe('candidate-key')
   })
 })
 
@@ -2512,7 +2599,7 @@ const INVITES: Payload['invites'] = [
 ]
 
 describe('loans (#441)', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/loans')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth/loans')
 
   const loans = (): HTMLElement => form('loans-form')
 
@@ -2778,7 +2865,7 @@ describe('loans (#441)', () => {
 })
 
 describe('debts (#442)', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/debts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth/debts')
 
   const debts = (): HTMLElement => form('debts-form')
 
@@ -2971,7 +3058,7 @@ describe('debts (#442)', () => {
 })
 
 describe('goals (#407)', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/goals')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/net-worth/goals')
 
   const goals = (): HTMLElement => form('goals-form')
 
@@ -3572,7 +3659,7 @@ describe('the category table', () => {
 })
 
 describe('prompts', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai/prompts')
 
   /** One Dutch version, deliberately written and active: the diverged state. */
   const DUTCH: Payload['prompts'][number] = {
@@ -3863,7 +3950,7 @@ describe('prompts', () => {
 })
 
 describe('the test run', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai/prompts')
 
   /**
    * The button, once the estimate has landed.
@@ -3958,7 +4045,7 @@ describe('the test run', () => {
 })
 
 describe('the prompt safety check (#454)', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/prompts')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/ai/prompts')
 
   const selectNarrative = (): void => {
     fireEvent.change(screen.getByLabelText('Which instructions'), {
@@ -4759,7 +4846,7 @@ describe('the AI log', () => {
     await open({
       ...READS,
       '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN], nextCursor: null } satisfies AiRunList),
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     expect(await screen.findByText('Analysis')).toBeTruthy()
     expect(screen.getByText('Narrative')).toBeTruthy()
@@ -4778,7 +4865,7 @@ describe('the AI log', () => {
         requestText: 'system + instruction + fenced data, exactly as sent',
         responseText: '{"findings":[]}',
       } satisfies AiRunPayload),
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
 
@@ -4798,7 +4885,7 @@ describe('the AI log', () => {
         requestText: 'prepared but never sent',
         responseText: null,
       } satisfies AiRunPayload),
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
 
@@ -4809,7 +4896,7 @@ describe('the AI log', () => {
   it('says no calls have been made yet, rather than drawing an empty table', async () => {
     await open(
       { ...READS, '/api/settings/ai/runs': json({ runs: [], nextCursor: null } satisfies AiRunList) },
-      '/settings/ai-log',
+      '/settings/ai/log',
     )
 
     expect(await screen.findByText('No calls have been made yet.')).toBeTruthy()
@@ -4820,7 +4907,7 @@ describe('the AI log', () => {
     await open({
       ...READS,
       '/api/settings/ai/runs': json({ runs: [RUN, CAPPED_RUN], nextCursor: null } satisfies AiRunList),
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     await screen.findByText('Analysis')
     expect(screen.queryByRole('button', { name: 'Load older calls' })).toBeNull()
@@ -4834,7 +4921,7 @@ describe('the AI log', () => {
         runs: [CAPPED_RUN],
         nextCursor: null,
       } satisfies AiRunList),
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     await screen.findByText('Analysis')
     fireEvent.click(await screen.findByRole('button', { name: 'Load older calls' }))
@@ -4853,7 +4940,7 @@ describe('the AI log', () => {
         new Error('network blip'),
         json({ runs: [CAPPED_RUN], nextCursor: null } satisfies AiRunList),
       ],
-    }, '/settings/ai-log')
+    }, '/settings/ai/log')
 
     await screen.findByText('Analysis')
     fireEvent.click(await screen.findByRole('button', { name: 'Load older calls' }))

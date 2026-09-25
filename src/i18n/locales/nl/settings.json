@@ -421,6 +421,7 @@
   },
   "nav": {
     "accounts": "Rekeningen",
+    "ai": "AI",
     "aiLog": "AI-log",
     "benchmark": "Vergelijking",
     "debts": "Kredietkaarten",
@@ -429,6 +430,7 @@
     "integrations": "Integraties",
     "loans": "Leningen",
     "members": "Leden",
+    "netWorth": "Vermogen",
     "property": "Eigendom",
     "prompts": "Instructies",
     "risk": "Risico",
@@ -633,7 +635,7 @@
     },
     "lede": "Wat werkt, wat niet, en wanneer elke achtergrondtaak voor het laatst gelukt is.",
     "nav": {
-      "ai": "AI",
+      "ai": "AI-gebruik",
       "queue": "Taken & wachtrij",
       "services": "Services"
     },

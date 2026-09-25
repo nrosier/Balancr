@@ -47,24 +47,38 @@
  * belongs to — and because the household is meaningless without the mapping: an
  * equivalence scale divides a reference that nothing is compared against until at
  * least most of the month has a division (#43).
+ *
+ * **From 13 tabs to 7 (#528).** General/Prompts/AI log/Risk/Thresholds/Accounts/
+ * Benchmark/Property/Loans/Debts/Goals/Integrations/Members had grown too flat to
+ * scan. Three groupings absorb the scattered-but-related ones: General gained Members
+ * as a subtab (household admin); the AI provider sub-form moved out of Integrations
+ * into its own AI section alongside Prompts and the AI log (all three are AI
+ * configuration, just split across unrelated tabs); and the five net-worth building
+ * blocks — Accounts, Property, Loans, Debts, Goals — became subtabs of one Net worth
+ * section. Risk, Thresholds and Benchmark stay standalone: each already has its own
+ * reason to exist apart (above), and nesting them a level deeper would add clicks
+ * without adding clarity.
+ *
+ * A path from before that split — someone's bookmarked `/settings/goals`, say — isn't
+ * in `SETTINGS_SECTIONS` any more, and without help `sectionFor` would resolve it to
+ * General same as any other unknown path: the bookmark would silently open the wrong
+ * panel instead of erroring loudly. `legacyRedirectFor` catches those old paths and
+ * `section` below resolves against where they land now, so the first render already
+ * shows the right tab; the effect just corrects the URL bar to match so the tab
+ * strip's own `exact` links still light up correctly on a refresh.
  */
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
-import { AccountsPanel } from '../settings/Accounts.tsx'
-import { AiLog } from '../settings/AiLog.tsx'
+import { AiSection } from '../settings/Ai.tsx'
 import { BenchmarkSection } from '../settings/Benchmark.tsx'
 import { IntegrationsPanel } from '../settings/Integrations.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
-import { DebtsPanel } from '../settings/Debts.tsx'
-import { GoalsPanel } from '../settings/Goals.tsx'
-import { LoansPanel } from '../settings/Loans.tsx'
 import { MembersPanel } from '../settings/Members.tsx'
-import { PromptsPanel } from '../settings/Prompts.tsx'
-import { PropertyPanel } from '../settings/Property.tsx'
+import { NetWorthSection } from '../settings/NetWorth.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
-import { SETTINGS_SECTIONS, sectionFor } from '../settings/sections.ts'
+import { legacyRedirectFor, SETTINGS_SECTIONS, sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsSection } from '../settings/Thresholds.tsx'
@@ -76,10 +90,11 @@ import { labelKeyFor, useSubsection, type Section } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
-type GeneralSubsectionId = 'general' | 'status'
+type GeneralSubsectionId = 'general' | 'members' | 'status'
 
 const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
+  { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
   { id: 'status', path: '/settings/status', labelKey: 'settings:status.title', nested: true },
 ]
 
@@ -98,6 +113,8 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
     <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')}>
       {active === 'status' ? (
         <StatusPanel {...props} />
+      ) : active === 'members' ? (
+        <MembersPanel {...props} />
       ) : (
         <>
           <LanguagePanel {...props} />
@@ -139,8 +156,13 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
 export function Settings(): ReactNode {
   const { t } = useT()
   const state = useSettings()
-  const { path } = useRouter()
-  const section = sectionFor(path)
+  const { path, navigate } = useRouter()
+  const legacyRedirect = legacyRedirectFor(path)
+  const section = sectionFor(legacyRedirect ?? path)
+
+  useEffect(() => {
+    if (legacyRedirect !== null) navigate(legacyRedirect, { replace: true })
+  }, [legacyRedirect, navigate])
   /*
    * The price of one analysis, read once for the two panels that offer to spend it.
    *
@@ -187,18 +209,12 @@ export function Settings(): ReactNode {
 
                 {section === 'general' && <GeneralSection {...props} />}
 
-                {section === 'prompts' && <PromptsPanel {...props} />}
-                {section === 'ai-log' && <AiLog />}
+                {section === 'ai' && <AiSection {...props} />}
                 {section === 'risk' && <RiskPanel {...props} />}
                 {section === 'thresholds' && <ThresholdsSection {...props} />}
-                {section === 'accounts' && <AccountsPanel {...props} />}
+                {section === 'net-worth' && <NetWorthSection {...props} />}
                 {section === 'benchmark' && <BenchmarkSection {...props} />}
-                {section === 'property' && <PropertyPanel {...props} />}
-                {section === 'loans' && <LoansPanel {...props} />}
-                {section === 'debts' && <DebtsPanel {...props} />}
-                {section === 'goals' && <GoalsPanel {...props} />}
                 {section === 'integrations' && <IntegrationsPanel {...props} />}
-                {section === 'members' && <MembersPanel {...props} />}
               </>
             )
           }}

@@ -421,6 +421,7 @@
   },
   "nav": {
     "accounts": "Accounts",
+    "ai": "AI",
     "aiLog": "AI log",
     "benchmark": "Benchmark",
     "debts": "Credit cards",
@@ -429,6 +430,7 @@
     "integrations": "Integrations",
     "loans": "Loans",
     "members": "Members",
+    "netWorth": "Net worth",
     "property": "Property",
     "prompts": "Prompts",
     "risk": "Risk",
@@ -633,7 +635,7 @@
     },
     "lede": "What is working, what is not, and when each background job last managed to run.",
     "nav": {
-      "ai": "AI",
+      "ai": "AI usage",
       "queue": "Jobs & queue",
       "services": "Services"
     },
