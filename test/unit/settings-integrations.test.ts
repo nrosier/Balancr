@@ -678,17 +678,17 @@ describe('POST /api/settings/integrations/actual/test', () => {
     expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
   })
 
-  it('falls back to the stored password when none is typed (#382)', async () => {
+  it('falls back to the stored password when none is typed and the candidate host matches the stored one (#382)', async () => {
     vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
 
     const res = await post('/api/settings/integrations/actual/test', {
-      serverUrl: 'http://actual2.test:5006',
+      serverUrl: 'http://actual.test:5006',
       syncId: 'other-sync',
     })
 
     expect(res.statusCode).toBe(200)
     expect(vi.mocked(testActualConnection)).toHaveBeenCalledWith(
-      expect.objectContaining({ serverUrl: 'http://actual2.test:5006', password: 'test-password' }),
+      expect.objectContaining({ serverUrl: 'http://actual.test:5006', password: 'test-password' }),
     )
   })
 
@@ -702,6 +702,29 @@ describe('POST /api/settings/integrations/actual/test', () => {
     const res = await post('/api/settings/integrations/actual/test', {
       serverUrl: 'http://actual.test:5006',
       syncId: 'test-sync-id',
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+  })
+
+  it('never falls back to the stored password for a candidate host that does not match the stored one (#534)', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://actual2.test:5006',
+      syncId: 'other-sync',
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+  })
+
+  it('refuses a candidate server URL that embeds credentials (#534)', async () => {
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'http://user:pass@actual.test:5006',
+      syncId: 'test-sync-id',
+      password: 'candidate',
     })
 
     expect(res.statusCode).toBe(400)
@@ -783,11 +806,11 @@ describe('POST /api/settings/integrations/ghostfolio/test', () => {
     expect(res.statusCode).toBe(403)
   })
 
-  it('falls back to the stored token when none is typed (#382)', async () => {
+  it('falls back to the stored token when none is typed and the candidate host matches the stored one (#382)', async () => {
     stubFetch('ok')
 
     const res = await post('/api/settings/integrations/ghostfolio/test', {
-      url: 'http://ghostfolio2.test:3333',
+      url: 'http://ghostfolio.test:3333',
     })
 
     expect(res.statusCode).toBe(200)
@@ -802,7 +825,28 @@ describe('POST /api/settings/integrations/ghostfolio/test', () => {
       .run()
 
     const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://ghostfolio.test:3333',
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('never falls back to the stored token for a candidate host that does not match the stored one (#534)', async () => {
+    stubFetch('ok')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
       url: 'http://ghostfolio2.test:3333',
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('refuses a candidate URL that embeds credentials (#534)', async () => {
+    stubFetch('ok')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'http://user:pass@ghostfolio.test:3333',
+      securityToken: 'candidate-token',
     })
 
     expect(res.statusCode).toBe(400)
