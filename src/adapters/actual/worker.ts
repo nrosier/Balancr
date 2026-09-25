@@ -17,7 +17,20 @@
  * `open` needs arrives over IPC as an `ActualOpenConfig`, resolved by the
  * parent from the calling tenant's own row (`resolvedIntegrations`). The
  * shared `logger` is fine to import: its own `LOG_LEVEL` is a deployment-wide
- * setting, not a per-tenant credential.
+ * setting, not a per-tenant credential. Same reasoning for `egress.ts`: this
+ * process installs its own guard from `cfg.egressMode` (also deployment-wide,
+ * carried over IPC rather than read from `config.ts` directly) and scopes it to
+ * this tenant's own `serverUrl` for every call that reaches `@actual-app/api` —
+ * this fork has its own `fetch` and its own module graph, so nothing the main
+ * process installs on `globalThis.fetch` reaches here on its own (#536).
+ *
+ * `@actual-app/api` itself is loaded lazily, through `loadApi` below, rather
+ * than a top-level `import` — a top-level import runs before any of this
+ * file's own code, including `open`'s call to `installEgressGuard`, so if the
+ * package or one of its dependencies captured `fetch` while loading, that
+ * reference would bypass the guard entirely. Deferring the import to run
+ * inside `open`, right after the guard installs, closes that gap the same way
+ * `test-worker.ts`'s `run` does for its own one-shot connection attempt.
  *
  * `handleRequest` is exported separately from the `process.on('message', ...)`
  * loop below so `test/unit/actual-worker.test.ts` can drive it in-process,
@@ -25,7 +38,7 @@
  */
 import { mkdir } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { api } from './api-source.ts'
+import { installEgressGuard, withScopedHost } from '../../egress.ts'
 import { logger } from '../../logger.ts'
 import {
   ENVELOPE_BUDGET_TYPES,
@@ -67,6 +80,26 @@ const ALLOWED_METHODS: ReadonlySet<string> = new Set([
 ])
 
 let opened = false
+/** Set once, by `open`, and read by every later `call`/`batch`/`sync` (#536). */
+let openedServerUrl = ''
+
+type Api = typeof import('./api-source.ts')['api']
+
+let apiModule: typeof import('./api-source.ts') | undefined
+
+/**
+ * The only place `@actual-app/api` (via `api-source.ts`) is ever imported —
+ * see this file's header for why that import must not happen at module load
+ * time. `open` is the first caller, always after `installEgressGuard`; every
+ * other case in `handleRequest` calls this too, so a direct `call`/`batch`/
+ * `sync`/`shutdown` in a test that skips `open` still resolves `api` rather
+ * than crashing on an unset module binding. `apiModule ??=` means the real
+ * `import()` only ever runs once per process.
+ */
+async function loadApi(): Promise<Api> {
+  apiModule ??= await import('./api-source.ts')
+  return apiModule.api
+}
 
 const health: ActualHealthFacts = {
   opened: false,
@@ -120,7 +153,7 @@ const E2E_ERRORS: Readonly<Record<string, string>> = {
  * untouched, because blaming encryption for a wrong sync id would point at the
  * wrong field.
  */
-async function download(cfg: ActualOpenConfig): Promise<void> {
+async function download(cfg: ActualOpenConfig, api: Api): Promise<void> {
   try {
     await api.downloadBudget(
       cfg.syncId,
@@ -150,7 +183,7 @@ async function download(cfg: ActualOpenConfig): Promise<void> {
  * while silently producing wrong numbers is worse than either. So it is loud in
  * the logs instead, and surfaced in `health` for the UI.
  */
-async function recordServerFacts(baseCurrency: string): Promise<void> {
+async function recordServerFacts(baseCurrency: string, api: Api): Promise<void> {
   const version = await api.getServerVersion()
   if ('version' in version) {
     health.serverVersion = version.version
@@ -188,30 +221,37 @@ async function recordServerFacts(baseCurrency: string): Promise<void> {
 async function open(cfg: ActualOpenConfig): Promise<void> {
   if (opened) return
 
+  installEgressGuard(cfg.egressMode)
+
+  const api = await loadApi()
+
   // Actual requires dataDir to exist already; it does not create it.
   await mkdir(cfg.dataDir, { recursive: true })
 
-  await api.init({
-    serverURL: cfg.serverUrl,
-    password: cfg.password,
-    dataDir: cfg.dataDir,
-    // Actual's engine logs breadcrumbs and sync progress through `console.log`, and
-    // its `verboseMode` defaults to on — ten unparseable lines per sync landing in
-    // the middle of pino's JSON stream (#123). Off by default, but not silenced:
-    // when a budget will not load, that chatter is the only view into why.
-    verbose: VERBOSE_LOG_LEVELS.has(cfg.logLevel),
+  await withScopedHost(cfg.serverUrl, async () => {
+    await api.init({
+      serverURL: cfg.serverUrl,
+      password: cfg.password,
+      dataDir: cfg.dataDir,
+      // Actual's engine logs breadcrumbs and sync progress through `console.log`, and
+      // its `verboseMode` defaults to on — ten unparseable lines per sync landing in
+      // the middle of pino's JSON stream (#123). Off by default, but not silenced:
+      // when a budget will not load, that chatter is the only view into why.
+      verbose: VERBOSE_LOG_LEVELS.has(cfg.logLevel),
+    })
+
+    // Pulls the budget into the local cache. Every read below is invalid until
+    // this has run at least once.
+    await download(cfg, api)
   })
 
-  // Pulls the budget into the local cache. Every read below is invalid until
-  // this has run at least once.
-  await download(cfg)
-
   opened = true
+  openedServerUrl = cfg.serverUrl
   health.opened = true
   health.lastError = null
   health.lastSyncAt = new Date()
 
-  await recordServerFacts(cfg.baseCurrency)
+  await withScopedHost(cfg.serverUrl, () => recordServerFacts(cfg.baseCurrency, api))
 }
 
 function errorResponse(id: number, error: unknown): ActualResponse {
@@ -235,7 +275,7 @@ function argsForCall(method: string, args: readonly unknown[]): readonly unknown
   return [{ serialize: () => state }, ...rest]
 }
 
-async function runCall(method: string, args: readonly unknown[]): Promise<unknown> {
+async function runCall(method: string, args: readonly unknown[], api: Api): Promise<unknown> {
   if (!ALLOWED_METHODS.has(method)) throw new Error(`method not allowed: ${method}`)
   const fn = (api as unknown as Record<string, (...callArgs: unknown[]) => unknown>)[method]
   if (typeof fn !== 'function') throw new Error(`@actual-app/api has no method ${method}`)
@@ -267,7 +307,10 @@ export async function handleRequest(
 
     case 'call': {
       try {
-        const result = await runCall(request.method, request.args)
+        const api = await loadApi()
+        const result = await withScopedHost(openedServerUrl, () =>
+          runCall(request.method, request.args, api),
+        )
         return { id: request.id, ok: true, result }
       } catch (error) {
         return errorResponse(request.id, error)
@@ -276,8 +319,12 @@ export async function handleRequest(
 
     case 'batch': {
       try {
-        const results: unknown[] = []
-        for (const op of request.ops) results.push(await runCall(op.method, op.args))
+        const api = await loadApi()
+        const results = await withScopedHost(openedServerUrl, async () => {
+          const out: unknown[] = []
+          for (const op of request.ops) out.push(await runCall(op.method, op.args, api))
+          return out
+        })
         return { id: request.id, ok: true, result: results }
       } catch (error) {
         return errorResponse(request.id, error)
@@ -286,7 +333,8 @@ export async function handleRequest(
 
     case 'sync': {
       try {
-        await api.sync()
+        const api = await loadApi()
+        await withScopedHost(openedServerUrl, () => api.sync())
         health.lastSyncAt = new Date()
         return { id: request.id, ok: true, result: null }
       } catch (error) {
@@ -296,7 +344,7 @@ export async function handleRequest(
 
     case 'shutdown': {
       try {
-        if (opened) await api.shutdown()
+        if (opened) await (await loadApi()).shutdown()
         opened = false
         health.opened = false
         return { id: request.id, ok: true, result: null }

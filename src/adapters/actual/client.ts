@@ -202,6 +202,7 @@ async function getOrSpawnWorker(db: Db, tenantId: string): Promise<TenantWorker>
     e2ePassword: integrations.actual.e2ePassword,
     logLevel: config.LOG_LEVEL,
     baseCurrency: config.BASE_CURRENCY,
+    egressMode: config.EGRESS_MODE,
   }
 
   const id = worker.nextId++

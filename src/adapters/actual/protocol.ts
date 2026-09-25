@@ -8,6 +8,7 @@
  * for the round-trip proof that a `Date` argument (`fetchAccountBalances`'s
  * `asOf`) survives the trip as a `Date` rather than an ISO string.
  */
+import type { EgressMode } from '../../egress.ts'
 
 /**
  * What the worker needs to open a budget, resolved from the calling tenant's
@@ -59,6 +60,12 @@ export interface ActualOpenConfig {
   logLevel: string
   /** `config.BASE_CURRENCY` — same reasoning as `logLevel`. */
   baseCurrency: string
+  /**
+   * `config.EGRESS_MODE` — same reasoning as `logLevel`: a deployment-wide setting,
+   * not a per-tenant credential, so it travels over IPC rather than through an
+   * import of `config.ts` (#536).
+   */
+  egressMode: EgressMode
 }
 
 export type ActualRequest =
