@@ -24,6 +24,7 @@
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
+import { withScopedHost } from '../../egress.ts'
 import { logger } from '../../logger.ts'
 import {
   accountsSchema,
@@ -135,27 +136,33 @@ async function request(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
 
-  let response: Response
-  try {
-    response = await get(authenticated ? await token(db, tenantId) : null)
-  } catch (error) {
-    throw networkError(path, error)
-  }
-
-  if (response.status === 401 && authenticated) {
-    log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
-    tokens.delete(tenantId)
-    // Wrapped too: the retry can fail the same way the first attempt can, and an
-    // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
-    // jobs could not tell apart from a bug in themselves.
+  // Scoped to this tenant's own configured host (#535): `allowedHosts` deliberately
+  // does not carry a tenant's Actual/Ghostfolio URL globally, so it has to be granted
+  // for the duration of this call instead. `token(db, tenantId)` below opens its own
+  // nested grant to the same host, which the refcount in `withScopedHost` tolerates.
+  return withScopedHost(resolvedIntegrations(db, tenantId).ghostfolio.url, async () => {
+    let response: Response
     try {
-      response = await get(await token(db, tenantId))
+      response = await get(authenticated ? await token(db, tenantId) : null)
     } catch (error) {
       throw networkError(path, error)
     }
-  }
 
-  return decode(path, response)
+    if (response.status === 401 && authenticated) {
+      log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
+      tokens.delete(tenantId)
+      // Wrapped too: the retry can fail the same way the first attempt can, and an
+      // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
+      // jobs could not tell apart from a bug in themselves.
+      try {
+        response = await get(await token(db, tenantId))
+      } catch (error) {
+        throw networkError(path, error)
+      }
+    }
+
+    return decode(path, response)
+  })
 }
 
 /** Parses a response, naming the path so a shape change is legible. */
@@ -190,14 +197,17 @@ async function token(db: Db, tenantId: string): Promise<string> {
   if (cached !== undefined) return cached
 
   const path = '/api/v1/auth/anonymous'
+  const integrations = resolvedIntegrations(db, tenantId)
   let response: Response
   try {
-    response = await fetch(url(db, tenantId, path), {
-      method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ accessToken: resolvedIntegrations(db, tenantId).ghostfolio.token }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
+    response = await withScopedHost(integrations.ghostfolio.url, () =>
+      fetch(url(db, tenantId, path), {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ accessToken: integrations.ghostfolio.token }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
+    )
   } catch (error) {
     throw networkError(path, error)
   }

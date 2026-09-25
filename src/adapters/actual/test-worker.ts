@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { config } from '../../config.ts'
-import { installEgressGuard, withTestHost } from '../../egress.ts'
+import { installEgressGuard, withScopedHost } from '../../egress.ts'
 
 export interface ActualTestCandidate {
   serverUrl: string
@@ -101,7 +101,7 @@ async function run(candidate: ActualTestCandidate): Promise<ActualTestResult> {
  */
 export async function testCandidate(candidate: ActualTestCandidate): Promise<ActualTestResult> {
   installEgressGuard(config.EGRESS_MODE)
-  return await withTestHost(candidate.serverUrl, async () => await run(candidate))
+  return await withScopedHost(candidate.serverUrl, async () => await run(candidate))
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

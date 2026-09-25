@@ -50,7 +50,7 @@ import type { Db } from '../../db/index.ts'
 import { decryptField, encryptField } from '../../db/field-crypto.ts'
 import { tenantIntegrations } from '../../db/schema.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
-import { withTestHost } from '../../egress.ts'
+import { withScopedHost } from '../../egress.ts'
 import {
   BAND_CLASSES,
   bandsOf,
@@ -667,7 +667,7 @@ const aiIntegrationPatchRequest = z.strictObject({
  * on a LAN or a Docker network, which is exactly what `ACTUAL_SERVER_URL`/
  * `GHOSTFOLIO_URL` already assume, so this does not add a scheme check the
  * PATCH request does not also enforce (#534). What it does add: the request
- * body has to parse as an absolute URL — `withTestHost` and `sameHost` below
+ * body has to parse as an absolute URL — `withScopedHost` and `sameHost` below
  * both call `new URL` on it and a string that fails that is not a host either
  * of them can reason about — and it must not carry embedded credentials,
  * which `serverUrl`/`url` has never been a place to put them.
@@ -1857,22 +1857,35 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * `password`/`e2ePassword` are the "omit means unchanged" case — see
    * `actualIntegrationPatchRequest`. `updatedAt` is set explicitly because the
    * column's default only fires on insert, never on update.
+   *
+   * A `serverUrl` whose host actually changes invalidates whichever of those two
+   * was left unchanged (#534, #535): they were only ever verified against the old
+   * host, and carrying them forward to a host nobody typed them for is the same
+   * shape of trust mistake the "test connection" fallback made — the owner has to
+   * retype the secret for the new host, the same way a first-ever save does.
    */
   app.patch('/api/settings/integrations/actual', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(actualIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
+    const hostChanged = !sameHost(patch.serverUrl, before.actual.serverUrl)
 
     db.update(tenantIntegrations)
       .set({
         actualServerUrl: patch.serverUrl,
         actualSyncId: patch.syncId,
         actualCategorySourceLocale: patch.categorySourceLocale,
-        ...(patch.password === undefined ? {} : { actualPasswordEnc: encryptField(patch.password) }),
-        ...(patch.e2ePassword === undefined
-          ? {}
-          : { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }),
+        ...(patch.password !== undefined
+          ? { actualPasswordEnc: encryptField(patch.password) }
+          : hostChanged
+            ? { actualPasswordEnc: '' }
+            : {}),
+        ...(patch.e2ePassword !== undefined
+          ? { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }
+          : hostChanged
+            ? { actualE2ePasswordEnc: null }
+            : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
@@ -1900,19 +1913,25 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     return buildSettings(db, request)
   })
 
-  /** The Ghostfolio connection this tenant reads from (#369). See the Actual route above. */
+  /**
+   * The Ghostfolio connection this tenant reads from (#369). See the Actual route
+   * above for why a host change invalidates a token left unchanged (#535).
+   */
   app.patch('/api/settings/integrations/ghostfolio', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
+    const hostChanged = !sameHost(patch.url, before.ghostfolio.url)
 
     db.update(tenantIntegrations)
       .set({
         ghostfolioUrl: patch.url,
-        ...(patch.securityToken === undefined
-          ? {}
-          : { ghostfolioSecurityTokenEnc: encryptField(patch.securityToken) }),
+        ...(patch.securityToken !== undefined
+          ? { ghostfolioSecurityTokenEnc: encryptField(patch.securityToken) }
+          : hostChanged
+            ? { ghostfolioSecurityTokenEnc: '' }
+            : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
@@ -2012,7 +2031,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         throw badRequest('A security token is required to test this connection.')
       }
 
-      const result = await withTestHost(candidate.url, async (): Promise<IntegrationTest> => {
+      const result = await withScopedHost(candidate.url, async (): Promise<IntegrationTest> => {
         try {
           const health = await fetch(`${base}/api/v1/health`, {
             headers: { accept: 'application/json' },
@@ -2072,7 +2091,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
         if (apiKey === undefined) throw badRequest('An API key is required to test Anthropic.')
 
-        const result = await withTestHost(ANTHROPIC_BASE_URL, async (): Promise<IntegrationTest> => {
+        const result = await withScopedHost(ANTHROPIC_BASE_URL, async (): Promise<IntegrationTest> => {
           try {
             const probe = await callAnthropicWithConfig({ apiKey }, capabilityProbe(model))
             return validCapabilityProbe(probe.text)
@@ -2107,7 +2126,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
           apiKey,
         }
         const testUrl = candidate.provider === 'openai-compatible' ? '' : connection.baseUrl
-        const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+        const result = await withScopedHost(testUrl, async (): Promise<IntegrationTest> => {
           try {
             const probe = await callOpenAiCompatibleWithConfig(connection, capabilityProbe(model))
             if (!validCapabilityProbe(probe.text)) {
@@ -2143,7 +2162,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         testUrl = ''
       }
 
-      const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+      const result = await withScopedHost(testUrl, async (): Promise<IntegrationTest> => {
         try {
           const client = new GoogleGenAI(options)
           await client.models.list({ config: { pageSize: 1 } })
@@ -2189,7 +2208,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         candidate.e2ePassword ??
         (storedSecretsApply && row.actualE2ePasswordEnc !== null ? decryptField(row.actualE2ePasswordEnc) : undefined)
 
-      const result = await withTestHost(candidate.serverUrl, () =>
+      const result = await withScopedHost(candidate.serverUrl, () =>
         testActualConnection({ serverUrl: candidate.serverUrl, syncId: candidate.syncId, password, e2ePassword }),
       )
 

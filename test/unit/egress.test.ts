@@ -118,7 +118,7 @@ describe('the allowlist', () => {
     expect(hosts.has('tenant-actual.example')).toBe(false)
   })
 
-  it('unions in a tenant-configured host that differs from .env (#369)', async () => {
+  it('does not union in a tenant-configured host — that is scoped per call instead (#535)', async () => {
     const { allowedHosts } = await freshEgress()
     const db = freshDb()
     insertIntegrations(db, {
@@ -127,27 +127,27 @@ describe('the allowlist', () => {
     })
 
     const hosts = allowedHosts(db)
-    expect(hosts.has('tenant-actual.example')).toBe(true)
-    expect(hosts.has('tenant-ghostfolio.example')).toBe(true)
-    // The static, `.env`-derived hosts are still there too.
+    expect(hosts.has('tenant-actual.example')).toBe(false)
+    expect(hosts.has('tenant-ghostfolio.example')).toBe(false)
+    // The static, `.env`-derived hosts are still there.
     expect(hosts.has('actual.test')).toBe(true)
   })
 
-  it('reflects a row inserted after the guard was installed, with no restart', async () => {
+  it('a newly tenant-configured host is reachable via a scoped call, no restart needed', async () => {
     const inner = vi.fn(async () => new Response('ok'))
     globalThis.fetch = inner as unknown as typeof fetch
-    const { installEgressGuard, EgressDeniedError } = await freshEgress()
+    const { installEgressGuard, withScopedHost } = await freshEgress()
     const db = freshDb()
     installEgressGuard('enforce', db)
-
-    await expect(fetch('https://tenant-actual.example/health')).rejects.toThrow(EgressDeniedError)
 
     insertIntegrations(db, {
       actualServerUrl: 'https://tenant-actual.example',
       ghostfolioUrl: 'https://tenant-ghostfolio.example',
     })
 
-    const res = await fetch('https://tenant-actual.example/health')
+    const res = await withScopedHost('https://tenant-actual.example', () =>
+      fetch('https://tenant-actual.example/health'),
+    )
     expect(await res.text()).toBe('ok')
   })
 
@@ -188,6 +188,42 @@ describe('the allowlist', () => {
     })
     db.update(tenantIntegrations).set({ aiBaseUrl: 'https://tenant-picked.example/v1' }).run()
     expect(allowedHosts(db).has('tenant-picked.example')).toBe(false)
+  })
+})
+
+describe('withScopedHost (#369, #535)', () => {
+  it('permits a host only for the duration of a scoped call, not globally', async () => {
+    const inner = vi.fn(async () => new Response('ok'))
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, withScopedHost, EgressDeniedError } = await freshEgress()
+    installEgressGuard()
+
+    await expect(fetch('https://tenant-actual.example/health')).rejects.toThrow(EgressDeniedError)
+
+    const result = await withScopedHost('https://tenant-actual.example', () =>
+      fetch('https://tenant-actual.example/health').then((r) => r.text()),
+    )
+    expect(result).toBe('ok')
+
+    await expect(fetch('https://tenant-actual.example/health')).rejects.toThrow(EgressDeniedError)
+  })
+
+  it('tolerates two overlapping calls to the same host without an early revoke', async () => {
+    const inner = vi.fn(async () => new Response('ok'))
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, withScopedHost } = await freshEgress()
+    installEgressGuard()
+
+    const outer = withScopedHost('https://tenant-actual.example', async () => {
+      const inner = await withScopedHost('https://tenant-actual.example', () =>
+        fetch('https://tenant-actual.example/inner').then((r) => r.text()),
+      )
+      // The inner call's `finally` already ran and revoked one reference; the outer
+      // grant must still be in effect for the rest of the outer call.
+      const outer = await fetch('https://tenant-actual.example/outer').then((r) => r.text())
+      return { inner, outer }
+    })
+    await expect(outer).resolves.toEqual({ inner: 'ok', outer: 'ok' })
   })
 })
 

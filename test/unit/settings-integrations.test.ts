@@ -195,9 +195,34 @@ describe('PATCH /api/settings/integrations/actual', () => {
     expect(row(ctx.db).actualSyncId).toBe('sync-id-2')
   })
 
-  it('leaves the stored password untouched when the key is omitted', async () => {
+  it('leaves the stored password untouched when the key is omitted and the host is unchanged', async () => {
     await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
+
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
+  })
+
+  it('invalidates the stored password and e2e password when the server URL host changes without a new one (#535)', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual2.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
+
+    expect(res.statusCode).toBe(200)
+    const settings = res.json<Settings>().integrations.actual
+    expect(settings.passwordConfigured).toBe(false)
+    expect(settings.e2ePasswordConfigured).toBe(false)
+    expect(row(ctx.db).actualPasswordEnc).toBe('')
+    expect(row(ctx.db).actualE2ePasswordEnc).toBeNull()
+  })
+
+  it('does not invalidate the stored password when the server URL changes without changing host', async () => {
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006/',
       syncId: 'test-sync-id',
       categorySourceLocale: 'en',
     })
@@ -345,12 +370,20 @@ describe('PATCH /api/settings/integrations/actual', () => {
 })
 
 describe('PATCH /api/settings/integrations/ghostfolio', () => {
-  it('updates the URL and leaves the token untouched when omitted', async () => {
+  it('updates the URL and leaves the token untouched when omitted and the host is unchanged', async () => {
+    const res = await patch('/api/settings/integrations/ghostfolio', { url: 'http://ghostfolio.test:3333/' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.ghostfolio.url).toBe('http://ghostfolio.test:3333/')
+    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
+  })
+
+  it('invalidates the stored token when the URL host changes without a new one (#535)', async () => {
     const res = await patch('/api/settings/integrations/ghostfolio', { url: 'http://ghostfolio2.test:3333' })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json<Settings>().integrations.ghostfolio.url).toBe('http://ghostfolio2.test:3333')
-    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
+    expect(res.json<Settings>().integrations.ghostfolio.tokenConfigured).toBe(false)
+    expect(row(ctx.db).ghostfolioSecurityTokenEnc).toBe('')
   })
 
   it('replaces the stored token only when one is typed', async () => {
