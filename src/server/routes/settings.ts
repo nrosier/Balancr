@@ -662,18 +662,65 @@ const aiIntegrationPatchRequest = z.strictObject({
 })
 
 /**
+ * A "test connection" URL is not held to the PATCH one's scheme freedom by
+ * accident — self-hosted Actual/Ghostfolio routinely sit behind plain `http:`
+ * on a LAN or a Docker network, which is exactly what `ACTUAL_SERVER_URL`/
+ * `GHOSTFOLIO_URL` already assume, so this does not add a scheme check the
+ * PATCH request does not also enforce (#534). What it does add: the request
+ * body has to parse as an absolute URL — `withTestHost` and `sameHost` below
+ * both call `new URL` on it and a string that fails that is not a host either
+ * of them can reason about — and it must not carry embedded credentials,
+ * which `serverUrl`/`url` has never been a place to put them.
+ */
+const testCandidateUrl = z
+  .string()
+  .min(1)
+  .transform((raw, ctx) => {
+    let url: URL
+    try {
+      url = new URL(raw)
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'must be a valid URL' })
+      return z.NEVER
+    }
+    if (url.username !== '' || url.password !== '') {
+      ctx.addIssue({ code: 'custom', message: 'must not contain credentials' })
+      return z.NEVER
+    }
+    return url.href.replace(/\/+$/, '')
+  })
+
+/**
+ * Whether two URLs share a scheme and host — the check that gates the stored-secret
+ * fallback below.
+ *
+ * Origin, not just host: a stored secret was verified over whichever scheme the
+ * stored URL used, and a candidate that keeps the hostname but drops from `https:`
+ * to `http:` is still a host nobody verified that secret against — the same
+ * downgrade a browser's mixed-content warning exists for.
+ */
+function sameHost(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
+}
+
+/**
  * A "test connection" body carries the *full* candidate credential, never a partial
  * patch — nothing is saved by a test, so there is no stored value to merge against.
  *
  * A secret key is optional here for the same reason it's optional on the PATCH
  * request: a secret field is always blank on load, so a test of an
  * already-configured integration can only omit it. The handler below falls back
- * to the tenant's own stored secret when it's omitted and one exists (#382) —
- * never the other way around, so a test never sends a stored secret for a
- * candidate it did not ask to test.
+ * to the tenant's own stored secret when it's omitted, one exists, *and* the
+ * candidate host matches the host that secret was stored for (#382, #534) —
+ * never the other way around, and never across hosts, so a test never sends a
+ * stored secret for a candidate it did not ask to test.
  */
 const actualIntegrationTestRequest = z.strictObject({
-  serverUrl: z.string().min(1),
+  serverUrl: testCandidateUrl,
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
@@ -681,7 +728,7 @@ const actualIntegrationTestRequest = z.strictObject({
 
 /** See `actualIntegrationTestRequest`. */
 const ghostfolioIntegrationTestRequest = z.strictObject({
-  url: z.string().min(1),
+  url: testCandidateUrl,
   securityToken: z.string().min(1).optional(),
 })
 
@@ -1957,8 +2004,10 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       const candidate = parseBody(ghostfolioIntegrationTestRequest, request.body)
       const base = candidate.url.replace(/\/+$/, '')
 
-      const stored = integrationsRow(db, user.tenantId).ghostfolioSecurityTokenEnc
-      const securityToken = candidate.securityToken ?? (stored.length > 0 ? decryptField(stored) : undefined)
+      const row = integrationsRow(db, user.tenantId)
+      const storedTokenApplies = row.ghostfolioSecurityTokenEnc.length > 0 && sameHost(candidate.url, row.ghostfolioUrl)
+      const securityToken =
+        candidate.securityToken ?? (storedTokenApplies ? decryptField(row.ghostfolioSecurityTokenEnc) : undefined)
       if (securityToken === undefined) {
         throw badRequest('A security token is required to test this connection.')
       }
@@ -2132,10 +2181,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       if (busy.length > 0) throw busyError(busy)
 
       const row = integrationsRow(db, user.tenantId)
-      const password = candidate.password ?? (row.actualPasswordEnc.length > 0 ? decryptField(row.actualPasswordEnc) : undefined)
+      const storedSecretsApply = row.actualServerUrl.length > 0 && sameHost(candidate.serverUrl, row.actualServerUrl)
+      const password =
+        candidate.password ?? (storedSecretsApply && row.actualPasswordEnc.length > 0 ? decryptField(row.actualPasswordEnc) : undefined)
       if (password === undefined) throw badRequest('A password is required to test this connection.')
       const e2ePassword =
-        candidate.e2ePassword ?? (row.actualE2ePasswordEnc === null ? undefined : decryptField(row.actualE2ePasswordEnc))
+        candidate.e2ePassword ??
+        (storedSecretsApply && row.actualE2ePasswordEnc !== null ? decryptField(row.actualE2ePasswordEnc) : undefined)
 
       const result = await withTestHost(candidate.serverUrl, () =>
         testActualConnection({ serverUrl: candidate.serverUrl, syncId: candidate.syncId, password, e2ePassword }),
