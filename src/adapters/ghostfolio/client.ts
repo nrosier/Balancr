@@ -144,7 +144,7 @@ async function request(
   // Scoped to this tenant's own configured host (#535): `allowedHosts` deliberately
   // does not carry a tenant's Actual/Ghostfolio URL globally, so it has to be granted
   // for the duration of this call instead. `token` below opens its own nested grant
-  // to the same host, which the refcount in `withScopedHost` tolerates.
+  // to the same host, which `withScopedHost`'s async context tolerates (#548).
   return withScopedHost(integrations.ghostfolio.url, async () => {
     let response: Response
     try {
