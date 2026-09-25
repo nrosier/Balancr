@@ -343,3 +343,48 @@ describe('the lockout', () => {
     }
   })
 })
+
+describe('concurrent requests (#550)', () => {
+  it('does not let two racing logins both consume the same code', async () => {
+    const { db, sqlite, userId } = fixture()
+    try {
+      const now = Date.now()
+      const attempt = { email: EMAIL, password: PASSWORD, totp: codeAt(now) }
+
+      // Both calls read the row before either's `argon2.verify` await settles, which
+      // is exactly the window the old read-modify-write missed: without an atomic
+      // conditional write, both could see the code as still fresh and mint a session.
+      const results = await Promise.allSettled([
+        verifyLocalLogin(db, attempt, now),
+        verifyLocalLogin(db, attempt, now),
+      ])
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+      expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1)
+      expect(credential(db, userId)?.lastTotpStep).toBe(totpStep(now))
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('still reaches lockout when the failing attempts race each other', async () => {
+    const { db, sqlite, userId } = fixture()
+    try {
+      const now = Date.now()
+      // Same trap as above: every call reads `failedAttempts` before any of them
+      // writes, so a caller-computed `+ 1` would have every write land on the same
+      // value instead of advancing the counter once per attempt.
+      await Promise.allSettled(
+        Array.from({ length: LOCKOUT_THRESHOLD }, () =>
+          verifyLocalLogin(db, { email: EMAIL, password: 'wrong', totp: '000000' }, now),
+        ),
+      )
+
+      const row = credential(db, userId)
+      expect(row?.lockedUntil?.getTime()).toBe(now + LOCKOUT_MS)
+      expect(row?.failedAttempts).toBe(0)
+    } finally {
+      sqlite.close()
+    }
+  })
+})
