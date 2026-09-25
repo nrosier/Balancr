@@ -476,7 +476,6 @@ describe('.env.example as shipped (#118)', () => {
     ACTUAL_PASSWORD: 'actual-password',
     ACTUAL_SYNC_ID: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     GHOSTFOLIO_SECURITY_TOKEN: 'ghostfolio-token',
-    SESSION_SECRET: 'x'.repeat(48),
     CONFIG_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     GOOGLE_CLOUD_PROJECT: 'balancr-prod',
     AUTH_OIDC_CLIENT_ID: 'balancr',

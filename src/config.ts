@@ -132,7 +132,6 @@ const EnvSchema = z.object({
   GOOGLE_CLOUD_LOCATION: z.string().min(1).default('europe-west1'),
 
   // Auth
-  SESSION_SECRET: z.string().min(32),
   TRUSTED_PROXY_CIDRS: csv('127.0.0.1/32'),
   AUTH_OIDC_ISSUER: optionalUrl(),
   AUTH_OIDC_CLIENT_ID: optionalText(),
@@ -591,7 +590,6 @@ export function configSummary(): Record<string, unknown> {
     GEMINI_MODEL_DEEP: config.GEMINI_MODEL_DEEP,
     GEMINI_MONTHLY_BUDGET_EUR: config.GEMINI_MONTHLY_BUDGET_EUR,
     GEMINI_CACHE_MIN_TOKENS: config.GEMINI_CACHE_MIN_TOKENS,
-    SESSION_SECRET: secret(config.SESSION_SECRET),
     TRUSTED_PROXY_CIDRS: config.TRUSTED_PROXY_CIDRS,
     oidcEnabled: config.oidcEnabled,
     // Both printed in full, and neither is a secret: the client id travels in the
