@@ -4157,6 +4157,58 @@ describe('the prompt safety check (#454)', () => {
     ).toBeNull()
   })
 
+  it('keeps a checked sibling version badged as checked after checking a different version (#529)', async () => {
+    // The regression this pins: with a single last-checked slot, checking version 4 after
+    // version 5 flipped version 5's own row back to "Not checked", even though nothing about
+    // version 5's verdict had changed — the row's own stored `gate` just does not know about
+    // it until the next `GET /api/settings`. Two rows, two independent verdicts.
+    const FIFTH = 'A fifth version, written straight into the box.'
+    const withTwoUnchecked = narrativeWith(
+      { id: 'n3', version: 3, body: BUILT_IN, gate: 'built_in' },
+      [
+        version({ id: 'n5', version: 5, chars: FIFTH.length }),
+        version({ id: 'n4', version: 4 }),
+        version({ id: 'n3', version: 3, active: true, gate: 'built_in', chars: BUILT_IN.length }),
+      ],
+    )
+    await open({
+      ...READS,
+      '/api/settings': json(withTwoUnchecked),
+      '/api/settings/prompts/n5': json(
+        promptBody(version({ id: 'n5', version: 5, chars: FIFTH.length }), FIFTH),
+      ),
+      '/api/settings/prompts/n4': json(promptBody(version({ id: 'n4', version: 4 }), EDITED)),
+      '/api/ai/prompt-validate': [
+        json({ ...SAFE_RESULT, promptId: 'n5', version: 5 }),
+        json({ ...SAFE_RESULT, promptId: 'n4', version: 4 }),
+      ],
+    })
+    selectNarrative()
+
+    const rowFor = (label: string): Element => {
+      const row = [...document.querySelectorAll('.version')].find((el) => el.textContent?.includes(label))
+      if (row === undefined) throw new Error(`no version row for ${label}`)
+      return row
+    }
+
+    await editVersion(0, FIFTH)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
+    expect(rowFor('Version 5').textContent).toContain('Checked')
+
+    // Opening version 4 re-anchors the box to it — version 5's row is off screen's mind, but
+    // its badge must still say what it said a moment ago.
+    await editVersion(1, EDITED)
+    expect(rowFor('Version 5').textContent).toContain('Checked')
+    expect(rowFor('Version 4').textContent).toContain('Not checked')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check' }))
+    await screen.findByText('This still imposes every rule the monthly narrative depends on.')
+    expect(rowFor('Version 4').textContent).toContain('Checked')
+    // The sibling this bug used to clear.
+    expect(rowFor('Version 5').textContent).toContain('Checked')
+  })
+
   it('checks the opened version and reports a safe verdict', async () => {
     const calls = await open({
       ...READS,
