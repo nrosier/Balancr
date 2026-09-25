@@ -495,6 +495,55 @@ describe('egress: this worker installs its own guard, scoped to its own tenant (
       globalThis.fetch = realFetch
     }
   })
+
+  it("scopes open()'s own init/download and recordServerFacts calls too, not just later call/batch/sync", async () => {
+    const realFetch = globalThis.fetch
+    try {
+      const seen: string[] = []
+      globalThis.fetch = (async (input: Request | string | URL) => {
+        seen.push(input instanceof Request ? input.url : String(input))
+        return new Response('{}', { status: 200 })
+      }) as unknown as typeof fetch
+
+      init.mockImplementation(async () => {
+        await fetch(new URL('/init', 'https://actual.example.com'))
+      })
+      downloadBudget.mockImplementation(async () => {
+        await fetch(new URL('/download', 'https://actual.example.com'))
+      })
+      getServerVersion.mockImplementation(async () => {
+        await fetch(new URL('/version', 'https://actual.example.com'))
+        return { version: '26.9.0' }
+      })
+      getPreferences.mockImplementation(async () => {
+        await fetch(new URL('/prefs', 'https://actual.example.com'))
+        return { budgetType: 'envelope', defaultCurrencyCode: 'EUR' }
+      })
+
+      const config = await baseConfig()
+      config.egressMode = 'enforce'
+      const { handleRequest } = await freshWorker()
+      const response = await handleRequest({ id: 1, kind: 'open', config }, () => undefined)
+      expect(response).toEqual({ id: 1, ok: true, result: null })
+
+      // All four grants are real: `init`+`download` (one `withScopedHost` call) and
+      // `getServerVersion`+`getPreferences` (a second, separate one in
+      // `recordServerFacts`) each actually permitted this host, in order.
+      expect(seen).toEqual([
+        'https://actual.example.com/init',
+        'https://actual.example.com/download',
+        'https://actual.example.com/version',
+        'https://actual.example.com/prefs',
+      ])
+
+      // Neither grant outlives `open` itself.
+      await expect(fetch(config.serverUrl)).rejects.toThrow(
+        /egress to actual\.example\.com is not allowed/,
+      )
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
 })
 
 describe("'shutdown'", () => {
