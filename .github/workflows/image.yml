@@ -47,6 +47,14 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Fails fast, before a multi-minute build, on a Dockerfile mistake — see
+      # .hadolint.yaml for the three rules ignored here and why each is a
+      # false positive for this specific multi-stage build rather than a real
+      # relaxation.
+      - name: Lint the Dockerfile
+        run: docker run --rm -v "$PWD:/repo" -w /repo hadolint/hadolint hadolint Dockerfile
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       # Loaded into the local daemon rather than pushed: publishing happens in
       # release.yml, and the next step needs to actually run this image.

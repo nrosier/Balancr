@@ -63,6 +63,12 @@ jobs:
       - name: No skipped or focused tests
         run: npm run skips:check
 
+      # Only `--production` deps ship in the built artefact/image; see
+      # scripts/check-licenses.ts for the short deny-list and its one written
+      # exception (hyperformula, forced by @actual-app/core).
+      - name: Production dependency licenses
+        run: npm run licenses:check
+
       - name: Tests
         run: npm test
 
@@ -92,3 +98,34 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             zricethezav/gitleaks:latest git --redact --verbose --no-banner /repo
+
+  semgrep-sarif:
+    name: Semgrep findings (reporting only)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # semgrep ci diffs against the base branch on a PR event.
+          fetch-depth: 0
+
+      # The Semgrep GitHub App (`semgrep-cloud-platform/scan`, semgrep.dev) is
+      # the actual scan and the actual policy decision — this step does not
+      # duplicate that. Its only job is to hand the same findings to GitHub's
+      # code-scanning alerts, because the App's own dashboard has no API this
+      # repo can reach: no PR comments, no check annotations, login-gated
+      # pages. `|| true` so a real finding here never fails the build — that
+      # verdict belongs to the App's check, not to this reporting step.
+      - name: Semgrep
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e SEMGREP_APP_TOKEN \
+            semgrep/semgrep semgrep ci --sarif --output=semgrep.sarif || true
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          sarif_file: semgrep.sarif
