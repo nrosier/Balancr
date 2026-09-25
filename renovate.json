@@ -11,6 +11,7 @@
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
   "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["* 2-6 * * 1"],
@@ -20,7 +21,8 @@
   },
   "vulnerabilityAlerts": {
     "labels": ["security"],
-    "schedule": ["at any time"]
+    "schedule": ["at any time"],
+    "minimumReleaseAge": "0 days"
   },
   "customManagers": [
     {
