@@ -137,19 +137,17 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const [diff, setDiff] = useState<{ stamp: string; diff: PromptDiff } | null>(null)
   const [run, setRun] = useState<{ for: string; result: AiDryRun } | null>(null)
   /**
-   * The last verdict, keyed by the row it is about and stamped with the text that was on
-   * screen when it was asked for.
+   * The last verdict for each row that has been checked, keyed by the row's id and stamped
+   * with the text that was on screen when it was asked for.
    *
-   * Two keys because it answers two different questions. `promptId` is what the verdict is
-   * *about* — a verdict belongs to a row, and `POST /api/ai/prompt-validate` answers with
-   * that row's new `gate`, which is the only fresh gate the client has until the next
-   * `GET /api/settings` (`state.ask` does not replace the payload the way `state.save`
-   * does). `stamp` is what makes "stale on edit" a comparison rather than a flag something
-   * has to remember to clear.
+   * Keyed by `promptId` rather than held as a single slot: `POST /api/ai/prompt-validate`
+   * answers with one row's fresh `gate`, which is the only fresh gate the client has until
+   * the next `GET /api/settings` (`state.ask` does not replace the payload the way
+   * `state.save` does), and checking one version must not push a sibling version's
+   * already-known verdict back to "unchecked" (#529). `stamp` is what makes "stale on edit"
+   * a comparison rather than a flag something has to remember to clear.
    */
-  const [check, setCheck] = useState<
-    { promptId: string; stamp: string; result: PromptValidation } | null
-  >(null)
+  const [checks, setChecks] = useState<Record<string, { stamp: string; result: PromptValidation }>>({})
 
   const entry = prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
   const selection = selectionOf(key, locale)
@@ -192,10 +190,10 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
     // the shared text rather than to an empty panel.
     setLocale(localesFor(nextKey).includes(nextLocale) ? nextLocale : SHARED_LOCALE)
     // The run describes a version of what was selected; keeping it on screen under a
-    // different prompt's heading would attribute one prompt's findings to another.
+    // different prompt's heading would attribute one prompt's findings to another. The
+    // verdict map needs no such reset — it is keyed by row id, so switching away and back
+    // just finds the same row's own last verdict again (#529).
     setRun(null)
-    // Same reasoning for the verdict: it is about one row.
-    setCheck(null)
   }
 
   // After a write that created or retired an override: the entry the picker needs
@@ -205,7 +203,6 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
     setLocale(nextLocale)
     setDraft(null)
     setRun(null)
-    setCheck(null)
   }
 
   if (entry === undefined) {
@@ -224,13 +221,15 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
    * `state.ask` — which is how the check is sent, because its answer is a verdict rather than
    * the settings payload — does not replace `settings`. So immediately after a check every
    * `gate` in this render is still the one the last `GET /api/settings` reported, and a row
-   * that has just been cleared would still be badged "Not checked" beside a result saying it
-   * is safe. `PromptValidation.gate` exists precisely to close that window.
+   * that has just been checked would still be badged "Not checked" beside a result saying it
+   * is safe. `PromptValidation.gate` exists precisely to close that window — looked up by row
+   * id in `checks` rather than compared against a single last-checked id, so checking one
+   * version never pushes a sibling version's badge back to stale (#529).
    */
-  const gateOf = (version: { id: string | null; gate: PromptGate }): PromptGate =>
-    check !== null && version.id !== null && check.promptId === version.id
-      ? check.result.gate
-      : version.gate
+  const gateOf = (version: { id: string | null; gate: PromptGate }): PromptGate => {
+    const checked = version.id === null ? undefined : checks[version.id]
+    return checked === undefined ? version.gate : checked.result.gate
+  }
 
   /** A row's gate by id, looked up rather than carried around as a whole `PromptVersionSetting`. */
   const gateForId = (id: string | null): PromptGate => {
@@ -299,7 +298,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         'POST',
         '/api/ai/prompt-validate',
         { promptId: anchorId },
-        (value) => setCheck({ promptId: anchorId, stamp, result: value }),
+        (value) => setChecks((prior) => ({ ...prior, [anchorId]: { stamp, result: value } })),
       )
       return
     }
@@ -318,12 +317,14 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
             'POST',
             '/api/ai/prompt-validate',
             { promptId: newest.id },
-            (value) => setCheck({ promptId: newest.id, stamp, result: value }),
+            (value) => setChecks((prior) => ({ ...prior, [newest.id]: { stamp, result: value } })),
           )
         }, 0)
       },
     )
   }
+
+  const anchoredCheck = anchorId === null ? undefined : checks[anchorId]
 
   return (
     <Panel
@@ -474,13 +475,14 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           estimateMicroEur={
             diff === null || diff.stamp !== stamp ? null : diff.diff.validationEstimateMicroEur
           }
-          // Shown only while it is still about the row the box is anchored to. A verdict for a
-          // row a newer save has superseded is not this section's answer any more.
-          result={check !== null && check.promptId === anchorId ? check.result : null}
-          // Two ways a result stops being current, and neither discards it — being told the
-          // answer has moved on is the point. The box has been edited since it was obtained,
-          // or a newer version is now the anchor instead.
-          stale={check !== null && (check.stamp !== stamp || check.promptId !== anchorId)}
+          // Looked up by the row the box is anchored to, rather than compared against a single
+          // last-checked id — so opening a version checked earlier in the session shows its
+          // own verdict again, and checking a sibling version never displaces this one (#529).
+          result={anchoredCheck === undefined ? null : anchoredCheck.result}
+          // Stale only when this exact row's own last verdict no longer matches what's on
+          // screen — the box has been edited since it was obtained. A row with no verdict yet
+          // is simply nothing shown, not stale.
+          stale={anchoredCheck !== undefined && anchoredCheck.stamp !== stamp}
           onRun={runCheck}
         />
       )}
@@ -540,7 +542,6 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           setLocale(SHARED_LOCALE)
           setDraft(null)
           setRun(null)
-          setCheck(null)
         }}
       />
     </Panel>
