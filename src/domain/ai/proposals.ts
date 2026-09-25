@@ -888,7 +888,11 @@ const after = (fields: readonly DiffField[]): Record<string, unknown> =>
  * and the actual write did not happen. A crash *after* `applyRemote`
  * succeeds but before step 2 commits is not guarded against and is not
  * meant to be: both remote writes are idempotent (see `ProposalHandler.applyRemote`),
- * so recovering from it is a manual re-apply, not a double-apply.
+ * so recovering from it is a manual re-apply, not a double-apply. That race is
+ * still logged (`log.warn`) when step 2's re-check finds it, though (#540) —
+ * a manual re-apply needs someone to notice the remote write happened at all,
+ * and without a log line the only trace is a live discrepancy between
+ * Balancr's proposal list and Actual's real state.
  */
 export async function applyProposal(
   db: Db,
@@ -927,10 +931,20 @@ export async function applyProposal(
     await handler.applyRemote(db, tenantId, initial.targetRef, payload)
   }
 
+  const remoteApplied = handler.applyRemote !== undefined
+
   return db.transaction((tx) => {
     const row = tx.select().from(proposals).where(matches).get()
     if (row === undefined) throw new ProposalError(`proposal ${options.id} does not exist`)
     if (row.status !== 'pending') {
+      if (remoteApplied) {
+        // The remote write above already happened and cannot be undone — this
+        // is the only trace of it, since the local commit below never runs (#540).
+        log.warn(
+          { proposalId: row.id, type: row.type, targetRef: row.targetRef, lostToStatus: row.status },
+          'remote write applied but the local commit lost the race — proposal was decided while applyRemote was in flight',
+        )
+      }
       throw new ProposalError(`proposal ${options.id} is already ${row.status}`)
     }
 
