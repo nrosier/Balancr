@@ -156,9 +156,10 @@ export function Ledger({ runs, month }: LedgerProps): ReactNode {
 /**
  * One payload, fetched because this component exists.
  *
- * `payload: null` is not an error and is not rendered as one: it means the stored JSON
- * would not parse, the row around it is still true, and saying so is more useful than
- * a red box — it is the audit view reporting a finding about itself.
+ * `payload: null` is not an error and is not rendered as one: it means either the
+ * stored JSON would not parse or the run is old enough that retention (#539) has
+ * already cleared it, and either way the row around it is still true. Saying so is
+ * more useful than a red box — it is the audit view reporting a finding about itself.
  */
 function RunPayload({ id }: { id: string }): ReactNode {
   const { t } = useT()

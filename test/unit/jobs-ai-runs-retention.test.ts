@@ -1,6 +1,6 @@
 /**
- * The nightly sweep that nulls `ai_runs.requestText`/`responseText` past
- * `AI_RUNS_TEXT_RETENTION_DAYS` (#503).
+ * The nightly sweep that nulls `ai_runs.requestText`/`responseText`/`payloadJson`
+ * past `AI_RUNS_TEXT_RETENTION_DAYS` (#503, #539).
  */
 import pino from 'pino'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -74,7 +74,7 @@ describe('aiRunsRetentionJob', () => {
     expect(aiRunsRetentionJob.schedule).toEqual({ kind: 'daily', hour: config.JOBS_NIGHTLY_HOUR })
   })
 
-  it('clears text past the retention window and leaves recent text alone', async () => {
+  it('clears text and payload past the retention window and leaves recent rows alone', async () => {
     const job = await freshJob({ AI_RUNS_TEXT_RETENTION_DAYS: '90' })
     const old = withText()
     backdate(old, new Date('2026-01-01T00:00:00Z'))
@@ -86,7 +86,9 @@ describe('aiRunsRetentionJob', () => {
     expect(detail).toEqual({ cleared: 1, cutoffDays: 90, cursor: '2026-06-03T00:00:00.000Z' })
     expect(loadRun(db, tenantId, old)?.requestText).toBeNull()
     expect(loadRun(db, tenantId, old)?.responseText).toBeNull()
+    expect(loadRun(db, tenantId, old)?.payloadJson).toBeNull()
     expect(loadRun(db, tenantId, recent)?.requestText).toBe('the request')
+    expect(loadRun(db, tenantId, recent)?.payloadJson).not.toBeNull()
   })
 
   it('reports zero cleared when nothing is old enough', async () => {
