@@ -75,6 +75,9 @@ half-English, and costs a fraction of what shipping raw transactions would.
 - **No payees, no memos, no transactions ever leave the machine.** Only
   aggregates and category names — and per envelope you choose one of three answers:
   name and amounts, amounts only (an opaque label plus its class), or nothing at all.
+  The one exception is the month note you type yourself (Budget page): free text
+  with no other way to convey it, sent to the AI as written, not redacted like
+  everything else here — the note's own field says so too.
 - **Every call is logged verbatim.** `ai_runs.payload_json` holds exactly what was
   sent, so you can check the claim above by hand rather than trusting it.
 - **A golden test enforces it** — the redaction test fails if any payee string

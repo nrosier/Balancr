@@ -210,7 +210,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} characters",
-    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. Two AI passes read it: the budget nudge on the Insights page, when it suggests next month's amounts, and the month in words, so it can attribute a movement to what you told it instead of calling it drift. It is sent to the model as you wrote it, and it is not sent to the findings pass.",
+    "hint": "Explain something unusual about a month — a one-off cost, something you already know is coming — in your own words. Two AI passes read it: the budget nudge on the Insights page, when it suggests next month's amounts, and the month in words, so it can attribute a movement to what you told it instead of calling it drift. Unlike everything else Balancr sends the AI, this note is not redacted — it leaves the machine exactly as you type it, so avoid naming payees or other details you would not want sent as-is. It is not sent to the findings pass.",
     "label": "Note for {{month}}",
     "period": {
       "month": "Month",
