@@ -417,6 +417,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           id="prompt-name"
           className="field__input"
           type="text"
+          maxLength={80}
           value={name}
           placeholder={t('settings:prompt.namePlaceholder')}
           disabled={!owner || state.busy}
@@ -522,6 +523,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         promptKey={key}
         locale={locale}
         body={body}
+        name={name}
         written={localesFor(key)}
         supported={settings.locales.supported}
         state={state}
@@ -642,6 +644,7 @@ interface OverridesProps {
   promptKey: string
   locale: string
   body: string
+  name: string
   /** The locales this key already has an entry for, the shared sentinel included. */
   written: string[]
   supported: string[]
@@ -667,6 +670,7 @@ function Overrides({
   promptKey,
   locale,
   body,
+  name,
   written,
   supported,
   state,
@@ -718,7 +722,13 @@ function Overrides({
                   `override:${candidate}`,
                   'POST',
                   '/api/settings/prompts',
-                  { key: promptKey, locale: candidate, body, activate: true },
+                  {
+                    key: promptKey,
+                    locale: candidate,
+                    body,
+                    ...(name.trim() === '' ? {} : { name }),
+                    activate: true,
+                  },
                   () => onJump(candidate),
                 )
               }}

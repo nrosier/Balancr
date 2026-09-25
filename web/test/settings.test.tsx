@@ -3669,6 +3669,29 @@ describe('prompts', () => {
     ])
   })
 
+  it('carries a typed name into the version it forks, rather than saving it unnamed', async () => {
+    const calls = await open({ ...READS, '/api/settings/prompts': json(DIVERGED) })
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dutch draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Write a version for Dutch only' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/prompts',
+          method: 'POST',
+          body: {
+            key: 'analysis.system',
+            locale: 'nl',
+            body: 'Judge the signals.',
+            name: 'Dutch draft',
+            activate: true,
+          },
+        },
+      ])
+    })
+  })
+
   it('offers no fork for a language that already has one', async () => {
     await open({ ...READS, '/api/settings': json(DIVERGED) })
 
@@ -3789,6 +3812,12 @@ describe('prompts', () => {
         },
       ])
     })
+  })
+
+  it('caps the name at 80 characters, matching the API limit (#530)', async () => {
+    await open(READS)
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).maxLength).toBe(80)
   })
 
   it('activates in the same request when asked to', async () => {
