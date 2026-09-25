@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.8-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.9-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1098,14 +1098,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.3.8` is the current release. Savings goals can now
-target a specific Actual Budget envelope, with several goals sharing one
-envelope split proportional to urgency, a required-monthly-savings figure,
-a pace status, and a done/archive lifecycle (see
+**Where it is now** — `2.3.9` is the current release. A maintenance release
+with no user-facing change: a contradictory Dockerfile comment and a test
+whose runtime depended on ambient config are both fixed (see
 [`CHANGELOG.md`](CHANGELOG.md) for details). Existing deployments upgrade
 in place.
 
-`docker pull` now resolves `latest` to `2.3.8`; a release candidate is
+`docker pull` now resolves `latest` to `2.3.9`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped

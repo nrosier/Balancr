@@ -6,6 +6,23 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.3.9] — 2026-09-25
+
+### Fixed
+
+- **A Dockerfile comment claimed every `FROM` was already a bare digest with
+  no tag, contradicting the paragraph right after it explaining why the tag
+  is kept**
+  ([#526](https://github.com/nrosier/Balancr/issues/526)). Reworded to
+  describe what `pinDigests: false` actually governs — converting a floating
+  tag to a digest, not refreshing an existing tag+digest pin. Comment-only,
+  no build behavior changed.
+- **A rate-limit test's cost and runtime depended on `RATE_LIMIT_AI_PER_HOUR`,
+  an ambient config value, rather than a value fixed by the test itself**
+  ([#527](https://github.com/nrosier/Balancr/issues/527)). The burst now
+  loops against `AI_RATE_LIMIT.max`, the exact constant the route's limiter
+  was actually built from, instead of independently re-reading config.
+
 ## [2.3.8] — 2026-09-25
 
 ### Added
