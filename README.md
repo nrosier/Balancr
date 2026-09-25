@@ -963,6 +963,8 @@ The container runs non-root, read-only, with capabilities dropped, and outbound
 network access is limited to an explicit allowlist rather than left open. See
 [`docs/security-model.md`](docs/security-model.md) for the container hardening,
 the egress guard and its trust boundaries, and how the `.env` file is protected.
+See [`docs/ci.md`](docs/ci.md) for every automated check that enforces it —
+secret scanning, dependency licenses, image scanning, and where each one runs.
 
 ## Architecture
 

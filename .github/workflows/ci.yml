@@ -63,6 +63,12 @@ jobs:
       - name: No skipped or focused tests
         run: npm run skips:check
 
+      # Only `--production` deps ship in the built artefact/image; see
+      # scripts/check-licenses.ts for the short deny-list and its one written
+      # exception (hyperformula, forced by @actual-app/core).
+      - name: Production dependency licenses
+        run: npm run licenses:check
+
       - name: Tests
         run: npm test
 

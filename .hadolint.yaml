@@ -1,0 +1,15 @@
+# hadolint config for the active Dockerfile (the Chainguard/Wolfi image).
+# Dockerfile.alpine is deliberately not CI-linted — see its own header comment.
+ignored:
+  # `apk add` runs only in the deps/build stages, both discarded before the
+  # runtime stage ships. Wolfi is a rolling distro with no versioned point
+  # releases to pin against (see the Dockerfile's own header on why the base
+  # image itself is pinned by digest, not by a version tag) — pinning a
+  # package version here would fail on the next `apk add` once Wolfi rotates
+  # that version out.
+  - DL3018
+  # Flagged on `USER root` in the deps/build stages, which is correct and
+  # intentional: apk needs root to install the build toolchain. The runtime
+  # stage — the only one that ships — already runs as USER 1000:1000.
+  - DL3002
+  - DL3066
