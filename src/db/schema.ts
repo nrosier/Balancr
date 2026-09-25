@@ -1056,8 +1056,13 @@ export const aiRuns = sqliteTable(
      * The redacted payload verbatim — what was *prepared* for this run. `status`
      * says whether it was actually sent: a `capped` or `blocked` row carries the
      * payload it would have sent, which is what makes the refusal inspectable.
+     *
+     * Nulled past `AI_RUNS_TEXT_RETENTION_DAYS`, the same review window
+     * `requestText`/`responseText` are bounded by (#539) — `payloadHash` beside it
+     * is what survives forever, since `findReusableRun`'s match needs it kept and
+     * a hash alone cannot be turned back into the payload it came from.
      */
-    payloadJson: text('payload_json').notNull(),
+    payloadJson: text('payload_json'),
     /**
      * Hash of the exact bytes sent (or that would have been sent), null for
      * runs recorded before this column existed. Every attempt gets one,

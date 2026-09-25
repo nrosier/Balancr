@@ -335,9 +335,13 @@ export function loadRunCursor(
 }
 
 /**
- * Nulls `requestText`/`responseText` on every run of this tenant's older than
- * `olderThan`, leaving the rest of the row untouched (#503) — cost and usage
- * accounting reads the row forever; only the verbatim text is bounded.
+ * Nulls `requestText`/`responseText`/`payloadJson` on every run of this tenant's
+ * older than `olderThan`, leaving the rest of the row untouched (#503, #539) —
+ * cost and usage accounting reads the row forever; only the verbatim text and
+ * the payload it was built from are bounded. `payloadHash` is kept: it is what
+ * `findReusableRun` matches on, and a hash cannot be turned back into the
+ * payload it was computed from, so clearing it here would cost nothing in
+ * privacy and a working reuse check in return.
  *
  * The `or(isNotNull(...))` guard is not for correctness (nulling an already-null
  * column is a no-op) — it keeps the returned count meaningful: "rows actually
@@ -351,16 +355,20 @@ export function loadRunCursor(
  * simply matches nothing rather than skipping rows that now qualify; it is
  * always safe to omit, only ever an optimisation to include.
  */
-export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date, since?: Date): number {
+export function clearStaleRunData(db: Db, tenantId: string, olderThan: Date, since?: Date): number {
   return db
     .update(aiRuns)
-    .set({ requestText: null, responseText: null })
+    .set({ requestText: null, responseText: null, payloadJson: null })
     .where(
       and(
         eq(aiRuns.tenantId, tenantId),
         lt(aiRuns.createdAt, olderThan),
         ...(since === undefined ? [] : [gte(aiRuns.createdAt, since)]),
-        or(isNotNull(aiRuns.requestText), isNotNull(aiRuns.responseText)),
+        or(
+          isNotNull(aiRuns.requestText),
+          isNotNull(aiRuns.responseText),
+          isNotNull(aiRuns.payloadJson),
+        ),
       ),
     )
     .run().changes
@@ -369,12 +377,14 @@ export function clearStaleRunText(db: Db, tenantId: string, olderThan: Date, sin
 /**
  * The stored payload, parsed back.
  *
- * Returns `null` rather than throwing on unparseable JSON: this is the audit
- * view, and a row whose payload cannot be read is itself the finding.
+ * Returns `null` for a row whose payload was cleared by `clearStaleRunData`
+ * (#539) exactly as it does for unparseable JSON: both are "nothing left to
+ * show", and every caller already treats that as the audit view's own finding
+ * rather than a reason to throw — see `buildRunPayload` and `noteChangedSince`.
  */
 export function loadRunPayload(db: Db, tenantId: string, id: string): unknown | null {
   const row = loadRun(db, tenantId, id)
-  if (row === null) return null
+  if (row === null || row.payloadJson === null) return null
   try {
     return JSON.parse(row.payloadJson)
   } catch {

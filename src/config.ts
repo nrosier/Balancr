@@ -213,10 +213,12 @@ const EnvSchema = z.object({
   /** How many past runs to keep per job before the oldest are pruned. */
   JOB_HISTORY_KEEP: z.coerce.number().int().min(1).max(500).default(50),
   /**
-   * How long `ai_runs.requestText`/`responseText` are kept before being nulled out
-   * (#503). The rest of the row — cost, tokens, status — stays forever for billing;
-   * only the two verbatim-text columns are bounded, since a run's raw payload/response
-   * can run to thousands of tokens and the table has no cap otherwise.
+   * How long `ai_runs.requestText`/`responseText`/`payloadJson` are kept before
+   * being nulled out (#503, #539). The rest of the row — cost, tokens, status —
+   * stays forever for billing; only the verbatim-text columns and the payload
+   * they were built from are bounded, since a run's raw request/response can run
+   * to thousands of tokens and the payload is where the one unredacted field (the
+   * month note, see `redact.ts`) lives.
    */
   AI_RUNS_TEXT_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
 

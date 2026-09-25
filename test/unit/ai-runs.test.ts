@@ -24,7 +24,7 @@ import {
   spendMonthOf,
 } from '../../src/domain/ai/budget.ts'
 import {
-  clearStaleRunText,
+  clearStaleRunData,
   countRunsSince,
   findReusableRun,
   latestSuccessfulRun,
@@ -462,10 +462,10 @@ describe('recentRuns', () => {
   })
 })
 
-describe('clearStaleRunText (#503)', () => {
+describe('clearStaleRunData (#503, #539)', () => {
   const CUTOFF = new Date('2026-03-01T00:00:00Z')
 
-  it('nulls the text on a run older than the cutoff', () => {
+  it('nulls the text and payload on a run older than the cutoff', () => {
     const id = recordRun(
       db,
       tenantId,
@@ -473,14 +473,16 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-02-01T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(1)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(1)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.requestText).toBeNull()
     expect(row?.responseText).toBeNull()
+    expect(row?.payloadJson).toBeNull()
+    expect(loadRunPayload(db, tenantId, id)).toBeNull()
   })
 
-  it('leaves a recent run’s text untouched', () => {
+  it('leaves a recent run’s text and payload untouched', () => {
     const id = recordRun(
       db,
       tenantId,
@@ -488,11 +490,21 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-03-15T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(0)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.requestText).toBe('the request')
     expect(row?.responseText).toBe('the response')
+    expect(loadRunPayload(db, tenantId, id)).not.toBeNull()
+  })
+
+  it('keeps payloadHash on a cleared row, so a later attempt can still find it (#160)', () => {
+    const id = recordRun(db, tenantId, run({ payloadHash: 'hash-abc' }))
+    backdate(id, new Date('2026-01-15T00:00:00Z'))
+
+    clearStaleRunData(db, tenantId, CUTOFF)
+
+    expect(loadRun(db, tenantId, id)?.payloadHash).toBe('hash-abc')
   })
 
   it('leaves cost, status and period on the cleared row untouched', () => {
@@ -508,7 +520,7 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-01-15T00:00:00Z'))
 
-    clearStaleRunText(db, tenantId, CUTOFF)
+    clearStaleRunData(db, tenantId, CUTOFF)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.period).toBe('2026-01')
@@ -524,7 +536,7 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-03-15T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(0)
   })
 
   it('does not cross tenants', () => {
@@ -536,7 +548,7 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-02-01T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(0)
     expect(loadRun(db, otherTenantId, id)?.requestText).toBe('the request')
   })
 
@@ -548,8 +560,8 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-02-01T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(1)
-    expect(clearStaleRunText(db, tenantId, CUTOFF)).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(1)
+    expect(clearStaleRunData(db, tenantId, CUTOFF)).toBe(0)
   })
 
   it('ignores a run older than `since`, the lower bound (#512)', () => {
@@ -560,7 +572,7 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-01-01T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(0)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.requestText).toBe('the request')
@@ -574,7 +586,7 @@ describe('clearStaleRunText (#503)', () => {
     )
     backdate(id, new Date('2026-01-20T00:00:00Z'))
 
-    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(1)
+    expect(clearStaleRunData(db, tenantId, CUTOFF, new Date('2026-01-15T00:00:00Z'))).toBe(1)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.requestText).toBeNull()
@@ -590,7 +602,7 @@ describe('clearStaleRunText (#503)', () => {
 
     // A `since` after `olderThan` — the shape a shortened retention window can
     // produce for one run — must not be treated as "clear everything below it".
-    expect(clearStaleRunText(db, tenantId, CUTOFF, new Date('2026-02-15T00:00:00Z'))).toBe(0)
+    expect(clearStaleRunData(db, tenantId, CUTOFF, new Date('2026-02-15T00:00:00Z'))).toBe(0)
 
     const row = loadRun(db, tenantId, id)
     expect(row?.requestText).toBe('the request')
