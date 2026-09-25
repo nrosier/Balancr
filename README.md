@@ -108,8 +108,9 @@ half-English, and costs a fraction of what shipping raw transactions would.
 
 Actual, Ghostfolio and the OIDC issuer normally sit on your own network. The selected
 AI provider is the only additional destination, and only if the AI layer is configured
-at all. The [egress allowlist](#egress) includes the built-in provider preset or an
-operator-approved custom host; an unapproved host is refused rather than reviewed.
+at all. The [egress allowlist](docs/security-model.md#egress) includes the built-in
+provider preset or an operator-approved custom host; an unapproved host is refused
+rather than reviewed.
 
 > **Live-provider testing status:** only Google Gemini through AI Studio has been
 > tested end to end against a live provider. Vertex AI, OpenAI, xAI/Grok, custom
@@ -958,105 +959,18 @@ garbage, restored, and the description read back.
 
 ## Hardening
 
-The container runs as UID 1000, non-root, on a read-only root filesystem, with every
-Linux capability dropped and `no-new-privileges` set. Everything writable is the one
-volume — SQLite and Actual's sync cache — plus a 64 MB `tmpfs` for `/tmp`.
-
-None of that is taken on trust, because all of it is configuration until something
-checks it. `scripts/verify-image.sh` starts the built image with exactly the flags
-`compose.yaml` uses and then asks the running container: which uid is this, does `/app`
-really refuse a write, does `/data` really accept one, is `CapEff` all zeroes, do both
-native modules load, and does the image's own `HEALTHCHECK` command actually work — a
-broken one makes Docker restart a perfectly healthy container every interval, forever.
-CI runs it on every image build and records the image size and the time to first
-response in the job summary, so a change that doubles either is something a reviewer
-walks past rather than has to go looking for. By hand:
-
-```sh
-docker build -t balancr:test . && scripts/verify-image.sh balancr:test
-```
-
-### Egress
-
-Balancr refuses to connect to a host nobody configured. The allowlist is derived from
-`.env` and tenant integration rows — Actual, Ghostfolio, the OIDC issuer and the fixed
-host for each selected built-in AI provider — so there is no second list to keep in
-step: moving Ghostfolio to a new hostname needs no edit here.
-
-| | |
-|---|---|
-| `EGRESS_MODE=enforce` | the default: refuse the connection and log the host |
-| `EGRESS_MODE=warn` | allow it and log the host — how to see what a new dependency wants before deciding whether it should have it |
-| `EGRESS_MODE=off` | leave `fetch` alone |
-| `EGRESS_EXTRA_HOSTS` | additional hostnames to allow, including an outbound proxy or approved custom AI endpoint |
-
-A denial logs the host and never the path or query, because on an exfiltration attempt
-the query string *is* the data being exfiltrated.
-
-What this defends against is a dependency rather than a network. This process holds the
-Actual password, the Ghostfolio token, the selected AI key and a database of your finances,
-and the realistic attack on that is a compromised transitive package posting the lot
-somewhere. It wraps global `fetch`, so it covers the Ghostfolio adapter, the Gemini SDK,
-the native Anthropic client, `openid-client` and anything else using the standard API;
-it does **not** cover a library that reaches for `node:http` directly, a native module,
-or a child process, and it is not a sandbox — code running in this process can put the
-original `fetch` back.
-So: a real barrier against accidental and casual exfiltration, an audit trail for
-anything unexpected, and no claim to stop an attacker who already runs code here. That
-last one is what the network layer is for, and it is worth having as well: Docker
-networks cannot express this application-level host allowlist, so that version of the
-rule lives on the host firewall or in whatever egress gateway the network already has.
-
-An allowlist rather than a blocklist, because the question this answers — which few
-hosts may this process reach — is small and enumerable, while "which hosts are
-dangerous" is not: a blocklist could never keep up with an unknown compromised
-dependency reaching for an address nobody thought to list. The trade-off is that every
-check here is a hostname string match, never a check of the IP that name resolves to —
-so a host already on the list (an `EGRESS_EXTRA_HOSTS` entry, or Actual/Ghostfolio's own
-configured URL) whose DNS record is later hijacked would still pass (#467). This is a
-different trust assumption than the "attacker who already runs code here" one just
-above: rebinding an approved host needs no code running in this process at all, only
-control of the DNS record for a name the operator already trusted when they added it —
-a compromised registrar or DNS provider, or a domain that lapsed and was re-registered
-by someone else. That gap is left undefended on purpose: closing it needs a `fetch`
-dispatcher that inspects the resolved socket address before the handshake completes,
-which is real ongoing complexity for a threat that requires the attacker to first gain
-that DNS control. A hostname nobody approved is refused regardless of what it resolves
-to; that part never depends on DNS at all.
-
-### The `.env` file
-
-It holds the Actual password, the Ghostfolio token, the initial Gemini key, the session
-secret and the backup passphrase — the whole set, in plain text. `chmod 600 .env`, which the
-quick start does, and which Balancr checks at every start: a group- or world-readable
-file gets one warning naming the mode and the command that fixes it. A warning, not a
-refusal — the mode of a file is not a reason to leave someone without their budget page.
-
-Inside a container there is normally no such file at all: compose reads `.env` on the
-host and passes the values as environment variables, so the check is silent there and
-speaks up for installs running from source.
+The container runs non-root, read-only, with capabilities dropped, and outbound
+network access is limited to an explicit allowlist rather than left open. See
+[`docs/security-model.md`](docs/security-model.md) for the container hardening,
+the egress guard and its trust boundaries, and how the `.env` file is protected.
 
 ## Architecture
 
-```
-Fastify ──┬── /api/*     read-only, against Balancr's own SQLite
-          ├── /auth/*    OIDC (Authentik) + CIDR-gated local login
-          └── static     Vite/React SPA, everything bundled locally
-          │
-cron ─────┴── sync → aggregate → snapshot → nightly AI run → encrypted backup
-          │
-adapters ─┼── actual/      @actual-app/api, sole owner of the sync dataDir
-          ├── ghostfolio/  REST, capability-probed
-          └── ai/          provider-neutral call, usage and pricing boundary
-                ├── gemini/  native AI Studio and Vertex implementation
-                ├── openai-compatible/  OpenAI, xAI and approved custom endpoints
-                └── anthropic/  native Claude Messages API
-```
-
-One container, modular inside. The one hard constraint is that a single process
-owns Actual's `dataDir` — its API is a local sync engine over SQLite, not a REST
-client, and it makes no concurrency guarantees. Operations are serialised for the
-same reason.
+One container, modular inside: a Fastify API and cron pipeline in the main
+process, one long-lived forked worker per tenant for Actual's sync engine, and
+a provider-neutral adapter layer for Ghostfolio and the AI providers. See
+[`docs/architecture.md`](docs/architecture.md) for the diagram and the
+multi-tenant process shape.
 
 ## Versioning
 
