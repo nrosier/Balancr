@@ -30,6 +30,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { resetAiClients } from '../../adapters/ai/client.ts'
+import { resetGhostfolioToken } from '../../adapters/ghostfolio/client.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { eurToMicroEur, priceFor, type ModelPrice, type ModelPrices } from '../../adapters/ai/pricing.ts'
 import { DATA_CLOSE, DATA_OPEN } from '../../adapters/ai/prompt.ts'
@@ -611,6 +612,40 @@ const promptDiffRequest = z.strictObject({
 })
 
 /**
+ * An Actual/Ghostfolio host, on both the PATCH and the "test connection" requests.
+ *
+ * Self-hosted Actual/Ghostfolio routinely sit behind plain `http:` on a LAN or a
+ * Docker network, which is exactly what `ACTUAL_SERVER_URL`/`GHOSTFOLIO_URL`
+ * already assume, so this does not add a scheme check — `http:` is accepted on
+ * both requests alike. What it does add, on both: the body has to parse as an
+ * absolute URL — `withScopedHost` and `sameHost` below both call `new URL` on it,
+ * and a string that fails that is not a host either of them can reason about — and
+ * it must not carry embedded credentials, which `serverUrl`/`url` has never been a
+ * place to put them. A malformed value failing here, rather than reaching
+ * `sameHost`, matters for the PATCH request specifically: `sameHost` returns
+ * `false` on a parse failure, and a PATCH whose "host changed" check fires on a
+ * value that was never a host at all would erase the tenant's stored secret over
+ * a typo, not a host change (#535).
+ */
+const integrationUrl = z
+  .string()
+  .min(1)
+  .transform((raw, ctx) => {
+    let url: URL
+    try {
+      url = new URL(raw)
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'must be a valid URL' })
+      return z.NEVER
+    }
+    if (url.username !== '' || url.password !== '') {
+      ctx.addIssue({ code: 'custom', message: 'must not contain credentials' })
+      return z.NEVER
+    }
+    return url.href.replace(/\/+$/, '')
+  })
+
+/**
  * The Actual connection (#369). `password`/`e2ePassword` are secrets and never sent
  * back to the client, so omitting either key means "leave the stored value
  * unchanged" — there is nothing on the wire for a save that only touched `serverUrl`
@@ -618,7 +653,7 @@ const promptDiffRequest = z.strictObject({
  * form can express, the same rule a required `.env` var follows.
  */
 const actualIntegrationPatchRequest = z.strictObject({
-  serverUrl: z.string().min(1),
+  serverUrl: integrationUrl,
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
@@ -628,7 +663,7 @@ const actualIntegrationPatchRequest = z.strictObject({
 
 /** The Ghostfolio connection (#369). See `actualIntegrationPatchRequest` for why `securityToken` is optional. */
 const ghostfolioIntegrationPatchRequest = z.strictObject({
-  url: z.string().min(1),
+  url: integrationUrl,
   securityToken: z.string().min(1).optional(),
 })
 
@@ -662,35 +697,6 @@ const aiIntegrationPatchRequest = z.strictObject({
 })
 
 /**
- * A "test connection" URL is not held to the PATCH one's scheme freedom by
- * accident — self-hosted Actual/Ghostfolio routinely sit behind plain `http:`
- * on a LAN or a Docker network, which is exactly what `ACTUAL_SERVER_URL`/
- * `GHOSTFOLIO_URL` already assume, so this does not add a scheme check the
- * PATCH request does not also enforce (#534). What it does add: the request
- * body has to parse as an absolute URL — `withScopedHost` and `sameHost` below
- * both call `new URL` on it and a string that fails that is not a host either
- * of them can reason about — and it must not carry embedded credentials,
- * which `serverUrl`/`url` has never been a place to put them.
- */
-const testCandidateUrl = z
-  .string()
-  .min(1)
-  .transform((raw, ctx) => {
-    let url: URL
-    try {
-      url = new URL(raw)
-    } catch {
-      ctx.addIssue({ code: 'custom', message: 'must be a valid URL' })
-      return z.NEVER
-    }
-    if (url.username !== '' || url.password !== '') {
-      ctx.addIssue({ code: 'custom', message: 'must not contain credentials' })
-      return z.NEVER
-    }
-    return url.href.replace(/\/+$/, '')
-  })
-
-/**
  * Whether two URLs share a scheme and host — the check that gates the stored-secret
  * fallback below.
  *
@@ -720,7 +726,7 @@ function sameHost(a: string, b: string): boolean {
  * stored secret for a candidate it did not ask to test.
  */
 const actualIntegrationTestRequest = z.strictObject({
-  serverUrl: testCandidateUrl,
+  serverUrl: integrationUrl,
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
@@ -728,7 +734,7 @@ const actualIntegrationTestRequest = z.strictObject({
 
 /** See `actualIntegrationTestRequest`. */
 const ghostfolioIntegrationTestRequest = z.strictObject({
-  url: testCandidateUrl,
+  url: integrationUrl,
   securityToken: z.string().min(1).optional(),
 })
 
@@ -1936,6 +1942,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
+
+    // The DB update above already erases a token stored for the old host; this does
+    // the same for the copy `adapters/ghostfolio/client.ts` caches in memory; a JWT
+    // minted against the old host is credential to that host, not to this tenant,
+    // and must not outlive it either (#535).
+    if (hostChanged) resetGhostfolioToken(tenantId)
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {

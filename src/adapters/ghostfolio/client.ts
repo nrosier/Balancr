@@ -23,7 +23,7 @@
  */
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
-import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
+import { resolvedIntegrations, type ResolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { withScopedHost } from '../../egress.ts'
 import { logger } from '../../logger.ts'
 import {
@@ -63,8 +63,8 @@ export class GhostfolioError extends Error {
   }
 }
 
-function url(db: Db, tenantId: string, path: string): string {
-  return `${resolvedIntegrations(db, tenantId).ghostfolio.url.replace(/\/+$/, '')}${path}`
+function urlFor(ghostfolioUrl: string, path: string): string {
+  return `${ghostfolioUrl.replace(/\/+$/, '')}${path}`
 }
 
 /**
@@ -126,9 +126,14 @@ async function request(
   options: ReadOptions = {},
 ): Promise<unknown> {
   const authenticated = options.authenticated ?? true
+  // Resolved once and threaded through `get`/`token` below rather than re-read by
+  // each of them: a concurrent PATCH to this tenant's Ghostfolio URL between two
+  // separate reads could otherwise grant one host via `withScopedHost` while `get`
+  // or `token` fetches a different one, denying an otherwise-legitimate request.
+  const integrations = resolvedIntegrations(db, tenantId)
 
   const get = async (bearer: string | null): Promise<Response> =>
-    fetch(url(db, tenantId, path), {
+    fetch(urlFor(integrations.ghostfolio.url, path), {
       headers: {
         accept: 'application/json',
         ...(bearer === null ? {} : { authorization: `Bearer ${bearer}` }),
@@ -138,12 +143,12 @@ async function request(
 
   // Scoped to this tenant's own configured host (#535): `allowedHosts` deliberately
   // does not carry a tenant's Actual/Ghostfolio URL globally, so it has to be granted
-  // for the duration of this call instead. `token(db, tenantId)` below opens its own
-  // nested grant to the same host, which the refcount in `withScopedHost` tolerates.
-  return withScopedHost(resolvedIntegrations(db, tenantId).ghostfolio.url, async () => {
+  // for the duration of this call instead. `token` below opens its own nested grant
+  // to the same host, which the refcount in `withScopedHost` tolerates.
+  return withScopedHost(integrations.ghostfolio.url, async () => {
     let response: Response
     try {
-      response = await get(authenticated ? await token(db, tenantId) : null)
+      response = await get(authenticated ? await token(db, tenantId, integrations) : null)
     } catch (error) {
       throw networkError(path, error)
     }
@@ -155,7 +160,7 @@ async function request(
       // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
       // jobs could not tell apart from a bug in themselves.
       try {
-        response = await get(await token(db, tenantId))
+        response = await get(await token(db, tenantId, integrations))
       } catch (error) {
         throw networkError(path, error)
       }
@@ -192,16 +197,19 @@ function parse<T>(path: string, schema: z.ZodType<T>, raw: unknown): T {
  * It takes no path/body argument, so there is nothing here for a future caller to point
  * at a different path or fill with a different body.
  */
-async function token(db: Db, tenantId: string): Promise<string> {
+async function token(
+  db: Db,
+  tenantId: string,
+  integrations: ResolvedIntegrations = resolvedIntegrations(db, tenantId),
+): Promise<string> {
   const cached = tokens.get(tenantId)
   if (cached !== undefined) return cached
 
   const path = '/api/v1/auth/anonymous'
-  const integrations = resolvedIntegrations(db, tenantId)
   let response: Response
   try {
     response = await withScopedHost(integrations.ghostfolio.url, () =>
-      fetch(url(db, tenantId, path), {
+      fetch(urlFor(integrations.ghostfolio.url, path), {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
         body: JSON.stringify({ accessToken: integrations.ghostfolio.token }),

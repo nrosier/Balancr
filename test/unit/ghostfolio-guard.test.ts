@@ -199,10 +199,17 @@ describe('the read-only boundary', () => {
 
   it('keeps the token call unparameterised, so it cannot become a general POST', () => {
     const code = client()
-    // `token(db, tenantId)` — no path or method argument. A `token(db, tenantId, path:
+    const opens = code.indexOf('async function token(')
+    const closes = code.indexOf('): Promise<string> {', opens)
+    const signature = code.slice(opens, closes)
+    // No path or method argument, only `db`, `tenantId` and a pre-resolved
+    // `integrations` (not a caller-suppliable endpoint or body — see #535's fix for
+    // why it is threaded through rather than re-read). A `token(db, tenantId, path:
     // string)` would be the old permissive `request()` wearing a different name, and
     // every guarantee above would still pass.
-    expect(code).toContain('async function token(db: Db, tenantId: string): Promise<string>')
+    expect(opens).toBeGreaterThan(-1)
+    expect(signature).not.toContain('path')
+    expect(signature).not.toContain('method')
     expect(code).toContain("const path = '/api/v1/auth/anonymous'")
   })
 })
