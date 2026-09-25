@@ -16,8 +16,9 @@
 # rather than the floating tag, so a rebuild doesn't silently pick up a new
 # base image. Renovate (renovate.json) refreshes the pin itself on every run
 # regardless of the `pinDigests: false` packageRule there — that rule only
-# stops it converting a floating *tag* to a digest, and every FROM here is
-# already a digest with no tag.
+# stops it converting a bare floating *tag* into a pinned digest; it says
+# nothing about keeping an existing tag+digest pin current, which is what
+# every FROM here already is and what gets refreshed below.
 #
 # The tag stays in the reference (`:latest-dev@sha256:...`, not bare
 # `@sha256:...`) so Renovate can tell these two stages apart from the
