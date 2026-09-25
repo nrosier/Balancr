@@ -106,7 +106,6 @@ docker run -d --name "$NAME" \
   -e ACTUAL_SYNC_ID=00000000-0000-0000-0000-000000000000 \
   -e GHOSTFOLIO_URL=http://ghostfolio.invalid:3333 \
   -e GHOSTFOLIO_SECURITY_TOKEN=verify \
-  -e SESSION_SECRET=verification-session-secret-of-sufficient-length \
   -e CONFIG_ENCRYPTION_KEY=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc= \
   -e AUTH_LOCAL_ENABLED=true \
   -e JOBS_ENABLED=false \

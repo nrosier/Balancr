@@ -14,7 +14,6 @@ process.env.GHOSTFOLIO_URL = 'http://ghostfolio.test:3333'
 process.env.GHOSTFOLIO_SECURITY_TOKEN = 'test-token'
 process.env.GEMINI_PROVIDER = 'aistudio'
 process.env.GEMINI_API_KEY = 'test-key'
-process.env.SESSION_SECRET = 'x'.repeat(48)
 process.env.CONFIG_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64')
 process.env.AUTH_LOCAL_ENABLED = 'true'
 // Pinned rather than left to whatever a developer's own .env happens to say — a test

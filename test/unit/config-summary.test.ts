@@ -15,7 +15,6 @@ const secrets: Record<string, string> = {
   ACTUAL_E2E_PASSWORD: 'secret-e2e-password-zzz',
   GHOSTFOLIO_SECURITY_TOKEN: 'secret-ghostfolio-token-zzz',
   GEMINI_API_KEY: 'secret-gemini-key-zzz',
-  SESSION_SECRET: 'secret-session-secret-that-is-long-enough-zzz',
   AUTH_OIDC_CLIENT_SECRET: 'secret-oidc-client-secret-zzz',
   BACKUP_PASSPHRASE: 'secret-backup-passphrase-zzz',
 }
@@ -53,7 +52,6 @@ describe('configSummary', () => {
     // The length is the useful part: a truncated paste or a stray quote shows up as
     // a wrong count, which is most of what goes wrong with a secret in an env file.
     const dump = await summary()
-    expect(dump.SESSION_SECRET).toBe(`set (${secrets.SESSION_SECRET?.length} chars)`)
     expect(dump.GEMINI_API_KEY).toBe(`set (${secrets.GEMINI_API_KEY?.length} chars)`)
   })
 

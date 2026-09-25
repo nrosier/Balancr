@@ -29,7 +29,7 @@ afterEach(() => {
 /** A `.env` at the given mode, and its path. */
 function envAt(mode: number): string {
   const path = join(dir, '.env')
-  writeFileSync(path, 'SESSION_SECRET=x\n')
+  writeFileSync(path, 'SOME_SECRET=x\n')
   chmodSync(path, mode)
   return path
 }
