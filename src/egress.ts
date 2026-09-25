@@ -161,11 +161,16 @@ function hostOf(value: string | undefined): string[] {
  * which is the property that keeps a list like this from being switched off in
  * frustration a year from now.
  *
- * `db`, when given, also unions in every tenant's stored Actual/Ghostfolio URL
- * (#369) — a tenant's own credentials are exactly as configured as `.env`'s
- * ones, they just live in a different place now. Optional so the many call
- * sites that only ever check the static, `.env`-derived list (tests, mostly)
- * do not need a database to hand.
+ * `db` is only used for `aiHosts` — a tenant's chosen AI provider is one of a
+ * handful of known-safe, operator-recognised hosts, never an arbitrary
+ * string a tenant typed in. A tenant's own Actual/Ghostfolio URL is exactly
+ * that arbitrary string (#369/#371's whole point is self-service, no
+ * operator step), so it is deliberately absent here: unioning it into this
+ * process-wide set would let one tenant's saved URL widen what *every*
+ * fetch in the process — another tenant's request, an unrelated compromised
+ * dependency — may reach. `withScopedHost` below is where a tenant's own URL
+ * is allowed instead: only for the duration of the one call made on that
+ * tenant's behalf (#535).
  */
 export function allowedHosts(db?: Db): ReadonlySet<string> {
   const hosts = [
@@ -175,14 +180,6 @@ export function allowedHosts(db?: Db): ReadonlySet<string> {
     ...aiHosts(db),
     ...config.EGRESS_EXTRA_HOSTS.map((host) => host.toLowerCase()),
   ]
-  if (db !== undefined) {
-    for (const row of db
-      .select({ actualServerUrl: tenantIntegrations.actualServerUrl, ghostfolioUrl: tenantIntegrations.ghostfolioUrl })
-      .from(tenantIntegrations)
-      .all()) {
-      hosts.push(...hostOf(row.actualServerUrl), ...hostOf(row.ghostfolioUrl))
-    }
-  }
   return new Set(hosts)
 }
 
@@ -196,47 +193,51 @@ export function allowedHosts(db?: Db): ReadonlySet<string> {
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost', '[::1]'])
 
 /**
- * Hosts allowed only for the lifetime of one "test connection" call (#369).
+ * Hosts allowed only for the lifetime of one call (#369, #535).
  *
- * A candidate credential someone is testing is, by construction, not yet in
- * `tenantIntegrations` — that is the entire point of testing before saving — so
- * `allowedHosts` cannot know about it. This is the narrow exception: a host the
- * signed-in owner just typed into the settings page, permitted for exactly the
- * duration of the one test call it was typed in for, and revoked afterwards whether
- * the call succeeded or not. A count rather than a boolean, in case two test calls to
- * the same host ever overlap — the second must not revoke the first's permission
- * when it finishes.
+ * Two callers rely on this, for related but distinct reasons. A "test connection"
+ * candidate is, by construction, not yet in `tenantIntegrations` — that is the entire
+ * point of testing before saving — so `allowedHosts` cannot know about it. A tenant's
+ * *saved* Actual/Ghostfolio URL is in `tenantIntegrations`, but deliberately still not
+ * in `allowedHosts` (see that function's doc comment): unioning every tenant's own URL
+ * into one process-wide set would let one tenant's saved host widen what any other
+ * fetch in the process may reach. Both cases get the same answer: permit the host for
+ * exactly the duration of the one call made on that tenant's behalf, whether that call
+ * is a connection test or the tenant's own real traffic, and revoke it afterwards
+ * whether the call succeeded or not. A count rather than a boolean, in case two such
+ * calls to the same host ever overlap — the second must not revoke the first's
+ * permission when it finishes.
  *
  * Process-wide rather than threaded through `fetch`'s arguments, because `fetch`
  * itself carries no request context to thread it through — the same reason
  * `installed` below is a module-level flag rather than a parameter.
  */
-const testAllowance = new Map<string, number>()
+const scopedAllowance = new Map<string, number>()
 
 /** Permits every host in `url` for the duration of `fn`, then revokes it. */
-export async function withTestHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
+export async function withScopedHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
   const hosts = hostOf(url)
-  for (const host of hosts) testAllowance.set(host, (testAllowance.get(host) ?? 0) + 1)
+  for (const host of hosts) scopedAllowance.set(host, (scopedAllowance.get(host) ?? 0) + 1)
   try {
     return await fn()
   } finally {
     for (const host of hosts) {
-      const count = (testAllowance.get(host) ?? 1) - 1
-      if (count <= 0) testAllowance.delete(host)
-      else testAllowance.set(host, count)
+      const count = (scopedAllowance.get(host) ?? 1) - 1
+      if (count <= 0) scopedAllowance.delete(host)
+      else scopedAllowance.set(host, count)
     }
   }
 }
 
-/** Whether `target` was explicitly permitted by an in-flight `withTestHost`. */
-function isTestAllowed(target: string): boolean {
+/** Whether `target` was explicitly permitted by an in-flight `withScopedHost`. */
+function isScopedAllowed(target: string): boolean {
   let host: string
   try {
     host = new URL(target).hostname.toLowerCase()
   } catch {
     return false
   }
-  return testAllowance.has(host)
+  return scopedAllowance.has(host)
 }
 
 /**
@@ -351,10 +352,11 @@ function redirectedRequest(request: Request, target: URL, status: number): Reque
  * process-wide patch of a global is never the one that was intended.
  *
  * `db`, when given, is re-queried on every fetch rather than captured once here
- * (#369): a tenant saving a new Actual/Ghostfolio URL through the settings page
- * must be able to reach it on the very next request, with no restart. The extra
- * read is one row from a single-digit-row table, which is nothing next to the
- * network call it is guarding.
+ * (#369): a tenant picking a new AI provider through the settings page must be
+ * able to reach it on the very next request, with no restart. The extra read is
+ * one row from a single-digit-row table, which is nothing next to the network
+ * call it is guarding. A tenant's Actual/Ghostfolio URL needs no such query here
+ * at all — it is granted per call via `withScopedHost` instead (#535).
  */
 let installed = false
 
@@ -377,7 +379,7 @@ export function installEgressGuard(mode: EgressMode = config.EGRESS_MODE, db?: D
       const allowed = redirect
         ? isRedirectAllowed(target, allowedHosts(db))
         : isAllowed(target, allowedHosts(db))
-      if (allowed || isTestAllowed(target)) return
+      if (allowed || isScopedAllowed(target)) return
 
       let host: string
       try {

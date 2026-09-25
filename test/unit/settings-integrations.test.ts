@@ -68,6 +68,7 @@ vi.mock('../../src/adapters/actual/test-connection.ts', () => ({
 }))
 
 import { testActualConnection } from '../../src/adapters/actual/test-connection.ts'
+import { fetchAccounts, resetGhostfolioToken } from '../../src/adapters/ghostfolio/client.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -144,6 +145,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.unstubAllGlobals()
+  resetGhostfolioToken()
   await app.close()
   ctx.sqlite.close()
 })
@@ -195,9 +197,34 @@ describe('PATCH /api/settings/integrations/actual', () => {
     expect(row(ctx.db).actualSyncId).toBe('sync-id-2')
   })
 
-  it('leaves the stored password untouched when the key is omitted', async () => {
+  it('leaves the stored password untouched when the key is omitted and the host is unchanged', async () => {
     await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
+
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
+  })
+
+  it('invalidates the stored password and e2e password when the server URL host changes without a new one (#535)', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual2.test:5006',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
+
+    expect(res.statusCode).toBe(200)
+    const settings = res.json<Settings>().integrations.actual
+    expect(settings.passwordConfigured).toBe(false)
+    expect(settings.e2ePasswordConfigured).toBe(false)
+    expect(row(ctx.db).actualPasswordEnc).toBe('')
+    expect(row(ctx.db).actualE2ePasswordEnc).toBeNull()
+  })
+
+  it('does not invalidate the stored password when the server URL changes without changing host', async () => {
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'http://actual.test:5006/',
       syncId: 'test-sync-id',
       categorySourceLocale: 'en',
     })
@@ -301,6 +328,21 @@ describe('PATCH /api/settings/integrations/actual', () => {
     expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
   })
 
+  it('refuses a server URL that does not parse, rather than reading it as a host change (#535)', async () => {
+    const res = await patch('/api/settings/integrations/actual', {
+      serverUrl: 'not a url',
+      syncId: 'test-sync-id',
+      categorySourceLocale: 'en',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['serverUrl'])
+    // The bug this guards: a malformed value used to fail `sameHost`'s `new URL`
+    // the same way an actual host change would, wiping the stored secret over a
+    // typo that never touched the DB.
+    expect(row(ctx.db).actualServerUrl).toBe('http://actual.test:5006')
+    expect(decryptField(row(ctx.db).actualPasswordEnc)).toBe('test-password')
+  })
+
   it('refuses an empty password rather than treating it as "clear it"', async () => {
     const res = await patch('/api/settings/integrations/actual', {
       serverUrl: 'http://actual.test:5006',
@@ -345,12 +387,56 @@ describe('PATCH /api/settings/integrations/actual', () => {
 })
 
 describe('PATCH /api/settings/integrations/ghostfolio', () => {
-  it('updates the URL and leaves the token untouched when omitted', async () => {
+  it('updates the URL and leaves the token untouched when omitted and the host is unchanged', async () => {
+    const res = await patch('/api/settings/integrations/ghostfolio', { url: 'http://ghostfolio.test:3333/' })
+
+    expect(res.statusCode).toBe(200)
+    // Trailing slash normalized away (#535's shared `integrationUrl` validator) — the
+    // origin, not the exact string, is what `sameHost` below judges "unchanged" by.
+    expect(res.json<Settings>().integrations.ghostfolio.url).toBe('http://ghostfolio.test:3333')
+    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
+  })
+
+  it('invalidates the stored token when the URL host changes without a new one (#535)', async () => {
     const res = await patch('/api/settings/integrations/ghostfolio', { url: 'http://ghostfolio2.test:3333' })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json<Settings>().integrations.ghostfolio.url).toBe('http://ghostfolio2.test:3333')
-    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
+    expect(res.json<Settings>().integrations.ghostfolio.tokenConfigured).toBe(false)
+    expect(row(ctx.db).ghostfolioSecurityTokenEnc).toBe('')
+  })
+
+  it('drops the cached JWT on a host change, so a stale token is never sent to the new host (#535)', async () => {
+    const tenantId = getSoleTenantId(ctx.db)
+    let authCalls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const path = new URL(String(input)).pathname
+        if (path === '/api/v1/auth/anonymous') {
+          authCalls += 1
+          return Response.json({ authToken: 'jwt' })
+        }
+        return Response.json({ accounts: [] })
+      }),
+    )
+
+    await fetchAccounts(ctx.db, tenantId)
+    expect(authCalls).toBe(1)
+    // Still cached — a second read of the same tenant must not re-authenticate.
+    await fetchAccounts(ctx.db, tenantId)
+    expect(authCalls).toBe(1)
+
+    const res = await patch('/api/settings/integrations/ghostfolio', {
+      url: 'http://ghostfolio2.test:3333',
+      securityToken: 'new-token',
+    })
+    expect(res.statusCode).toBe(200)
+
+    // The bug this guards: without the PATCH handler dropping the in-memory cache
+    // alongside the DB row, this read would reuse the JWT minted for the old host
+    // and hand it to the new, unverified one instead of authenticating fresh.
+    await fetchAccounts(ctx.db, tenantId)
+    expect(authCalls).toBe(2)
   })
 
   it('replaces the stored token only when one is typed', async () => {
@@ -366,6 +452,14 @@ describe('PATCH /api/settings/integrations/ghostfolio', () => {
     const res = await patch('/api/settings/integrations/ghostfolio', { url: '' })
     expect(res.statusCode).toBe(400)
     expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['url'])
+  })
+
+  it('refuses a URL that does not parse, rather than reading it as a host change (#535)', async () => {
+    const res = await patch('/api/settings/integrations/ghostfolio', { url: 'not a url' })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['url'])
+    expect(row(ctx.db).ghostfolioUrl).toBe('http://ghostfolio.test:3333')
+    expect(decryptField(row(ctx.db).ghostfolioSecurityTokenEnc)).toBe('test-token')
   })
 
   it('is refused for a viewer', async () => {

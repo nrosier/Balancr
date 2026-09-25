@@ -100,18 +100,28 @@ export interface ResolvedIntegrations {
   }
 }
 
+/**
+ * `actualPasswordEnc`/`ghostfolioSecurityTokenEnc` hold a raw `''`, never a
+ * `decryptField` call, whenever there is no secret to decrypt — a brand-new
+ * tenant's placeholder row (`provisioning.ts`, via `encryptField('')`, which
+ * also decrypts back to `''`) and a secret invalidated by a host change
+ * (#535, `routes/settings.ts`'s PATCH handlers, which write the raw sentinel
+ * directly) both end up here. `decryptField('')` throws — it is too short to
+ * hold a nonce and a tag — so both columns are guarded the same way
+ * `loadIntegrations`'s `*Configured` flags already are.
+ */
 export function resolvedIntegrations(db: Db, tenantId: string): ResolvedIntegrations {
   const row = integrationsRow(db, tenantId)
   return {
     actual: {
       serverUrl: row.actualServerUrl,
-      password: decryptField(row.actualPasswordEnc),
+      password: row.actualPasswordEnc.length > 0 ? decryptField(row.actualPasswordEnc) : '',
       syncId: row.actualSyncId,
       e2ePassword: row.actualE2ePasswordEnc === null ? null : decryptField(row.actualE2ePasswordEnc),
     },
     ghostfolio: {
       url: row.ghostfolioUrl,
-      token: decryptField(row.ghostfolioSecurityTokenEnc),
+      token: row.ghostfolioSecurityTokenEnc.length > 0 ? decryptField(row.ghostfolioSecurityTokenEnc) : '',
     },
     ai: {
       provider: row.aiProvider,

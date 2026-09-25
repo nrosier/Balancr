@@ -23,7 +23,8 @@
  */
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
-import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
+import { resolvedIntegrations, type ResolvedIntegrations } from '../../db/tenant-integrations.ts'
+import { withScopedHost } from '../../egress.ts'
 import { logger } from '../../logger.ts'
 import {
   accountsSchema,
@@ -62,8 +63,8 @@ export class GhostfolioError extends Error {
   }
 }
 
-function url(db: Db, tenantId: string, path: string): string {
-  return `${resolvedIntegrations(db, tenantId).ghostfolio.url.replace(/\/+$/, '')}${path}`
+function urlFor(ghostfolioUrl: string, path: string): string {
+  return `${ghostfolioUrl.replace(/\/+$/, '')}${path}`
 }
 
 /**
@@ -125,9 +126,14 @@ async function request(
   options: ReadOptions = {},
 ): Promise<unknown> {
   const authenticated = options.authenticated ?? true
+  // Resolved once and threaded through `get`/`token` below rather than re-read by
+  // each of them: a concurrent PATCH to this tenant's Ghostfolio URL between two
+  // separate reads could otherwise grant one host via `withScopedHost` while `get`
+  // or `token` fetches a different one, denying an otherwise-legitimate request.
+  const integrations = resolvedIntegrations(db, tenantId)
 
   const get = async (bearer: string | null): Promise<Response> =>
-    fetch(url(db, tenantId, path), {
+    fetch(urlFor(integrations.ghostfolio.url, path), {
       headers: {
         accept: 'application/json',
         ...(bearer === null ? {} : { authorization: `Bearer ${bearer}` }),
@@ -135,27 +141,33 @@ async function request(
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
 
-  let response: Response
-  try {
-    response = await get(authenticated ? await token(db, tenantId) : null)
-  } catch (error) {
-    throw networkError(path, error)
-  }
-
-  if (response.status === 401 && authenticated) {
-    log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
-    tokens.delete(tenantId)
-    // Wrapped too: the retry can fail the same way the first attempt can, and an
-    // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
-    // jobs could not tell apart from a bug in themselves.
+  // Scoped to this tenant's own configured host (#535): `allowedHosts` deliberately
+  // does not carry a tenant's Actual/Ghostfolio URL globally, so it has to be granted
+  // for the duration of this call instead. `token` below opens its own nested grant
+  // to the same host, which the refcount in `withScopedHost` tolerates.
+  return withScopedHost(integrations.ghostfolio.url, async () => {
+    let response: Response
     try {
-      response = await get(await token(db, tenantId))
+      response = await get(authenticated ? await token(db, tenantId, integrations) : null)
     } catch (error) {
       throw networkError(path, error)
     }
-  }
 
-  return decode(path, response)
+    if (response.status === 401 && authenticated) {
+      log.debug({ path }, 'Ghostfolio token rejected; re-authenticating once')
+      tokens.delete(tenantId)
+      // Wrapped too: the retry can fail the same way the first attempt can, and an
+      // unwrapped TypeError escaping from here would be the one Ghostfolio failure the
+      // jobs could not tell apart from a bug in themselves.
+      try {
+        response = await get(await token(db, tenantId, integrations))
+      } catch (error) {
+        throw networkError(path, error)
+      }
+    }
+
+    return decode(path, response)
+  })
 }
 
 /** Parses a response, naming the path so a shape change is legible. */
@@ -185,19 +197,25 @@ function parse<T>(path: string, schema: z.ZodType<T>, raw: unknown): T {
  * It takes no path/body argument, so there is nothing here for a future caller to point
  * at a different path or fill with a different body.
  */
-async function token(db: Db, tenantId: string): Promise<string> {
+async function token(
+  db: Db,
+  tenantId: string,
+  integrations: ResolvedIntegrations = resolvedIntegrations(db, tenantId),
+): Promise<string> {
   const cached = tokens.get(tenantId)
   if (cached !== undefined) return cached
 
   const path = '/api/v1/auth/anonymous'
   let response: Response
   try {
-    response = await fetch(url(db, tenantId, path), {
-      method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({ accessToken: resolvedIntegrations(db, tenantId).ghostfolio.token }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
+    response = await withScopedHost(integrations.ghostfolio.url, () =>
+      fetch(urlFor(integrations.ghostfolio.url, path), {
+        method: 'POST',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ accessToken: integrations.ghostfolio.token }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
+    )
   } catch (error) {
     throw networkError(path, error)
   }

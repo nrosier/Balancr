@@ -30,6 +30,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { resetAiClients } from '../../adapters/ai/client.ts'
+import { resetGhostfolioToken } from '../../adapters/ghostfolio/client.ts'
 import { authSchema } from '../../adapters/ghostfolio/types.ts'
 import { eurToMicroEur, priceFor, type ModelPrice, type ModelPrices } from '../../adapters/ai/pricing.ts'
 import { DATA_CLOSE, DATA_OPEN } from '../../adapters/ai/prompt.ts'
@@ -50,7 +51,7 @@ import type { Db } from '../../db/index.ts'
 import { decryptField, encryptField } from '../../db/field-crypto.ts'
 import { tenantIntegrations } from '../../db/schema.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
-import { withTestHost } from '../../egress.ts'
+import { withScopedHost } from '../../egress.ts'
 import {
   BAND_CLASSES,
   bandsOf,
@@ -611,6 +612,40 @@ const promptDiffRequest = z.strictObject({
 })
 
 /**
+ * An Actual/Ghostfolio host, on both the PATCH and the "test connection" requests.
+ *
+ * Self-hosted Actual/Ghostfolio routinely sit behind plain `http:` on a LAN or a
+ * Docker network, which is exactly what `ACTUAL_SERVER_URL`/`GHOSTFOLIO_URL`
+ * already assume, so this does not add a scheme check — `http:` is accepted on
+ * both requests alike. What it does add, on both: the body has to parse as an
+ * absolute URL — `withScopedHost` and `sameHost` below both call `new URL` on it,
+ * and a string that fails that is not a host either of them can reason about — and
+ * it must not carry embedded credentials, which `serverUrl`/`url` has never been a
+ * place to put them. A malformed value failing here, rather than reaching
+ * `sameHost`, matters for the PATCH request specifically: `sameHost` returns
+ * `false` on a parse failure, and a PATCH whose "host changed" check fires on a
+ * value that was never a host at all would erase the tenant's stored secret over
+ * a typo, not a host change (#535).
+ */
+const integrationUrl = z
+  .string()
+  .min(1)
+  .transform((raw, ctx) => {
+    let url: URL
+    try {
+      url = new URL(raw)
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'must be a valid URL' })
+      return z.NEVER
+    }
+    if (url.username !== '' || url.password !== '') {
+      ctx.addIssue({ code: 'custom', message: 'must not contain credentials' })
+      return z.NEVER
+    }
+    return url.href.replace(/\/+$/, '')
+  })
+
+/**
  * The Actual connection (#369). `password`/`e2ePassword` are secrets and never sent
  * back to the client, so omitting either key means "leave the stored value
  * unchanged" — there is nothing on the wire for a save that only touched `serverUrl`
@@ -618,7 +653,7 @@ const promptDiffRequest = z.strictObject({
  * form can express, the same rule a required `.env` var follows.
  */
 const actualIntegrationPatchRequest = z.strictObject({
-  serverUrl: z.string().min(1),
+  serverUrl: integrationUrl,
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
@@ -628,7 +663,7 @@ const actualIntegrationPatchRequest = z.strictObject({
 
 /** The Ghostfolio connection (#369). See `actualIntegrationPatchRequest` for why `securityToken` is optional. */
 const ghostfolioIntegrationPatchRequest = z.strictObject({
-  url: z.string().min(1),
+  url: integrationUrl,
   securityToken: z.string().min(1).optional(),
 })
 
@@ -662,35 +697,6 @@ const aiIntegrationPatchRequest = z.strictObject({
 })
 
 /**
- * A "test connection" URL is not held to the PATCH one's scheme freedom by
- * accident — self-hosted Actual/Ghostfolio routinely sit behind plain `http:`
- * on a LAN or a Docker network, which is exactly what `ACTUAL_SERVER_URL`/
- * `GHOSTFOLIO_URL` already assume, so this does not add a scheme check the
- * PATCH request does not also enforce (#534). What it does add: the request
- * body has to parse as an absolute URL — `withTestHost` and `sameHost` below
- * both call `new URL` on it and a string that fails that is not a host either
- * of them can reason about — and it must not carry embedded credentials,
- * which `serverUrl`/`url` has never been a place to put them.
- */
-const testCandidateUrl = z
-  .string()
-  .min(1)
-  .transform((raw, ctx) => {
-    let url: URL
-    try {
-      url = new URL(raw)
-    } catch {
-      ctx.addIssue({ code: 'custom', message: 'must be a valid URL' })
-      return z.NEVER
-    }
-    if (url.username !== '' || url.password !== '') {
-      ctx.addIssue({ code: 'custom', message: 'must not contain credentials' })
-      return z.NEVER
-    }
-    return url.href.replace(/\/+$/, '')
-  })
-
-/**
  * Whether two URLs share a scheme and host — the check that gates the stored-secret
  * fallback below.
  *
@@ -720,7 +726,7 @@ function sameHost(a: string, b: string): boolean {
  * stored secret for a candidate it did not ask to test.
  */
 const actualIntegrationTestRequest = z.strictObject({
-  serverUrl: testCandidateUrl,
+  serverUrl: integrationUrl,
   syncId: z.string().min(1),
   password: z.string().min(1).optional(),
   e2ePassword: z.string().min(1).optional(),
@@ -728,7 +734,7 @@ const actualIntegrationTestRequest = z.strictObject({
 
 /** See `actualIntegrationTestRequest`. */
 const ghostfolioIntegrationTestRequest = z.strictObject({
-  url: testCandidateUrl,
+  url: integrationUrl,
   securityToken: z.string().min(1).optional(),
 })
 
@@ -1857,22 +1863,35 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * `password`/`e2ePassword` are the "omit means unchanged" case — see
    * `actualIntegrationPatchRequest`. `updatedAt` is set explicitly because the
    * column's default only fires on insert, never on update.
+   *
+   * A `serverUrl` whose host actually changes invalidates whichever of those two
+   * was left unchanged (#534, #535): they were only ever verified against the old
+   * host, and carrying them forward to a host nobody typed them for is the same
+   * shape of trust mistake the "test connection" fallback made — the owner has to
+   * retype the secret for the new host, the same way a first-ever save does.
    */
   app.patch('/api/settings/integrations/actual', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(actualIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
+    const hostChanged = !sameHost(patch.serverUrl, before.actual.serverUrl)
 
     db.update(tenantIntegrations)
       .set({
         actualServerUrl: patch.serverUrl,
         actualSyncId: patch.syncId,
         actualCategorySourceLocale: patch.categorySourceLocale,
-        ...(patch.password === undefined ? {} : { actualPasswordEnc: encryptField(patch.password) }),
-        ...(patch.e2ePassword === undefined
-          ? {}
-          : { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }),
+        ...(patch.password !== undefined
+          ? { actualPasswordEnc: encryptField(patch.password) }
+          : hostChanged
+            ? { actualPasswordEnc: '' }
+            : {}),
+        ...(patch.e2ePassword !== undefined
+          ? { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }
+          : hostChanged
+            ? { actualE2ePasswordEnc: null }
+            : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
@@ -1900,23 +1919,35 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     return buildSettings(db, request)
   })
 
-  /** The Ghostfolio connection this tenant reads from (#369). See the Actual route above. */
+  /**
+   * The Ghostfolio connection this tenant reads from (#369). See the Actual route
+   * above for why a host change invalidates a token left unchanged (#535).
+   */
   app.patch('/api/settings/integrations/ghostfolio', (request: FastifyRequest) => {
     const user = requireOwner(request)
     const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
     const before = loadIntegrations(db, tenantId)
+    const hostChanged = !sameHost(patch.url, before.ghostfolio.url)
 
     db.update(tenantIntegrations)
       .set({
         ghostfolioUrl: patch.url,
-        ...(patch.securityToken === undefined
-          ? {}
-          : { ghostfolioSecurityTokenEnc: encryptField(patch.securityToken) }),
+        ...(patch.securityToken !== undefined
+          ? { ghostfolioSecurityTokenEnc: encryptField(patch.securityToken) }
+          : hostChanged
+            ? { ghostfolioSecurityTokenEnc: '' }
+            : {}),
         updatedAt: new Date(),
       })
       .where(eq(tenantIntegrations.tenantId, tenantId))
       .run()
+
+    // The DB update above already erases a token stored for the old host; this does
+    // the same for the copy `adapters/ghostfolio/client.ts` caches in memory; a JWT
+    // minted against the old host is credential to that host, not to this tenant,
+    // and must not outlive it either (#535).
+    if (hostChanged) resetGhostfolioToken(tenantId)
 
     const after = loadIntegrations(db, tenantId)
     recordAudit(db, {
@@ -2012,7 +2043,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         throw badRequest('A security token is required to test this connection.')
       }
 
-      const result = await withTestHost(candidate.url, async (): Promise<IntegrationTest> => {
+      const result = await withScopedHost(candidate.url, async (): Promise<IntegrationTest> => {
         try {
           const health = await fetch(`${base}/api/v1/health`, {
             headers: { accept: 'application/json' },
@@ -2072,7 +2103,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         const apiKey = candidate.apiKey ?? (stored === null ? undefined : decryptField(stored))
         if (apiKey === undefined) throw badRequest('An API key is required to test Anthropic.')
 
-        const result = await withTestHost(ANTHROPIC_BASE_URL, async (): Promise<IntegrationTest> => {
+        const result = await withScopedHost(ANTHROPIC_BASE_URL, async (): Promise<IntegrationTest> => {
           try {
             const probe = await callAnthropicWithConfig({ apiKey }, capabilityProbe(model))
             return validCapabilityProbe(probe.text)
@@ -2107,7 +2138,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
           apiKey,
         }
         const testUrl = candidate.provider === 'openai-compatible' ? '' : connection.baseUrl
-        const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+        const result = await withScopedHost(testUrl, async (): Promise<IntegrationTest> => {
           try {
             const probe = await callOpenAiCompatibleWithConfig(connection, capabilityProbe(model))
             if (!validCapabilityProbe(probe.text)) {
@@ -2143,7 +2174,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         testUrl = ''
       }
 
-      const result = await withTestHost(testUrl, async (): Promise<IntegrationTest> => {
+      const result = await withScopedHost(testUrl, async (): Promise<IntegrationTest> => {
         try {
           const client = new GoogleGenAI(options)
           await client.models.list({ config: { pageSize: 1 } })
@@ -2189,7 +2220,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         candidate.e2ePassword ??
         (storedSecretsApply && row.actualE2ePasswordEnc !== null ? decryptField(row.actualE2ePasswordEnc) : undefined)
 
-      const result = await withTestHost(candidate.serverUrl, () =>
+      const result = await withScopedHost(candidate.serverUrl, () =>
         testActualConnection({ serverUrl: candidate.serverUrl, syncId: candidate.syncId, password, e2ePassword }),
       )
 
