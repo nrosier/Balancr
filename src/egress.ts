@@ -49,6 +49,7 @@
  * the attacker to first gain that DNS control. A hostname nobody approved is refused
  * regardless of what it resolves to; that part never touches DNS.
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { config } from './config.ts'
 import type { Db } from './db/index.ts'
 import { tenantIntegrations } from './db/schema.ts'
@@ -203,30 +204,22 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost', '[::1]'])
  * into one process-wide set would let one tenant's saved host widen what any other
  * fetch in the process may reach. Both cases get the same answer: permit the host for
  * exactly the duration of the one call made on that tenant's behalf, whether that call
- * is a connection test or the tenant's own real traffic, and revoke it afterwards
- * whether the call succeeded or not. A count rather than a boolean, in case two such
- * calls to the same host ever overlap — the second must not revoke the first's
- * permission when it finishes.
+ * is a connection test or the tenant's own real traffic.
  *
- * Process-wide rather than threaded through `fetch`'s arguments, because `fetch`
- * itself carries no request context to thread it through — the same reason
- * `installed` below is a module-level flag rather than a parameter.
+ * `AsyncLocalStorage` rather than a module-level map (#548): a map keyed only by
+ * hostname has no notion of *which* call granted the host, so any unrelated concurrent
+ * fetch could ride along on someone else's grant for as long as it was open. The async
+ * context, by contrast, propagates only along the call that opened it and its own
+ * awaited descendants — an unrelated concurrent call never sees it, and there is
+ * nothing to revoke on the way out: leaving the context does that automatically.
  */
-const scopedAllowance = new Map<string, number>()
+const scopedHosts = new AsyncLocalStorage<ReadonlySet<string>>()
 
-/** Permits every host in `url` for the duration of `fn`, then revokes it. */
+/** Permits every host in `url` for the duration of `fn`. */
 export async function withScopedHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
   const hosts = hostOf(url)
-  for (const host of hosts) scopedAllowance.set(host, (scopedAllowance.get(host) ?? 0) + 1)
-  try {
-    return await fn()
-  } finally {
-    for (const host of hosts) {
-      const count = (scopedAllowance.get(host) ?? 1) - 1
-      if (count <= 0) scopedAllowance.delete(host)
-      else scopedAllowance.set(host, count)
-    }
-  }
+  const inherited = scopedHosts.getStore() ?? new Set<string>()
+  return scopedHosts.run(new Set([...inherited, ...hosts]), fn)
 }
 
 /** Whether `target` was explicitly permitted by an in-flight `withScopedHost`. */
@@ -237,7 +230,7 @@ function isScopedAllowed(target: string): boolean {
   } catch {
     return false
   }
-  return scopedAllowance.has(host)
+  return scopedHosts.getStore()?.has(host) === true
 }
 
 /**

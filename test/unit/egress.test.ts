@@ -218,12 +218,37 @@ describe('withScopedHost (#369, #535)', () => {
       const inner = await withScopedHost('https://tenant-actual.example', () =>
         fetch('https://tenant-actual.example/inner').then((r) => r.text()),
       )
-      // The inner call's `finally` already ran and revoked one reference; the outer
-      // grant must still be in effect for the rest of the outer call.
+      // The nested call returning must not end the outer call's own grant — the
+      // outer async context is still in scope for the rest of this function.
       const outer = await fetch('https://tenant-actual.example/outer').then((r) => r.text())
       return { inner, outer }
     })
     await expect(outer).resolves.toEqual({ inner: 'ok', outer: 'ok' })
+  })
+
+  it('does not leak the grant to an unrelated concurrent call (#548)', async () => {
+    const inner = vi.fn(async () => new Response('ok'))
+    globalThis.fetch = inner as unknown as typeof fetch
+    const { installEgressGuard, withScopedHost, EgressDeniedError } = await freshEgress()
+    installEgressGuard()
+
+    // Attached *before* the scoped call opens, so its continuation's async context is
+    // fixed to "outside any scope" — settling it later, from inside the scope, must
+    // not retroactively hand it the grant.
+    let releaseUnrelated: () => void = () => {}
+    const unrelatedGate = new Promise<void>((resolve) => {
+      releaseUnrelated = resolve
+    })
+    const unrelatedDenied = unrelatedGate.then(() => fetch('https://tenant-actual.example/unrelated'))
+
+    const scoped = withScopedHost('https://tenant-actual.example', async () => {
+      releaseUnrelated()
+      await unrelatedDenied.catch(() => {})
+      return fetch('https://tenant-actual.example/scoped').then((r) => r.text())
+    })
+
+    await expect(unrelatedDenied).rejects.toThrow(EgressDeniedError)
+    await expect(scoped).resolves.toBe('ok')
   })
 })
 
