@@ -281,6 +281,7 @@ const PAYLOAD: Payload = {
           id: 'p2',
           version: 2,
           active: true,
+          name: null,
           note: 'Tightened the ordering rule',
           createdBy: 'nick@example.com',
           createdAt: '2026-08-30T09:00:00.000Z',
@@ -293,6 +294,7 @@ const PAYLOAD: Payload = {
           id: 'p1',
           version: 1,
           active: false,
+          name: null,
           note: null,
           createdBy: null,
           createdAt: '2026-08-01T09:00:00.000Z',
@@ -3592,6 +3594,7 @@ describe('prompts', () => {
         id: 'p3',
         version: 1,
         active: true,
+        name: null,
         note: null,
         createdBy: 'nick@example.com',
         createdAt: '2026-09-01T09:00:00.000Z',
@@ -3664,6 +3667,29 @@ describe('prompts', () => {
       'All languages',
       'Dutch',
     ])
+  })
+
+  it('carries a typed name into the version it forks, rather than saving it unnamed', async () => {
+    const calls = await open({ ...READS, '/api/settings/prompts': json(DIVERGED) })
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dutch draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Write a version for Dutch only' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/prompts',
+          method: 'POST',
+          body: {
+            key: 'analysis.system',
+            locale: 'nl',
+            body: 'Judge the signals.',
+            name: 'Dutch draft',
+            activate: true,
+          },
+        },
+      ])
+    })
   })
 
   it('offers no fork for a language that already has one', async () => {
@@ -3761,6 +3787,37 @@ describe('prompts', () => {
         },
       ])
     })
+  })
+
+  it('stores a household-chosen name alongside the note (#530)', async () => {
+    const calls = await open({ ...READS, '/api/settings/prompts': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Judge harder.' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Sharper tone' } })
+    fireEvent.change(screen.getByLabelText('What changed'), { target: { value: 'sharper' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save as a new version' }))
+
+    await waitFor(() => {
+      expect(writes(calls)).toEqual([
+        {
+          path: '/api/settings/prompts',
+          method: 'POST',
+          body: {
+            key: 'analysis.system',
+            locale: SHARED_LOCALE,
+            body: 'Judge harder.',
+            name: 'Sharper tone',
+            note: 'sharper',
+          },
+        },
+      ])
+    })
+  })
+
+  it('caps the name at 80 characters, matching the API limit (#530)', async () => {
+    await open(READS)
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).maxLength).toBe(80)
   })
 
   it('activates in the same request when asked to', async () => {
@@ -3916,6 +3973,7 @@ describe('the prompt safety check (#454)', () => {
 
   const version = (over: Partial<Version> & Pick<Version, 'id' | 'version'>): Version => ({
     active: false,
+    name: null,
     note: null,
     createdBy: 'nick@example.com',
     createdAt: '2026-09-01T09:00:00.000Z',
@@ -4474,6 +4532,16 @@ describe('the prompt safety check (#454)', () => {
     // Version 4 is the cleared one; version 3 is Balancr's own text.
     expect(rows[0]?.querySelector('.badge--truth')?.textContent).toBe('Checked')
     expect(rows[1]?.textContent).toContain("Balancr's own")
+  })
+
+  it('shows a version’s chosen name in the version list (#530)', async () => {
+    await open({ ...READS, '/api/settings': json(saved({ name: 'Gentler tone' })) })
+    selectNarrative()
+
+    const rows = document.querySelectorAll('.version')
+    expect(rows[0]?.textContent).toContain('Gentler tone')
+    // The other row has no name and shows none — not the empty string, not "null".
+    expect(rows[1]?.querySelector('.version__name')).toBeNull()
   })
 
   it('retires a verdict when the box is anchored to a different version', async () => {

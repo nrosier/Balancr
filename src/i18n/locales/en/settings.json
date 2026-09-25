@@ -530,6 +530,8 @@
       "shared": "All languages"
     },
     "locale": "Applies to",
+    "name": "Name",
+    "namePlaceholder": "A short label for this version",
     "note": "What changed",
     "notePlaceholder": "Why this version exists",
     "override": {

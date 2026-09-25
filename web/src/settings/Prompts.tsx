@@ -101,6 +101,7 @@ const isGatedKey = (promptEditing: string, key: string): boolean =>
 interface Draft {
   for: string
   body: string
+  name: string
   note: string
   anchorId: string | null
   anchorBody: string
@@ -168,6 +169,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   // notice the change and copy it across.
   const body =
     draft?.for === selection ? draft.body : uncustomizedUnderLocked ? '' : (entry?.active.body ?? '')
+  const name = draft?.for === selection ? draft.name : ''
   const note = draft?.for === selection ? draft.note : ''
   // Same fallback shape as `body`'s own: on a fresh load, before anything has been typed, the
   // anchor is exactly what the box already shows, so `draftDiverged` starts false.
@@ -181,7 +183,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const stamp = `${selection}\n${body}`
 
   const edit = (next: Partial<Omit<Draft, 'for' | 'anchorId' | 'anchorBody'>>): void => {
-    setDraft({ for: selection, body, note, anchorId, anchorBody, ...next })
+    setDraft({ for: selection, body, name, note, anchorId, anchorBody, ...next })
   }
 
   const select = (nextKey: string, nextLocale: string): void => {
@@ -282,7 +284,14 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
   const reanchorAfterSave = (saved: Settings): PromptVersionSetting | null => {
     const savedEntry = saved.prompts.find((candidate) => candidate.key === key && candidate.locale === locale)
     const newest = savedEntry?.versions[0] ?? null
-    setDraft({ for: selection, body, note: '', anchorId: newest?.id ?? null, anchorBody: body.trim() })
+    setDraft({
+      for: selection,
+      body,
+      name: '',
+      note: '',
+      anchorId: newest?.id ?? null,
+      anchorBody: body.trim(),
+    })
     return newest
   }
 
@@ -307,7 +316,13 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
       'prompt-save-and-check',
       'POST',
       '/api/settings/prompts',
-      { key, locale, body, ...(note.trim() === '' ? {} : { note }) },
+      {
+        key,
+        locale,
+        body,
+        ...(name.trim() === '' ? {} : { name }),
+        ...(note.trim() === '' ? {} : { note }),
+      },
       (saved) => {
         const newest = reanchorAfterSave(saved)
         if (newest === null) return
@@ -396,6 +411,23 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
       </div>
 
       <div className="field">
+        <label className="field__label" htmlFor="prompt-name">
+          {t('settings:prompt.name')}
+        </label>
+        <input
+          id="prompt-name"
+          className="field__input"
+          type="text"
+          maxLength={80}
+          value={name}
+          placeholder={t('settings:prompt.namePlaceholder')}
+          disabled={!owner || state.busy}
+          onChange={(event) => edit({ name: event.target.value })}
+        />
+        <Issue message={state.issue('name')} />
+      </div>
+
+      <div className="field">
         <label className="field__label" htmlFor="prompt-note">
           {t('settings:prompt.note')}
         </label>
@@ -444,6 +476,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
                   key,
                   locale,
                   body,
+                  ...(name.trim() === '' ? {} : { name }),
                   ...(note.trim() === '' ? {} : { note }),
                   ...(action === 'saveAndActivate' ? { activate: true } : {}),
                 },
@@ -492,6 +525,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
         promptKey={key}
         locale={locale}
         body={body}
+        name={name}
         written={localesFor(key)}
         supported={settings.locales.supported}
         state={state}
@@ -525,6 +559,7 @@ export function PromptsPanel({ settings, state, owner, estimate }: SettingsPanel
           setDraft({
             for: selection,
             body: loaded.body,
+            name: loaded.name ?? '',
             note: loaded.note ?? '',
             anchorId: loaded.id,
             anchorBody: loaded.body,
@@ -610,6 +645,7 @@ interface OverridesProps {
   promptKey: string
   locale: string
   body: string
+  name: string
   /** The locales this key already has an entry for, the shared sentinel included. */
   written: string[]
   supported: string[]
@@ -635,6 +671,7 @@ function Overrides({
   promptKey,
   locale,
   body,
+  name,
   written,
   supported,
   state,
@@ -686,7 +723,13 @@ function Overrides({
                   `override:${candidate}`,
                   'POST',
                   '/api/settings/prompts',
-                  { key: promptKey, locale: candidate, body, activate: true },
+                  {
+                    key: promptKey,
+                    locale: candidate,
+                    body,
+                    ...(name.trim() === '' ? {} : { name }),
+                    activate: true,
+                  },
                   () => onJump(candidate),
                 )
               }}
@@ -1234,6 +1277,9 @@ function Version({
         <span className="version__number">
           {t('settings:prompt.version', { version: formatDecimal(version.version, 0) })}
         </span>
+        {version.name === null || version.name === '' ? null : (
+          <span className="version__name">{version.name}</span>
+        )}
         {version.active ? (
           <span className="badge badge--truth">{t('settings:prompt.active')}</span>
         ) : null}{' '}

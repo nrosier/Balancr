@@ -530,6 +530,8 @@
       "shared": "Alle talen"
     },
     "locale": "Geldt voor",
+    "name": "Naam",
+    "namePlaceholder": "Een korte naam voor deze versie",
     "note": "Wat er veranderd is",
     "notePlaceholder": "Waarom deze versie bestaat",
     "override": {

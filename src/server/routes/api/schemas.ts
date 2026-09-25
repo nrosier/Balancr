@@ -1385,6 +1385,8 @@ export const promptVersionSchema = z.object({
   id: z.string(),
   version: z.int().positive(),
   active: z.boolean(),
+  /** A short, household-chosen label. Distinct from `note`, the longer "why". */
+  name: z.string().nullable(),
   note: z.string().nullable(),
   createdBy: z.string().nullable(),
   createdAt: z.string(),
