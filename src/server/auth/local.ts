@@ -25,7 +25,7 @@
  * nuisance on the LAN.
  */
 import argon2 from 'argon2'
-import { eq } from 'drizzle-orm'
+import { and, eq, gte, isNull, lt, or, sql } from 'drizzle-orm'
 import { Secret, TOTP } from 'otpauth'
 import type { Db } from '../../db/index.ts'
 import { localCredentials, users } from '../../db/schema.ts'
@@ -104,15 +104,6 @@ export interface LocalLoginAttempt {
   totp: string
 }
 
-interface CredentialRow {
-  userId: string
-  passwordHash: string
-  totpSecret: string
-  failedAttempts: number
-  lockedUntil: Date | null
-  lastTotpStep: number | null
-}
-
 /**
  * Records a failure and locks the account once there have been enough of them.
  *
@@ -120,25 +111,37 @@ interface CredentialRow {
  * lockout costs another `LOCKOUT_THRESHOLD` attempts rather than one — the
  * alternative leaves an account that has once been locked permanently one guess
  * away from being locked again.
+ *
+ * Both statements increment and compare in SQL rather than in the caller's
+ * in-memory `row` (#550): several concurrent failed attempts can all have read the
+ * same stale `failedAttempts` across their own `argon2.verify` await, so a
+ * caller-computed `+ 1` can lose increments under real concurrency. `+ 1` in the
+ * `SET` clause has SQLite do the read-and-write as one statement, and the second
+ * statement's own `WHERE` re-reads the column it just wrote rather than trusting
+ * anything computed before the await.
  */
-function recordFailure(db: Db, row: CredentialRow, now: number): void {
-  const attempts = row.failedAttempts + 1
-  const locked = attempts >= LOCKOUT_THRESHOLD
+function recordFailure(db: Db, userId: string, now: number): void {
+  db.transaction((tx) => {
+    tx.update(localCredentials)
+      .set({ failedAttempts: sql`${localCredentials.failedAttempts} + 1` })
+      .where(eq(localCredentials.userId, userId))
+      .run()
 
-  db.update(localCredentials)
-    .set({
-      failedAttempts: locked ? 0 : attempts,
-      lockedUntil: locked ? new Date(now + LOCKOUT_MS) : row.lockedUntil,
-    })
-    .where(eq(localCredentials.userId, row.userId))
-    .run()
+    const lockout = tx
+      .update(localCredentials)
+      .set({ failedAttempts: 0, lockedUntil: new Date(now + LOCKOUT_MS) })
+      .where(
+        and(eq(localCredentials.userId, userId), gte(localCredentials.failedAttempts, LOCKOUT_THRESHOLD)),
+      )
+      .run()
 
-  if (locked) {
-    log.warn(
-      { userId: row.userId, minutes: LOCKOUT_MS / 60_000 },
-      'local login locked after repeated failures',
-    )
-  }
+    if (lockout.changes > 0) {
+      log.warn(
+        { userId, minutes: LOCKOUT_MS / 60_000 },
+        'local login locked after repeated failures',
+      )
+    }
+  })
 }
 
 /**
@@ -223,21 +226,38 @@ export async function verifyLocalLogin(
   // passed so the caller's clock is the only clock involved.
   const delta = totp.validate({ token: attempt.totp, window: TOTP_WINDOW, timestamp: now })
   const step = delta === null ? null : totpStep(now) + delta
+  // For the log line only — a stale read is fine there, since it decides nothing.
   const fresh = step !== null && (row.lastTotpStep === null || step > row.lastTotpStep)
 
-  if (!passwordOk || !fresh) {
-    recordFailure(db, row, now)
+  // Consumed with a single conditional write rather than checked against `row`
+  // and written separately (#550): two concurrent requests presenting the same
+  // still-valid code would otherwise both read the same stale `lastTotpStep`, both
+  // pass the check, and both mint a session. The `WHERE` here re-reads the column
+  // at write time, so only the first of two racing requests can change the row —
+  // the second sees zero rows changed and is refused, exactly as if the code had
+  // already been spent.
+  const consumed =
+    passwordOk &&
+    step !== null &&
+    db
+      .update(localCredentials)
+      .set({ failedAttempts: 0, lockedUntil: null, lastTotpStep: step })
+      .where(
+        and(
+          eq(localCredentials.userId, row.userId),
+          or(isNull(localCredentials.lastTotpStep), lt(localCredentials.lastTotpStep, step)),
+        ),
+      )
+      .run().changes === 1
+
+  if (!consumed) {
+    recordFailure(db, row.userId, now)
     log.warn(
       { userId: row.userId, password: passwordOk, code: step !== null, replay: step !== null && !fresh },
       'local login refused',
     )
     throw loginRefused()
   }
-
-  db.update(localCredentials)
-    .set({ failedAttempts: 0, lockedUntil: null, lastTotpStep: step })
-    .where(eq(localCredentials.userId, row.userId))
-    .run()
 
   db.update(users).set({ lastSeenAt: new Date(now) }).where(eq(users.id, row.userId)).run()
 
