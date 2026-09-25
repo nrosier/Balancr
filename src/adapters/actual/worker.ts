@@ -17,7 +17,12 @@
  * `open` needs arrives over IPC as an `ActualOpenConfig`, resolved by the
  * parent from the calling tenant's own row (`resolvedIntegrations`). The
  * shared `logger` is fine to import: its own `LOG_LEVEL` is a deployment-wide
- * setting, not a per-tenant credential.
+ * setting, not a per-tenant credential. Same reasoning for `egress.ts`: this
+ * process installs its own guard from `cfg.egressMode` (also deployment-wide,
+ * carried over IPC rather than read from `config.ts` directly) and scopes it to
+ * this tenant's own `serverUrl` for every call that reaches `@actual-app/api` —
+ * this fork has its own `fetch` and its own module graph, so nothing the main
+ * process installs on `globalThis.fetch` reaches here on its own (#536).
  *
  * `handleRequest` is exported separately from the `process.on('message', ...)`
  * loop below so `test/unit/actual-worker.test.ts` can drive it in-process,
@@ -26,6 +31,7 @@
 import { mkdir } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { api } from './api-source.ts'
+import { installEgressGuard, withScopedHost } from '../../egress.ts'
 import { logger } from '../../logger.ts'
 import {
   ENVELOPE_BUDGET_TYPES,
@@ -67,6 +73,8 @@ const ALLOWED_METHODS: ReadonlySet<string> = new Set([
 ])
 
 let opened = false
+/** Set once, by `open`, and read by every later `call`/`batch`/`sync` (#536). */
+let openedServerUrl = ''
 
 const health: ActualHealthFacts = {
   opened: false,
@@ -188,30 +196,35 @@ async function recordServerFacts(baseCurrency: string): Promise<void> {
 async function open(cfg: ActualOpenConfig): Promise<void> {
   if (opened) return
 
+  installEgressGuard(cfg.egressMode)
+
   // Actual requires dataDir to exist already; it does not create it.
   await mkdir(cfg.dataDir, { recursive: true })
 
-  await api.init({
-    serverURL: cfg.serverUrl,
-    password: cfg.password,
-    dataDir: cfg.dataDir,
-    // Actual's engine logs breadcrumbs and sync progress through `console.log`, and
-    // its `verboseMode` defaults to on — ten unparseable lines per sync landing in
-    // the middle of pino's JSON stream (#123). Off by default, but not silenced:
-    // when a budget will not load, that chatter is the only view into why.
-    verbose: VERBOSE_LOG_LEVELS.has(cfg.logLevel),
+  await withScopedHost(cfg.serverUrl, async () => {
+    await api.init({
+      serverURL: cfg.serverUrl,
+      password: cfg.password,
+      dataDir: cfg.dataDir,
+      // Actual's engine logs breadcrumbs and sync progress through `console.log`, and
+      // its `verboseMode` defaults to on — ten unparseable lines per sync landing in
+      // the middle of pino's JSON stream (#123). Off by default, but not silenced:
+      // when a budget will not load, that chatter is the only view into why.
+      verbose: VERBOSE_LOG_LEVELS.has(cfg.logLevel),
+    })
+
+    // Pulls the budget into the local cache. Every read below is invalid until
+    // this has run at least once.
+    await download(cfg)
   })
 
-  // Pulls the budget into the local cache. Every read below is invalid until
-  // this has run at least once.
-  await download(cfg)
-
   opened = true
+  openedServerUrl = cfg.serverUrl
   health.opened = true
   health.lastError = null
   health.lastSyncAt = new Date()
 
-  await recordServerFacts(cfg.baseCurrency)
+  await withScopedHost(cfg.serverUrl, () => recordServerFacts(cfg.baseCurrency))
 }
 
 function errorResponse(id: number, error: unknown): ActualResponse {
@@ -267,7 +280,9 @@ export async function handleRequest(
 
     case 'call': {
       try {
-        const result = await runCall(request.method, request.args)
+        const result = await withScopedHost(openedServerUrl, () =>
+          runCall(request.method, request.args),
+        )
         return { id: request.id, ok: true, result }
       } catch (error) {
         return errorResponse(request.id, error)
@@ -276,8 +291,11 @@ export async function handleRequest(
 
     case 'batch': {
       try {
-        const results: unknown[] = []
-        for (const op of request.ops) results.push(await runCall(op.method, op.args))
+        const results = await withScopedHost(openedServerUrl, async () => {
+          const out: unknown[] = []
+          for (const op of request.ops) out.push(await runCall(op.method, op.args))
+          return out
+        })
         return { id: request.id, ok: true, result: results }
       } catch (error) {
         return errorResponse(request.id, error)
@@ -286,7 +304,7 @@ export async function handleRequest(
 
     case 'sync': {
       try {
-        await api.sync()
+        await withScopedHost(openedServerUrl, () => api.sync())
         health.lastSyncAt = new Date()
         return { id: request.id, ok: true, result: null }
       } catch (error) {

