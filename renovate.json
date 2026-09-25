@@ -22,6 +22,17 @@
     "labels": ["security"],
     "schedule": ["at any time"]
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "actions/checkout, setup-node, etc. are `uses:` steps, so Renovate's built-in github-actions manager already tracks them by SHA. gitleaks (#551) is invoked via a plain `docker run` in a shell step instead, which no default manager scans — this picks up any `owner/image:tag@sha256:digest` reference in a workflow file, the same explicit pin shape used there.",
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "(?<depName>[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?):(?<currentValue>[\\w][\\w.-]*)@sha256:(?<currentDigest>[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "description": "Versions, never digests. A `uses: actions/checkout@abc123...` diff is unreviewable — you cannot tell a patch bump from a hijacked tag by reading the hash — and the same goes for a `node:26.8@sha256:...` base image. Tags are what the upgrade is judged on here, so `pinDigests` stays off even if a preset turns it on by default.",
