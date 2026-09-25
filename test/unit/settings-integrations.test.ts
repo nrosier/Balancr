@@ -720,6 +720,18 @@ describe('POST /api/settings/integrations/actual/test', () => {
     expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
   })
 
+  it('never falls back to the stored password for a candidate that only changes scheme (#534)', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+
+    const res = await post('/api/settings/integrations/actual/test', {
+      serverUrl: 'https://actual.test:5006',
+      syncId: 'other-sync',
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(vi.mocked(testActualConnection)).not.toHaveBeenCalled()
+  })
+
   it('refuses a candidate server URL that embeds credentials (#534)', async () => {
     const res = await post('/api/settings/integrations/actual/test', {
       serverUrl: 'http://user:pass@actual.test:5006',
@@ -836,6 +848,16 @@ describe('POST /api/settings/integrations/ghostfolio/test', () => {
 
     const res = await post('/api/settings/integrations/ghostfolio/test', {
       url: 'http://ghostfolio2.test:3333',
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('never falls back to the stored token for a candidate that only changes scheme (#534)', async () => {
+    stubFetch('ok')
+
+    const res = await post('/api/settings/integrations/ghostfolio/test', {
+      url: 'https://ghostfolio.test:3333',
     })
 
     expect(res.statusCode).toBe(400)

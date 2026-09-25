@@ -690,10 +690,18 @@ const testCandidateUrl = z
     return url.href.replace(/\/+$/, '')
   })
 
-/** Whether two URLs share a host — the check that gates the stored-secret fallback below. */
+/**
+ * Whether two URLs share a scheme and host — the check that gates the stored-secret
+ * fallback below.
+ *
+ * Origin, not just host: a stored secret was verified over whichever scheme the
+ * stored URL used, and a candidate that keeps the hostname but drops from `https:`
+ * to `http:` is still a host nobody verified that secret against — the same
+ * downgrade a browser's mixed-content warning exists for.
+ */
 function sameHost(a: string, b: string): boolean {
   try {
-    return new URL(a).host === new URL(b).host
+    return new URL(a).origin === new URL(b).origin
   } catch {
     return false
   }
