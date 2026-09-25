@@ -58,8 +58,16 @@
  * section. Risk, Thresholds and Benchmark stay standalone: each already has its own
  * reason to exist apart (above), and nesting them a level deeper would add clicks
  * without adding clarity.
+ *
+ * A path from before that split — someone's bookmarked `/settings/goals`, say — isn't
+ * in `SETTINGS_SECTIONS` any more, and without help `sectionFor` would resolve it to
+ * General same as any other unknown path: the bookmark would silently open the wrong
+ * panel instead of erroring loudly. `legacyRedirectFor` catches those old paths and
+ * `section` below resolves against where they land now, so the first render already
+ * shows the right tab; the effect just corrects the URL bar to match so the tab
+ * strip's own `exact` links still light up correctly on a refresh.
  */
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
@@ -70,7 +78,7 @@ import { LanguagePanel } from '../settings/Language.tsx'
 import { MembersPanel } from '../settings/Members.tsx'
 import { NetWorthSection } from '../settings/NetWorth.tsx'
 import { RiskPanel } from '../settings/Risk.tsx'
-import { SETTINGS_SECTIONS, sectionFor } from '../settings/sections.ts'
+import { legacyRedirectFor, SETTINGS_SECTIONS, sectionFor } from '../settings/sections.ts'
 import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsSection } from '../settings/Thresholds.tsx'
@@ -148,8 +156,13 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
 export function Settings(): ReactNode {
   const { t } = useT()
   const state = useSettings()
-  const { path } = useRouter()
-  const section = sectionFor(path)
+  const { path, navigate } = useRouter()
+  const legacyRedirect = legacyRedirectFor(path)
+  const section = sectionFor(legacyRedirect ?? path)
+
+  useEffect(() => {
+    if (legacyRedirect !== null) navigate(legacyRedirect, { replace: true })
+  }, [legacyRedirect, navigate])
   /*
    * The price of one analysis, read once for the two panels that offer to spend it.
    *

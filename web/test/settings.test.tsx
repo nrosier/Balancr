@@ -763,6 +763,28 @@ describe('the shape of the page', () => {
   })
 })
 
+describe('legacy settings paths (#528, #533)', () => {
+  it.each([
+    ['/settings/prompts', '/settings/ai/prompts', 'Assistant instructions'],
+    ['/settings/ai-log', '/settings/ai/log', 'Request and response log'],
+    ['/settings/accounts', '/settings/net-worth', 'Accounts'],
+    ['/settings/property', '/settings/net-worth/property', 'Property'],
+    ['/settings/loans', '/settings/net-worth/loans', 'Loans'],
+    ['/settings/debts', '/settings/net-worth/debts', 'Credit cards'],
+    ['/settings/goals', '/settings/net-worth/goals', 'Savings goals'],
+  ] as const)(
+    'redirects a bookmarked %s to its new home at %s, rather than falling back to General',
+    async (from, to, heading) => {
+      await openPage(READS, from, heading)
+
+      expect(screen.getByRole('heading', { level: 2, name: heading })).toBeTruthy()
+      expect(screen.queryByRole('heading', { level: 2, name: 'Account' })).toBeNull()
+      // `replace`, not `push` — the old path never belonged on the page's own history.
+      expect(window.location.pathname).toBe(to)
+    },
+  )
+})
+
 describe('language', () => {
   it('writes the profile and switches the interface to what came back', async () => {
     const calls = await open({
@@ -2215,6 +2237,21 @@ describe('property', () => {
     expect(saveProperty().disabled).toBe(true)
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Home')
   })
+
+  it('keeps an unsaved row after a visit to a sibling Net worth subtab (#533)', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cabin' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Loans' }))
+    await screen.findByRole('heading', { level: 2, name: 'Loans' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Property' }))
+    await screen.findByRole('heading', { level: 2, name: 'Property' })
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Cabin')
+  })
 })
 
 describe('integrations', () => {
@@ -2508,6 +2545,20 @@ describe('ai provider (#528)', () => {
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
     expect((screen.getByLabelText('Provider') as HTMLSelectElement).disabled).toBe(true)
     expect(saveButton('AI provider').disabled).toBe(true)
+  })
+
+  it('keeps an unsaved provider change after a visit to a sibling AI subtab (#533)', async () => {
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: 'candidate-key' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Prompts' }))
+    await screen.findByRole('heading', { level: 2, name: 'Assistant instructions' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'AI provider' }))
+    await screen.findByRole('heading', { level: 2, name: 'AI provider' })
+
+    expect((screen.getByLabelText(/^API key/) as HTMLInputElement).value).toBe('candidate-key')
   })
 })
 

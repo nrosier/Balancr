@@ -37,3 +37,32 @@ export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
 export function sectionFor(pathname: string): SettingsSectionId {
   return sectionForGeneric(SETTINGS_SECTIONS, pathname, 'general')
 }
+
+/**
+ * Where a pre-#528 flat tab moved to. `sectionFor` alone would resolve every one of
+ * these old prefixes to General — none of them survive as a `SETTINGS_SECTIONS`
+ * entry — so a bookmarked `/settings/goals` would silently show the wrong panel
+ * instead of the one it was saved for. Prefixes, not exact paths, for the same
+ * reason `sectionFor` itself is prefix-aware: none of these old tabs had a nested
+ * strip of their own, but a saved deep link could still have landed one path level
+ * below the tab (there wasn't one to land on, but nothing enforced that either).
+ */
+const LEGACY_SETTINGS_REDIRECTS: ReadonlyArray<readonly [from: string, to: string]> = [
+  ['/settings/prompts', '/settings/ai/prompts'],
+  ['/settings/ai-log', '/settings/ai/log'],
+  ['/settings/accounts', '/settings/net-worth'],
+  ['/settings/property', '/settings/net-worth/property'],
+  ['/settings/loans', '/settings/net-worth/loans'],
+  ['/settings/debts', '/settings/net-worth/debts'],
+  ['/settings/goals', '/settings/net-worth/goals'],
+]
+
+/** The current path a legacy `/settings/*` path should redirect to, or `null` if it isn't one. */
+export function legacyRedirectFor(pathname: string): string | null {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  for (const [from, to] of LEGACY_SETTINGS_REDIRECTS) {
+    if (path === from) return to
+    if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`
+  }
+  return null
+}
