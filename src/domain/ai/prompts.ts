@@ -1145,6 +1145,7 @@ export interface NewPromptVersion {
   key: PromptKey
   locale: string
   body: string
+  name?: string
   note?: string
   createdBy?: string
   /** Whether to make it active immediately. Editing and activating are separate. */
@@ -1214,6 +1215,7 @@ export function createPromptVersion(
         version,
         body,
         active: input.activate === true,
+        name: input.name ?? null,
         note: input.note ?? null,
         createdBy: input.createdBy ?? null,
         ...(inherited === null

@@ -302,6 +302,13 @@
       "when": 1790271263395,
       "tag": "0042_lively_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1790323455971,
+      "tag": "0043_faulty_joystick",
+      "breakpoints": true
     }
   ]
 }

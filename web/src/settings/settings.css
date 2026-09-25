@@ -599,6 +599,11 @@
   font-weight: var(--weight-semibold);
 }
 
+.version__name {
+  font-size: var(--type-sm);
+  color: var(--text);
+}
+
 .version__meta,
 .version__note {
   margin: 0;

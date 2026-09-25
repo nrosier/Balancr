@@ -1108,6 +1108,7 @@ describe('the prompt editor', () => {
       key: 'analysis.system',
       locale: 'en',
       body,
+      name: 'Terser pass',
       note: 'shorter',
     })
     expect(res.statusCode).toBe(200)
@@ -1117,6 +1118,7 @@ describe('the prompt editor', () => {
       .prompts.find((p) => p.key === 'analysis.system' && p.locale === 'en')?.versions
     expect(versions).toHaveLength(1)
     expect(versions?.[0]?.active).toBe(false)
+    expect(versions?.[0]?.name).toBe('Terser pass')
     expect(versions?.[0]?.note).toBe('shorter')
     expect(loadActivePrompt(ctx.db, tenantId, 'analysis.system', 'en')?.id).toBe(before?.id)
     expect(auditActions(ctx.db)).toEqual(['prompt.create'])

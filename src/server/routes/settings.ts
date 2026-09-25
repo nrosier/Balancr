@@ -597,6 +597,8 @@ const promptCreateRequest = z.strictObject({
   key: z.enum(PROMPT_KEYS),
   locale: promptLocaleRequest,
   body: promptBodyRequest,
+  /** A short label for the version, distinct from `note`'s longer "why". */
+  name: z.string().max(80).optional(),
   /** Why this version exists, for the list. Not the text — that is the row. */
   note: z.string().max(500).optional(),
   activate: z.boolean().optional(),
@@ -840,6 +842,7 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
       id: row.id,
       version: row.version,
       active: row.active,
+      name: row.name,
       note: row.note,
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
@@ -2573,6 +2576,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       locale: row.locale,
       version: row.version,
       active: row.active,
+      name: row.name,
       note: row.note,
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
@@ -2635,6 +2639,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         locale: input.locale,
         body: input.body,
         createdBy: user.id,
+        ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.note === undefined ? {} : { note: input.note }),
         ...(input.activate === undefined ? {} : { activate: input.activate }),
       }),

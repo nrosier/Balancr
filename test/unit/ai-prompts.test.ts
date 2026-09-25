@@ -1193,6 +1193,23 @@ describe('createPromptVersion', () => {
     expect(row.note).toBe('less hedging')
     expect(row.createdBy).toBeNull()
   })
+
+  it('records a household-chosen name alongside the note (#530)', () => {
+    const row = createPromptVersion(db, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'one',
+      name: 'Gentler tone',
+      note: 'less hedging',
+    })
+    expect(row.name).toBe('Gentler tone')
+    expect(row.note).toBe('less hedging')
+  })
+
+  it('leaves name null when none is given', () => {
+    const row = createPromptVersion(db, { key: 'analysis.system', locale: 'en', body: 'one' })
+    expect(row.name).toBeNull()
+  })
 })
 
 describe('activatePrompt', () => {

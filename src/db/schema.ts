@@ -893,6 +893,9 @@ export const prompts = sqliteTable(
     version: integer().notNull(),
     body: text().notNull(),
     active: integer({ mode: 'boolean' }).notNull().default(false),
+    /** A short, household-chosen label for this version. Distinct from `note` below. */
+    name: text(),
+    /** The longer "why this version exists" — shown under the name in the version list. */
     note: text(),
     createdAt: createdAt(),
     createdBy: text('created_by').references(() => users.id, {
