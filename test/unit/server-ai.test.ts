@@ -26,7 +26,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { GoogleGenAI } from '@google/genai'
 import { setGeminiClient } from '../../src/adapters/gemini/client.ts'
-import { config } from '../../src/config.ts'
 import type { Db } from '../../src/db/index.ts'
 import { aiFindings, aiNarratives, aiRuns, clarificationQueue, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -45,6 +44,7 @@ import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import { HttpError } from '../../src/server/errors.ts'
+import { AI_RATE_LIMIT } from '../../src/server/rate-limit.ts'
 import { dryRunPrompt } from '../../src/server/routes/ai.ts'
 import type {
   AiDryRun,
@@ -608,11 +608,13 @@ describe('POST /api/ai/prompt-validate (#454)', () => {
 
   it('trips the AI rate limit on a real route without ever reaching the model (#47)', async () => {
     // The 404 above proves this request never calls out; bursting it past
-    // `RATE_LIMIT_AI_PER_HOUR` proves the limiter trips on a real production route,
+    // `AI_RATE_LIMIT.max` proves the limiter trips on a real production route,
     // through the real owner/CSRF path, at zero AI cost — not just on the synthetic
-    // stand-in route in server-rate-limit.test.ts.
+    // stand-in route in server-rate-limit.test.ts. Bound to that constant rather than
+    // to `config.RATE_LIMIT_AI_PER_HOUR` directly: it's the exact number this route was
+    // actually built with, so the burst can never drift from what's enforced (#527).
     const fake = fakeGemini(SAFE_REPLY)
-    for (let i = 0; i < config.RATE_LIMIT_AI_PER_HOUR; i += 1) {
+    for (let i = 0; i < AI_RATE_LIMIT.max; i += 1) {
       expect((await validate({ promptId: 'nope' })).statusCode).toBe(404)
     }
 
