@@ -81,11 +81,15 @@ half-English, and costs a fraction of what shipping raw transactions would.
   from the fixture appears in a payload. It is load-bearing, not decorative.
 - **Nothing the AI suggests takes effect on its own.** Proposals are reviewed and
   applied by you.
-- **Neither source is ever written to.** Not Actual, not Ghostfolio, and not as a
-  matter of intent: the Actual client re-exports no method that mutates a budget, the
-  Ghostfolio client's read type cannot express an HTTP method or a body, and a test
-  per adapter scans the source so a future edit that goes around either one fails
-  before it ships.
+- **Ghostfolio is never written to.** Not as a matter of intent: the client's read
+  type cannot express an HTTP method or a body, and a source scan fails the build if
+  a future edit goes around it.
+- **Actual is written to only after you approve a proposal, and only that change.**
+  The AI never touches Actual directly — it can only suggest a transaction's category
+  or a category's budgeted amount, held as a pending proposal until you review and
+  approve it. Approving is the one action that writes: it calls the same two Actual
+  methods the write path is limited to (nothing else is reachable), and every
+  approval leaves an audit-log entry recording who approved what, and when.
 - **No CDN, no external assets.** All JavaScript, CSS and fonts are bundled and
   served from the container, so the UI works on a locked-down network and leaks
   nothing to a third party by loading a page.
