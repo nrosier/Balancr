@@ -43,9 +43,13 @@ const options: ExecFileSyncOptionsWithStringEncoding = {
 
 /** Runs the check over one directory. Returns the exit code and everything it printed. */
 function run(dir?: string): { code: number; output: string } {
-  const args = ['tsx', script, ...(dir === undefined ? [] : [dir])]
+  // Six cases each shell out; `npx` resolving `tsx` on every one of them is the
+  // repeated cost that left the app-wide sweep with no margin above Vitest's
+  // default timeout (#553). Handing Node the already-resolved test-runner binary
+  // plus `--import tsx` starts the same interpreter without that resolution step.
+  const args = ['--import', 'tsx', script, ...(dir === undefined ? [] : [dir])]
   try {
-    return { code: 0, output: execFileSync('npx', args, options) }
+    return { code: 0, output: execFileSync(process.execPath, args, options) }
   } catch (error) {
     const failure = error as { status?: number; stdout?: string; stderr?: string }
     return { code: failure.status ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` }
@@ -93,9 +97,17 @@ describe('the contrast guard', () => {
     expect(code).toBe(0)
   })
 
-  it('holds for the application it guards, in both themes', () => {
-    const { code, output } = run()
-    expect(output).toContain('contrast ok')
-    expect(code).toBe(0)
-  })
+  // The full 49-pair sweep across both themes runs close to Vitest's 5s default even
+  // on its own (~4.3s); under full suite load it has no margin left. An explicit
+  // timeout fixes this case's actual cost rather than masking it by raising the
+  // global default, which would just as easily hide real slowness elsewhere (#553).
+  it(
+    'holds for the application it guards, in both themes',
+    () => {
+      const { code, output } = run()
+      expect(output).toContain('contrast ok')
+      expect(code).toBe(0)
+    },
+    30_000,
+  )
 })
