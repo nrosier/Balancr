@@ -6,6 +6,38 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.4.0] — 2026-09-25
+
+### Security
+
+- **A "test connection" request could be tricked into sending a tenant's stored Actual/Ghostfolio secret to an attacker-controlled host**
+  ([#534](https://github.com/nrosier/Balancr/issues/534)). The stored-secret fallback (used when a test-connection request omits the password/token) is now gated on the candidate URL matching, scheme and host, the URL the secret was last verified against; a candidate URL embedding credentials (`user:pass@host`) is rejected outright.
+- **A tenant's saved Actual/Ghostfolio URL widened the whole process's egress allowlist, not just that tenant's own traffic**
+  ([#535](https://github.com/nrosier/Balancr/issues/535)). `withScopedHost` (renamed from `withTestHost`) now grants a host for the duration of one call made on that tenant's behalf — Ghostfolio's real traffic included, not just its test-connection check — instead of adding it to a set every fetch in the process is checked against. A PATCH that changes a stored host now also invalidates the secret verified against the old one.
+- **The Actual worker's real per-tenant traffic ran through a completely unguarded `fetch`, unlike its own test-connection check**
+  ([#536](https://github.com/nrosier/Balancr/issues/536)). Each tenant's long-lived worker process now installs the egress guard on open and scopes every later request to that tenant's own server URL, mirroring the pattern above already established for Ghostfolio.
+- **AI retention nulled the old request/response text but left the full redacted payload readable indefinitely, including the one field sent unredacted (the month note)**
+  ([#539](https://github.com/nrosier/Balancr/issues/539)). Past `AI_RUNS_TEXT_RETENTION_DAYS`, `payload_json` is now cleared alongside it; the dedup hash is kept, since a hash can't be turned back into the payload it was computed from.
+- **A remote Actual write could outlive a proposal that was rejected while the write was in flight, with nothing recording that it happened**
+  ([#540](https://github.com/nrosier/Balancr/issues/540)). That race is a known, accepted tradeoff — both remote handlers are idempotent, so recovery is a manual re-apply, not a double-apply — but it now logs a warning with the proposal's id, type, and target ref, so the re-apply has something to notice.
+- **The README's privacy claims hadn't kept up with what the app actually does**
+  ([#541](https://github.com/nrosier/Balancr/issues/541), [#542](https://github.com/nrosier/Balancr/issues/542)). It now discloses that the free-text month note is sent to the AI unredacted, by design, and that an approved proposal does write back to Actual — Ghostfolio remains unconditionally read-only.
+
+### Added
+
+- **Prompt versions can be given a short, household-chosen name**, distinct from the existing "why this version exists" note
+  ([#530](https://github.com/nrosier/Balancr/issues/530)).
+
+### Changed
+
+- **Settings shrinks from 13 top-level tabs to 7**
+  ([#528](https://github.com/nrosier/Balancr/issues/528)). AI provider config, Prompts, and the AI activity log move under one new AI section; Accounts, Property, Loans, Debts, and Goals move under a new Net worth section.
+
+### Fixed
+
+- **Checking one prompt version's safety verdict could flip a sibling version's badge back to "Not checked"**
+  ([#529](https://github.com/nrosier/Balancr/issues/529)). Each row's verdict is now tracked independently instead of sharing one last-checked slot.
+
 ## [2.3.9] — 2026-09-25
 
 ### Fixed

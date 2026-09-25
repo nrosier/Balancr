@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.3.9-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.4.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1102,16 +1102,22 @@ ends.
 | `2.1.0` | Benchmark: inflation-adjusted reference figure, country selection for the comparison | ✅ |
 | `2.2.0` | Multi-provider AI and multi-tenant security hardening | ✅ |
 | `2.3.0` | Prompt safety gate and lock for the editable narrative prompt; non-mortgage debt tracking | ✅ |
+| `2.4.0` | Security: egress guard scoped per tenant (Ghostfolio and Actual alike), stored-secret host binding, retention completeness | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.3.9` is the current release. A maintenance release
-with no user-facing change: a contradictory Dockerfile comment and a test
-whose runtime depended on ambient config are both fixed (see
-[`CHANGELOG.md`](CHANGELOG.md) for details). Existing deployments upgrade
-in place.
+**Where it is now** — `2.4.0` is the current release. Closes the Security
+milestone: a stored Actual/Ghostfolio secret can no longer be sent to a host
+it wasn't verified against, a tenant's saved integration host is scoped to
+that tenant's own traffic instead of widening the whole process's egress
+allowlist, retention now clears the full AI payload rather than just the
+request/response text, and a lost-race proposal write is now logged instead
+of leaving no trace (see [`CHANGELOG.md`](CHANGELOG.md) for details). Also
+in this release: Settings consolidates from 13 top-level tabs to 7, and
+prompt versions can be given a short name. Existing deployments upgrade in
+place.
 
-`docker pull` now resolves `latest` to `2.3.9`; a release candidate is
+`docker pull` now resolves `latest` to `2.4.0`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
