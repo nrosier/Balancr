@@ -71,12 +71,16 @@ import type { SettingsPanelProps } from './state.ts'
 /**
  * Services (the three at-a-glance cards, #325) versus Queue (everything that used to
  * sit under the old flat `checks` list: the job list and the reset control) versus AI
- * (the cost/usage monitoring that used to be its own Settings tab — reached only by
- * clicking the AI service card, since nothing on it is a setting). Ghostfolio's own
- * probe detail lives on its Services card, behind a disclosure, rather than under Queue
- * (#331). Nested one level under the page's own `general`/`status` split —
- * `sections.ts`'s own prefix matching is written to support that, so this is plain reuse
- * rather than a new mechanism.
+ * usage (the cost/usage monitoring that used to be its own Settings tab — reached only
+ * by clicking the AI service card, since nothing on it is a setting). Labelled "AI
+ * usage" rather than bare "AI" since #528 gave the top-level tab strip its own "AI"
+ * entry for the provider/prompts/log configuration — the two now sit on screen
+ * together whenever this subtab is open, and identical labels going to different
+ * places would be worse than the extra word. Ghostfolio's own probe detail lives on
+ * its Services card, behind a disclosure, rather than under Queue (#331). Nested one
+ * level under the page's own `general`/`status` split — `sections.ts`'s own prefix
+ * matching is written to support that, so this is plain reuse rather than a new
+ * mechanism.
  */
 type StatusSubsectionId = 'services' | 'queue' | 'ai'
 

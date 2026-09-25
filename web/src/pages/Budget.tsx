@@ -703,7 +703,7 @@ function TrendWall({ categories, months, signals, goalsByCategory }: TrendWallPr
               ))}
             {(goalsByCategory.find((g) => g.categoryId === category.categoryId)?.goals ?? []).map((goal) => (
               <p className="trend__note" key={goal.id}>
-                <Link to="/settings/goals" className="trend__goal">
+                <Link to="/settings/net-worth/goals" className="trend__goal">
                   <span className="sr-only">{t('budget:chart.trendGoalLink')}</span>
                   {goal.label}
                   {goal.pace !== null && (

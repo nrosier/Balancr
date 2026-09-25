@@ -16,33 +16,21 @@ import { sectionFor as sectionForGeneric, type Section } from '../ui/sections.ts
 
 export type SettingsSectionId =
   | 'general'
-  | 'prompts'
-  | 'ai-log'
+  | 'ai'
   | 'risk'
   | 'thresholds'
-  | 'accounts'
+  | 'net-worth'
   | 'benchmark'
-  | 'property'
-  | 'loans'
-  | 'debts'
-  | 'goals'
   | 'integrations'
-  | 'members'
 
 export const SETTINGS_SECTIONS: readonly Section<SettingsSectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
-  { id: 'prompts', path: '/settings/prompts', labelKey: 'settings:nav.prompts' },
-  { id: 'ai-log', path: '/settings/ai-log', labelKey: 'settings:nav.aiLog' },
+  { id: 'ai', path: '/settings/ai', labelKey: 'settings:nav.ai' },
   { id: 'risk', path: '/settings/risk', labelKey: 'settings:nav.risk' },
   { id: 'thresholds', path: '/settings/thresholds', labelKey: 'settings:nav.thresholds' },
-  { id: 'accounts', path: '/settings/accounts', labelKey: 'settings:nav.accounts' },
+  { id: 'net-worth', path: '/settings/net-worth', labelKey: 'settings:nav.netWorth' },
   { id: 'benchmark', path: '/settings/benchmark', labelKey: 'settings:nav.benchmark' },
-  { id: 'property', path: '/settings/property', labelKey: 'settings:nav.property' },
-  { id: 'loans', path: '/settings/loans', labelKey: 'settings:nav.loans' },
-  { id: 'debts', path: '/settings/debts', labelKey: 'settings:nav.debts' },
-  { id: 'goals', path: '/settings/goals', labelKey: 'settings:nav.goals' },
   { id: 'integrations', path: '/settings/integrations', labelKey: 'settings:nav.integrations' },
-  { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
 ]
 
 /** The section an arbitrary `/settings*` path belongs to; an unknown one lands on General. */
