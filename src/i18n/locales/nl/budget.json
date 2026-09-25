@@ -210,7 +210,7 @@
   },
   "monthNote": {
     "count": "{{count}}/{{max}} tekens",
-    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. Twee AI-stappen lezen ze: de budgetbijstelling op de Inzichten-pagina, wanneer die bedragen voor volgende maand voorstelt, en de maand in woorden, zodat die een verschuiving kan toeschrijven aan wat jij vertelde in plaats van het drift te noemen. Ze gaat naar het model zoals je ze schreef, en ze gaat niet naar de bevindingen.",
+    "hint": "Leg iets ongewoons over een maand uit — een eenmalige kost, iets waarvan je al weet dat het eraan komt — in je eigen woorden. Twee AI-stappen lezen ze: de budgetbijstelling op de Inzichten-pagina, wanneer die bedragen voor volgende maand voorstelt, en de maand in woorden, zodat die een verschuiving kan toeschrijven aan wat jij vertelde in plaats van het drift te noemen. In tegenstelling tot alles wat Balancr verder naar de AI stuurt, wordt deze notitie niet geanonimiseerd — ze verlaat de machine precies zoals je ze typt, dus vermijd namen van begunstigden of andere details die je niet zo zou willen versturen. Ze gaat niet naar de bevindingen.",
     "label": "Notitie voor {{month}}",
     "period": {
       "month": "Maand",
