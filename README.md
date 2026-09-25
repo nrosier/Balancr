@@ -1058,7 +1058,9 @@ is also what triggers the image build, since `package.json` is one of
 - **Secrets** are scanned on every push and pull request with gitleaks; the same
   command runs locally:
   ```bash
-  docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:latest git --redact /repo
+  docker run --rm -v "$PWD:/repo" -w /repo \
+    zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+    git --redact /repo
   ```
 - **CI** typechecks, verifies `en`/`nl` catalogue parity, runs the tests and
   builds the image on every change.

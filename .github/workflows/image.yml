@@ -80,7 +80,7 @@ jobs:
       # #395: it scans the same image that verify-image.sh just hardened,
       # without depending on Harbor or the homelab network being reachable.
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: "balancr:ci"
           severity: "CRITICAL,HIGH"
