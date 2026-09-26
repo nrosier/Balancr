@@ -11,9 +11,11 @@
  * copy-pasted across each area's functions, so one proven pair per area is
  * what a regression would actually break.
  */
+import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { aiFindings, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
@@ -52,7 +54,8 @@ import {
 } from '../../src/domain/loan/loans.ts'
 import { loadProperties, saveProperties } from '../../src/domain/property/properties.ts'
 import { loadProfile, saveProfile } from '../../src/domain/advice/profile.ts'
-import { persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
+import { loadCategoryMeta, persistFacts, syncCategoryMeta } from '../../src/domain/aggregate/facts.ts'
+import type { Signal } from '../../src/domain/aggregate/overspend.ts'
 import {
   answerClarification,
   dismissClarification,
@@ -60,14 +63,25 @@ import {
   openQuestionCount,
   openQuestions,
 } from '../../src/domain/ai/clarify.ts'
+import { persistFindings } from '../../src/domain/ai/analysis.ts'
+import { loadNarrative, storeNarrative } from '../../src/domain/ai/narrative.ts'
 import {
   applyProposal,
   createProposal,
   loadProposal,
   pendingProposals,
 } from '../../src/domain/ai/proposals.ts'
+import { createPromptVersion, listPromptVersions, loadPrompt } from '../../src/domain/ai/prompts.ts'
 import { loadRun, loadRunPayload, recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
+import { HOUSEHOLD_LABEL, type GroundedFinding } from '../../src/domain/ai/schemas.ts'
+import { loadMonthNote, saveMonthNote } from '../../src/domain/ai/month-note.ts'
 import { deleteDigestPdf, loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
+import { createGoal, listGoals, loadGoal } from '../../src/domain/goal/goals.ts'
+import {
+  loadCategoryTranslationRows,
+  saveCategoryTranslation,
+} from '../../src/domain/i18n/category-translations.ts'
+import { createInvite, listInvites, revokeInvite } from '../../src/domain/tenant/invites.ts'
 import { fact, totals } from '../fixtures/month.ts'
 
 const MONTH = '2026-08'
@@ -423,5 +437,169 @@ describe('digest PDFs (#600)', () => {
     deleteDigestPdf(db, tenantB)
     expect(loadDigestPdf(db, tenantB)).toBeNull()
     expect(loadDigestPdf(db, tenantA)?.pdfBytes.toString()).toBe('%PDF-a')
+  })
+})
+
+describe('AI findings (#600)', () => {
+  it('never lands one tenant\'s persisted finding under the other\'s tenant id', () => {
+    const runIdA = recordRun(db, tenantA, {
+      kind: 'findings',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: MONTH },
+      payloadHash: 'hash-a',
+      status: 'ok',
+    })
+    const runIdB = recordRun(db, tenantB, {
+      kind: 'findings',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { month: MONTH },
+      payloadHash: 'hash-b',
+      status: 'ok',
+    })
+
+    const signal: Signal = {
+      code: 'over_available',
+      categoryId: null,
+      categoryName: null,
+      severity: 'alert',
+      metrics: { overspendCents: 5_000 },
+    }
+    const finding: GroundedFinding = {
+      code: 'over_available',
+      label: null,
+      severity: 'alert',
+      confidence: 90,
+      signal: { code: 'over_available', label: null, severity: 'alert', metrics: signal.metrics },
+    }
+    const sources = new Map([[`over_available ${HOUSEHOLD_LABEL}`, signal]])
+
+    persistFindings(db, tenantA, runIdA, MONTH, [finding], sources)
+    persistFindings(db, tenantB, runIdB, MONTH, [finding], sources)
+
+    const rowsA = db.select().from(aiFindings).where(eq(aiFindings.tenantId, tenantA)).all()
+    const rowsB = db.select().from(aiFindings).where(eq(aiFindings.tenantId, tenantB)).all()
+    expect(rowsA).toHaveLength(1)
+    expect(rowsB).toHaveLength(1)
+    expect(rowsA[0]?.runId).toBe(runIdA)
+    expect(rowsB[0]?.runId).toBe(runIdB)
+  })
+})
+
+describe('AI narratives', () => {
+  it('never returns another tenant\'s stored narrative for the same period and locale', () => {
+    const runIdA = recordRun(db, tenantA, {
+      kind: 'narrative',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: {},
+      payloadHash: 'hash-a',
+      status: 'ok',
+    })
+    const runIdB = recordRun(db, tenantB, {
+      kind: 'narrative',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: {},
+      payloadHash: 'hash-b',
+      status: 'ok',
+    })
+
+    storeNarrative(db, tenantA, { runId: runIdA, period: MONTH, locale: 'en', bodyMd: 'A narrative' })
+    storeNarrative(db, tenantB, { runId: runIdB, period: MONTH, locale: 'en', bodyMd: 'B narrative' })
+
+    expect(loadNarrative(db, tenantA, MONTH, 'en')?.bodyMd).toBe('A narrative')
+    expect(loadNarrative(db, tenantB, MONTH, 'en')?.bodyMd).toBe('B narrative')
+  })
+})
+
+describe('prompt versions', () => {
+  it('keeps one tenant\'s prompt versions out of the other\'s list and lookups', () => {
+    const createdA = createPromptVersion(db, tenantA, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'A system prompt',
+      activate: false,
+    })
+    createPromptVersion(db, tenantB, {
+      key: 'analysis.system',
+      locale: 'en',
+      body: 'B system prompt',
+      activate: false,
+    })
+
+    expect(listPromptVersions(db, tenantA, 'analysis.system', 'en')).toHaveLength(1)
+    expect(listPromptVersions(db, tenantB, 'analysis.system', 'en')).toHaveLength(1)
+    expect(loadPrompt(db, tenantB, createdA.id)).toBeNull()
+    expect(loadPrompt(db, tenantA, createdA.id)?.body).toBe('A system prompt')
+  })
+})
+
+describe('goals', () => {
+  it('never reads or lists another tenant\'s goal by id', () => {
+    const goalA = createGoal(db, tenantA, { targetCents: 500_000 })
+    createGoal(db, tenantB, { targetCents: 200_000 })
+
+    expect(listGoals(db, tenantA)).toHaveLength(1)
+    expect(listGoals(db, tenantB)).toHaveLength(1)
+    expect(loadGoal(db, tenantB, goalA.id)).toBeNull()
+    expect(loadGoal(db, tenantA, goalA.id)?.targetCents).toBe(500_000)
+  })
+})
+
+describe('tenant invites (#373)', () => {
+  it('never revokes or lists another tenant\'s invite by id', () => {
+    const ownerA = db.insert(users).values({ tenantId: tenantA, email: 'owner-a@example.test', role: 'owner' }).returning().all()[0]
+    const ownerB = db.insert(users).values({ tenantId: tenantB, email: 'owner-b@example.test', role: 'owner' }).returning().all()[0]
+    if (ownerA === undefined || ownerB === undefined) throw new Error('inserting the owner rows returned no row')
+
+    const createdA = createInvite(db, { tenantId: tenantA, createdBy: ownerA.id })
+    createInvite(db, { tenantId: tenantB, createdBy: ownerB.id })
+
+    expect(listInvites(db, tenantA)).toHaveLength(1)
+    expect(listInvites(db, tenantB)).toHaveLength(1)
+
+    // B's own id supplied with A's invite id: no row to revoke, and A's invite stands.
+    revokeInvite(db, { tenantId: tenantB, inviteId: createdA.invite.id, actorId: ownerB.id })
+
+    expect(listInvites(db, tenantA)[0]?.revokedAt).toBeNull()
+  })
+})
+
+describe('category metadata and translations', () => {
+  it('keeps one tenant\'s category names and translations out of the other\'s store', () => {
+    const factsA = [fact(MONTH, 'food')]
+    const factsB = [fact(MONTH, 'rent')]
+    syncCategoryMeta(db, tenantA, factsA)
+    syncCategoryMeta(db, tenantB, factsB)
+
+    expect(loadCategoryMeta(db, tenantA).has('food')).toBe(true)
+    expect(loadCategoryMeta(db, tenantA).has('rent')).toBe(false)
+    expect(loadCategoryMeta(db, tenantB).has('rent')).toBe(true)
+
+    // Only tenantB has a seeded `tenant_integrations` row (via `createSecondTenant`) —
+    // the sole default tenant gets none until onboarding writes one for real.
+    saveCategoryTranslation(db, tenantB, 'rent', 'nl', 'Huur')
+
+    const rowsA = loadCategoryTranslationRows(db, tenantA)
+    const rowsB = loadCategoryTranslationRows(db, tenantB)
+    expect(rowsA).toHaveLength(1)
+    expect(rowsA[0]?.translations).toEqual({})
+    expect(rowsB).toHaveLength(1)
+    expect(rowsB[0]?.translations).toEqual({ nl: 'Huur' })
+  })
+})
+
+describe('month notes', () => {
+  it('keeps one tenant\'s note out of the other\'s read', () => {
+    saveMonthNote(db, tenantA, MONTH, 'The dishwasher broke this month.')
+
+    expect(loadMonthNote(db, tenantA, MONTH)).toBe('The dishwasher broke this month.')
+    expect(loadMonthNote(db, tenantB, MONTH)).toBe('')
   })
 })
