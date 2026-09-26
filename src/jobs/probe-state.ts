@@ -113,11 +113,6 @@ export function loadProbe(db: Db, tenantId: string, source: ProbeSource): ProbeS
   return loadProbes(db, tenantId).find((state) => state.source === source) ?? null
 }
 
-/** Deletes the row for `source`. For a test, and for a source this build dropped. */
-export function forgetProbe(db: Db, source: string): void {
-  db.delete(upstreamProbes).where(eq(upstreamProbes.source, source)).run()
-}
-
 function safeJson(text: string): unknown {
   try {
     return JSON.parse(text)
