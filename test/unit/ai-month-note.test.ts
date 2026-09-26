@@ -3,7 +3,7 @@
  * contract as `benchmark/household.ts`: reading degrades to "no note" and never
  * throws, writing validates and throws.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { settings } from '../../src/db/schema.ts'
@@ -72,6 +72,17 @@ describe('the stored month notes', () => {
   it('refuses an invalid month', () => {
     expect(() => saveMonthNote(ctx.db, TENANT_ID, 'not-a-month', 'fine')).toThrow()
     expect(() => loadMonthNote(ctx.db, TENANT_ID, 'not-a-month')).toThrow()
+  })
+
+  it('reads and writes the shared note map inside one transaction (#590)', () => {
+    // The map holding every month's note is one JSON blob (`loadAll`'s own docs).
+    // Without a transaction around the read-modify-write, a save interleaved
+    // with another one for a different month silently loses whichever wrote
+    // first — SQLite's single-writer serialisation is what closes that gap,
+    // and it only helps if the whole read-then-write is one transaction.
+    const transactionSpy = vi.spyOn(ctx.db, 'transaction')
+    saveMonthNote(ctx.db, TENANT_ID, MONTH, 'Dentist bill in March.')
+    expect(transactionSpy).toHaveBeenCalledTimes(1)
   })
 
   it('round-trips a whole-year note, independently of any month in that year (#345)', () => {
