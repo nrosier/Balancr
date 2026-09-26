@@ -327,41 +327,49 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       params,
     })
 
-    // Categories before facts: `loadFrequencies` above read the previous pass's
-    // rows, so a category seen for the first time today gets its row now and is
-    // classifiable by the next pass.
-    const categories = syncCategoryMeta(db, tenantId, aggregate.facts)
-    const facts = persistFacts(db, tenantId, aggregate.facts, targets)
-    // Month totals cover the target months, so the uncategorised backlog stored
-    // here is the backlog over the months this install reports on
-    // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
-    // baseline are dropped: there is no month row to hang them on, and a to-do list
-    // reaching further back than any page shows is not a to-do list.
-    const factsByMonth = new Map<string, typeof aggregate.facts>()
-    for (const fact of aggregate.facts) {
-      const bucket = factsByMonth.get(fact.month)
-      if (bucket === undefined) factsByMonth.set(fact.month, [fact])
-      else bucket.push(fact)
-    }
-    // A per-month fingerprint of the facts a judgement depends on (#162), so
-    // `signals.ts` can tell a month whose figures actually moved from one that
-    // was merely rewritten with the same numbers.
-    const fingerprints = new Map(
-      aggregate.totals.map((total) => [
-        total.month,
-        monthFingerprint(factsByMonth.get(total.month) ?? [], total),
-      ]),
-    )
-    const months = persistMonthTotals(
-      db,
-      tenantId,
-      aggregate.totals,
-      aggregate.uncategorised,
-      fingerprints,
-    )
-    const drift = persistMismatches(db, tenantId, aggregate.mismatches, targets)
+    // One transaction for all four writes (#591/D4): a crash between two of them
+    // used to leave `monthly_category_facts` describing this pass while
+    // `monthly_totals` — `factsHash` included, the fingerprint `signals.ts` reads
+    // to tell a real change from a no-op rewrite — still described the last one.
+    // Self-healing on the next successful sync, but until then a month reads as
+    // "unchanged" while its categories have in fact changed underneath it.
+    return db.transaction((tx) => {
+      // Categories before facts: `loadFrequencies` above read the previous pass's
+      // rows, so a category seen for the first time today gets its row now and is
+      // classifiable by the next pass.
+      const categories = syncCategoryMeta(tx, tenantId, aggregate.facts)
+      const facts = persistFacts(tx, tenantId, aggregate.facts, targets)
+      // Month totals cover the target months, so the uncategorised backlog stored
+      // here is the backlog over the months this install reports on
+      // (`JOBS_HISTORY_MONTHS`). Buckets from the extra months loaded purely to feed a
+      // baseline are dropped: there is no month row to hang them on, and a to-do list
+      // reaching further back than any page shows is not a to-do list.
+      const factsByMonth = new Map<string, typeof aggregate.facts>()
+      for (const fact of aggregate.facts) {
+        const bucket = factsByMonth.get(fact.month)
+        if (bucket === undefined) factsByMonth.set(fact.month, [fact])
+        else bucket.push(fact)
+      }
+      // A per-month fingerprint of the facts a judgement depends on (#162), so
+      // `signals.ts` can tell a month whose figures actually moved from one that
+      // was merely rewritten with the same numbers.
+      const fingerprints = new Map(
+        aggregate.totals.map((total) => [
+          total.month,
+          monthFingerprint(factsByMonth.get(total.month) ?? [], total),
+        ]),
+      )
+      const months = persistMonthTotals(
+        tx,
+        tenantId,
+        aggregate.totals,
+        aggregate.uncategorised,
+        fingerprints,
+      )
+      const drift = persistMismatches(tx, tenantId, aggregate.mismatches, targets)
 
-    return { aggregate, categories, facts, months, drift }
+      return { aggregate, categories, facts, months, drift }
+    })
   })
   const { aggregate, categories, facts, months, drift } = computed
 

@@ -17,6 +17,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { monthlyTotals, recomputeMismatches } from '../../db/schema.ts'
 import { addMonths, monthsBefore } from '../../util/month.ts'
+import type { Transaction } from '../audit.ts'
 import type { MonthTotals, RecomputeMismatch, UncategorisedBucket } from './spend.ts'
 
 export interface MonthPersistResult {
@@ -47,7 +48,7 @@ export interface StoredMonthTotals extends MonthTotals {
  * fingerprinting (fixtures, most existing tests) can omit it.
  */
 export function persistMonthTotals(
-  db: Db,
+  db: Db | Transaction,
   tenantId: string,
   totals: readonly MonthTotals[],
   uncategorised: readonly UncategorisedBucket[],
@@ -225,7 +226,7 @@ export function loadUncategorised(
  * makes a data-quality panel worthless.
  */
 export function persistMismatches(
-  db: Db,
+  db: Db | Transaction,
   tenantId: string,
   mismatches: readonly RecomputeMismatch[],
   months: readonly string[],
