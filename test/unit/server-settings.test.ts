@@ -36,7 +36,7 @@ import {
   loadDigestPreference,
   MAX_DIGEST_RECIPIENTS,
 } from '../../src/domain/digest/preference.ts'
-import { saveDigestPdf } from '../../src/domain/digest/storage.ts'
+import { loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
@@ -290,6 +290,21 @@ describe('GET /api/settings', () => {
     expect(res.json<Settings>().profile.role).toBe('viewer')
   })
 
+  it('hides digest recipient emails from a viewer, keeping only the count (#573)', async () => {
+    await patch('/api/settings/digest', {
+      mode: 'email',
+      recipientEmails: ['a@example.test', 'b@example.test'],
+    })
+
+    const viewerSettings = (await get('/api/settings', viewer)).json<Settings>()
+    expect(viewerSettings.digest.recipientEmails).toEqual([])
+    expect(viewerSettings.digest.recipientCount).toBe(2)
+
+    const ownerSettings = (await get('/api/settings')).json<Settings>()
+    expect(ownerSettings.digest.recipientEmails).toEqual(['a@example.test', 'b@example.test'])
+    expect(ownerSettings.digest.recipientCount).toBe(2)
+  })
+
   it("shows only the signed-in tenant's AI spend history (#411)", async () => {
     const otherTenantId = createSecondTenant(ctx.db)
     const capped = (payloadHash: string) => ({
@@ -521,6 +536,28 @@ describe('PATCH /api/settings/digest', () => {
     const entry = auditEntries(ctx.db).at(-1)
     expect(entry?.action).toBe('settings.digest')
     expect(JSON.parse(entry?.afterJson ?? '{}').mode).toBe('pdf')
+  })
+
+  it('deletes the stored PDF once mode moves away from pdf, rather than leaving it downloadable (#572)', async () => {
+    await send_({ mode: 'pdf' })
+    saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
+    expect(loadDigestPdf(ctx.db, tenantId)).not.toBeNull()
+
+    const res = await send_({ mode: 'off' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().digest.hasPdf).toBe(false)
+    expect(loadDigestPdf(ctx.db, tenantId)).toBeNull()
+  })
+
+  it('keeps the stored PDF when the mode stays pdf', async () => {
+    await send_({ mode: 'pdf' })
+    saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
+
+    const res = await send_({ mode: 'pdf' })
+
+    expect(res.json<Settings>().digest.hasPdf).toBe(true)
+    expect(loadDigestPdf(ctx.db, tenantId)).not.toBeNull()
   })
 })
 

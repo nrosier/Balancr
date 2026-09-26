@@ -292,6 +292,8 @@
       "add": "Add another recipient",
       "hint": "Up to five email addresses.",
       "label": "Recipients",
+      "masked_one": "{{value}} recipient — visible to the owner only.",
+      "masked_other": "{{value}} recipients — visible to the owner only.",
       "placeholder": "name@example.com",
       "remove": "Remove this recipient"
     },

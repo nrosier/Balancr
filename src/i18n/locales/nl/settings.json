@@ -292,6 +292,8 @@
       "add": "Nog een ontvanger toevoegen",
       "hint": "Tot vijf e-mailadressen.",
       "label": "Ontvangers",
+      "masked_one": "{{value}} ontvanger — enkel zichtbaar voor de eigenaar.",
+      "masked_other": "{{value}} ontvangers — enkel zichtbaar voor de eigenaar.",
       "placeholder": "naam@voorbeeld.com",
       "remove": "Deze ontvanger verwijderen"
     },

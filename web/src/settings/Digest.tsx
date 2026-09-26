@@ -99,43 +99,53 @@ export function DigestPanel({ settings, state, owner }: SettingsPanelProps): Rea
         {mode === 'email' ? (
           <div className="field">
             <span className="field__label">{t('settings:digest.recipients.label')}</span>
-            <ul className="digest__recipients">
-              {recipients.map((email, index) => (
-                <li key={index} className="digest__recipient">
-                  <input
-                    className="field__input"
-                    type="email"
-                    autoComplete="off"
-                    placeholder={t('settings:digest.recipients.placeholder')}
-                    value={email}
-                    disabled={locked}
-                    onChange={(event) =>
-                      setRecipientsDraft(
-                        recipients.map((existing, at) => (at === index ? event.target.value : existing)),
-                      )
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="button button--quiet"
-                    disabled={locked}
-                    onClick={() => setRecipientsDraft(recipients.filter((_, at) => at !== index))}
-                  >
-                    {t('settings:digest.recipients.remove')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="button button--quiet"
-              disabled={locked || recipients.length >= MAX_RECIPIENTS}
-              onClick={() => setRecipientsDraft([...recipients, ''])}
-            >
-              {t('settings:digest.recipients.add')}
-            </button>
-            <p className="panel__meta muted">{t('settings:digest.recipients.hint')}</p>
-            <Issue message={state.issue('recipientEmails')} />
+            {owner ? (
+              <>
+                <ul className="digest__recipients">
+                  {recipients.map((email, index) => (
+                    <li key={index} className="digest__recipient">
+                      <input
+                        className="field__input"
+                        type="email"
+                        autoComplete="off"
+                        placeholder={t('settings:digest.recipients.placeholder')}
+                        value={email}
+                        disabled={locked}
+                        onChange={(event) =>
+                          setRecipientsDraft(
+                            recipients.map((existing, at) => (at === index ? event.target.value : existing)),
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="button button--quiet"
+                        disabled={locked}
+                        onClick={() => setRecipientsDraft(recipients.filter((_, at) => at !== index))}
+                      >
+                        {t('settings:digest.recipients.remove')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  disabled={locked || recipients.length >= MAX_RECIPIENTS}
+                  onClick={() => setRecipientsDraft([...recipients, ''])}
+                >
+                  {t('settings:digest.recipients.add')}
+                </button>
+                <p className="panel__meta muted">{t('settings:digest.recipients.hint')}</p>
+                <Issue message={state.issue('recipientEmails')} />
+              </>
+            ) : (
+              // A viewer cannot change these and did not choose to be in the list, so the
+              // addresses themselves are owner-only (#573) — the count is not a secret.
+              <p className="panel__meta muted">
+                {t('settings:digest.recipients.masked', { count: digest.recipientCount })}
+              </p>
+            )}
           </div>
         ) : null}
 

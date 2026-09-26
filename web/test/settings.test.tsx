@@ -409,7 +409,7 @@ const PAYLOAD: Payload = {
       },
     ],
   },
-  digest: { mode: 'off', recipientEmails: [], locale: null, hasPdf: false },
+  digest: { mode: 'off', recipientEmails: [], recipientCount: 0, locale: null, hasPdf: false },
 }
 
 const ESTIMATE: AiEstimate = {
@@ -4991,5 +4991,22 @@ describe('a viewer', () => {
         { path: '/api/settings/profile', method: 'PATCH', body: { locale: 'nl' } },
       ])
     })
+  })
+
+  it('sees how many digest recipients there are, but not their addresses (#573)', async () => {
+    await openPage(
+      {
+        '/api/settings': json({
+          ...VIEWER,
+          digest: { mode: 'email', recipientEmails: [], recipientCount: 3, locale: null, hasPdf: false },
+        }),
+        '/api/ai/estimate': json(ESTIMATE),
+      },
+      '/settings/digest',
+      'Monthly digest',
+    )
+
+    expect(await screen.findByText('3 recipients — visible to the owner only.')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('name@example.com')).toBeNull()
   })
 })

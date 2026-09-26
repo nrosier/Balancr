@@ -2102,10 +2102,15 @@ export const settingsSchema = z.object({
    *
    * `locale` is `null` when the preference follows the owner's own account
    * language rather than overriding it; see `domain/digest/preference.ts`.
+   *
+   * `recipientEmails` is empty for a viewer regardless of what is actually stored
+   * (#573) — `recipientCount` is the true count either way, so a viewer still sees
+   * how many there are without seeing the addresses themselves.
    */
   digest: z.object({
     mode: z.enum(['off', 'pdf', 'email']),
     recipientEmails: z.array(z.string()),
+    recipientCount: z.number().int().nonnegative(),
     locale: z.string().nullable(),
     hasPdf: z.boolean(),
   }),
