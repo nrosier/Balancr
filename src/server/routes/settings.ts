@@ -196,6 +196,7 @@ import {
   integrationsSettingSchema,
   integrationTestSchema,
   inviteCreatedSchema,
+  microEur,
   promptBodySchema,
   promptDiffSchema,
   promptSchema,
@@ -697,6 +698,20 @@ const ghostfolioIntegrationPatchRequest = z.strictObject({
 })
 
 /**
+ * Whether a euro amount's `eurToMicroEur` conversion is representable by
+ * `microEur()` — the same schema the settings *response* validates against.
+ * Checking this at the wire means the request and response schemas can never
+ * disagree, unlike a plain `.max()` picked separately on each side (#578/C1): a
+ * `budgetEur` or `modelPrices` entry large enough to overflow `microEur()`'s
+ * safe-integer requirement on the way out is refused here, on the way in, instead
+ * of getting stored and then bricking every later settings read.
+ */
+const fitsMicroEur = (eur: number): boolean => microEur().safeParse(eurToMicroEur(eur)).success
+
+const euroAmount = (): z.ZodType<number> =>
+  z.number().nonnegative().refine(fitsMicroEur, { message: 'value is too large to store as micro-euros' })
+
+/**
  * The AI connection (#369, #422). `googleCloudProject` is not a secret, so unlike
  * `apiKey` it is not optional — it is replaced wholesale like every other plain field
  * on this page, and `null` is how a switch to AI Studio clears it.
@@ -715,12 +730,12 @@ const aiIntegrationPatchRequest = z.strictObject({
   modelFast: z.string().min(1),
   modelDeep: z.string().min(1),
   modelPrices: z.record(z.string().min(1), z.strictObject({
-    inputEur: z.number().nonnegative(),
-    cachedInputEur: z.number().nonnegative(),
-    cacheWriteInputEur: z.number().nonnegative(),
-    outputEur: z.number().nonnegative(),
+    inputEur: euroAmount(),
+    cachedInputEur: euroAmount(),
+    cacheWriteInputEur: euroAmount(),
+    outputEur: euroAmount(),
   })).default({}),
-  budgetEur: z.coerce.number().nonnegative(),
+  budgetEur: z.coerce.number().nonnegative().refine(fitsMicroEur, { message: 'value is too large to store as micro-euros' }),
 }).refine((value) => !(value.clearApiKey === true && value.apiKey !== undefined), {
   message: 'apiKey and clearApiKey cannot be used together',
 })
