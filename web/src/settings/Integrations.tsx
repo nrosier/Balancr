@@ -31,6 +31,8 @@ import { useT } from '../i18n.ts'
 import type { IntegrationsSetting, IntegrationTest } from '../shared.ts'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
+import { SectionNav } from '../ui/SectionNav.tsx'
+import { useSubsection, type Section } from '../ui/sections.ts'
 
 export function Configured({ yes }: { yes: boolean }): ReactNode {
   const { t } = useT()
@@ -82,7 +84,7 @@ const actualDraftOf = (actual: IntegrationsSetting['actual']): ActualDraft => ({
   categorySourceLocale: actual.categorySourceLocale,
 })
 
-function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+export function ActualPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const { actual } = settings.integrations
   const locked = !owner || state.busy
@@ -264,7 +266,7 @@ const ghostfolioDraftOf = (ghostfolio: IntegrationsSetting['ghostfolio']): Ghost
   securityToken: '',
 })
 
-function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
+export function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const { ghostfolio } = settings.integrations
   const locked = !owner || state.busy
@@ -371,16 +373,35 @@ function GhostfolioPanel({ settings, state, owner }: SettingsPanelProps): ReactN
   )
 }
 
+type IntegrationsSubsectionId = 'actual' | 'ghostfolio'
+
+const INTEGRATIONS_SUBSECTIONS: readonly Section<IntegrationsSubsectionId>[] = [
+  { id: 'actual', path: '/settings/integrations', labelKey: 'settings:integrations.actual.title' },
+  { id: 'ghostfolio', path: '/settings/integrations/ghostfolio', labelKey: 'settings:integrations.ghostfolio.title' },
+]
+
 /**
- * Actual and Ghostfolio only — the AI provider sub-form moved to `Ai.tsx`'s own
- * section (#528), alongside the Prompts editor and AI log it belongs with rather
- * than with these two unrelated data sources.
+ * Actual Budget and Ghostfolio only — the AI provider sub-form moved to `Ai.tsx`'s
+ * own section (#528), alongside the Prompts editor and AI log it belongs with
+ * rather than with these two unrelated data sources.
+ *
+ * One subtab each (#650), the same shape as `NetWorth.tsx`'s Accounts/Property/
+ * Loans/Debts/Goals split: panels stay mounted-but-`hidden`, not conditionally
+ * rendered, because each keeps an unsaved draft in local `useState` that
+ * switching tabs must not unmount and lose.
  */
 export function IntegrationsPanel(props: SettingsPanelProps): ReactNode {
+  const { t } = useT()
+  const active = useSubsection(INTEGRATIONS_SUBSECTIONS)
+
   return (
-    <>
-      <ActualPanel {...props} />
-      <GhostfolioPanel {...props} />
-    </>
+    <SectionNav sections={INTEGRATIONS_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.integrations')}>
+      <div hidden={active !== 'actual'}>
+        <ActualPanel {...props} />
+      </div>
+      <div hidden={active !== 'ghostfolio'}>
+        <GhostfolioPanel {...props} />
+      </div>
+    </SectionNav>
   )
 }
