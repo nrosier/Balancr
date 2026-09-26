@@ -253,13 +253,14 @@ function mirrored(file: string, name: string): string[] {
 }
 
 describe('the copies of these names in the browser bundle', () => {
-  it('offers every job the endpoint accepts, and not the one it refuses', () => {
+  it('offers every job the endpoint accepts, and not the ones it refuses', () => {
     // The settings panel puts a "Run now" beside a job only if this build believes
     // `POST /api/refresh` will take it. A name missing here is a job nobody can start by
-    // hand; a name too many is a button that answers 400. `ai` has its own control, on
-    // the panel that shows what a run costs.
+    // hand; a name too many is a button that answers 400 (or, for `ai`/`digest`, 403).
+    // `ai` has its own control, on the panel that shows what a run costs; `digest` has
+    // none, because it is schedule-only (#52).
     expect(mirrored('web/src/settings/Status.tsx', 'REFRESHABLE')).toEqual(
-      REFRESHABLE.filter((name) => name !== 'ai'),
+      REFRESHABLE.filter((name) => name !== 'ai' && name !== 'digest'),
     )
   })
 

@@ -192,6 +192,17 @@ export function registerRefreshRoutes(
         throw forbidden('The AI pass is not part of a refresh. POST /api/ai/refresh runs it.')
       }
 
+      if (asked.includes('digest')) {
+        // Not "unknown job" either. `requireUser` above accepts a viewer, and a viewer
+        // asking for `digest` by name would have this process email the household's
+        // narrative and both charts to whatever address is on file, or overwrite the
+        // stored PDF — neither of which a read-only role should be able to trigger.
+        // There is no dedicated endpoint for it the way `ai` has one: the digest is
+        // schedule-only from here, and a person who wants to see it early downloads
+        // last month's PDF or waits for the day it is due (#52).
+        throw forbidden('The monthly digest is not part of a refresh. It runs on its own schedule.')
+      }
+
       const outcome = startRefresh(db, registry, user.tenantId, asked)
       if ('busy' in outcome) throw busyError(outcome.busy)
 

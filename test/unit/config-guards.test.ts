@@ -208,6 +208,10 @@ describe('a variable left blank in a copied .env.example (#118)', () => {
     'AUTH_OIDC_CLIENT_ID',
     'AUTH_OIDC_CLIENT_SECRET',
     'BACKUP_PASSPHRASE',
+    'SMTP_HOST',
+    'SMTP_USER',
+    'SMTP_PASS',
+    'SMTP_FROM',
   ] as const
 
   for (const key of optional) {
@@ -276,6 +280,49 @@ describe('a variable left blank in a copied .env.example (#118)', () => {
       AUTH_OIDC_CLIENT_SECRET: 'secret',
     })
     expect(error?.message).toContain('AUTH_OIDC_ISSUER')
+  })
+})
+
+describe('the SMTP settings (#52)', () => {
+  it('refuses SMTP_HOST without SMTP_FROM, since the digest email needs a From: address', async () => {
+    const error = await loadWith({ SMTP_HOST: 'smtp.example.com' })
+    expect(error?.message).toContain('SMTP_FROM')
+  })
+
+  it('refuses SMTP_USER without SMTP_PASS', async () => {
+    const error = await loadWith({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'digest@example.com',
+      SMTP_USER: 'someone',
+    })
+    expect(error?.message).toContain('SMTP_USER and SMTP_PASS')
+  })
+
+  it('refuses SMTP_PASS without SMTP_USER', async () => {
+    const error = await loadWith({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'digest@example.com',
+      SMTP_PASS: 'a-password',
+    })
+    expect(error?.message).toContain('SMTP_USER and SMTP_PASS')
+  })
+
+  it('accepts SMTP_HOST with SMTP_FROM and no credentials at all, for an open relay', async () => {
+    const config = await configWith({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'digest@example.com',
+    })
+    expect(config.smtpConfigured).toBe(true)
+  })
+
+  it('accepts SMTP_USER and SMTP_PASS set together', async () => {
+    const config = await configWith({
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'digest@example.com',
+      SMTP_USER: 'someone',
+      SMTP_PASS: 'a-password',
+    })
+    expect(config.smtpConfigured).toBe(true)
   })
 })
 

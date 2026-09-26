@@ -57,8 +57,15 @@ export function isDue(
       const today = dateIn(now, timeZone)
       const currentMonth = today.slice(0, 7)
       const dueDay = Math.min(schedule.day, daysInMonth(currentMonth))
+      const lastRun = dateIn(lastRunAt, timeZone)
+      // Not just "ran this month" — ran *on or after* this month's due day. A run
+      // triggered by hand before the due day (#52's `POST /api/refresh`, named
+      // rather than scheduled) must not consume the month's scheduled slot, or the
+      // one digest that goes out that month is the early, pre-catch-up one instead
+      // of the one this schedule exists to wait for.
+      const ranThisCycle = lastRun.slice(0, 7) === currentMonth && Number(lastRun.slice(8, 10)) >= dueDay
       return (
-        dateIn(lastRunAt, timeZone).slice(0, 7) !== currentMonth &&
+        !ranThisCycle &&
         Number(today.slice(8, 10)) >= dueDay &&
         hourIn(now, timeZone) >= schedule.hour
       )

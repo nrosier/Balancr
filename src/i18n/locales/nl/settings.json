@@ -278,6 +278,7 @@
     "hint": "Een PDF-samenvatting van de toelichting en belangrijkste grafieken van de maand, automatisch gegenereerd zodra het inhaalvenster sluit. Downloadbaar, of gemaild naar wie het moet ontvangen.",
     "locale": {
       "auto": "Volg mijn accounttaal",
+      "hint": "Het verhaal wordt alleen automatisch geschreven in de standaardtaal van deze installatie, tenzij iemand het verhaal van die maand al vanaf het dashboard heeft vertaald. Een andere taal kiezen kan betekenen dat er in een bepaalde maand helemaal geen digest wordt verstuurd.",
       "label": "Taal"
     },
     "mode": {

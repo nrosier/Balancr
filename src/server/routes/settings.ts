@@ -371,7 +371,12 @@ const householdPatchRequest = z.strictObject({
  * explains.
  */
 const digestPatchRequest = z.strictObject({
-  mode: z.enum(['off', 'pdf', 'email']).optional(),
+  // Required, unlike the two below: omitting `recipientEmails` or `locale` lands a
+  // sensible default (empty, "follow my account language"), but a client that
+  // omitted `mode` by accident would silently switch the digest off rather than
+  // leave it alone — the one outcome nobody sending a locale or recipient edit
+  // could have meant.
+  mode: z.enum(['off', 'pdf', 'email']),
   recipientEmails: z.array(z.email()).max(MAX_DIGEST_RECIPIENTS).optional(),
   locale: localeRequest.optional(),
 })

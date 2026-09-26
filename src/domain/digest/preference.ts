@@ -19,6 +19,7 @@ import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { settings, users } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
+import { narrativeLocales } from '../ai/narrative.ts'
 
 const log = logger.child({ module: 'digest/preference' })
 
@@ -119,14 +120,25 @@ export function saveDigestPreference(
  * A cron job has no request context and therefore no `Accept-Language`, no session
  * — none of the ways an ordinary request learns which language to answer in. The
  * oldest owner account is the closest thing this tenant has to "whoever set this
- * up", so their UI locale is the sensible default; `config.DEFAULT_LOCALE` covers
- * the case a tenant somehow has no owner row at all, which should not happen but is
- * cheaper to fall back from than to throw over.
+ * up", so their UI locale is the preferred default — but only when a narrative
+ * actually exists in it for `period`. Nothing in the nightly pipeline writes a
+ * narrative in anything but `config.DEFAULT_LOCALE`; a translation into another
+ * language is a paid, manual click from the dashboard (`translateNarrative`). An
+ * owner whose account locale differs from `DEFAULT_LOCALE` and who has never made
+ * that click would otherwise get a silent `no_narrative` every month for a reason
+ * invisible from here — so this falls back to `DEFAULT_LOCALE`, which is always
+ * the one language the pipeline itself keeps supplied, rather than a preference
+ * nobody chose and that this tenant cannot act on from the digest settings alone.
  *
  * Resolved fresh on every render rather than stored on the preference row, so a
  * digest always follows the owner's *current* language — see the file header.
  */
-export function resolveDigestLocale(db: Db, tenantId: string, preference: DigestPreference): string {
+export function resolveDigestLocale(
+  db: Db,
+  tenantId: string,
+  period: string,
+  preference: DigestPreference,
+): string {
   if (preference.locale !== undefined) return preference.locale
 
   const owner = db
@@ -136,6 +148,8 @@ export function resolveDigestLocale(db: Db, tenantId: string, preference: Digest
     .orderBy(asc(users.createdAt))
     .limit(1)
     .get()
+  const ownerLocale = owner?.locale ?? config.DEFAULT_LOCALE
 
-  return owner?.locale ?? config.DEFAULT_LOCALE
+  if (ownerLocale === config.DEFAULT_LOCALE) return ownerLocale
+  return narrativeLocales(db, tenantId, period).includes(ownerLocale) ? ownerLocale : config.DEFAULT_LOCALE
 }

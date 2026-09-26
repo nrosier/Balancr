@@ -35,7 +35,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
   }
 
   const period = narrativePeriod(now)
-  const locale = resolveDigestLocale(db, tenantId, preference)
+  const locale = resolveDigestLocale(db, tenantId, period, preference)
   const pdf = await buildDigestPdf(db, tenantId, period, locale)
   if (pdf === null) {
     log.info({ period }, 'no narrative stored for the digest period; skipping')

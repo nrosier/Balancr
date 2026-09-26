@@ -17,6 +17,7 @@ const secrets: Record<string, string> = {
   GEMINI_API_KEY: 'secret-gemini-key-zzz',
   AUTH_OIDC_CLIENT_SECRET: 'secret-oidc-client-secret-zzz',
   BACKUP_PASSPHRASE: 'secret-backup-passphrase-zzz',
+  SMTP_PASS: 'secret-smtp-pass-zzz',
 }
 
 const deployment: Record<string, string> = {
@@ -26,6 +27,9 @@ const deployment: Record<string, string> = {
   TRUSTED_PROXY_CIDRS: '172.16.0.0/12',
   AUTH_OIDC_ISSUER: 'https://authentik.example.com/application/o/balancr/',
   AUTH_OIDC_CLIENT_ID: 'balancr',
+  SMTP_HOST: 'smtp.example.com',
+  SMTP_FROM: 'digest@example.com',
+  SMTP_USER: 'smtp-user',
 }
 
 async function summary(): Promise<Record<string, unknown>> {
@@ -94,6 +98,15 @@ describe('configSummary', () => {
       BACKUP_PASSPHRASE: `set (${secrets.BACKUP_PASSPHRASE?.length} chars)`,
       BACKUP_DIR: './data/backups',
       BACKUP_KEEP: 14,
+    })
+  })
+
+  it('masks the SMTP password, which is a mail relay credential (#52)', async () => {
+    expect(await summary()).toMatchObject({
+      SMTP_PASS: `set (${secrets.SMTP_PASS?.length} chars)`,
+      SMTP_HOST: deployment.SMTP_HOST,
+      SMTP_USER: deployment.SMTP_USER,
+      smtpConfigured: true,
     })
   })
 

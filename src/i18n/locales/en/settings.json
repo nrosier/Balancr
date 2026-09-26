@@ -278,6 +278,7 @@
     "hint": "A PDF summary of the month's narrative and key charts, generated automatically once the catch-up window closes. Downloadable, or emailed to whoever should get it.",
     "locale": {
       "auto": "Follow my account language",
+      "hint": "The narrative is only ever written in the deployment's default language, unless someone has translated that month's narrative from the dashboard already. Choosing another language here can mean no digest goes out at all in a month it has not been translated.",
       "label": "Language"
     },
     "mode": {

@@ -8,6 +8,8 @@ import { createTestDb } from '../../src/db/index.ts'
 import { users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { config } from '../../src/config.ts'
+import { storeNarrative } from '../../src/domain/ai/narrative.ts'
+import { recordRun } from '../../src/domain/ai/runs.ts'
 import {
   DEFAULT_DIGEST_PREFERENCE,
   loadDigestPreference,
@@ -16,6 +18,21 @@ import {
   saveDigestPreference,
 } from '../../src/domain/digest/preference.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
+
+const PERIOD = '2026-03'
+
+function storeSomeNarrative(locale: string): void {
+  const runId = recordRun(ctx.db, tenantId, {
+    kind: 'narrative',
+    provider: 'gemini-aistudio',
+    model: 'gemini-3.7-flash',
+    locale,
+    payload: {},
+    payloadHash: 'unrelated-hash',
+    status: 'ok',
+  })
+  storeNarrative(ctx.db, tenantId, { runId, period: PERIOD, locale, bodyMd: 'text' })
+}
 
 let ctx: ReturnType<typeof createTestDb>
 let tenantId: string
@@ -95,12 +112,12 @@ describe('saveDigestPreference', () => {
 })
 
 describe('resolveDigestLocale', () => {
-  it("prefers the preference's own override", () => {
+  it("prefers the preference's own override, even with no narrative in it (an owner's deliberate choice)", () => {
     const preference = saveDigestPreference(ctx.db, tenantId, { mode: 'pdf', locale: 'nl' })
-    expect(resolveDigestLocale(ctx.db, tenantId, preference)).toBe('nl')
+    expect(resolveDigestLocale(ctx.db, tenantId, PERIOD, preference)).toBe('nl')
   })
 
-  it("falls back to the tenant's oldest owner when unset", () => {
+  it("follows the tenant's oldest owner when unset and this period has a narrative in that language", () => {
     ctx.db
       .insert(users)
       .values([
@@ -124,13 +141,37 @@ describe('resolveDigestLocale', () => {
         },
       ])
       .run()
+    storeSomeNarrative('fr')
 
     const preference = saveDigestPreference(ctx.db, tenantId, { mode: 'pdf' })
-    expect(resolveDigestLocale(ctx.db, tenantId, preference)).toBe('fr')
+    expect(resolveDigestLocale(ctx.db, tenantId, PERIOD, preference)).toBe('fr')
   })
+
+  it(
+    "falls back to config.DEFAULT_LOCALE when the oldest owner's language has no narrative for " +
+      'this period — nothing in the nightly pipeline ever writes one in anything but the default, ' +
+      "so following the owner's account language here would otherwise silently skip every month",
+    () => {
+      ctx.db
+        .insert(users)
+        .values({
+          tenantId,
+          oidcSub: 'sub-owner',
+          email: 'owner@example.test',
+          displayName: 'Owner',
+          role: 'owner',
+          locale: 'fr',
+        })
+        .run()
+      storeSomeNarrative(config.DEFAULT_LOCALE)
+
+      const preference = saveDigestPreference(ctx.db, tenantId, { mode: 'pdf' })
+      expect(resolveDigestLocale(ctx.db, tenantId, PERIOD, preference)).toBe(config.DEFAULT_LOCALE)
+    },
+  )
 
   it('falls back to config.DEFAULT_LOCALE when the tenant has no owner at all', () => {
     const bare = createSecondTenant(ctx.db, 'No owner')
-    expect(resolveDigestLocale(ctx.db, bare, DEFAULT_DIGEST_PREFERENCE)).toBe(config.DEFAULT_LOCALE)
+    expect(resolveDigestLocale(ctx.db, bare, PERIOD, DEFAULT_DIGEST_PREFERENCE)).toBe(config.DEFAULT_LOCALE)
   })
 })

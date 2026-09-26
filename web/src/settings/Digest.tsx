@@ -157,6 +157,7 @@ export function DigestPanel({ settings, state, owner }: SettingsPanelProps): Rea
               </option>
             ))}
           </select>
+          <p className="panel__meta muted">{t('settings:digest.locale.hint')}</p>
           <Issue message={state.issue('locale')} />
         </div>
 

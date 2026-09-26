@@ -486,6 +486,10 @@ function crossFieldErrors(env: Env): string[] {
     errors.push('SMTP_HOST is set but SMTP_FROM is not — the digest email needs a From: address')
   }
 
+  if ((env.SMTP_USER === undefined) !== (env.SMTP_PASS === undefined)) {
+    errors.push('SMTP_USER and SMTP_PASS must be set together, or not at all')
+  }
+
   if (!env.SUPPORTED_LOCALES.includes(env.DEFAULT_LOCALE)) {
     errors.push(
       `DEFAULT_LOCALE="${env.DEFAULT_LOCALE}" is not in SUPPORTED_LOCALES=[${env.SUPPORTED_LOCALES.join(', ')}]`,

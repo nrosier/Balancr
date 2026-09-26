@@ -124,7 +124,25 @@ describe('isDue — monthly', () => {
   it('is not due before the day, in a month it has not run in yet', () => {
     // Local Jan 3rd, having last run in December.
     expect(
-      isDue(monthly, at('2026-01-03T10:00:00Z'), at('2026-12-04T02:05:00Z'), TZ),
+      isDue(monthly, at('2026-01-03T10:00:00Z'), at('2025-12-04T02:05:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('is still due on the day even after a manual run earlier that month', () => {
+    // A named "run now" (#52's `POST /api/refresh`) on the 1st must not consume
+    // the month's scheduled slot — the whole point of `day: 4` is to wait for the
+    // AI catch-up window to close, and an early manual run stamps `lastRunAt`
+    // the same way the scheduled run would.
+    expect(
+      isDue(monthly, at('2026-02-04T02:05:00Z'), at('2026-02-01T09:00:00Z'), TZ),
+    ).toBe(true)
+  })
+
+  it('is not due again after a manual run on or after the day', () => {
+    // A manual run on the day itself (or later) does count — the digest for this
+    // month has already gone out, whoever asked for it.
+    expect(
+      isDue(monthly, at('2026-02-15T10:00:00Z'), at('2026-02-04T09:00:00Z'), TZ),
     ).toBe(false)
   })
 

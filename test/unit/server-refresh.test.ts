@@ -251,6 +251,18 @@ describe('POST /api/refresh', () => {
     expect(ran).toEqual([])
   })
 
+  it('refuses the digest by name, even for a viewer (#52)', async () => {
+    // Unlike `ai`, there is no second endpoint to point at — the digest is
+    // schedule-only from here, so a viewer asking for it by name must not be able to
+    // make this process mail the household's narrative and charts to whoever is on
+    // file, or overwrite the stored PDF.
+    const res = await post('/api/refresh', { jobs: ['sync', 'digest'] }, { token: viewer })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json<ErrorBody>().error.message).toContain('digest')
+    expect(ran).toEqual([])
+  })
+
   it('lets a viewer refresh, because noticing stale figures is not a privilege', async () => {
     // The one write-side route that is not owner-only, and deliberately: a refresh
     // changes no judgement, and the person who sees the numbers look old is often
