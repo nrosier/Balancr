@@ -5,14 +5,19 @@
  * markdown survives into structured blocks with the household's own names
  * substituted in, same as `renderNarrative` does for the HTML page.
  */
+import { readFileSync } from 'node:fs'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { sql } from 'drizzle-orm'
+import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
+import { tenants } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { config } from '../../src/config.ts'
 import { renderNarrativeBlocks, storeNarrative } from '../../src/domain/ai/narrative.ts'
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { buildDigestPdf } from '../../src/domain/digest/pdf.ts'
+import { saveDigestPreference } from '../../src/domain/digest/preference.ts'
+import { loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 
 let ctx: ReturnType<typeof createTestDb>
@@ -107,5 +112,57 @@ describe('buildDigestPdf', () => {
     await expect(buildDigestPdf(db, tenantId, MONTH, 'en')).rejects.toThrow('stream exploded')
 
     emitError.mockRestore()
+  })
+})
+
+describe('the 0046 sweep (#585)', () => {
+  /**
+   * Replays the shipped statement rather than a paraphrase of it, same discipline as
+   * the 0010 collapse test: by the time a test database exists the migration has
+   * already run over an empty table, so the only way to exercise it is to write
+   * pre-migration rows and run the file's own SQL.
+   */
+  const sweep = (): void => {
+    const source = readFileSync(`${migrationsFolder}/0046_digest_pdf_stranded_rows.sql`, 'utf8')
+    ctx.db.run(sql.raw(source.trim()))
+  }
+
+  it('drops a PDF for a tenant with no digest preference row at all', () => {
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+
+    sweep()
+
+    expect(loadDigestPdf(db, tenantId)).toBeNull()
+  })
+
+  it('drops a PDF for a tenant whose preference has since moved away from pdf', () => {
+    saveDigestPreference(db, tenantId, { mode: 'off' })
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+
+    sweep()
+
+    expect(loadDigestPdf(db, tenantId)).toBeNull()
+  })
+
+  it('keeps a PDF for a tenant currently in pdf mode', () => {
+    saveDigestPreference(db, tenantId, { mode: 'pdf' })
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+
+    sweep()
+
+    expect(loadDigestPdf(db, tenantId)).not.toBeNull()
+  })
+
+  it('treats every tenant independently', () => {
+    const other = db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+
+    saveDigestPreference(db, tenantId, { mode: 'pdf' })
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+    saveDigestPdf(db, other.id, MONTH, Buffer.from('%PDF-fake'))
+
+    sweep()
+
+    expect(loadDigestPdf(db, tenantId)).not.toBeNull()
+    expect(loadDigestPdf(db, other.id)).toBeNull()
   })
 })

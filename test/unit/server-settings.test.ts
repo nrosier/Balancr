@@ -35,6 +35,7 @@ import {
   DEFAULT_DIGEST_PREFERENCE,
   loadDigestPreference,
   MAX_DIGEST_RECIPIENTS,
+  saveDigestPreference,
 } from '../../src/domain/digest/preference.ts'
 import { loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
@@ -591,11 +592,13 @@ describe('PATCH /api/settings/digest', () => {
 
 describe('GET /api/settings/digest/pdf', () => {
   it('answers 404 when nothing has been generated yet', async () => {
+    saveDigestPreference(ctx.db, tenantId, { mode: 'pdf' })
     const res = await get('/api/settings/digest/pdf')
     expect(res.statusCode).toBe(404)
   })
 
   it('streams back the stored bytes with a filename naming the period', async () => {
+    saveDigestPreference(ctx.db, tenantId, { mode: 'pdf' })
     saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
 
     const res = await get('/api/settings/digest/pdf')
@@ -607,9 +610,22 @@ describe('GET /api/settings/digest/pdf', () => {
   })
 
   it('is refused for a viewer', async () => {
+    saveDigestPreference(ctx.db, tenantId, { mode: 'pdf' })
     saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
     const res = await get('/api/settings/digest/pdf', viewer)
     expect(res.statusCode).toBe(403)
+  })
+
+  it('answers 404 for a row a mode change should have deleted but did not (#585)', async () => {
+    // Not through the mode-transition code at all — a restored backup, a manual
+    // job run, a future migration: whatever wrote this row, the current
+    // preference (still `off`) is what the route now checks.
+    saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
+
+    const res = await get('/api/settings/digest/pdf')
+
+    expect(res.statusCode).toBe(404)
+    expect(loadDigestPdf(ctx.db, tenantId)).not.toBeNull()
   })
 })
 
