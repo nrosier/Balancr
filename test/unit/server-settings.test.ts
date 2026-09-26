@@ -459,6 +459,18 @@ describe('PATCH /api/settings/household', () => {
     expect(res.statusCode).toBe(403)
     expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
   })
+
+  it('records only a member count and country, never a label or birth year, in the audit entry (#582)', async () => {
+    await send_({ members: [{ birthYear: 2013, custodyBp: 5_000 }], selfLabel: 'Nick' })
+
+    const entry = auditEntries(ctx.db).at(-1)
+    expect(entry?.action).toBe('settings.household')
+    expect(entry?.beforeJson).not.toContain('Nick')
+    expect(entry?.afterJson).not.toContain('Nick')
+    expect(entry?.beforeJson).not.toContain('2013')
+    expect(entry?.afterJson).not.toContain('2013')
+    expect(JSON.parse(entry?.afterJson ?? '{}')).toEqual({ country: 'BE', memberCount: 1 })
+  })
 })
 
 describe('PATCH /api/settings/digest', () => {
@@ -536,6 +548,16 @@ describe('PATCH /api/settings/digest', () => {
     const entry = auditEntries(ctx.db).at(-1)
     expect(entry?.action).toBe('settings.digest')
     expect(JSON.parse(entry?.afterJson ?? '{}').mode).toBe('pdf')
+  })
+
+  it('records only a recipient count, never the addresses themselves, in the audit entry (#582)', async () => {
+    await send_({ mode: 'email', recipientEmails: ['a@example.test', 'b@example.test'] })
+
+    const entry = auditEntries(ctx.db).at(-1)
+    expect(entry?.action).toBe('settings.digest')
+    expect(entry?.beforeJson).not.toContain('@example.test')
+    expect(entry?.afterJson).not.toContain('@example.test')
+    expect(JSON.parse(entry?.afterJson ?? '{}')).toEqual({ mode: 'email', recipientCount: 2 })
   })
 
   it('deletes the stored PDF once mode moves away from pdf, rather than leaving it downloadable (#572)', async () => {
