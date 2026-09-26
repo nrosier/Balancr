@@ -8,7 +8,7 @@
  * handlers have their own coverage in `proposals.test.ts` and
  * `proposal-generators.test.ts`.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, categoryMeta, users } from '../../src/db/schema.ts'
@@ -26,6 +26,17 @@ import type {
 } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture, MONTH } from '../helpers/api-fixture.ts'
 import { eq } from 'drizzle-orm'
+
+// Only `setCategoryBudgetAmount` is mocked (#587): the batch's per-id error
+// handling is what's under test here, and a raw failure out of the one
+// Actual-writing call the batch's proposal type makes is the case that must
+// not reach the client verbatim.
+vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
+  setCategoryBudgetAmount: vi.fn(),
+}))
+
+import { setCategoryBudgetAmount } from '../../src/adapters/actual/queries.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -101,6 +112,7 @@ beforeEach(async () => {
   app = await buildApp({ db: ctx.db, web: null })
   owner = signIn(ctx.db, 'owner')
   viewer = signIn(ctx.db, 'viewer')
+  vi.mocked(setCategoryBudgetAmount).mockReset()
 })
 
 afterEach(async () => {
@@ -275,5 +287,21 @@ describe('POST /api/proposals/apply-batch', () => {
     const row = await pendingProposal()
     const res = await postBody('/api/proposals/apply-batch', { ids: [row.id] }, viewer)
     expect(res.statusCode).toBe(403)
+  })
+
+  it('collapses an unexpected failure to a generic reason instead of echoing it (#587)', async () => {
+    vi.mocked(setCategoryBudgetAmount).mockRejectedValueOnce(new Error('ECONNREFUSED 10.0.0.7:5006'))
+    const row = await pendingBudgetProposal(80_000)
+
+    const res = await postBody('/api/proposals/apply-batch', { ids: [row.id] })
+    expect(res.statusCode).toBe(200)
+
+    const result = res.json<ProposalBatchApply>().results.find((r) => r.id === row.id)
+    expect(result?.ok).toBe(false)
+    expect(result?.reason).toBeTruthy()
+    expect(result?.reason).not.toContain('10.0.0.7')
+    expect(result?.reason).not.toContain('ECONNREFUSED')
+
+    expect(loadProposal(ctx.db, tenantId, row.id)?.status).toBe('pending')
   })
 })
