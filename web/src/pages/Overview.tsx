@@ -207,23 +207,6 @@ function Figures({
           rows={netWorthRows}
         />
 
-        {/*
-          The same card the Budget page shows, with the same period picker — one
-          component, because #296 was filed about these two drifting apart. With no
-          month at all there are no flows either and nothing to draw, so the card
-          disappears entirely rather than showing a picker with nothing behind it.
-
-          `showFlows`: yes here, no on the Budget page. Nothing else on this page carries a
-          flow figure, so without the summed pair the percentage is unauditable — and these
-          rows used to come from `totals` and covered one month, which is exactly the
-          mismatch a period would have turned into a wrong reading.
-        */}
-        {month === null ? (
-          <Metric label={t('budget:metric.savingsRate')} value={null} unknown={unknown} />
-        ) : (
-          <SavingsRate history={flows} months={months} period={period} onPeriodSelect={setPeriod} showFlows />
-        )}
-
         <Metric
           label={t('portfolio:metric.emergencyFund')}
           // Hundredths back to months, formatted by the plural rule so "1 month" and
@@ -243,7 +226,34 @@ function Figures({
         )}
       </section>
 
-      <GoalsCard goals={goals} />
+      {/*
+        One Savings card, not two unrelated ones (#652): the rate answers "how much",
+        the goals answer "toward what," and splitting them across the page hid that
+        they're one story. `SavingsRate`'s own header (with its period picker) doubles
+        as this card's header; `.savings-card` in `components.css` strips the nested
+        `.card` chrome each of these already draws on its own so they read as one box
+        with a rule between header and body, not a card stacked inside a card.
+      */}
+      <section className="card savings-card">
+        {/*
+          The same card the Budget page shows, with the same period picker — one
+          component, because #296 was filed about these two drifting apart. With no
+          month at all there are no flows either and nothing to draw, so the card
+          disappears entirely rather than showing a picker with nothing behind it.
+
+          `showFlows`: yes here, no on the Budget page. Nothing else on this page carries a
+          flow figure, so without the summed pair the percentage is unauditable — and these
+          rows used to come from `totals` and covered one month, which is exactly the
+          mismatch a period would have turned into a wrong reading.
+        */}
+        {month === null ? (
+          <Metric label={t('budget:metric.savingsRate')} value={null} unknown={unknown} />
+        ) : (
+          <SavingsRate history={flows} months={months} period={period} onPeriodSelect={setPeriod} showFlows />
+        )}
+
+        <GoalsCard goals={goals} />
+      </section>
 
       {hygiene === null ? null : <HygieneCard hygiene={hygiene} />}
     </>
