@@ -2024,6 +2024,27 @@ describe('the no-upstream rule', () => {
   })
 })
 
+describe('the endpoint count documented at the top of ai.ts (#603)', () => {
+  it('matches the routes actually registered, so a ninth endpoint cannot go uncounted', () => {
+    // The header's own history — "stale at six... corrected to seven" — is the reason
+    // to check this by parsing rather than by trusting the prose again: only the first
+    // paragraph enumerates the endpoints (the rest is prose that mentions several of
+    // them again for unrelated reasons), so that is the slice compared against what
+    // `registerAiRoutes` actually calls.
+    const source = readFileSync('src/server/routes/ai.ts', 'utf8')
+    const firstParagraph = source.slice(0, source.indexOf('\n *\n'))
+    const documented = [...firstParagraph.matchAll(/`(GET|POST) (\/api\/ai\/[^`]*)`/g)]
+      .map(([, method, path]) => `${method} ${path}`)
+      .sort()
+
+    const registered = [...source.matchAll(/app\.(get|post)\(\s*'(\/api\/ai\/[^']*)'/g)]
+      .map((m) => `${m[1]!.toUpperCase()} ${m[2]}`)
+      .sort()
+
+    expect(registered).toEqual(documented)
+  })
+})
+
 describe('months of cover', () => {
   // The two cases a fixture cannot produce, tested directly. Both answer null,
   // and both would otherwise be a number on the dashboard: `Infinity` renders as
