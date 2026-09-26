@@ -44,7 +44,11 @@ let dir: string
 let snapshot: string
 
 beforeEach(async () => {
-  const { db } = createTestDb()
+  // A real file, not `:memory:`: `writeSnapshot` forks a worker to run `VACUUM INTO`
+  // off the main thread (#608), and that worker needs a path to open its own
+  // connection to the source database with.
+  const dbPath = join(mkdtempSync(join(tmpdir(), 'balancr-restore-src-')), 'source.db')
+  const { db } = createTestDb(dbPath)
   applyMigrations(db as never)
   // One row of the kind that a resync cannot bring back: a description someone typed.
   db.insert(categoryMeta)
@@ -57,7 +61,7 @@ beforeEach(async () => {
     .run()
 
   dir = mkdtempSync(join(tmpdir(), 'balancr-restore-'))
-  snapshot = (await writeSnapshot(db, join(dir, 'backups'), PASS, AT)).path
+  snapshot = (await writeSnapshot(dbPath, join(dir, 'backups'), PASS, AT)).path
 })
 
 /** What the restored database says about itself, read back through SQLite. */
@@ -163,9 +167,10 @@ describe('restoreBackup', () => {
     // Reachable if a snapshot were ever taken of an empty or half-migrated database:
     // the file is authentic, the passphrase is right, and restoring it would still be
     // replacing a working database with a blank one.
-    const { db } = createTestDb()
+    const emptyDbPath = join(mkdtempSync(join(tmpdir(), 'balancr-restore-empty-')), 'source.db')
+    const { db } = createTestDb(emptyDbPath)
     applyMigrations(db as never)
-    const empty = (await writeSnapshot(db, join(dir, 'empty'), PASS, AT)).path
+    const empty = (await writeSnapshot(emptyDbPath, join(dir, 'empty'), PASS, AT)).path
     const to = join(dir, 'balancr.db')
     writeFileSync(to, 'the database that is still needed')
 

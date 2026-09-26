@@ -31,7 +31,7 @@ import { config } from '../config.ts'
 import { prune, writeSnapshot } from '../backup/snapshot.ts'
 import type { Job, JobContext, JobDetail } from './runner.ts'
 
-async function run({ db, log, now }: JobContext): Promise<JobDetail> {
+async function run({ log, now }: JobContext): Promise<JobDetail> {
   const passphrase = config.BACKUP_PASSPHRASE
   if (passphrase === undefined) {
     log.info(
@@ -41,7 +41,10 @@ async function run({ db, log, now }: JobContext): Promise<JobDetail> {
     return { skipped: true, reason: 'no-passphrase' }
   }
 
-  const snapshot = await writeSnapshot(db, config.BACKUP_DIR, passphrase, now)
+  // `config.DATABASE_PATH`, not the `db` handle every other job gets: `writeSnapshot`
+  // forks a worker to run `VACUUM INTO` off the main thread (#608), and a forked
+  // process needs a path to open its own connection with, not this process's.
+  const snapshot = await writeSnapshot(config.DATABASE_PATH, config.BACKUP_DIR, passphrase, now)
   // Only after a successful write. See `prune`: a run that fails must never be the run
   // that deleted the last good copy.
   const removed = await prune(config.BACKUP_DIR, config.BACKUP_KEEP, now)
