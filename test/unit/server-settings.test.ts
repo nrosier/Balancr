@@ -24,6 +24,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
 import { config } from '../../src/config.ts'
@@ -39,6 +40,7 @@ import {
 } from '../../src/domain/digest/preference.ts'
 import { loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
+import { createInvite } from '../../src/domain/tenant/invites.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import { DEFAULT_PARAMS, loadParams, saveParams } from '../../src/domain/aggregate/params.ts'
@@ -304,6 +306,72 @@ describe('GET /api/settings', () => {
     const ownerSettings = (await get('/api/settings')).json<Settings>()
     expect(ownerSettings.digest.recipientEmails).toEqual(['a@example.test', 'b@example.test'])
     expect(ownerSettings.digest.recipientCount).toBe(2)
+  })
+
+  it('masks integration hostnames, sync id, model prices, and budget from a viewer (#586)', async () => {
+    await patch('/api/settings/integrations/actual', {
+      serverUrl: 'https://actual.example.test',
+      syncId: 'sync-id-value',
+      password: 'pw',
+      categorySourceLocale: 'en',
+    })
+    await patch('/api/settings/integrations/ghostfolio', {
+      url: 'https://ghostfolio.example.test',
+      securityToken: 'token',
+    })
+    await patch('/api/settings/integrations/ai', {
+      // `anthropic` (rather than `openai-compatible`) so this test needs no
+      // `EGRESS_EXTRA_HOSTS` allowlisting — its base URL is the fixed
+      // `ANTHROPIC_BASE_URL` constant, which is exactly what makes it non-null for
+      // an owner and still worth masking to null for a viewer.
+      provider: 'anthropic',
+      apiKey: 'api-key',
+      googleCloudProject: null,
+      modelFast: 'custom-model',
+      modelDeep: 'custom-model',
+      modelPrices: {
+        'custom-model': { inputEur: 0.001, cachedInputEur: 0, cacheWriteInputEur: 0, outputEur: 0.002 },
+      },
+      budgetEur: 15,
+    })
+
+    const viewerSettings = (await get('/api/settings', viewer)).json<Settings>()
+    expect(viewerSettings.integrations.actual.serverUrl).toBe('')
+    expect(viewerSettings.integrations.actual.syncId).toBe('')
+    expect(viewerSettings.integrations.ghostfolio.url).toBe('')
+    expect(viewerSettings.integrations.ai.baseUrl).toBeNull()
+    expect(viewerSettings.integrations.ai.modelPrices).toEqual({})
+    expect(viewerSettings.integrations.ai.budgetEurMicro).toBe(0)
+    // Not reconnaissance value, and unaffected by the mask: which model is selected,
+    // and whether a secret is set at all.
+    expect(viewerSettings.integrations.ai.modelFast).toBe('custom-model')
+    expect(viewerSettings.integrations.actual.passwordConfigured).toBe(true)
+    expect(viewerSettings.integrations.ghostfolio.tokenConfigured).toBe(true)
+
+    const ownerSettings = (await get('/api/settings')).json<Settings>()
+    expect(ownerSettings.integrations.actual.serverUrl).toBe('https://actual.example.test')
+    expect(ownerSettings.integrations.actual.syncId).toBe('sync-id-value')
+    expect(ownerSettings.integrations.ghostfolio.url).toBe('https://ghostfolio.example.test')
+    expect(ownerSettings.integrations.ai.baseUrl).toBe('https://api.anthropic.com/v1')
+    expect(ownerSettings.integrations.ai.modelPrices).toHaveProperty('custom-model')
+    expect(ownerSettings.integrations.ai.budgetEurMicro).toBeGreaterThan(0)
+  })
+
+  it('hides the invite list from a viewer entirely (#586)', async () => {
+    const ownerRow = ctx.db
+      .select()
+      .from(users)
+      .where(eq(users.email, 'owner@example.test'))
+      .get()
+    if (ownerRow === undefined) throw new Error('owner row missing')
+    createInvite(ctx.db, { tenantId, createdBy: ownerRow.id, label: 'Guest for the week' })
+
+    const viewerSettings = (await get('/api/settings', viewer)).json<Settings>()
+    expect(viewerSettings.invites).toEqual([])
+
+    const ownerSettings = (await get('/api/settings')).json<Settings>()
+    expect(ownerSettings.invites).toHaveLength(1)
+    expect(ownerSettings.invites[0]?.label).toBe('Guest for the week')
   })
 
   it("shows only the signed-in tenant's AI spend history (#411)", async () => {

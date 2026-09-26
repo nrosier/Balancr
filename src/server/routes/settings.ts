@@ -1080,47 +1080,60 @@ function benchmarkSetting(db: Db, tenantId: string): Settings['benchmark'] {
  * Never the ciphertext and never the plaintext: a secret that round-tripped through
  * this screen even once would make the settings response the second place it could
  * leak from, on top of the database column.
+ *
+ * `isOwner` masks the fields that are not secrets but are still reconnaissance value
+ * for a viewer with a foothold (#586): the Actual/Ghostfolio/AI hostnames and the
+ * Actual sync id say exactly which external services this household's data lives
+ * in, and the AI model prices/budget say how much it costs. Masked to the same
+ * shape a not-yet-configured integration already has (`''`/`null`/`{}`/`0`), the
+ * same way `digestSetting` masks `recipientEmails` to `[]` rather than to `undefined`
+ * — a viewer sees "nothing configured", not an error.
  */
-function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
+function loadIntegrations(db: Db, tenantId: string, isOwner: boolean): IntegrationsSetting {
   const row = integrationsRow(db, tenantId)
   return integrationsSettingSchema.parse({
     actual: {
-      serverUrl: row.actualServerUrl,
-      syncId: row.actualSyncId,
+      serverUrl: isOwner ? row.actualServerUrl : '',
+      syncId: isOwner ? row.actualSyncId : '',
       passwordConfigured: row.actualPasswordEnc.length > 0,
       e2ePasswordConfigured: row.actualE2ePasswordEnc !== null,
       categorySourceLocale: row.actualCategorySourceLocale,
     },
     ghostfolio: {
-      url: row.ghostfolioUrl,
+      url: isOwner ? row.ghostfolioUrl : '',
       tokenConfigured: row.ghostfolioSecurityTokenEnc.length > 0,
     },
     ai: {
       provider: row.aiProvider,
       apiKeyConfigured: row.aiApiKeyEnc !== null,
-      googleCloudProject: row.googleCloudProject,
-      baseUrl:
-        row.aiProvider === 'openai'
+      googleCloudProject: isOwner ? row.googleCloudProject : null,
+      baseUrl: isOwner
+        ? row.aiProvider === 'openai'
           ? OPENAI_BASE_URL
           : row.aiProvider === 'xai'
             ? XAI_BASE_URL
             : row.aiProvider === 'anthropic'
               ? ANTHROPIC_BASE_URL
-            : row.aiBaseUrl,
+              : row.aiBaseUrl
+        : null,
       modelFast: row.aiModelFast,
       modelDeep: row.aiModelDeep,
-      modelPrices: Object.fromEntries(
-        Object.entries(JSON.parse(row.aiModelPricesJson) as Record<string, ModelPrice>).map(([model, price]) => [
-          model,
-          {
-            inputEurMicro: price.input,
-            cachedInputEurMicro: price.cachedInput,
-            cacheWriteInputEurMicro: price.cacheWriteInput,
-            outputEurMicro: price.output,
-          },
-        ]),
-      ),
-      budgetEurMicro: row.aiMonthlyBudgetEurMicro,
+      modelPrices: isOwner
+        ? Object.fromEntries(
+            Object.entries(JSON.parse(row.aiModelPricesJson) as Record<string, ModelPrice>).map(
+              ([model, price]) => [
+                model,
+                {
+                  inputEurMicro: price.input,
+                  cachedInputEurMicro: price.cachedInput,
+                  cacheWriteInputEurMicro: price.cacheWriteInput,
+                  outputEurMicro: price.output,
+                },
+              ],
+            ),
+          )
+        : {},
+      budgetEurMicro: isOwner ? row.aiMonthlyBudgetEurMicro : 0,
     },
   })
 }
@@ -1154,6 +1167,7 @@ function digestSetting(db: Db, tenantId: string, isOwner: boolean): Settings['di
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
+  const isOwner = user.role === 'owner'
   const accounts = loadAccountMap(db, user.tenantId)
   const exclusionReasons = netWorthExclusionReasons(accounts)
   const budget = budgetState(db, user.tenantId)
@@ -1180,9 +1194,14 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     loans: listLoans(db, user.tenantId),
     debts: listDebts(db, user.tenantId),
     goals: listGoals(db, user.tenantId),
-    integrations: loadIntegrations(db, user.tenantId),
+    integrations: loadIntegrations(db, user.tenantId, isOwner),
     categoryTranslations: loadCategoryTranslationRows(db, user.tenantId),
-    invites: listInvites(db, user.tenantId).map(toInviteSetting),
+    // Every invite names who is being let in and when (#586) — the same "which doors
+    // are open" reconnaissance value as a server hostname, just for the household
+    // itself rather than its data connections. Empty for a viewer, same as
+    // `digestSetting`'s `recipientEmails`: there is no owner-only *count* substitute
+    // here, since "N invites are open" carries the same signal this hides.
+    invites: isOwner ? listInvites(db, user.tenantId).map(toInviteSetting) : [],
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -1217,7 +1236,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       exceeded: budget.exceeded,
       history: loadSpendHistory(db, user.tenantId),
     },
-    digest: digestSetting(db, user.tenantId, user.role === 'owner'),
+    digest: digestSetting(db, user.tenantId, isOwner),
   })
 }
 
@@ -2035,7 +2054,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(actualIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
-    const before = loadIntegrations(db, tenantId)
+    const before = loadIntegrations(db, tenantId, true)
     const hostChanged = !sameHost(patch.serverUrl, before.actual.serverUrl)
 
     db.update(tenantIntegrations)
@@ -2066,7 +2085,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       clearTranslationsForLocale(db, tenantId, patch.categorySourceLocale)
     }
 
-    const after = loadIntegrations(db, tenantId)
+    const after = loadIntegrations(db, tenantId, true)
     recordAudit(db, {
       tenantId: user.tenantId,
       action: 'settings.integrations',
@@ -2088,7 +2107,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(ghostfolioIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
-    const before = loadIntegrations(db, tenantId)
+    const before = loadIntegrations(db, tenantId, true)
     const hostChanged = !sameHost(patch.url, before.ghostfolio.url)
 
     db.update(tenantIntegrations)
@@ -2110,7 +2129,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     // and must not outlive it either (#535).
     if (hostChanged) resetGhostfolioToken(tenantId)
 
-    const after = loadIntegrations(db, tenantId)
+    const after = loadIntegrations(db, tenantId, true)
     recordAudit(db, {
       tenantId: user.tenantId,
       action: 'settings.integrations',
@@ -2129,7 +2148,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const user = requireOwner(request)
     const patch = parseBody(aiIntegrationPatchRequest, request.body)
     const tenantId = user.tenantId
-    const before = loadIntegrations(db, tenantId)
+    const before = loadIntegrations(db, tenantId, true)
     const row = integrationsRow(db, tenantId)
     const baseUrl = validatedAiBaseUrl(patch.provider, patch.baseUrl)
     const modelPrices = tenantModelPrices(patch.modelPrices)
@@ -2166,7 +2185,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       .run()
     resetAiClients()
 
-    const after = loadIntegrations(db, tenantId)
+    const after = loadIntegrations(db, tenantId, true)
     recordAudit(db, {
       tenantId: user.tenantId,
       action: 'settings.integrations',

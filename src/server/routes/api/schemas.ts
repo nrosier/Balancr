@@ -1884,10 +1884,17 @@ export const goalSettingSchema = z.object({
  *
  * A secret is never on this wire, in either direction: `passwordConfigured` and
  * its siblings are booleans, not the value they describe, for the same reason a
- * TOTP secret is never re-readable once set. The plain fields (`serverUrl`,
- * `syncId`, `url`, `provider`, `googleCloudProject`) are not secrets — they say
- * *which* account this is, not how to get into it — so they round-trip as-is and
- * the settings form can show them without a "configured" dance.
+ * TOTP secret is never re-readable once set.
+ *
+ * None of `serverUrl`, `syncId`, `url`, `baseUrl`, `googleCloudProject`,
+ * `modelPrices`, or `budgetEurMicro` is a secret either, but for a viewer they are
+ * masked to the same "nothing configured" shape an unset integration already has
+ * (`''`/`null`/`{}`/`0`) rather than round-tripped as-is (#586): a hostname or sync
+ * id is reconnaissance value for a viewer with a foothold, the same argument #573
+ * already accepted for a digest's recipient list. `provider`, `*Configured`,
+ * `categorySourceLocale`, `modelFast`, and `modelDeep` say nothing an attacker could
+ * use to reach the account, so they round-trip for every role. See `loadIntegrations`
+ * in `settings.ts` for the masking itself.
  */
 export const integrationsSettingSchema = z.object({
   actual: z.object({
@@ -2036,7 +2043,13 @@ export const settingsSchema = z.object({
       translations: z.record(z.string(), z.string()),
     }),
   ),
-  /** Invites this tenant's owner has issued (#373), newest first. Never the code. */
+  /**
+   * Invites this tenant's owner has issued (#373), newest first. Never the code.
+   *
+   * Empty for a viewer (#586): a label and a set of timestamps say which doors into
+   * the household are currently open, which a viewer with a foothold has no
+   * legitimate need to enumerate.
+   */
   invites: z.array(inviteSettingSchema),
   prompts: z.array(promptSchema),
   /**
