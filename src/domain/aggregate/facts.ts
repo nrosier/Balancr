@@ -19,6 +19,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, categoryTranslations, monthlyCategoryFacts } from '../../db/schema.ts'
 import { monthsBefore } from '../../util/month.ts'
+import type { Transaction } from '../audit.ts'
 import type { ExpectedFrequency } from './baseline.ts'
 import type { MonthlyFact } from './spend.ts'
 
@@ -44,7 +45,7 @@ export interface PersistResult {
  * clears it. Deriving the list would make that case a silent no-op.
  */
 export function persistFacts(
-  db: Db,
+  db: Db | Transaction,
   tenantId: string,
   facts: readonly MonthlyFact[],
   months: readonly string[],
@@ -146,7 +147,7 @@ export function persistFacts(
  * either.
  */
 export function syncCategoryMeta(
-  db: Db,
+  db: Db | Transaction,
   tenantId: string,
   facts: readonly MonthlyFact[],
 ): number {
