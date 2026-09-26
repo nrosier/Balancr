@@ -48,15 +48,15 @@ const baseline = z
 const overspend = z
   .object({
     /** Above-baseline thresholds, basis points of the baseline. */
-    baselineWarnBp: z.number().int().min(0).default(2_000),
-    baselineAlertBp: z.number().int().min(0).default(5_000),
+    baselineWarnBp: z.number().int().min(0).max(1_000_000).default(2_000),
+    baselineAlertBp: z.number().int().min(0).max(1_000_000).default(5_000),
     /**
      * Absolute floor for any relative signal. A €7 envelope going 40% over is
      * €2.80 — arithmetically true, and noise.
      */
-    materialityFloorCents: z.number().int().min(0).default(2_500),
+    materialityFloorCents: z.number().int().min(0).max(10_000_000).default(2_500),
     /** Actual's `balance` below this counts as an overspent envelope. */
-    availableFloorCents: z.number().int().min(0).default(500),
+    availableFloorCents: z.number().int().min(0).max(10_000_000).default(500),
   })
   .prefault({})
 
