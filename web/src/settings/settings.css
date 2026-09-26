@@ -1003,6 +1003,22 @@
   background: var(--surface-card);
 }
 
+/* Names the row before its controls, the same job `.account__head` does — with two or
+   more properties each carrying a growing mortgage list, there needs to be something
+   to anchor "which property is this" at a glance (#661). */
+.property__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+.property__name {
+  margin: 0;
+  font-size: var(--type-base);
+  font-weight: var(--weight-semibold);
+}
+
 .property__fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
@@ -1011,7 +1027,8 @@
 }
 
 /* The equity/cash-flow/yield read-back, one line each rather than one line joined with
-   punctuation — a cash flow and a yield are two different facts, not one sentence. */
+   punctuation — a cash flow and a yield are two different facts, not one sentence. Also
+   reused, singular, as the inline caption under one mortgage field. */
 .property__reads {
   display: flex;
   flex-direction: column;
@@ -1021,15 +1038,41 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A recessed tint (not `.dedupe__pair`'s warning colour — a mortgage isn't a problem to
+   flag) so a property's mortgages read as nested inside it rather than as three
+   near-identical grids stacked behind faint dashed lines (#661). */
 .property__mortgage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.property__mortgage-heading {
+  margin: 0;
+  font-size: var(--type-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.property__mortgage-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3);
-  border-top: 1px dashed var(--border);
 }
 
+.property__mortgage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.property__actions,
 .properties__actions {
   display: flex;
   flex-wrap: wrap;
