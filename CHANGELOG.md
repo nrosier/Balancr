@@ -6,6 +6,60 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.5.0] — 2026-09-26
+
+### Security
+
+- **The egress guard's per-call host allowance was a process-global map, not actually scoped to the call that requested it**
+  ([#548](https://github.com/nrosier/Balancr/issues/548)). It now rides `AsyncLocalStorage`, so one tenant's in-flight request can no longer widen — even briefly — what a concurrent call from another tenant is allowed to reach.
+- **A stored AI API key survived a changed custom OpenAI-compatible base URL, unlike the equivalent Actual/Ghostfolio secrets**
+  ([#579](https://github.com/nrosier/Balancr/issues/579)). Changing the base URL host now invalidates the stored key, matching the pattern already enforced for the other two integrations.
+- **The local-auth failed-attempt counter and TOTP replay check were read-modify-write, not atomic**
+  ([#550](https://github.com/nrosier/Balancr/issues/550)), leaving a race that could let concurrent login attempts dodge a lockout or replay a TOTP code. Both are now atomic.
+- **AES-256-GCM cipher/decipher calls didn't pin `authTagLength`**
+  ([#616](https://github.com/nrosier/Balancr/issues/616)), relying on Node's default instead of an explicit, defense-in-depth pin.
+- **Digest email delivery allowed a silent cleartext fallback if the relay didn't offer STARTTLS**
+  ([#580](https://github.com/nrosier/Balancr/issues/580)). STARTTLS is now required by default.
+- **Integration test-connection requests had no tenant-scoped rate cap**
+  ([#588](https://github.com/nrosier/Balancr/issues/588)), letting one tenant's test-connection traffic run unbounded.
+- **`forgetProbe` deleted every tenant's probe row for a source, unscoped**
+  ([#589](https://github.com/nrosier/Balancr/issues/589)). It had no remaining callers, so it was removed rather than given a tenant-scoped path that would immediately go unused again.
+- **Settings responses leaked another tenant's integration hostnames, sync id, model prices/budget, and pending invites to a viewer**
+  ([#586](https://github.com/nrosier/Balancr/issues/586)). All four are now masked from viewer-role responses.
+
+### Added
+
+- **Monthly digest as a downloadable PDF or an emailed one**
+  ([#52](https://github.com/nrosier/Balancr/issues/52)). The AI narrative can now be delivered as a rendered PDF or by email instead of only being viewed on the Insights page; digest mode, recipients, and stored PDFs are all tenant-scoped.
+- **The audit trail is readable, not just written**
+  ([#592](https://github.com/nrosier/Balancr/issues/592)). An owner-only `GET /api/audit` route and a new "General > Audit trail" settings panel show an expandable before/after view; the tab is hidden entirely for viewers rather than shown and rejected.
+
+### Changed
+
+- **`SESSION_SECRET`, a required env var with no runtime consumer, has been removed**
+  ([#552](https://github.com/nrosier/Balancr/issues/552)). Existing deployments can drop it from `.env`; it was never read.
+
+### Fixed
+
+- **A generated migration's `PRAGMA foreign_keys=OFF` was a no-op inside Drizzle's own transaction, so an upgrade could still cascade-delete child rows it meant to preserve**
+  ([#577](https://github.com/nrosier/Balancr/issues/577)).
+- **An owner could permanently brick the settings screen by entering an unbounded `budgetEur` or AI model price, and overspend's own basis-point/cents fields had the same gap**
+  ([#578](https://github.com/nrosier/Balancr/issues/578), [#595](https://github.com/nrosier/Balancr/issues/595)). Both are now bounded to what the app's own storage (`microEur`, cents) can represent.
+- **A hung job could stall every tenant's queue — `buildDigestPdf` among them — with no timeout to break it**
+  ([#583](https://github.com/nrosier/Balancr/issues/583)). The job queue is now also scoped per tenant to match `jobsInFlight`'s own accounting ([#602](https://github.com/nrosier/Balancr/issues/602)), and the sync job's compute-step writes ([#591](https://github.com/nrosier/Balancr/issues/591)) and `saveMonthNote`'s read-modify-write ([#590](https://github.com/nrosier/Balancr/issues/590)) now each run inside one transaction instead of several.
+- **The month note was retained verbatim, forever, in `audit_log`, bypassing its own retention window**
+  ([#581](https://github.com/nrosier/Balancr/issues/581)). Household/digest change audit entries now record the shape of what changed rather than the values themselves ([#582](https://github.com/nrosier/Balancr/issues/582)), and a failed apply-batch no longer echoes the raw exception message back to the caller ([#587](https://github.com/nrosier/Balancr/issues/587)).
+- **Digest recipients were exposed to each other and to a viewer instead of being bcc'd/masked**
+  ([#572](https://github.com/nrosier/Balancr/issues/572), [#573](https://github.com/nrosier/Balancr/issues/573), [#584](https://github.com/nrosier/Balancr/issues/584)). Recipients are now bcc'd on send and masked from viewer-role settings responses.
+- **A stale digest PDF could survive a mode change or get served after switching away from PDF mode, and checking whether one existed loaded its full bytes into memory just to answer a boolean**
+  ([#585](https://github.com/nrosier/Balancr/issues/585), [#594](https://github.com/nrosier/Balancr/issues/594)). The route now checks the current mode before serving a stored PDF (a migration also sweeps existing stranded rows), existence is a single-row check rather than a full blob load, and the embedded net worth chart is now capped at 180 points ([#609](https://github.com/nrosier/Balancr/issues/609)).
+- **Four whole-table reads did their sort/filter/limit in application code instead of SQL**
+  ([#606](https://github.com/nrosier/Balancr/issues/606)). `/api/insights`'s proposal target-name lookups are now batched instead of one-per-proposal ([#605](https://github.com/nrosier/Balancr/issues/605)), and category mapping now has a targeted single-row lookup instead of scanning the whole table ([#607](https://github.com/nrosier/Balancr/issues/607)).
+- **The nightly `VACUUM INTO` ran on the main thread, blocking every other request for its duration**
+  ([#608](https://github.com/nrosier/Balancr/issues/608)). It now runs in a forked worker.
+- **The migrations folder path used `URL.pathname` instead of `fileURLToPath`**
+  ([#598](https://github.com/nrosier/Balancr/issues/598)), which mishandles spaces and special characters in a filesystem path on some platforms.
+
 ## [2.4.0] — 2026-09-25
 
 ### Security

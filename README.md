@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.4.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.0-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1019,21 +1019,23 @@ ends.
 | `2.2.0` | Multi-provider AI and multi-tenant security hardening | ✅ |
 | `2.3.0` | Prompt safety gate and lock for the editable narrative prompt; non-mortgage debt tracking | ✅ |
 | `2.4.0` | Security: egress guard scoped per tenant (Ghostfolio and Actual alike), stored-secret host binding, retention completeness | ✅ |
+| `2.5.0` | Monthly digest as a downloadable PDF or an emailed one; second full-codebase-review batch closed (egress, auth, transactional, and privacy hardening) | ✅ |
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.4.0` is the current release. Closes the Security
-milestone: a stored Actual/Ghostfolio secret can no longer be sent to a host
-it wasn't verified against, a tenant's saved integration host is scoped to
-that tenant's own traffic instead of widening the whole process's egress
-allowlist, retention now clears the full AI payload rather than just the
-request/response text, and a lost-race proposal write is now logged instead
-of leaving no trace (see [`CHANGELOG.md`](CHANGELOG.md) for details). Also
-in this release: Settings consolidates from 13 top-level tabs to 7, and
-prompt versions can be given a short name. Existing deployments upgrade in
-place.
+**Where it is now** — `2.5.0` is the current release. Adds the monthly
+digest as a downloadable PDF or an emailed one, and an audit trail that can
+finally be read back (owner-only) instead of only ever written to. It also
+closes out the second batch from the full-codebase review: the egress
+guard's per-call host allowance is now request-scoped instead of a
+process-global map, a stored AI key is invalidated when its custom base URL
+host changes, local-auth's failed-attempt counter and TOTP check are now
+atomic, several job-queue and read-modify-write races got wrapped in proper
+transactions or timeouts, and audit/digest data that shouldn't be kept
+verbatim or shown to a viewer no longer is (see [`CHANGELOG.md`](CHANGELOG.md)
+for details). Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.4.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.5.0`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
