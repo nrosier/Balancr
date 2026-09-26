@@ -41,6 +41,7 @@ import {
   PROPOSAL_TTL_DAYS,
   rejectProposal,
   renderProposal,
+  renderProposals,
   storedDiff,
   storedWhy,
   type ProposalRow,
@@ -304,6 +305,34 @@ describe('renderProposal', () => {
 
     expect(renderProposal(db, TENANT_ID, budgetRow, 'en').amountCents).toBe(15_000)
     expect(renderProposal(db, TENANT_ID, metaRow, 'en').amountCents).toBeNull()
+  })
+})
+
+describe('renderProposals', () => {
+  it('renders every row from one batched lookup, matching renderProposal one row at a time (#605)', async () => {
+    const metaRow = await propose({ nature: 'variable' })
+    const budgetRow = await createProposal(db, TENANT_ID, {
+      type: 'budget_amount.set',
+      targetRef: encodeBudgetTarget('rent', MONTH),
+      payload: { amountCents: 120_000 },
+      runId,
+      now: NOW,
+    })
+
+    const [metaCard, budgetCard] = renderProposals(db, TENANT_ID, [metaRow, budgetRow], 'en')
+
+    expect(metaCard?.targetName).toBe('Groceries')
+    expect(budgetCard?.targetName).toBe('Rent (2026-03)')
+    expect(metaCard?.targetName).toBe(renderProposal(db, TENANT_ID, metaRow, 'en').targetName)
+    expect(budgetCard?.targetName).toBe(renderProposal(db, TENANT_ID, budgetRow, 'en').targetName)
+  })
+
+  it('still falls back to the id when a batched row has no category left (#605)', async () => {
+    const row = await propose({ nature: 'variable' })
+    ctx.sqlite.prepare('delete from category_meta where category_id = ?').run('food')
+
+    const [card] = renderProposals(db, TENANT_ID, [row], 'en')
+    expect(card?.targetName).toBe('food')
   })
 })
 

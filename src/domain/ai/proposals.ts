@@ -181,6 +181,8 @@ interface ProposalHandler {
     tenantId: string,
     targetRef: string,
     payload?: unknown,
+    /** `nameSnapshot` per category, batch-loaded by `renderProposals` (#605). */
+    names?: ReadonlyMap<string, string>,
   ) => string | null
   /**
    * The write to Actual, if this type makes one. Runs *outside and before*
@@ -271,7 +273,8 @@ const categoryMetaSetHandler: ProposalHandler = {
       .run()
   },
 
-  targetName: (writer, tenantId, targetRef) => loadMeta(writer, tenantId, targetRef)?.nameSnapshot ?? null,
+  targetName: (writer, tenantId, targetRef, _payload, names) =>
+    names?.get(targetRef) ?? loadMeta(writer, tenantId, targetRef)?.nameSnapshot ?? null,
 }
 
 /**
@@ -433,9 +436,9 @@ const budgetAmountSetHandler: ProposalHandler = {
   // rather than something to engineer around.
   apply: () => {},
 
-  targetName: (writer, tenantId, targetRef) => {
+  targetName: (writer, tenantId, targetRef, _payload, names) => {
     const { categoryId, month } = decodeBudgetTarget(targetRef)
-    const name = loadMeta(writer, tenantId, categoryId)?.nameSnapshot ?? categoryId
+    const name = names?.get(categoryId) ?? loadMeta(writer, tenantId, categoryId)?.nameSnapshot ?? categoryId
     return `${name} (${month})`
   },
 
@@ -786,12 +789,17 @@ function renderValue(value: string | boolean | null, locale: string): string {
  * Reads the *stored* diff rather than recomputing: the card should show what was
  * proposed. `applyProposal` recomputes against the live row, which is where a
  * stale diff is caught.
+ *
+ * `names`, when given, is `loadCategoryNameSnapshots`'s batch — see
+ * `renderProposals` for why. Omitted here, `targetName` falls back to its own
+ * one-row lookup, which is what every single-row caller of this function wants.
  */
 export function renderProposal(
   db: Db,
   tenantId: string,
   row: ProposalRow,
   locale: string = config.DEFAULT_LOCALE,
+  names?: ReadonlyMap<string, string>,
 ): ProposalCard {
   const diff = storedDiff(row)
   const why = storedWhy(row)
@@ -807,6 +815,7 @@ export function renderProposal(
       tenantId,
       row.targetRef,
       payload,
+      names,
     ) ?? null
 
   return {
@@ -834,6 +843,35 @@ export function renderProposal(
         : null,
     explanation: why === null ? null : renderWhy(why, locale),
   }
+}
+
+/** `nameSnapshot` per category, batched once for `renderProposals` (#605). */
+function loadCategoryNameSnapshots(db: Db, tenantId: string): Map<string, string> {
+  const rows = db
+    .select({ categoryId: categoryMeta.categoryId, nameSnapshot: categoryMeta.nameSnapshot })
+    .from(categoryMeta)
+    .where(eq(categoryMeta.tenantId, tenantId))
+    .all()
+  return new Map(rows.map((row) => [row.categoryId, row.nameSnapshot]))
+}
+
+/**
+ * Every row given, rendered — the batched twin of `renderProposal` (#605).
+ *
+ * `targetName` for `category_meta.set` and `budget_amount.set` resolves through
+ * one `category_meta` row each; `/api/insights` renders up to 50 pending rows
+ * per page load, which was fifty of those round trips. One query up front,
+ * the same batching `openQuestions` already does for `loadCategoryNames`,
+ * replaces all of them.
+ */
+export function renderProposals(
+  db: Db,
+  tenantId: string,
+  rows: readonly ProposalRow[],
+  locale: string = config.DEFAULT_LOCALE,
+): ProposalCard[] {
+  const names = loadCategoryNameSnapshots(db, tenantId)
+  return rows.map((row) => renderProposal(db, tenantId, row, locale, names))
 }
 
 // ---------------------------------------------------------------------------
