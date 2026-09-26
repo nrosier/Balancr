@@ -223,28 +223,35 @@ export interface ReuseKey {
  * having called it. An equality check would never match anything the alias
  * ever produced. This mirrors `priceFor`'s own family-match convention, which
  * already treats the two as the same model for billing.
+ *
+ * The prefix match moves into the `LIKE` below rather than staying a JS `.find`
+ * over every candidate (#606): `key.model` is a configured alias (`gemini-3.7-flash`),
+ * never attacker input, so `${key.model}%` composes safely the same way `period`'s own
+ * `LIKE` prefix does above.
  */
 export function findReusableRun(db: Db, tenantId: string, key: ReuseKey): AiRunRow | null {
   const provider = resolvedIntegrations(db, tenantId).ai.provider
-  const candidates = db
-    .select()
-    .from(aiRuns)
-    .where(
-      and(
-        eq(aiRuns.tenantId, tenantId),
-        eq(aiRuns.provider, provider),
-        eq(aiRuns.kind, key.kind),
-        eq(aiRuns.period, key.period),
-        eq(aiRuns.locale, key.locale),
-        eq(aiRuns.payloadHash, key.payloadHash),
-        key.promptId === null ? isNull(aiRuns.promptId) : eq(aiRuns.promptId, key.promptId),
-        eq(aiRuns.status, 'ok'),
-      ),
-    )
-    .orderBy(desc(aiRuns.createdAt))
-    .all()
-
-  return candidates.find((row) => row.model.startsWith(key.model)) ?? null
+  return (
+    db
+      .select()
+      .from(aiRuns)
+      .where(
+        and(
+          eq(aiRuns.tenantId, tenantId),
+          eq(aiRuns.provider, provider),
+          eq(aiRuns.kind, key.kind),
+          eq(aiRuns.period, key.period),
+          eq(aiRuns.locale, key.locale),
+          eq(aiRuns.payloadHash, key.payloadHash),
+          key.promptId === null ? isNull(aiRuns.promptId) : eq(aiRuns.promptId, key.promptId),
+          eq(aiRuns.status, 'ok'),
+          like(aiRuns.model, `${key.model}%`),
+        ),
+      )
+      .orderBy(desc(aiRuns.createdAt))
+      .limit(1)
+      .get() ?? null
+  )
 }
 
 /**

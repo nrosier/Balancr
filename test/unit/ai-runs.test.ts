@@ -316,6 +316,14 @@ describe('findReusableRun', () => {
     expect(findReusableRun(db, tenantId, key())).toBeNull()
   })
 
+  it('matches a stored snapshot beyond the alias it was asked for (#606)', () => {
+    // `source().model` is the exact answer Google gave; `key().model` is the
+    // configured alias — the whole reason this is a prefix match rather than
+    // equality.
+    const id = recordRun(db, tenantId, source({ model: `${MODEL}-002` }))
+    expect(findReusableRun(db, tenantId, key())?.id).toBe(id)
+  })
+
   it('misses when promptId differs', () => {
     recordRun(db, tenantId, source({ promptId: promptB }))
     expect(findReusableRun(db, tenantId, key())).toBeNull()

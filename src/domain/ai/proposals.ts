@@ -32,7 +32,7 @@
  * plus its numbers — and breaks it only for the budget nudge, which reads a note
  * nobody could anticipate and so has no code to offer. See `ProposalWhy`.
  */
-import { and, asc, desc, eq, isNotNull, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, like, lte } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   fetchTransaction,
@@ -583,6 +583,12 @@ export function pendingProposals(db: Db, tenantId: string, limit = 50): Proposal
  * `createProposal`'s supersede-on-same-target behaviour is what lets the nudge reuse
  * this set directly: adjusting one just means creating a new proposal for the same
  * `(type, targetRef)`, which cleanly expires the row this reads.
+ *
+ * The month lives inside `targetRef` (`encodeBudgetTarget`), not its own column, so it
+ * is matched with a `LIKE` suffix rather than a second `decodeBudgetTarget` per row
+ * (#606) — `%:${month}` finds exactly the rows whose *last* colon-separated segment is
+ * `month`, the same rightmost split `decodeBudgetTarget` itself uses, and `month`'s
+ * `YYYY-MM` shape holds no `%`/`_` for that pattern to misread as a wildcard.
  */
 export function pendingBudgetProposals(db: Db, tenantId: string, month: string): ProposalRow[] {
   return db
@@ -593,11 +599,11 @@ export function pendingBudgetProposals(db: Db, tenantId: string, month: string):
         eq(proposals.status, 'pending'),
         eq(proposals.type, 'budget_amount.set'),
         eq(proposals.tenantId, tenantId),
+        like(proposals.targetRef, `%:${month}`),
       ),
     )
     .orderBy(asc(proposals.createdAt), asc(proposals.id))
     .all()
-    .filter((row) => decodeBudgetTarget(row.targetRef).month === month)
 }
 
 /** Everything that happened to one target, newest first. */
