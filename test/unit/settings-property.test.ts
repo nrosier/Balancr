@@ -185,6 +185,15 @@ describe('PATCH /api/settings/property', () => {
     expect(loadProperties(ctx.db, tenantId).properties).toEqual([])
   })
 
+  it('accepts kind "owned", not just "primary"/"rental" (#658)', async () => {
+    const res = await send('/api/settings/property', {
+      properties: [{ ...BODY.properties[0], kind: 'owned' as const }],
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().property.properties[0]?.kind).toBe('owned')
+  })
+
   it('round-trips a valid rent category link', async () => {
     seedCategory('cat-rent', { isIncome: true })
     const res = await send('/api/settings/property', {

@@ -130,7 +130,13 @@ import {
   TooManyLoansError,
   updateLoan,
 } from '../../domain/loan/loans.ts'
-import { InvalidCategoryLinkError, loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
+import {
+  InvalidCategoryLinkError,
+  loadProperties,
+  PROPERTY_KEY,
+  propertyKinds,
+  saveProperties,
+} from '../../domain/property/properties.ts'
 import {
   AI_VISIBILITY_CHOICES,
   COICOP_CHOICES,
@@ -422,7 +428,7 @@ const propertyPatchRequest = z.strictObject({
   properties: z.array(
     z.strictObject({
       id: z.string(),
-      kind: z.enum(['primary', 'rental']).optional(),
+      kind: z.enum(propertyKinds).optional(),
       label: z.string().optional(),
       propertyValueCents: z.number().int().nullable().optional(),
       rentCents: z.number().int().nullable().optional(),
