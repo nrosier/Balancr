@@ -3,10 +3,15 @@
  *
  * Three rules, each with a failure it exists to prevent:
  *
- *  - **Everything is serialised through one queue.** Actual's API is a local sync
- *    engine over a SQLite cache with no documented concurrency guarantees, and
- *    the nightly pass and an operator pressing "Sync now" will overlap
- *    eventually. One queue for all jobs, not one per job.
+ *  - **Every tenant's jobs are serialised through that tenant's own queue.**
+ *    Actual's API is a local sync engine over a SQLite cache with no documented
+ *    concurrency guarantees, and the nightly pass and an operator pressing "Sync
+ *    now" will overlap eventually — for that one tenant. One queue per tenant,
+ *    not one per job, and not one shared across every tenant either: #371 moved
+ *    each tenant's Actual calls into their own worker process with their own
+ *    module state (`adapters/actual/client.ts`'s `workers` map, which this
+ *    mirrors), so two tenants' jobs have had nothing left to protect each other
+ *    from since then (#602/Q8).
  *  - **A job never throws at its caller.** The ticker is the only thing keeping
  *    this app's data fresh; an unhandled rejection from a Ghostfolio timeout
  *    would take it down and nothing would notice until someone opened a page and
@@ -22,13 +27,24 @@ import { allTenantIds } from '../db/tenant.ts'
 import { config } from '../config.ts'
 import { logger } from '../logger.ts'
 import type { Logger } from '../logger.ts'
-import { createSerialiser } from '../util/serialise.ts'
+import { createSerialiser, type Serialiser } from '../util/serialise.ts'
 import { describeSchedule, isDue, nextRunAt, type Schedule } from './schedule.ts'
 
 const log = logger.child({ module: 'jobs' })
 
-/** Shared by every job in the process. See the header. */
-const queue = createSerialiser()
+/**
+ * One serial queue per tenant, built lazily and kept for the process's life —
+ * the same shape as `adapters/actual/client.ts`'s `workers` map. See the header.
+ */
+const queues = new Map<string, Serialiser>()
+
+function tenantQueue(tenantId: string): Serialiser {
+  const existing = queues.get(tenantId)
+  if (existing !== undefined) return existing
+  const created = createSerialiser()
+  queues.set(tenantId, created)
+  return created
+}
 
 /**
  * The jobs this process has started and not yet finished — queued ones included.
@@ -40,8 +56,8 @@ const queue = createSerialiser()
  * it accept one that will sit behind three others.
  *
  * So the authority on "is the pipeline busy" is this set, which is only ever true of
- * the process asking. It is mutated **synchronously** in `runJob`, before the queue
- * is touched, because the check and the claim have to be one step: two requests
+ * the process asking. It is mutated **synchronously** in `runJob`, before that
+ * tenant's queue is touched, because the check and the claim have to be one step: two requests
  * arriving in the same tick would both read an empty set otherwise, and the second
  * would be accepted into a queue it was supposed to be refused from.
  *
@@ -262,7 +278,7 @@ export function runJob(
   // Before the queue, and synchronously. See `inFlight`.
   inFlight.add(inFlightKey(tenantId, job.name))
 
-  return queue(async () => {
+  return tenantQueue(tenantId)(async () => {
     const jobLog = log.child({ job: job.name, tenantId })
     const started = Date.now()
     const runId = crypto.randomUUID()
