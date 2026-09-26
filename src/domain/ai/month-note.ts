@@ -41,18 +41,12 @@ const monthNotesSchema = z.record(z.string(), monthNoteTextSchema).prefault({})
 
 type MonthNotes = z.infer<typeof monthNotesSchema>
 
-function loadAll(db: Db, tenantId: string): MonthNotes {
-  const row = db
-    .select({ valueJson: settings.valueJson })
-    .from(settings)
-    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, MONTH_NOTE_KEY)))
-    .get()
-
-  if (!row) return {}
+function parseNotes(valueJson: string | undefined): MonthNotes {
+  if (valueJson === undefined) return {}
 
   let raw: unknown
   try {
-    raw = JSON.parse(row.valueJson)
+    raw = JSON.parse(valueJson)
   } catch (error) {
     log.error({ err: error, key: MONTH_NOTE_KEY }, 'the stored month notes are not JSON; using none')
     return {}
@@ -69,6 +63,16 @@ function loadAll(db: Db, tenantId: string): MonthNotes {
   return parsed.data
 }
 
+function loadAll(db: Db, tenantId: string): MonthNotes {
+  const row = db
+    .select({ valueJson: settings.valueJson })
+    .from(settings)
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, MONTH_NOTE_KEY)))
+    .get()
+
+  return parseNotes(row?.valueJson)
+}
+
 /** `month` is `YYYY-MM` or, for a whole-year note (#345), `YYYY`. */
 function assertPeriod(month: string): string {
   return isYear(month) ? month : assertMonth(month)
@@ -83,18 +87,29 @@ export function saveMonthNote(db: Db, tenantId: string, month: string, text: str
   assertPeriod(month)
   const trimmed = monthNoteTextSchema.parse(text.trim())
 
-  const all = loadAll(db, tenantId)
-  if (trimmed === '') delete all[month]
-  else all[month] = trimmed
+  // Read-modify-write on one shared JSON blob (#590): without a transaction, two
+  // concurrent saves for different months both read the same map, and the second
+  // write silently overwrites the first save's key with a stale copy.
+  db.transaction((tx) => {
+    const row = tx
+      .select({ valueJson: settings.valueJson })
+      .from(settings)
+      .where(and(eq(settings.tenantId, tenantId), eq(settings.key, MONTH_NOTE_KEY)))
+      .get()
 
-  const valueJson = JSON.stringify(all)
-  db.insert(settings)
-    .values({ tenantId, key: MONTH_NOTE_KEY, valueJson })
-    .onConflictDoUpdate({
-      target: [settings.tenantId, settings.key],
-      set: { valueJson, updatedAt: new Date() },
-    })
-    .run()
+    const all = parseNotes(row?.valueJson)
+    if (trimmed === '') delete all[month]
+    else all[month] = trimmed
+
+    const valueJson = JSON.stringify(all)
+    tx.insert(settings)
+      .values({ tenantId, key: MONTH_NOTE_KEY, valueJson })
+      .onConflictDoUpdate({
+        target: [settings.tenantId, settings.key],
+        set: { valueJson, updatedAt: new Date() },
+      })
+      .run()
+  })
 
   return trimmed
 }
