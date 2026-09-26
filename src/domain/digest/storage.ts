@@ -35,3 +35,12 @@ export function loadDigestPdf(db: Db, tenantId: string): StoredDigestPdf | null 
     .get()
   return row ?? null
 }
+
+/**
+ * Drops this tenant's stored digest, e.g. once the preference no longer calls for
+ * one (#572) — otherwise the last PDF generated under `pdf` mode stays downloadable
+ * forever after switching to `email` or `off`.
+ */
+export function deleteDigestPdf(db: Db, tenantId: string): void {
+  db.delete(digestPdfs).where(eq(digestPdfs.tenantId, tenantId)).run()
+}

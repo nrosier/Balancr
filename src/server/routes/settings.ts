@@ -94,7 +94,7 @@ import {
   MAX_DIGEST_RECIPIENTS,
   saveDigestPreference,
 } from '../../domain/digest/preference.ts'
-import { loadDigestPdf } from '../../domain/digest/storage.ts'
+import { deleteDigestPdf, loadDigestPdf } from '../../domain/digest/storage.ts'
 import {
   createDebt,
   debtKinds,
@@ -1103,12 +1103,20 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
  * `loadDigestPdf` is called only to check existence — its bytes are never put on
  * this wire; they travel solely through `GET /api/settings/digest/pdf`'s binary
  * response.
+ *
+ * `recipientEmails` is owner-only (#573): every other secret-shaped field on this
+ * page masks to a `*Configured: boolean` for a viewer, and a recipient list is the
+ * one place a plain value would otherwise round-trip to a role that cannot act on
+ * it and did not choose to be in it. `recipientCount` carries the same information
+ * a viewer is allowed to see either way, so the panel can still say "3 recipients"
+ * rather than looking empty.
  */
-function digestSetting(db: Db, tenantId: string): Settings['digest'] {
+function digestSetting(db: Db, tenantId: string, isOwner: boolean): Settings['digest'] {
   const preference = loadDigestPreference(db, tenantId)
   return {
     mode: preference.mode,
-    recipientEmails: preference.recipientEmails,
+    recipientEmails: isOwner ? preference.recipientEmails : [],
+    recipientCount: preference.recipientEmails.length,
     locale: preference.locale ?? null,
     hasPdf: loadDigestPdf(db, tenantId) !== null,
   }
@@ -1180,7 +1188,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       exceeded: budget.exceeded,
       history: loadSpendHistory(db, user.tenantId),
     },
-    digest: digestSetting(db, user.tenantId),
+    digest: digestSetting(db, user.tenantId, user.role === 'owner'),
   })
 }
 
@@ -1436,6 +1444,11 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       }
       throw error
     }
+
+    // The stored PDF is a "pdf" mode artifact, not an archive independent of the
+    // current preference (#572) — once the household stops asking for it, the last
+    // one generated should stop being downloadable too.
+    if (before.mode === 'pdf' && after.mode !== 'pdf') deleteDigestPdf(db, user.tenantId)
 
     recordAudit(db, {
       tenantId: user.tenantId,
