@@ -28,13 +28,26 @@ function monthLabels(history: readonly { date: string }[], locale: string): stri
   })
 }
 
+/** More points than a 500x220px chart can render usefully (#609). */
+const DIGEST_NET_WORTH_MAX_POINTS = 180
+
+/** Evenly-spaced points, always keeping the last one so the trend still ends "now". */
+function downsample<T>(points: readonly T[], maxPoints: number): T[] {
+  if (points.length <= maxPoints) return [...points]
+  const step = Math.ceil(points.length / maxPoints)
+  const sampled = points.filter((_, index) => index % step === 0)
+  const last = points.at(-1)
+  if (last !== undefined && sampled.at(-1) !== last) sampled[sampled.length - 1] = last
+  return sampled
+}
+
 /**
  * Net worth over time. `null` when there is no history yet — a household on its
  * first month has nothing to plot, and an empty chart reads as a bug rather than
  * as "you just started".
  */
 export function netWorthTrendOption(db: Db, tenantId: string, locale: string): EChartsCoreOption | null {
-  const history = loadNetWorthHistory(db, tenantId)
+  const history = downsample(loadNetWorthHistory(db, tenantId), DIGEST_NET_WORTH_MAX_POINTS)
   if (history.length === 0) return null
 
   const labels = monthLabels(history, locale)
