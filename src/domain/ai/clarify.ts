@@ -26,7 +26,7 @@
  * is the line between this module and `proposals.ts`, where the value is the
  * *model's* and therefore does need one.
  */
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { CLARIFICATION_GUESS_VALUES } from './schemas.ts'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -360,49 +360,57 @@ export function openQuestions(
   const rows = db
     .select({ queue: clarificationQueue })
     .from(clarificationQueue)
-    .where(and(eq(clarificationQueue.tenantId, tenantId), eq(clarificationQueue.status, 'open')))
+    .where(
+      and(
+        eq(clarificationQueue.tenantId, tenantId),
+        eq(clarificationQueue.status, 'open'),
+        // Same test as `isCode` below, pushed into SQL: a row a downgrade has
+        // orphaned should not win a slot in the LIMIT before being dropped (#606).
+        inArray(clarificationQueue.questionCode, CLARIFICATION_CODES),
+      ),
+    )
+    .orderBy(desc(clarificationQueue.materialityBp), asc(clarificationQueue.createdAt))
+    .limit(limit)
     .all()
 
   const names = loadCategoryNames(db, tenantId, locale)
 
-  return rows
-    .filter((row) => isCode(row.queue.questionCode))
-    .sort(
-      (a, b) =>
-        b.queue.materialityBp - a.queue.materialityBp ||
-        a.queue.createdAt.getTime() - b.queue.createdAt.getTime(),
-    )
-    .slice(0, limit)
-    .map(({ queue }) => {
-      const code = queue.questionCode as ClarificationCode
-      const categoryName = names.get(queue.categoryId) ?? queue.categoryId
-      const guess = storedGuess(queue)
-      const choices = choicesFor(code, locale)
-      return {
-        id: queue.id,
-        categoryId: queue.categoryId,
-        categoryName,
-        code,
-        question: t(locale, `ai:clarify.${code}`, { category: categoryName }),
-        guess,
-        guessLabel:
-          choices !== null && choices.some((choice) => choice.value === guess)
-            ? answerLabel(guess, locale)
-            : null,
-        choices,
-        materialityBp: queue.materialityBp,
-        createdAt: queue.createdAt,
-      }
-    })
+  return rows.map(({ queue }) => {
+    const code = queue.questionCode as ClarificationCode
+    const categoryName = names.get(queue.categoryId) ?? queue.categoryId
+    const guess = storedGuess(queue)
+    const choices = choicesFor(code, locale)
+    return {
+      id: queue.id,
+      categoryId: queue.categoryId,
+      categoryName,
+      code,
+      question: t(locale, `ai:clarify.${code}`, { category: categoryName }),
+      guess,
+      guessLabel:
+        choices !== null && choices.some((choice) => choice.value === guess)
+          ? answerLabel(guess, locale)
+          : null,
+      choices,
+      materialityBp: queue.materialityBp,
+      createdAt: queue.createdAt,
+    }
+  })
 }
 
-/** How many questions are waiting. For a badge, without loading the cards. */
+/**
+ * How many questions are waiting. For a badge, without loading the cards.
+ *
+ * `SELECT count(*)` rather than reading the rows, matching `countRunsSince` (#606):
+ * this runs on every page load and the queue only grows.
+ */
 export function openQuestionCount(db: Db, tenantId: string): number {
-  return db
-    .select({ id: clarificationQueue.id })
+  const row = db
+    .select({ count: sql<number>`count(*)` })
     .from(clarificationQueue)
     .where(and(eq(clarificationQueue.tenantId, tenantId), eq(clarificationQueue.status, 'open')))
-    .all().length
+    .get()
+  return row?.count ?? 0
 }
 
 // ---------------------------------------------------------------------------
