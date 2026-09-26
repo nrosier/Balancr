@@ -2096,6 +2096,19 @@ export const settingsSchema = z.object({
     /** Newest first, so the page can show this month and the trend behind it. */
     history: z.array(spendMonthSchema),
   }),
+  /**
+   * The monthly digest preference (#52) — `off` by default — plus whether a
+   * previously generated PDF is sitting on disk waiting to be downloaded.
+   *
+   * `locale` is `null` when the preference follows the owner's own account
+   * language rather than overriding it; see `domain/digest/preference.ts`.
+   */
+  digest: z.object({
+    mode: z.enum(['off', 'pdf', 'email']),
+    recipientEmails: z.array(z.string()),
+    locale: z.string().nullable(),
+    hasPdf: z.boolean(),
+  }),
 })
 
 /** `GET /api/settings/prompts/:id` — one version, text included. */

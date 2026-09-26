@@ -64,7 +64,7 @@ const DELETE = 127
  * character class so that the source of a sanitiser contains no control character
  * of its own.
  */
-function stripControl(text: string): string {
+export function stripControl(text: string): string {
   let out = ''
   for (const char of text) {
     const code = char.codePointAt(0) ?? SPACE
@@ -158,13 +158,18 @@ function inline(text: string, shouldMaskAmounts: boolean): string {
   )
 }
 
-type BlockKind = 'p' | 'ul' | 'ol'
+export type BlockKind = 'p' | 'ul' | 'ol'
 
 /**
  * One rendered block. A heading holds a single line; the others hold their lines,
  * which for a paragraph are joined with a space and for a list are one per item.
+ *
+ * `parts`/`text` are the raw markdown for that block — `**bold**`, `` `code` `` and
+ * `_em_` markers included, amounts not yet held out. `inline()` is what turns that
+ * into escaped, masked HTML; a caller that stops at `tokenize` (the digest PDF, see
+ * `renderNarrativeBlocks`) is choosing to interpret the raw text itself instead.
  */
-type Token = { kind: 'h3'; text: string } | { kind: BlockKind; parts: string[] }
+export type Token = { kind: 'h3'; text: string } | { kind: BlockKind; parts: string[] }
 
 /**
  * Lines → blocks.
@@ -174,7 +179,7 @@ type Token = { kind: 'h3'; text: string } | { kind: BlockKind; parts: string[] }
  * between them, and the second reading should not produce an `<h3>` containing the
  * whole month.
  */
-function tokenize(lines: readonly string[]): Token[] {
+export function tokenize(lines: readonly string[]): Token[] {
   const tokens: Token[] = []
   // What the previous non-blank line opened. A blank line closes it, which is what
   // separates two adjacent paragraphs or two adjacent lists.

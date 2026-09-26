@@ -11,13 +11,21 @@
  * nightly pass would drift an hour every spring and run in daylight, and around
  * a DST change a UTC comparison can also skip or double a day.
  */
-import { dateIn, hourIn } from '../util/month.ts'
+import { dateIn, daysInMonth, hourIn } from '../util/month.ts'
 
 export type Schedule =
   /** Every `minutes` since the last run. */
   | { readonly kind: 'interval'; readonly minutes: number }
   /** Once per local calendar day, at or after `hour` local time. */
   | { readonly kind: 'daily'; readonly hour: number }
+  /**
+   * Once per local calendar month, at or after `day`/`hour` local time.
+   *
+   * `day` is clamped to the month's actual length: `day: 31` runs on the 28th (or
+   * 29th) in February rather than never, the same way a monthly digest is expected
+   * to behave when the calendar does not have the day it was told to use.
+   */
+  | { readonly kind: 'monthly'; readonly day: number; readonly hour: number }
 
 /**
  * Whether `schedule` is due at `now`.
@@ -45,6 +53,16 @@ export function isDue(
         dateIn(lastRunAt, timeZone) !== dateIn(now, timeZone) &&
         hourIn(now, timeZone) >= schedule.hour
       )
+    case 'monthly': {
+      const today = dateIn(now, timeZone)
+      const currentMonth = today.slice(0, 7)
+      const dueDay = Math.min(schedule.day, daysInMonth(currentMonth))
+      return (
+        dateIn(lastRunAt, timeZone).slice(0, 7) !== currentMonth &&
+        Number(today.slice(8, 10)) >= dueDay &&
+        hourIn(now, timeZone) >= schedule.hour
+      )
+    }
   }
 }
 
@@ -79,9 +97,14 @@ export function nextRunAt(
   return null
 }
 
-/** `every 60m` / `daily at 03:00` — for a log line and the settings page. */
+/** `every 60m` / `daily at 03:00` / `monthly on day 4 at 03:00` — for a log line and the settings page. */
 export function describeSchedule(schedule: Schedule): string {
-  return schedule.kind === 'interval'
-    ? `every ${schedule.minutes}m`
-    : `daily at ${String(schedule.hour).padStart(2, '0')}:00`
+  switch (schedule.kind) {
+    case 'interval':
+      return `every ${schedule.minutes}m`
+    case 'daily':
+      return `daily at ${String(schedule.hour).padStart(2, '0')}:00`
+    case 'monthly':
+      return `monthly on day ${schedule.day} at ${String(schedule.hour).padStart(2, '0')}:00`
+  }
 }

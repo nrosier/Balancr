@@ -160,6 +160,17 @@ export const AUDIT_ACTIONS = [
    */
   'settings.goal',
   /**
+   * How, and to whom, the monthly digest is delivered (#52) — off, a downloadable
+   * PDF, or an emailed one, plus the recipient list and locale override.
+   *
+   * Its own action for the same reason `settings.custodyShared` has one: a trail
+   * that should say which preference changed rather than leaving a reader to open
+   * the payload to find out — and this is the one settings write that decides
+   * whether an email leaves the machine every month, same reasoning as
+   * `settings.aiVisibility`.
+   */
+  'settings.digest',
+  /**
    * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
    *
    * `before`/`after` never carry a secret — only the same `*Configured` shape the

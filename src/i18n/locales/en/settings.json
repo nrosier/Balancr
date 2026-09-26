@@ -261,6 +261,42 @@
     "save": "Save this card",
     "title": "Credit cards"
   },
+  "digest": {
+    "document": {
+      "budgetChart": "Budget versus actual",
+      "generatedAt": "Generated {{when}}",
+      "netWorthChart": "Net worth",
+      "noNarrative": "No narrative is available for this month yet.",
+      "title": "Monthly digest — {{month}}"
+    },
+    "download": "Download the latest digest",
+    "email": {
+      "body": "Attached is your Balancr monthly digest for {{month}}.",
+      "filenamePrefix": "balancr-digest",
+      "subject": "Your Balancr monthly digest — {{month}}"
+    },
+    "hint": "A PDF summary of the month's narrative and key charts, generated automatically once the catch-up window closes. Downloadable, or emailed to whoever should get it.",
+    "locale": {
+      "auto": "Follow my account language",
+      "label": "Language"
+    },
+    "mode": {
+      "email": "Email me the PDF",
+      "label": "Delivery",
+      "off": "Off",
+      "pdf": "Generate a PDF to download"
+    },
+    "none": "No digest has been generated yet.",
+    "recipients": {
+      "add": "Add another recipient",
+      "hint": "Up to five email addresses.",
+      "label": "Recipients",
+      "placeholder": "name@example.com",
+      "remove": "Remove this recipient"
+    },
+    "save": "Save",
+    "title": "Monthly digest"
+  },
   "goals": {
     "add": "Add a goal",
     "archive": {
@@ -425,6 +461,7 @@
     "aiLog": "AI log",
     "benchmark": "Benchmark",
     "debts": "Credit cards",
+    "digest": "Monthly digest",
     "general": "General",
     "goals": "Goals",
     "integrations": "Integrations",

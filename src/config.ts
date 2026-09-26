@@ -264,6 +264,26 @@ const EnvSchema = z.object({
    */
   BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 
+  // Digest email (#52)
+  /**
+   * The SMTP relay the monthly digest is mailed through. Absent means the digest's
+   * `email` mode is unavailable — the same off-switch-by-absence pattern as
+   * `BACKUP_PASSPHRASE` above, no separate boolean beside it.
+   *
+   * Unlike `ACTUAL_SERVER_URL`/`GHOSTFOLIO_URL`, this is not reached through
+   * `fetch`: nodemailer speaks SMTP directly over `node:net`/`node:tls`, which
+   * `egress.ts`'s allowlist does not wrap. Same treatment as that pair, though —
+   * an operator-typed relay address, not attacker-controlled input.
+   */
+  SMTP_HOST: optionalText(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  /** Whether to connect over TLS from the start (port 465) rather than upgrade via STARTTLS. */
+  SMTP_SECURE: bool('false'),
+  SMTP_USER: optionalText(),
+  SMTP_PASS: optionalText(),
+  /** The `From:` address on a digest email. Required once `SMTP_HOST` is set. */
+  SMTP_FROM: optionalText(),
+
   // Investing
   /**
    * The file listing the funds advice may propose. Absent means it may propose nothing.
@@ -462,6 +482,10 @@ function crossFieldErrors(env: Env): string[] {
     )
   }
 
+  if (env.SMTP_HOST !== undefined && env.SMTP_FROM === undefined) {
+    errors.push('SMTP_HOST is set but SMTP_FROM is not — the digest email needs a From: address')
+  }
+
   if (!env.SUPPORTED_LOCALES.includes(env.DEFAULT_LOCALE)) {
     errors.push(
       `DEFAULT_LOCALE="${env.DEFAULT_LOCALE}" is not in SUPPORTED_LOCALES=[${env.SUPPORTED_LOCALES.join(', ')}]`,
@@ -511,6 +535,7 @@ interface Derived {
   readonly oidcEnabled: boolean
   readonly aiCredentialed: boolean
   readonly aiConfigured: boolean
+  readonly smtpConfigured: boolean
 }
 
 function load(): Readonly<Env> & Derived {
@@ -555,6 +580,10 @@ function load(): Readonly<Env> & Derived {
      */
     aiCredentialed: aiCredential(parsed.data).value !== undefined,
     aiConfigured: parsed.data.AI_ENABLED && aiCredential(parsed.data).value !== undefined,
+    // Mirrors `aiConfigured`'s absence-is-the-switch reasoning: `SMTP_HOST` unset
+    // means the digest's `email` mode is unavailable, and the cross-field check
+    // above already guarantees `SMTP_FROM` is set whenever this is true.
+    smtpConfigured: parsed.data.SMTP_HOST !== undefined,
   })
 }
 
@@ -615,6 +644,13 @@ export function configSummary(): Record<string, unknown> {
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
     BACKUP_KEEP: config.BACKUP_KEEP,
+    smtpConfigured: config.smtpConfigured,
+    SMTP_HOST: config.SMTP_HOST ?? 'unset',
+    SMTP_PORT: config.SMTP_PORT,
+    SMTP_SECURE: config.SMTP_SECURE,
+    SMTP_USER: config.SMTP_USER ?? 'unset',
+    SMTP_PASS: secret(config.SMTP_PASS),
+    SMTP_FROM: config.SMTP_FROM ?? 'unset',
     FUND_UNIVERSE_PATH: config.FUND_UNIVERSE_PATH,
     FUND_UNIVERSE_MAX_AGE_DAYS: config.FUND_UNIVERSE_MAX_AGE_DAYS,
     TAX_RULES_PATH: config.TAX_RULES_PATH,

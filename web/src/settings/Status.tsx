@@ -107,6 +107,7 @@ const REFRESHABLE = [
   'networth',
   'backfill',
   'signals',
+  'digest',
   'ai-runs-retention',
   'backup',
 ]

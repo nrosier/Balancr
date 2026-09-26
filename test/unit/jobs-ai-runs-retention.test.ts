@@ -12,6 +12,7 @@ import { registry } from '../../src/jobs/index.ts'
 import { aiJob } from '../../src/jobs/ai.ts'
 import { aiRunsRetentionJob } from '../../src/jobs/ai-runs-retention.ts'
 import { backupJob } from '../../src/jobs/backup.ts'
+import { digestJob } from '../../src/jobs/digest.ts'
 import { loadRun, recordRun } from '../../src/domain/ai/runs.ts'
 import type { Job, JobContext } from '../../src/jobs/runner.ts'
 import { noopStep } from '../fixtures/job-context.ts'
@@ -62,11 +63,13 @@ async function freshJob(env: Record<string, string | undefined>): Promise<Job> {
 }
 
 describe('aiRunsRetentionJob', () => {
-  it('sits between ai and backup in the registry', () => {
+  it('sits between digest and backup in the registry', () => {
     const aiIndex = registry.indexOf(aiJob)
+    const digestIndex = registry.indexOf(digestJob)
     const retentionIndex = registry.indexOf(aiRunsRetentionJob)
     const backupIndex = registry.indexOf(backupJob)
-    expect(retentionIndex).toBe(aiIndex + 1)
+    expect(digestIndex).toBe(aiIndex + 1)
+    expect(retentionIndex).toBe(digestIndex + 1)
     expect(backupIndex).toBe(retentionIndex + 1)
   })
 

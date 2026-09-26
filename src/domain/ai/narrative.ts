@@ -48,7 +48,7 @@ import { aiNarratives } from '../../db/schema.ts'
 import { resolvedIntegrations } from '../../db/tenant-integrations.ts'
 import { t } from '../../i18n/index.ts'
 import { logger } from '../../logger.ts'
-import { isBlankMarkdown, renderMarkdown } from '../../util/markdown.ts'
+import { isBlankMarkdown, renderMarkdown, stripControl, tokenize, type Token } from '../../util/markdown.ts'
 import { prepareMonth, type AnalysisEstimate } from './analysis.ts'
 import { checkBudget, spendMonthOf } from './budget.ts'
 import { hashPayload } from './payload-hash.ts'
@@ -430,6 +430,24 @@ export function renderNarrative(db: Db, tenantId: string, row: NarrativeRow): st
   const prepared = prepareMonth(db, tenantId, row.period, row.locale)
   const names = prepared?.nameForLabel ?? new Map<string, string>()
   return renderMarkdown(substituteLabels(row.bodyMd, names, row.locale), { maskAmounts: true })
+}
+
+/**
+ * A stored narrative → structured blocks, for the digest PDF (#52).
+ *
+ * Same label-substitution step as `renderNarrative`, but stops at `tokenize`
+ * instead of going on to `renderMarkdown`: there is no HTML to sanitise for a PDF,
+ * and pdfkit draws text directly rather than through a DOM, so the escape-and-emit
+ * half of the markdown renderer has nothing to do here. `parts`/`text` on the
+ * returned tokens are still raw markdown — `**bold**`, `` `code` `` — for
+ * `digest/pdf.ts` to walk itself; unlike the web page, a downloaded PDF has no
+ * "reveal amounts" toggle to render for, so amounts are never masked.
+ */
+export function renderNarrativeBlocks(db: Db, tenantId: string, row: NarrativeRow): Token[] {
+  const prepared = prepareMonth(db, tenantId, row.period, row.locale)
+  const names = prepared?.nameForLabel ?? new Map<string, string>()
+  const substituted = substituteLabels(row.bodyMd, names, row.locale)
+  return tokenize(stripControl(substituted.replace(/\r\n?/g, '\n')).split('\n'))
 }
 
 // ---------------------------------------------------------------------------

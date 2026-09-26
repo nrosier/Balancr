@@ -13,6 +13,7 @@
  */
 import { sql } from 'drizzle-orm'
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -1636,6 +1637,25 @@ export const tenantIntegrations = sqliteTable('tenant_integrations', {
 })
 
 /**
+ * The latest generated monthly digest PDF (#52), one row per tenant.
+ *
+ * Overwritten every month (`onConflictDoUpdate` on `tenantId`) rather than kept as
+ * history: the settings page offers "download the latest digest", not an archive, so
+ * there is never more than one row to answer that with and no retention job is
+ * needed for it — the same trade `tenantIntegrations` above makes for a different
+ * reason.
+ */
+export const digestPdfs = sqliteTable('digest_pdfs', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id),
+  /** The month the PDF describes, `YYYY-MM`. */
+  period: text().notNull(),
+  pdfBytes: blob('pdf_bytes', { mode: 'buffer' }).notNull(),
+  createdAt: createdAt(),
+})
+
+/**
  * The account kinds `account_map.kind` may hold, as a type.
  *
  * Derived from the column rather than declared beside it: a kind added to the
@@ -1680,4 +1700,5 @@ export const schema = {
   goals,
   tenantIntegrations,
   upstreamProbes,
+  digestPdfs,
 }

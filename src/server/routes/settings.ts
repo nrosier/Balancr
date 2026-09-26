@@ -89,6 +89,13 @@ import {
   saveHousehold,
 } from '../../domain/benchmark/household.ts'
 import {
+  DIGEST_KEY,
+  loadDigestPreference,
+  MAX_DIGEST_RECIPIENTS,
+  saveDigestPreference,
+} from '../../domain/digest/preference.ts'
+import { loadDigestPdf } from '../../domain/digest/storage.ts'
+import {
   createDebt,
   debtKinds,
   deleteDebt,
@@ -350,6 +357,23 @@ const householdPatchRequest = z.strictObject({
    * can silently set this is the one that cannot be changing anybody's mind.
    */
   sharedCostDirection: z.enum(SHARED_COST_DIRECTIONS).optional(),
+})
+
+/**
+ * The monthly digest's delivery preference (#52): whether it is generated at all,
+ * and if so, downloaded as a PDF or mailed.
+ *
+ * Written wholesale, like the household roster above: omitting `recipientEmails`
+ * or `locale` *replaces* rather than preserves, landing `digestPreferenceSchema`'s
+ * own defaults (`[]`, "follow my account language"). The cross-field rule —
+ * `recipientEmails` required when `mode` is `"email"` — lives in that schema and
+ * is enforced by `saveDigestPreference`, the same division `advicePatchRequest`
+ * explains.
+ */
+const digestPatchRequest = z.strictObject({
+  mode: z.enum(['off', 'pdf', 'email']).optional(),
+  recipientEmails: z.array(z.email()).max(MAX_DIGEST_RECIPIENTS).optional(),
+  locale: localeRequest.optional(),
 })
 
 /**
@@ -1067,6 +1091,24 @@ function loadIntegrations(db: Db, tenantId: string): IntegrationsSetting {
   })
 }
 
+/**
+ * The digest preference (#52), plus whether a PDF from a past run is stored and
+ * ready to download.
+ *
+ * `loadDigestPdf` is called only to check existence — its bytes are never put on
+ * this wire; they travel solely through `GET /api/settings/digest/pdf`'s binary
+ * response.
+ */
+function digestSetting(db: Db, tenantId: string): Settings['digest'] {
+  const preference = loadDigestPreference(db, tenantId)
+  return {
+    mode: preference.mode,
+    recipientEmails: preference.recipientEmails,
+    locale: preference.locale ?? null,
+    hasPdf: loadDigestPdf(db, tenantId) !== null,
+  }
+}
+
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
@@ -1133,6 +1175,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       exceeded: budget.exceeded,
       history: loadSpendHistory(db, user.tenantId),
     },
+    digest: digestSetting(db, user.tenantId),
   })
 }
 
@@ -1363,6 +1406,60 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     })
 
     return buildSettings(db, request)
+  })
+
+  /**
+   * Whether, and how, this tenant wants the monthly digest (#52).
+   *
+   * Takes effect on the digest's next scheduled run, not immediately — unlike the
+   * roster and the risk profile above, there is nothing here to recompute for the
+   * current page. `saveDigestPreference` replaces the row wholesale, so a patch
+   * without `recipientEmails` or `locale` lands the schema's own defaults, same as
+   * `saveHousehold`.
+   */
+  app.patch('/api/settings/digest', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const patch = parseBody(digestPatchRequest, request.body)
+
+    const before = loadDigestPreference(db, user.tenantId)
+    let after
+    try {
+      after = saveDigestPreference(db, user.tenantId, patch)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      throw error
+    }
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.digest',
+      entity: 'settings',
+      entityRef: DIGEST_KEY,
+      actorId: user.id,
+      before,
+      after,
+    })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * The latest generated digest PDF, for `pdf` mode's "download" link.
+   *
+   * Owner-only, like every other settings read/write on this page — the digest
+   * covers the whole household's finances, not just the requester's own view of
+   * them.
+   */
+  app.get('/api/settings/digest/pdf', (request: FastifyRequest, reply: FastifyReply) => {
+    const user = requireOwner(request)
+    const stored = loadDigestPdf(db, user.tenantId)
+    if (stored === null) throw notFound('No digest has been generated yet.')
+
+    reply.header('Content-Disposition', `attachment; filename="balancr-digest-${stored.period}.pdf"`)
+    reply.type('application/pdf')
+    return stored.pdfBytes
   })
 
   /**
