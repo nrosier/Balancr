@@ -134,8 +134,9 @@ export async function buildDigestPdf(
   const doc = new PDFDocument({ margin: PAGE_MARGIN })
   const chunks: Buffer[] = []
   doc.on('data', (chunk: Buffer) => chunks.push(chunk))
-  const finished = new Promise<Buffer>((resolve) => {
+  const finished = new Promise<Buffer>((resolve, reject) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', reject)
   })
 
   doc

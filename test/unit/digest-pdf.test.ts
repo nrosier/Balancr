@@ -5,7 +5,7 @@
  * markdown survives into structured blocks with the household's own names
  * substituted in, same as `renderNarrative` does for the HTML page.
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -83,5 +83,29 @@ describe('buildDigestPdf', () => {
   it('is null for a locale the narrative was never written in', async () => {
     storeNarrative(db, tenantId, { runId: someRun(), period: MONTH, locale: 'en', bodyMd: 'text' })
     expect(await buildDigestPdf(db, tenantId, MONTH, 'nl')).toBeNull()
+  })
+
+  it('rejects instead of hanging forever when the underlying stream errors (#583)', async () => {
+    // Before the fix, `finished` only ever listened for `'end'` — an `'error'` from
+    // pdfkit's internal stream (a bad SVG, a font problem, disk pressure on whatever
+    // buffers it) left the promise permanently unsettled, and `runJob`'s `await`
+    // waited on it for ever.
+    storeNarrative(db, tenantId, {
+      runId: someRun(),
+      period: MONTH,
+      locale: 'en',
+      bodyMd: '### Overview\n\nNothing unusual this month.',
+    })
+
+    const PDFDocument = (await import('pdfkit')).default
+    const emitError = vi.spyOn(PDFDocument.prototype, 'end').mockImplementation(function (this: {
+      emit: (event: string, error: Error) => void
+    }) {
+      this.emit('error', new Error('stream exploded'))
+    })
+
+    await expect(buildDigestPdf(db, tenantId, MONTH, 'en')).rejects.toThrow('stream exploded')
+
+    emitError.mockRestore()
   })
 })

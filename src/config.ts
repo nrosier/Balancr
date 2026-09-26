@@ -212,6 +212,15 @@ const EnvSchema = z.object({
   /** How many past runs to keep per job before the oldest are pruned. */
   JOB_HISTORY_KEEP: z.coerce.number().int().min(1).max(500).default(50),
   /**
+   * The ceiling on one job's own run, wall-clock (#583/D2) — every job in this
+   * process shares one queue (`jobs/runner.ts`'s header), so a `run()` that never
+   * settles does not just fail its own tenant, it stalls every later job for
+   * every tenant, forever. Generous rather than tight: this bounds a stuck job,
+   * not a slow one, and a real Actual sync against a large household is already
+   * allowed to take minutes.
+   */
+  JOB_TIMEOUT_MINUTES: z.coerce.number().int().min(1).max(120).default(15),
+  /**
    * How long `ai_runs.requestText`/`responseText`/`payloadJson` are kept before
    * being nulled out (#503, #539). The rest of the row — cost, tokens, status —
    * stays forever for billing; only the verbatim-text columns and the payload
@@ -653,6 +662,7 @@ export function configSummary(): Record<string, unknown> {
     JOBS_NIGHTLY_HOUR: config.JOBS_NIGHTLY_HOUR,
     JOBS_HISTORY_MONTHS: config.JOBS_HISTORY_MONTHS,
     JOB_HISTORY_KEEP: config.JOB_HISTORY_KEEP,
+    JOB_TIMEOUT_MINUTES: config.JOB_TIMEOUT_MINUTES,
     AI_RUNS_TEXT_RETENTION_DAYS: config.AI_RUNS_TEXT_RETENTION_DAYS,
     BACKUP_PASSPHRASE: secret(config.BACKUP_PASSPHRASE),
     BACKUP_DIR: config.BACKUP_DIR,
