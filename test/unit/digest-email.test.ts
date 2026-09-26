@@ -46,3 +46,16 @@ describe('the digest SMTP transport (#580)', () => {
     expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({ requireTLS: false }))
   })
 })
+
+describe('digest recipients (#584)', () => {
+  it('bccs every recipient rather than putting them all in a shared To header', async () => {
+    const email = await loadEmailWith({})
+
+    await email.sendDigestEmail(['a@example.test', 'b@example.test'], Buffer.from('%PDF-'), '2026-04', 'en')
+
+    const sendMail = createTransport.mock.results.at(-1)!.value.sendMail as ReturnType<typeof vi.fn>
+    const message = sendMail.mock.calls[0]![0] as { to: unknown; bcc: unknown }
+    expect(message.to).toBe('digest@example.test')
+    expect(message.bcc).toEqual(['a@example.test', 'b@example.test'])
+  })
+})

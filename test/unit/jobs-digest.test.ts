@@ -154,7 +154,9 @@ describe('mode "email"', () => {
     expect(detail).toEqual({ mode: 'email', sent: true, reason: null })
     expect(sendMail).toHaveBeenCalledTimes(1)
     const call = sendMail.mock.calls[0]?.[0]
-    expect(call.to).toEqual(['a@example.test', 'b@example.test'])
+    // Recipients are bcc'd (#584), not put in a shared To: header.
+    expect(call.bcc).toEqual(['a@example.test', 'b@example.test'])
+    expect(call.to).toBe('digest@example.test')
     expect(call.from).toBe('digest@example.test')
     expect(call.attachments[0].content.subarray(0, 5).toString('latin1')).toBe('%PDF-')
     expect(loadDigestPdf(db, tenantId)).toBeNull()

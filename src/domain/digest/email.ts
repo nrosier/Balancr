@@ -48,6 +48,10 @@ export function setMailTransport(next: Transporter | null): void {
  * Callers must check `config.smtpConfigured` first — this throws rather than
  * silently no-op-ing on a missing `SMTP_FROM`, since a caller that reaches here
  * without checking has a bug worth surfacing, not a state to degrade from.
+ *
+ * Recipients go in `bcc` rather than `to` (#584): a joint-custody or
+ * shared-accountant recipient list is exactly the case where one recipient
+ * hasn't chosen to have their address shown to the others.
  */
 export async function sendDigestEmail(
   recipients: readonly string[],
@@ -61,7 +65,8 @@ export async function sendDigestEmail(
   const month = formatMonth(period, locale)
   await transporter().sendMail({
     from: config.SMTP_FROM,
-    to: [...recipients],
+    to: config.SMTP_FROM,
+    bcc: [...recipients],
     subject: t(locale, 'settings:digest.email.subject', { month }),
     text: t(locale, 'settings:digest.email.body', { month }),
     attachments: [
