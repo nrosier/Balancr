@@ -1440,10 +1440,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       entity: 'settings',
       entityRef: HOUSEHOLD_KEY,
       actorId: user.id,
-      // The whole roster both ways. It is a handful of small rows, and the question the
-      // trail answers is "who was the household when that comparison was drawn".
-      before,
-      after,
+      // Shape, not values (#582/P2) — a member's birth year and label are PII of
+      // someone who never chose to be tracked, same reasoning as `settings.integrations`
+      // (`audit.ts`) never carrying a credential. The trail's question — "was this a
+      // bigger or smaller household, and which country's benchmark did it compare
+      // against" — is answered by a count either way.
+      before: { country: before.country, memberCount: before.members.length },
+      after: { country: after.country, memberCount: after.members.length },
     })
 
     return buildSettings(db, request)
@@ -1484,8 +1487,12 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       entity: 'settings',
       entityRef: DIGEST_KEY,
       actorId: user.id,
-      before,
-      after,
+      // Shape, not values (#582/P2) — a recipient address belongs to someone who,
+      // per #573/#574, cannot act on it and did not choose to be in it. `mode` and a
+      // count answer the trail's question ("who turned the digest on/off, and to how
+      // many people") without becoming a second place an address could leak from.
+      before: { mode: before.mode, recipientCount: before.recipientEmails.length },
+      after: { mode: after.mode, recipientCount: after.recipientEmails.length },
     })
 
     return buildSettings(db, request)
