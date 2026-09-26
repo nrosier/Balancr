@@ -75,6 +75,7 @@ export const REFRESHABLE = [
   'backfill',
   'signals',
   'ai',
+  'digest',
   'ai-runs-retention',
   'backup',
 ] as const
@@ -148,6 +149,7 @@ const DEPENDENTS: Readonly<Record<Refreshable, readonly Refreshable[]>> = {
   backfill: [],
   signals: [],
   ai: [],
+  digest: [],
   'ai-runs-retention': [],
   backup: [],
 }

@@ -436,6 +436,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
       exceeded: false,
       history: [],
     },
+    digest: { mode: 'off', recipientEmails: [], locale: null, hasPdf: false },
   }
 }
 

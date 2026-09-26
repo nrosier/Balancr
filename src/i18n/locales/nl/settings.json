@@ -261,6 +261,43 @@
     "save": "Deze kaart opslaan",
     "title": "Kredietkaarten"
   },
+  "digest": {
+    "document": {
+      "budgetChart": "Budget versus werkelijk",
+      "generatedAt": "Gegenereerd op {{when}}",
+      "netWorthChart": "Nettovermogen",
+      "noNarrative": "Er is nog geen toelichting beschikbaar voor deze maand.",
+      "title": "Maandoverzicht — {{month}}"
+    },
+    "download": "Laatste overzicht downloaden",
+    "email": {
+      "body": "In bijlage je Balancr-maandoverzicht voor {{month}}.",
+      "filenamePrefix": "balancr-overzicht",
+      "subject": "Je Balancr-maandoverzicht — {{month}}"
+    },
+    "hint": "Een PDF-samenvatting van de toelichting en belangrijkste grafieken van de maand, automatisch gegenereerd zodra het inhaalvenster sluit. Downloadbaar, of gemaild naar wie het moet ontvangen.",
+    "locale": {
+      "auto": "Volg mijn accounttaal",
+      "hint": "Het verhaal wordt alleen automatisch geschreven in de standaardtaal van deze installatie, tenzij iemand het verhaal van die maand al vanaf het dashboard heeft vertaald. Een andere taal kiezen kan betekenen dat er in een bepaalde maand helemaal geen digest wordt verstuurd.",
+      "label": "Taal"
+    },
+    "mode": {
+      "email": "Mail me de PDF",
+      "label": "Levering",
+      "off": "Uit",
+      "pdf": "Genereer een PDF om te downloaden"
+    },
+    "none": "Er is nog geen overzicht gegenereerd.",
+    "recipients": {
+      "add": "Nog een ontvanger toevoegen",
+      "hint": "Tot vijf e-mailadressen.",
+      "label": "Ontvangers",
+      "placeholder": "naam@voorbeeld.com",
+      "remove": "Deze ontvanger verwijderen"
+    },
+    "save": "Opslaan",
+    "title": "Maandoverzicht"
+  },
   "goals": {
     "add": "Doel toevoegen",
     "archive": {
@@ -425,6 +462,7 @@
     "aiLog": "AI-log",
     "benchmark": "Vergelijking",
     "debts": "Kredietkaarten",
+    "digest": "Maandoverzicht",
     "general": "Algemeen",
     "goals": "Doelen",
     "integrations": "Integraties",

@@ -92,8 +92,10 @@ const STATUS_SUBSECTIONS: readonly Section<StatusSubsectionId>[] = [
 
 /**
  * The jobs `POST /api/refresh` will start, mirroring `REFRESHABLE` in
- * `src/jobs/refresh.ts` — minus `ai`, which that endpoint refuses by name because it is
- * the one job that spends money. Its control is in the panel above, priced first.
+ * `src/jobs/refresh.ts` — minus `ai` and `digest`, which that endpoint refuses by name:
+ * `ai` because it is the one job that spends money (its control is in the panel above,
+ * priced first), and `digest` because it is schedule-only from here (#52) — there is no
+ * button that should mail someone's financial narrative on demand.
  *
  * A copy rather than an import: pulling `src/jobs/refresh.ts` into the browser bundle
  * would drag the runner, the schema and the configuration in with it. A test in

@@ -73,6 +73,7 @@ import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import { AiSection } from '../settings/Ai.tsx'
 import { BenchmarkSection } from '../settings/Benchmark.tsx'
+import { DigestPanel } from '../settings/Digest.tsx'
 import { IntegrationsPanel } from '../settings/Integrations.tsx'
 import { LanguagePanel } from '../settings/Language.tsx'
 import { MembersPanel } from '../settings/Members.tsx'
@@ -214,6 +215,7 @@ export function Settings(): ReactNode {
                 {section === 'thresholds' && <ThresholdsSection {...props} />}
                 {section === 'net-worth' && <NetWorthSection {...props} />}
                 {section === 'benchmark' && <BenchmarkSection {...props} />}
+                {section === 'digest' && <DigestPanel {...props} />}
                 {section === 'integrations' && <IntegrationsPanel {...props} />}
               </>
             )

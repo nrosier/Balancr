@@ -409,6 +409,7 @@ const PAYLOAD: Payload = {
       },
     ],
   },
+  digest: { mode: 'off', recipientEmails: [], locale: null, hasPdf: false },
 }
 
 const ESTIMATE: AiEstimate = {

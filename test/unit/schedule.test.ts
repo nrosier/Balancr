@@ -11,6 +11,7 @@ import { dateIn, hourIn } from '../../src/util/month.ts'
 const TZ = 'Europe/Brussels'
 const hourly: Schedule = { kind: 'interval', minutes: 60 }
 const nightly: Schedule = { kind: 'daily', hour: 3 }
+const monthly: Schedule = { kind: 'monthly', day: 4, hour: 3 }
 
 /** Winter, so local time is UTC+1 and nothing here depends on the reader's zone. */
 const at = (iso: string) => new Date(iso)
@@ -115,6 +116,86 @@ describe('isDue — daily', () => {
   })
 })
 
+describe('isDue — monthly', () => {
+  it('is due when it has never run, whatever the day', () => {
+    expect(isDue(monthly, at('2026-01-01T10:00:00Z'), null, TZ)).toBe(true)
+  })
+
+  it('is not due before the day, in a month it has not run in yet', () => {
+    // Local Jan 3rd, having last run in December.
+    expect(
+      isDue(monthly, at('2026-01-03T10:00:00Z'), at('2025-12-04T02:05:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('is still due on the day even after a manual run earlier that month', () => {
+    // A named "run now" (#52's `POST /api/refresh`) on the 1st must not consume
+    // the month's scheduled slot — the whole point of `day: 4` is to wait for the
+    // AI catch-up window to close, and an early manual run stamps `lastRunAt`
+    // the same way the scheduled run would.
+    expect(
+      isDue(monthly, at('2026-02-04T02:05:00Z'), at('2026-02-01T09:00:00Z'), TZ),
+    ).toBe(true)
+  })
+
+  it('is not due again after a manual run on or after the day', () => {
+    // A manual run on the day itself (or later) does count — the digest for this
+    // month has already gone out, whoever asked for it.
+    expect(
+      isDue(monthly, at('2026-02-15T10:00:00Z'), at('2026-02-04T09:00:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('is not due again the same local month', () => {
+    // Ran on the 4th; still the 4th's month on the 15th.
+    expect(
+      isDue(monthly, at('2026-01-15T10:00:00Z'), at('2026-01-04T02:05:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('is due on a new local month, on the day, at the hour', () => {
+    // Ran in January; now 03:05 local on Feb 4th.
+    expect(
+      isDue(monthly, at('2026-02-04T02:05:00Z'), at('2026-01-04T02:05:00Z'), TZ),
+    ).toBe(true)
+  })
+
+  it('is not due on a new month before the day', () => {
+    expect(
+      isDue(monthly, at('2026-02-03T10:00:00Z'), at('2026-01-04T02:05:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('is not due on the day but before the hour', () => {
+    // 02:00 local on the 4th — day matches, hour has not arrived yet.
+    expect(
+      isDue(monthly, at('2026-02-04T01:00:00Z'), at('2026-01-04T02:05:00Z'), TZ),
+    ).toBe(false)
+  })
+
+  it('clamps the day to a short month rather than never firing', () => {
+    // `day: 31` in February 2026 (28 days) degrades to the 28th.
+    const short: Schedule = { kind: 'monthly', day: 31, hour: 3 }
+    const last = at('2026-01-31T02:05:00Z')
+
+    expect(isDue(short, at('2026-02-27T02:05:00Z'), last, TZ)).toBe(false)
+    expect(isDue(short, at('2026-02-28T02:05:00Z'), last, TZ)).toBe(true)
+  })
+
+  it('still fires at the local hour across the spring DST change', () => {
+    // Same instant as the daily spring test: 01:05Z is 03:05 CEST once Brussels
+    // skips 02:00→03:00 on 2026-03-29, but only 01:05 in UTC.
+    const spring: Schedule = { kind: 'monthly', day: 29, hour: 3 }
+    const now = at('2026-03-29T01:05:00Z')
+    const last = at('2026-02-04T02:05:00Z')
+
+    expect(dateIn(now, TZ)).toBe('2026-03-29')
+    expect(hourIn(now, TZ)).toBe(3)
+    expect(isDue(spring, now, last, TZ)).toBe(true)
+    expect(isDue(spring, now, last, 'UTC')).toBe(false)
+  })
+})
+
 describe('nextRunAt', () => {
   it('is now when the job is already due', () => {
     const now = at('2026-01-15T10:00:00Z')
@@ -145,11 +226,28 @@ describe('nextRunAt', () => {
     expect(dateIn(next!, TZ)).toBe('2026-03-29')
     expect(hourIn(next!, TZ)).toBe(3)
   })
+
+  it('finds later the same day for a monthly job, within the horizon', () => {
+    // 02:00 local on the 4th, day already matches, hour has not arrived yet.
+    const now = at('2026-02-04T01:00:00Z')
+    const next = nextRunAt(monthly, now, at('2026-01-04T02:05:00Z'), TZ)
+
+    expect(next).not.toBeNull()
+    expect(dateIn(next!, TZ)).toBe('2026-02-04')
+    expect(hourIn(next!, TZ)).toBe(3)
+  })
+
+  it('is null when next month is beyond the probe horizon', () => {
+    // Already ran this month; next month's day-4 is weeks away, not two days.
+    const now = at('2026-01-05T10:00:00Z')
+    expect(nextRunAt(monthly, now, at('2026-01-04T02:05:00Z'), TZ)).toBeNull()
+  })
 })
 
 describe('describeSchedule', () => {
   it('reads as a schedule in a log line', () => {
     expect(describeSchedule(hourly)).toBe('every 60m')
     expect(describeSchedule(nightly)).toBe('daily at 03:00')
+    expect(describeSchedule(monthly)).toBe('monthly on day 4 at 03:00')
   })
 })

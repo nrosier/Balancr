@@ -1348,6 +1348,35 @@
 }
 
 /* ---------------------------------------------------------------------------
+   The monthly digest (#52)
+   --------------------------------------------------------------------------- */
+
+.digest-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.digest__recipients {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.digest__recipient {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.digest__recipient .field__input {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
    The AI log (#497)
    --------------------------------------------------------------------------- */
 

@@ -31,6 +31,12 @@ import { auditLog, prompts, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadProfile, PROFILE_PRESETS } from '../../src/domain/advice/profile.ts'
 import { loadHousehold } from '../../src/domain/benchmark/household.ts'
+import {
+  DEFAULT_DIGEST_PREFERENCE,
+  loadDigestPreference,
+  MAX_DIGEST_RECIPIENTS,
+} from '../../src/domain/digest/preference.ts'
+import { saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { loadReferenceOverride } from '../../src/domain/benchmark/reference.ts'
 import { loadMapping } from '../../src/domain/benchmark/mapping.ts'
 import { loadAccountMap } from '../../src/domain/aggregate/accounts.ts'
@@ -437,6 +443,108 @@ describe('PATCH /api/settings/household', () => {
     const res = await send_({ members: [], sharedCostBp: 6_000 }, { token: viewer })
     expect(res.statusCode).toBe(403)
     expect(loadHousehold(ctx.db, tenantId).sharedCostBp).toBeNull()
+  })
+})
+
+describe('PATCH /api/settings/digest', () => {
+  const send_ = (body: object, options?: { token?: string }) =>
+    patch('/api/settings/digest', body, options)
+
+  it('stores a pdf preference and answers with it', async () => {
+    const res = await send_({ mode: 'pdf' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().digest).toMatchObject({
+      mode: 'pdf',
+      recipientEmails: [],
+      locale: null,
+    })
+    expect(loadDigestPreference(ctx.db, tenantId).mode).toBe('pdf')
+  })
+
+  it('stores an email preference with its recipients and a locale override', async () => {
+    const res = await send_({
+      mode: 'email',
+      recipientEmails: ['a@example.test', 'b@example.test'],
+      locale: 'nl',
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().digest).toMatchObject({
+      mode: 'email',
+      recipientEmails: ['a@example.test', 'b@example.test'],
+      locale: 'nl',
+    })
+    expect(loadDigestPreference(ctx.db, tenantId)).toMatchObject({
+      mode: 'email',
+      recipientEmails: ['a@example.test', 'b@example.test'],
+      locale: 'nl',
+    })
+  })
+
+  it('refuses a request that omits mode, rather than silently switching the digest off', async () => {
+    await send_({ mode: 'email', recipientEmails: ['a@example.test'] })
+    const res = await send_({ recipientEmails: ['a@example.test'] })
+
+    expect(res.statusCode).toBe(400)
+    // Left exactly as it was — no default is silently applied to a field this schema
+    // treats as required.
+    expect(loadDigestPreference(ctx.db, tenantId).mode).toBe('email')
+  })
+
+  it('refuses email mode with no recipients, naming the field', async () => {
+    const res = await send_({ mode: 'email' })
+
+    expect(res.statusCode).toBe(400)
+    expect(loadDigestPreference(ctx.db, tenantId)).toEqual(DEFAULT_DIGEST_PREFERENCE)
+  })
+
+  it('refuses more recipients than the cap', async () => {
+    const recipientEmails = Array.from(
+      { length: MAX_DIGEST_RECIPIENTS + 1 },
+      (_, i) => `r${String(i)}@example.test`,
+    )
+    const res = await send_({ mode: 'email', recipientEmails })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_({ mode: 'pdf' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(loadDigestPreference(ctx.db, tenantId)).toEqual(DEFAULT_DIGEST_PREFERENCE)
+  })
+
+  it('records an audit entry for the change', async () => {
+    await send_({ mode: 'pdf' })
+
+    const entry = auditEntries(ctx.db).at(-1)
+    expect(entry?.action).toBe('settings.digest')
+    expect(JSON.parse(entry?.afterJson ?? '{}').mode).toBe('pdf')
+  })
+})
+
+describe('GET /api/settings/digest/pdf', () => {
+  it('answers 404 when nothing has been generated yet', async () => {
+    const res = await get('/api/settings/digest/pdf')
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('streams back the stored bytes with a filename naming the period', async () => {
+    saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
+
+    const res = await get('/api/settings/digest/pdf')
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('application/pdf')
+    expect(res.headers['content-disposition']).toContain('balancr-digest-2026-03.pdf')
+    expect(res.rawPayload.toString()).toBe('%PDF-fake')
+  })
+
+  it('is refused for a viewer', async () => {
+    saveDigestPdf(ctx.db, tenantId, '2026-03', Buffer.from('%PDF-fake'))
+    const res = await get('/api/settings/digest/pdf', viewer)
+    expect(res.statusCode).toBe(403)
   })
 })
 
