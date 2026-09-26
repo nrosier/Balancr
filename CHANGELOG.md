@@ -6,6 +6,27 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.5.1] — 2026-09-26
+
+### Added
+
+- **A property's rent, and a mortgage's monthly payment, can now be linked to an Actual Budget category**
+  ([#643](https://github.com/nrosier/Balancr/issues/643)). The link is validated for direction (rent must point at an income category, a payment at an expense one) and rejects a hidden category; once linked, a read-only line compares the stored figure against the category's actual spend/income for the latest synced month. Deliberately read-only for now — no reconciliation UX yet.
+
+### Changed
+
+- **Integrations settings splits into Actual Budget / Ghostfolio subtabs**, mirroring the earlier Net worth split
+  ([#650](https://github.com/nrosier/Balancr/issues/650)). Presentation only — the settings API is unchanged.
+- **The Overview page's savings rate and savings goals now share one "Savings" card** instead of the rate sitting in the top metrics grid
+  ([#652](https://github.com/nrosier/Balancr/issues/652)).
+
+### Fixed
+
+- **The category-mapping table's COICOP division picker stayed enabled for income and hidden categories**, which the benchmark comparison already skips
+  ([#651](https://github.com/nrosier/Balancr/issues/651)). It's now disabled for both, matching the existing pattern on the shared/nature columns of the same row.
+- **Saving a property with kind "owned" 400'd** — the `PATCH /api/settings/property` request schema hand-maintained a shorter kind list than the domain's own, even though the settings form already let a user pick it
+  ([#658](https://github.com/nrosier/Balancr/issues/658)).
+
 ## [2.5.0] — 2026-09-26
 
 ### Security

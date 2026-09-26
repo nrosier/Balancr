@@ -15,7 +15,7 @@
 -->
 <p align="center">
   <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.0-blue"></a>
+  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -1023,19 +1023,16 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.5.0` is the current release. Adds the monthly
-digest as a downloadable PDF or an emailed one, and an audit trail that can
-finally be read back (owner-only) instead of only ever written to. It also
-closes out the second batch from the full-codebase review: the egress
-guard's per-call host allowance is now request-scoped instead of a
-process-global map, a stored AI key is invalidated when its custom base URL
-host changes, local-auth's failed-attempt counter and TOTP check are now
-atomic, several job-queue and read-modify-write races got wrapped in proper
-transactions or timeouts, and audit/digest data that shouldn't be kept
-verbatim or shown to a viewer no longer is (see [`CHANGELOG.md`](CHANGELOG.md)
+**Where it is now** — `2.5.1` is the current release. A property's rent, and
+a mortgage's monthly payment, can now be linked to an Actual Budget category
+and checked (read-only) against what actually moved through it; Integrations
+settings split into Actual Budget / Ghostfolio subtabs; the Overview page's
+savings rate and goals now share one card; and two bugs are fixed — the
+COICOP division picker staying enabled for income/hidden categories, and
+saving a property with kind `owned` 400ing (see [`CHANGELOG.md`](CHANGELOG.md)
 for details). Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.5.0`; a release candidate is
+`docker pull` now resolves `latest` to `2.5.1`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
