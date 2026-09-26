@@ -758,6 +758,19 @@ function sameHost(a: string, b: string): boolean {
 }
 
 /**
+ * `sameHost` for the AI connection's `baseUrl`, which — unlike Actual's/
+ * Ghostfolio's URL fields — is `null` for every provider except
+ * `openai-compatible` (#579/S1). `null` on both sides means neither side has a
+ * custom host to compare, which is still "the same host" for invalidation
+ * purposes; `null` on only one side is itself a host change (a switch into or
+ * out of a custom endpoint).
+ */
+function sameAiHost(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b
+  return sameHost(a, b)
+}
+
+/**
  * A "test connection" body carries the *full* candidate credential, never a partial
  * patch — nothing is saved by a test, so there is no stored value to merge against.
  *
@@ -2108,10 +2121,14 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       }
     }
     const providerChanged = row.aiProvider !== patch.provider
+    // A custom `openai-compatible` endpoint can change host while the provider stays
+    // the same; that's exactly the case #535 already invalidates a secret for on the
+    // Actual/Ghostfolio routes, so the AI key must not survive it either (#579/S1).
+    const hostChanged = providerChanged || !sameAiHost(baseUrl, row.aiBaseUrl)
     const apiKeyEnc =
       patch.apiKey !== undefined
         ? encryptField(patch.apiKey)
-        : patch.clearApiKey === true || providerChanged
+        : patch.clearApiKey === true || hostChanged
           ? null
           : row.aiApiKeyEnc
 
@@ -2257,7 +2274,13 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
         if (candidate.model === undefined) throw badRequest('A model is required for the structured-output probe.')
         const model = candidate.model
         const baseUrl = validatedAiBaseUrl(candidate.provider, candidate.baseUrl)
-        const stored = storedRow.aiProvider === candidate.provider ? storedRow.aiApiKeyEnc : null
+        // A stored key is credential to the host it was verified against; a candidate
+        // `openai-compatible` endpoint that changes host must not reuse it even when
+        // the provider itself is unchanged (#579/S1).
+        const stored =
+          storedRow.aiProvider === candidate.provider && sameAiHost(baseUrl, storedRow.aiBaseUrl)
+            ? storedRow.aiApiKeyEnc
+            : null
         const apiKey = candidate.apiKey ?? (stored === null ? null : decryptField(stored))
         if ((candidate.provider === 'openai' || candidate.provider === 'xai') && apiKey === null) {
           throw badRequest('An API key is required to test this provider.')
