@@ -49,7 +49,7 @@ import type {
   PromptDiff,
   Settings as Payload,
 } from '../src/shared.ts'
-import { i18nReady, renderApp, resetLanguage } from './helpers.tsx'
+import { clickLink, i18nReady, renderApp, resetLanguage } from './helpers.tsx'
 
 /**
  * `DEFAULT_PARAMS`, written out.
@@ -2259,7 +2259,7 @@ describe('property', () => {
 })
 
 describe('integrations', () => {
-  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/integrations', 'Actual')
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/integrations', 'Actual Budget')
 
   /**
    * All three sub-forms share one class (`integrations-form`), unlike every other
@@ -2285,14 +2285,16 @@ describe('integrations', () => {
     expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe('https://actual.example.com')
     expect((screen.getByLabelText('Sync ID') as HTMLInputElement).value).toBe('sync-id')
     expect((screen.getByLabelText(/^Password/) as HTMLInputElement).value).toBe('')
-    expect(within(panel('Actual')).getByText('Configured')).toBeTruthy()
-    expect(within(panel('Actual')).getByText('Not configured')).toBeTruthy()
+    expect(within(panel('Actual Budget')).getByText('Configured')).toBeTruthy()
+    expect(within(panel('Actual Budget')).getByText('Not configured')).toBeTruthy()
   })
 
   it('has nothing to save until a field is touched', async () => {
     await open(READS)
 
-    expect(saveButton('Actual').disabled).toBe(true)
+    expect(saveButton('Actual Budget').disabled).toBe(true)
+
+    clickLink(screen.getByRole('link', { name: 'Ghostfolio' }))
     expect(saveButton('Ghostfolio').disabled).toBe(true)
   })
 
@@ -2300,7 +2302,7 @@ describe('integrations', () => {
     const calls = await open({ ...READS, '/api/settings/integrations/actual': json(PAYLOAD) })
 
     fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'https://actual2.example.com' } })
-    fireEvent.click(saveButton('Actual'))
+    fireEvent.click(saveButton('Actual Budget'))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
@@ -2317,7 +2319,7 @@ describe('integrations', () => {
     const calls = await open({ ...READS, '/api/settings/integrations/actual': json(PAYLOAD) })
 
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'new-pw' } })
-    fireEvent.click(saveButton('Actual'))
+    fireEvent.click(saveButton('Actual Budget'))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
@@ -2338,7 +2340,7 @@ describe('integrations', () => {
   it('can test immediately against a stored password, without retyping it (#382)', async () => {
     await open(READS)
 
-    expect(testButton('Actual').disabled).toBe(false)
+    expect(testButton('Actual Budget').disabled).toBe(false)
   })
 
   it('will not test a connection with no password typed and none stored, and says why (#382)', async () => {
@@ -2353,10 +2355,10 @@ describe('integrations', () => {
       }),
     })
 
-    expect(testButton('Actual').disabled).toBe(true)
-    expect(within(panel('Actual')).getByText('Retype the value to test, or save one first.')).toBeTruthy()
+    expect(testButton('Actual Budget').disabled).toBe(true)
+    expect(within(panel('Actual Budget')).getByText('Retype the value to test, or save one first.')).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } })
-    expect(testButton('Actual').disabled).toBe(false)
+    expect(testButton('Actual Budget').disabled).toBe(false)
   })
 
   it('tests against the stored password when the field is left blank (#382)', async () => {
@@ -2365,7 +2367,7 @@ describe('integrations', () => {
       '/api/settings/integrations/actual/test': json({ ok: true, message: null }),
     })
 
-    fireEvent.click(testButton('Actual'))
+    fireEvent.click(testButton('Actual Budget'))
 
     await screen.findByText('Connected successfully.')
     expect(writes(calls)).toEqual([
@@ -2384,7 +2386,7 @@ describe('integrations', () => {
     })
 
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'secret' } })
-    fireEvent.click(testButton('Actual'))
+    fireEvent.click(testButton('Actual Budget'))
 
     await screen.findByText('Connected successfully.')
     expect(writes(calls)).toEqual([
@@ -2403,7 +2405,7 @@ describe('integrations', () => {
     })
 
     fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'wrong' } })
-    fireEvent.click(testButton('Actual'))
+    fireEvent.click(testButton('Actual Budget'))
 
     await screen.findByText('Wrong password.')
   })
@@ -2411,6 +2413,7 @@ describe('integrations', () => {
   it('saves Ghostfolio independently of Actual', async () => {
     const calls = await open({ ...READS, '/api/settings/integrations/ghostfolio': json(PAYLOAD) })
 
+    clickLink(screen.getByRole('link', { name: 'Ghostfolio' }))
     fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://gf2.example.com' } })
     fireEvent.click(saveButton('Ghostfolio'))
 
@@ -2429,8 +2432,35 @@ describe('integrations', () => {
 
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
     expect((screen.getByLabelText('Server URL') as HTMLInputElement).disabled).toBe(true)
-    expect(saveButton('Actual').disabled).toBe(true)
-    expect(testButton('Actual').disabled).toBe(true)
+    expect(saveButton('Actual Budget').disabled).toBe(true)
+    expect(testButton('Actual Budget').disabled).toBe(true)
+  })
+})
+
+describe('the Actual Budget/Ghostfolio split (#650)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/integrations', 'Actual Budget')
+
+  it('shows Actual Budget by default, and Ghostfolio only once its own tab is open', async () => {
+    await open(READS)
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Actual Budget' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Ghostfolio' })).toBeNull()
+
+    clickLink(screen.getByRole('link', { name: 'Ghostfolio' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'Ghostfolio' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Actual Budget' })).toBeNull()
+
+    clickLink(screen.getByRole('link', { name: 'Actual Budget' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'Actual Budget' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Ghostfolio' })).toBeNull()
+  })
+
+  it('names the tab and the panel by the product’s full name, not the config key (#650)', async () => {
+    await open(READS)
+
+    expect(screen.getByRole('link', { name: 'Actual Budget' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'Ghostfolio' }).getAttribute('aria-current')).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Actual' })).toBeNull()
   })
 })
 
