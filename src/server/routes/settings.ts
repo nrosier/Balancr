@@ -94,7 +94,7 @@ import {
   MAX_DIGEST_RECIPIENTS,
   saveDigestPreference,
 } from '../../domain/digest/preference.ts'
-import { deleteDigestPdf, loadDigestPdf } from '../../domain/digest/storage.ts'
+import { deleteDigestPdf, hasDigestPdf, loadDigestPdf } from '../../domain/digest/storage.ts'
 import {
   createDebt,
   debtKinds,
@@ -1142,9 +1142,8 @@ function loadIntegrations(db: Db, tenantId: string, isOwner: boolean): Integrati
  * The digest preference (#52), plus whether a PDF from a past run is stored and
  * ready to download.
  *
- * `loadDigestPdf` is called only to check existence — its bytes are never put on
- * this wire; they travel solely through `GET /api/settings/digest/pdf`'s binary
- * response.
+ * `hasDigestPdf` checks existence without reading the stored bytes — those travel
+ * solely through `GET /api/settings/digest/pdf`'s binary response.
  *
  * `recipientEmails` is owner-only (#573): every other secret-shaped field on this
  * page masks to a `*Configured: boolean` for a viewer, and a recipient list is the
@@ -1160,7 +1159,7 @@ function digestSetting(db: Db, tenantId: string, isOwner: boolean): Settings['di
     recipientEmails: isOwner ? preference.recipientEmails : [],
     recipientCount: preference.recipientEmails.length,
     locale: preference.locale ?? null,
-    hasPdf: loadDigestPdf(db, tenantId) !== null,
+    hasPdf: hasDigestPdf(db, tenantId),
   }
 }
 

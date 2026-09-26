@@ -17,7 +17,7 @@ import { renderNarrativeBlocks, storeNarrative } from '../../src/domain/ai/narra
 import { recordRun } from '../../src/domain/ai/runs.ts'
 import { buildDigestPdf } from '../../src/domain/digest/pdf.ts'
 import { saveDigestPreference } from '../../src/domain/digest/preference.ts'
-import { loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
+import { hasDigestPdf, loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 
 let ctx: ReturnType<typeof createTestDb>
@@ -112,6 +112,25 @@ describe('buildDigestPdf', () => {
     await expect(buildDigestPdf(db, tenantId, MONTH, 'en')).rejects.toThrow('stream exploded')
 
     emitError.mockRestore()
+  })
+})
+
+describe('hasDigestPdf', () => {
+  it('is false with nothing stored, true once a PDF is saved, without reading its bytes', () => {
+    expect(hasDigestPdf(db, tenantId)).toBe(false)
+
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+
+    expect(hasDigestPdf(db, tenantId)).toBe(true)
+  })
+
+  it('treats every tenant independently', () => {
+    const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
+
+    saveDigestPdf(db, tenantId, MONTH, Buffer.from('%PDF-fake'))
+
+    expect(hasDigestPdf(db, tenantId)).toBe(true)
+    expect(hasDigestPdf(db, other.id)).toBe(false)
   })
 })
 

@@ -5,7 +5,7 @@
  * stored PDF, matching the "download the latest digest" use case this exists for.
  * No retention job is needed because there is nothing to retain beyond the latest.
  */
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { digestPdfs } from '../../db/schema.ts'
 
@@ -24,6 +24,16 @@ export function saveDigestPdf(db: Db, tenantId: string, period: string, pdfBytes
       set: { period, pdfBytes, createdAt: new Date() },
     })
     .run()
+}
+
+/** Whether this tenant has a stored digest, without reading its bytes. */
+export function hasDigestPdf(db: Db, tenantId: string): boolean {
+  const row = db
+    .select({ one: sql<number>`1` })
+    .from(digestPdfs)
+    .where(eq(digestPdfs.tenantId, tenantId))
+    .get()
+  return row !== undefined
 }
 
 /** This tenant's stored digest, or `null` if none has been generated yet. */
