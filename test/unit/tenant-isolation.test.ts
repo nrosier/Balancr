@@ -67,6 +67,7 @@ import {
   pendingProposals,
 } from '../../src/domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, recordRun } from '../../src/domain/ai/runs.ts'
+import { deleteDigestPdf, loadDigestPdf, saveDigestPdf } from '../../src/domain/digest/storage.ts'
 import { fact, totals } from '../fixtures/month.ts'
 
 const MONTH = '2026-08'
@@ -402,5 +403,25 @@ describe('AI runs', () => {
     expect(loadRun(db, tenantA, runId)?.id).toBe(runId)
     expect(loadRunPayload(db, tenantA, runId)).toEqual({ month: MONTH })
     expect(recentRuns(db, tenantA, 50)).toHaveLength(1)
+  })
+})
+
+describe('digest PDFs (#600)', () => {
+  it('never returns, overwrites or deletes another tenant\'s stored digest', () => {
+    saveDigestPdf(db, tenantA, '2026-08', Buffer.from('%PDF-a'))
+    saveDigestPdf(db, tenantB, '2026-08', Buffer.from('%PDF-b'))
+
+    expect(loadDigestPdf(db, tenantB)?.pdfBytes.toString()).toBe('%PDF-b')
+
+    // A re-save under the other tenant's id is the same failure mode a wrong
+    // WHERE clause would produce: the tenantId column is the primary key, so this
+    // must land as B's own row rather than overwriting A's.
+    saveDigestPdf(db, tenantB, '2026-09', Buffer.from('%PDF-b2'))
+    expect(loadDigestPdf(db, tenantA)?.pdfBytes.toString()).toBe('%PDF-a')
+    expect(loadDigestPdf(db, tenantB)?.pdfBytes.toString()).toBe('%PDF-b2')
+
+    deleteDigestPdf(db, tenantB)
+    expect(loadDigestPdf(db, tenantB)).toBeNull()
+    expect(loadDigestPdf(db, tenantA)?.pdfBytes.toString()).toBe('%PDF-a')
   })
 })
