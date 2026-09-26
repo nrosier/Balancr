@@ -133,6 +133,7 @@ import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/prope
 import {
   AI_VISIBILITY_CHOICES,
   COICOP_CHOICES,
+  loadCategoryMapping,
   loadMapping,
   MappingError,
   SAVINGS_NATURE_CHOICES,
@@ -2405,9 +2406,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { coicop } = parseBody(coicopPatchRequest, request.body)
 
-    const before = loadMapping(db, user.tenantId, null).find(
-      (row) => row.categoryId === categoryId,
-    )
+    const before = loadCategoryMapping(db, user.tenantId, categoryId)
     if (before === undefined) throw notFound('No such category.')
 
     try {
@@ -2498,9 +2497,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { custodyShared } = parseBody(custodySharedPatchRequest, request.body)
 
-    const before = loadMapping(db, user.tenantId, null).find(
-      (row) => row.categoryId === categoryId,
-    )
+    const before = loadCategoryMapping(db, user.tenantId, categoryId)
     if (before === undefined) throw notFound('No such category.')
 
     try {
@@ -2544,9 +2541,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { aiVisibility } = parseBody(aiVisibilityPatchRequest, request.body)
 
-    const before = loadMapping(db, user.tenantId, null).find(
-      (row) => row.categoryId === categoryId,
-    )
+    const before = loadCategoryMapping(db, user.tenantId, categoryId)
     if (before === undefined) throw notFound('No such category.')
 
     try {
@@ -2582,9 +2577,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { nature } = parseBody(naturePatchRequest, request.body)
 
-    const before = loadMapping(db, user.tenantId, null).find(
-      (row) => row.categoryId === categoryId,
-    )
+    const before = loadCategoryMapping(db, user.tenantId, categoryId)
     if (before === undefined) throw notFound('No such category.')
 
     try {

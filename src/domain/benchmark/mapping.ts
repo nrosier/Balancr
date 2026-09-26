@@ -128,6 +128,42 @@ export function aiVisibilityOf(row: {
  * mapped, then by spend — which puts the envelope that is distorting the comparison most
  * on the first line, and is the whole reason this list is not alphabetical.
  */
+const categoryMetaColumns = {
+  categoryId: categoryMeta.categoryId,
+  categoryName: categoryMeta.nameSnapshot,
+  isIncome: categoryMeta.isIncome,
+  hidden: categoryMeta.hidden,
+  coicop: categoryMeta.coicopCode,
+  custodyShared: categoryMeta.custodyShared,
+  nature: categoryMeta.nature,
+  sensitive: categoryMeta.sensitive,
+  aiExcluded: categoryMeta.aiExcluded,
+}
+
+interface CategoryMetaRow {
+  categoryId: string
+  categoryName: string
+  isIncome: boolean
+  hidden: boolean
+  coicop: string | null
+  custodyShared: boolean
+  nature: string | null
+  sensitive: boolean
+  aiExcluded: boolean
+}
+
+function toCategoryMapping({ sensitive, aiExcluded, ...row }: CategoryMetaRow, spentCents: number): CategoryMapping {
+  return {
+    ...row,
+    nature: row.nature === 'savings' || row.nature === 'investments' ? row.nature : null,
+    // The two columns collapse to the one answer here rather than on the wire, so
+    // every reader of a `CategoryMapping` sees the same three states and nobody
+    // downstream has to know which column carries which.
+    aiVisibility: aiVisibilityOf({ sensitive, aiExcluded }),
+    spentCents,
+  }
+}
+
 export function loadMapping(db: Db, tenantId: string, month: string | null): CategoryMapping[] {
   const spend = new Map<string, number>()
   if (month !== null) {
@@ -149,29 +185,11 @@ export function loadMapping(db: Db, tenantId: string, month: string | null): Cat
   }
 
   const rows = db
-    .select({
-      categoryId: categoryMeta.categoryId,
-      categoryName: categoryMeta.nameSnapshot,
-      isIncome: categoryMeta.isIncome,
-      hidden: categoryMeta.hidden,
-      coicop: categoryMeta.coicopCode,
-      custodyShared: categoryMeta.custodyShared,
-      nature: categoryMeta.nature,
-      sensitive: categoryMeta.sensitive,
-      aiExcluded: categoryMeta.aiExcluded,
-    })
+    .select(categoryMetaColumns)
     .from(categoryMeta)
     .where(eq(categoryMeta.tenantId, tenantId))
     .all()
-    .map(({ sensitive, aiExcluded, ...row }) => ({
-      ...row,
-      nature: row.nature === 'savings' || row.nature === 'investments' ? row.nature : null,
-      // The two columns collapse to the one answer here rather than on the wire, so
-      // every reader of a `CategoryMapping` sees the same three states and nobody
-      // downstream has to know which column carries which.
-      aiVisibility: aiVisibilityOf({ sensitive, aiExcluded }),
-      spentCents: spend.get(row.categoryId) ?? 0,
-    }))
+    .map((row) => toCategoryMapping(row, spend.get(row.categoryId) ?? 0))
 
   const rank = (row: CategoryMapping): number =>
     (row.isIncome || row.hidden ? 2 : 0) + (row.coicop === null ? 0 : 1)
@@ -182,6 +200,27 @@ export function loadMapping(db: Db, tenantId: string, month: string | null): Cat
       b.spentCents - a.spentCents ||
       a.categoryName.localeCompare(b.categoryName),
   )
+}
+
+/**
+ * One row of `loadMapping`, by id — for the settings routes that only need
+ * "does this category exist, and what's its current mapping" before applying
+ * a write (#607), without scanning the whole tenant's mapping to find it.
+ * `spentCents` is always 0: those callers never use it, the same as passing
+ * `month: null` to `loadMapping`.
+ */
+export function loadCategoryMapping(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+): CategoryMapping | undefined {
+  const row = db
+    .select(categoryMetaColumns)
+    .from(categoryMeta)
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
+    .get()
+
+  return row === undefined ? undefined : toCategoryMapping(row, 0)
 }
 
 /**
