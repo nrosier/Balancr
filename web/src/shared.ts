@@ -83,6 +83,8 @@ export type {
   AiRun,
   AiRunList,
   AiRunPayload,
+  AuditEntry,
+  AuditTrail,
   BandsSetting,
   BenchmarkGroupLine,
   BenchmarkSetting,

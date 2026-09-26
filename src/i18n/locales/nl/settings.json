@@ -84,6 +84,25 @@
     },
     "used": "{{used}} van het maandbudget"
   },
+  "audit": {
+    "after": "Na",
+    "before": "Voor",
+    "caption_one": "De meest recente geregistreerde wijziging.",
+    "caption_other": "De {{value}} meest recente geregistreerde wijzigingen, nieuwste eerst.",
+    "column": {
+      "action": "Actie",
+      "actor": "Wie",
+      "entity": "Entiteit",
+      "when": "Wanneer"
+    },
+    "empty": "Er is nog niets geregistreerd.",
+    "hideChange": "Verberg wat er veranderde",
+    "hint": "Elke wijziging die een mens goedkeurde aan een instelling of een suggestie, nieuwste eerst. Alleen voor de eigenaar: wat er veranderde kan de naam van een co-ouder of een bedrag noemen dat een meelezer niet zou mogen zien.",
+    "none": "Geen",
+    "system": "Systeem",
+    "title": "Auditlog",
+    "viewChange": "Toon wat er veranderde"
+  },
   "benchmark": {
     "coicop": {
       "00": "00 — Geen huishoudelijke consumptie",
@@ -462,6 +481,7 @@
     "accounts": "Rekeningen",
     "ai": "AI",
     "aiLog": "AI-log",
+    "audit": "Auditlog",
     "benchmark": "Vergelijking",
     "debts": "Kredietkaarten",
     "digest": "Maandoverzicht",

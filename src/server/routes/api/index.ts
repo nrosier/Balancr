@@ -24,8 +24,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { requireUser } from '../../auth/guard.ts'
+import { requireOwner, requireUser } from '../../auth/guard.ts'
 import { notFound } from '../../errors.ts'
+import { buildAuditTrail } from './audit.ts'
 import { buildBudget } from './budget.ts'
 import { buildChangelog } from './changelog.ts'
 import { buildForecast } from './forecast.ts'
@@ -143,4 +144,14 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // The version number in the header opens a dialog on this. See `changelog.ts` for
   // why the file is read from next to `dist/` rather than copied into it.
   app.get('/api/changelog', () => buildChangelog())
+
+  // `requireOwner`, not `requireUser` — the one exception in this directory. See
+  // `audit.ts`'s own header for why: `before`/`after` can name a co-parent or an
+  // amount a viewer should not see.
+  app.get('/api/audit', (request: FastifyRequest) => {
+    const query = request.query as
+      | { entity?: unknown; entityRef?: unknown; action?: unknown; limit?: unknown }
+      | undefined
+    return buildAuditTrail(db, requireOwner(request).tenantId, query)
+  })
 }

@@ -18,6 +18,7 @@
  */
 import { z } from 'zod'
 import { AI_RUN_KINDS } from '../../../db/schema.ts'
+import { AUDIT_ACTIONS } from '../../../domain/audit.ts'
 import { AI_PROVIDERS } from '../../../domain/ai/providers.ts'
 import { JUDGE_NOTES_MAX_CHARS } from '../../../domain/ai/schemas.ts'
 import { DRIFT_STATES } from '../../../domain/advice/drift.ts'
@@ -1578,6 +1579,31 @@ export const jobHistorySchema = z.object({
   runs: z.array(jobRunSchema),
 })
 
+/**
+ * `GET /api/audit` — one row of the append-only audit trail (#592).
+ *
+ * `before`/`after` are the domain's field-pairs, not sentences — this mirrors
+ * `src/domain/audit.ts` on purpose, so a UI can render a diff rather than a story.
+ * Owner-only: the trail can carry another household member's name or amount in
+ * its `before`/`after` pairs, which a non-owner tenant member should not see.
+ */
+export const auditEntrySchema = z.object({
+  id: z.string(),
+  action: z.enum(AUDIT_ACTIONS),
+  entity: z.string(),
+  entityRef: z.string(),
+  actorId: z.string().nullable(),
+  runId: z.string().nullable(),
+  proposalId: z.string().nullable(),
+  before: z.record(z.string(), z.unknown()).nullable(),
+  after: z.record(z.string(), z.unknown()).nullable(),
+  at: z.string(),
+})
+
+export const auditTrailSchema = z.object({
+  entries: z.array(auditEntrySchema),
+})
+
 export const probeStatusSchema = z.object({
   source: z.string(),
   status: z.enum(['ok', 'unreachable', 'shape-mismatch']),
@@ -2545,6 +2571,8 @@ export type JobStatus = z.infer<typeof jobStatusSchema>
 export type JobStep = z.infer<typeof jobStepSchema>
 export type JobRun = z.infer<typeof jobRunSchema>
 export type JobHistory = z.infer<typeof jobHistorySchema>
+export type AuditEntry = z.infer<typeof auditEntrySchema>
+export type AuditTrail = z.infer<typeof auditTrailSchema>
 export type ProbeStatus = z.infer<typeof probeStatusSchema>
 export type PromptSetting = z.infer<typeof promptSchema>
 export type PromptVersionSetting = z.infer<typeof promptVersionSchema>
