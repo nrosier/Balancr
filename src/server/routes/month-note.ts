@@ -62,8 +62,12 @@ export function registerMonthNoteRoutes(app: FastifyInstance, db: Db): void {
       entity: 'settings',
       entityRef: `${MONTH_NOTE_KEY}:${month}`,
       actorId: user.id,
-      before: { text: before },
-      after: { text: after },
+      // The note is the one unredacted field in the AI payload (`config.ts`'s
+      // AI_RUNS_TEXT_RETENTION_DAYS comment) — recording its text would keep every
+      // version in `audit_log` forever, which has no retention sweep of its own
+      // (#581/P1). Length only, same as `prompt.create`'s `chars` field.
+      before: { chars: before.length },
+      after: { chars: after.length },
     })
 
     return { text: after }
