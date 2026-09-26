@@ -1,8 +1,9 @@
 import type { Database } from 'better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { fileURLToPath } from 'node:url'
 
-export const migrationsFolder = new URL('./migrations', import.meta.url).pathname
+export const migrationsFolder = fileURLToPath(new URL('./migrations', import.meta.url))
 
 /**
  * Applies pending migrations. Used by the CLI and by test fixtures alike.
