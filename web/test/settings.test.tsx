@@ -1999,11 +1999,26 @@ describe('property', () => {
           label: 'Home',
           propertyValueCents: 40_000_000,
           rentCents: null,
+          rentCategoryId: null,
+          rentComparisonCents: null,
           mortgages: [],
           ...extra,
         },
       ],
     },
+  })
+
+  /** A mix of income/expense, hidden/visible categories, for the two category pickers (#643). */
+  const withCategories = (payload: Payload): Payload => ({
+    ...payload,
+    categoryTranslations: [
+      { categoryId: 'cat-rent-income', categoryName: 'Rental Income', isIncome: true, hidden: false, translations: {} },
+      { categoryId: 'cat-salary', categoryName: 'Salary', isIncome: true, hidden: false, translations: {} },
+      { categoryId: 'cat-hidden-income', categoryName: 'Old Income', isIncome: true, hidden: true, translations: {} },
+      { categoryId: 'cat-mortgage', categoryName: 'Mortgage', isIncome: false, hidden: false, translations: {} },
+      { categoryId: 'cat-groceries', categoryName: 'Groceries', isIncome: false, hidden: false, translations: {} },
+      { categoryId: 'cat-hidden-expense', categoryName: 'Old Expense', isIncome: false, hidden: true, translations: {} },
+    ],
   })
 
   it('shows the empty state when nothing is stored yet', async () => {
@@ -2040,6 +2055,7 @@ describe('property', () => {
                 label: 'Home',
                 propertyValueCents: 40_000_000,
                 rentCents: null,
+                rentCategoryId: null,
                 mortgages: [],
               },
             ],
@@ -2131,6 +2147,7 @@ describe('property', () => {
                 label: 'Home',
                 propertyValueCents: 40_000_000,
                 rentCents: null,
+                rentCategoryId: null,
                 mortgages: [
                   {
                     principalCents: 20_000_000,
@@ -2139,6 +2156,7 @@ describe('property', () => {
                     monthlyPaymentCents: 150_000,
                     remainingTermMonths: 180,
                     originalPrincipalCents: null,
+                    paymentCategoryId: null,
                   },
                 ],
               },
@@ -2255,6 +2273,168 @@ describe('property', () => {
     await screen.findByRole('heading', { level: 2, name: 'Property' })
 
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Cabin')
+  })
+
+  it('only offers the rent-category picker once the row is a rental, and lists income categories only (#643)', async () => {
+    await open({ ...READS, '/api/settings': json(withCategories(PAYLOAD)) })
+
+    addProperty()
+    expect(screen.queryByLabelText('Actual category')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    const select = screen.getByLabelText('Actual category') as HTMLSelectElement
+    expect(Array.from(select.options, (option) => option.text)).toEqual([
+      'Not linked',
+      'Rental Income',
+      'Salary',
+    ])
+  })
+
+  it('lists expense categories only in the mortgage payment-category picker (#643)', async () => {
+    await open({ ...READS, '/api/settings': json(withCategories(PAYLOAD)) })
+
+    addProperty()
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+
+    const select = screen.getByLabelText('Actual category') as HTMLSelectElement
+    expect(Array.from(select.options, (option) => option.text)).toEqual([
+      'Not linked',
+      'Mortgage',
+      'Groceries',
+    ])
+  })
+
+  it('sends the picked rent category, and null again once cleared (#643)', async () => {
+    const calls = await open({ ...READS, '/api/settings': json(withCategories(PAYLOAD)) })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home' } })
+    fireEvent.change(screen.getByLabelText('Estimated value'), { target: { value: '400000' } })
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    fireEvent.change(screen.getByLabelText('Actual category'), { target: { value: 'cat-rent-income' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [expect.objectContaining({ rentCategoryId: 'cat-rent-income' })],
+      })
+    })
+
+    fireEvent.change(screen.getByLabelText('Actual category'), { target: { value: '' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [expect.objectContaining({ rentCategoryId: null })],
+      })
+    })
+  })
+
+  it('sends the picked mortgage payment category, and null again once cleared (#643)', async () => {
+    const stated = withOneProperty()
+    const calls = await open({ ...READS, '/api/settings': json(withCategories(stated)) })
+
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    fireEvent.change(screen.getByLabelText('Outstanding balance'), { target: { value: '200000' } })
+    fireEvent.change(screen.getByLabelText('Balance as of'), { target: { value: '2026-09-01' } })
+    fireEvent.change(screen.getByLabelText('Interest rate'), { target: { value: '350' } })
+    fireEvent.change(screen.getByLabelText('Months remaining'), { target: { value: '180' } })
+    fireEvent.change(screen.getByLabelText('Monthly payment'), { target: { value: '1500' } })
+    fireEvent.change(screen.getByLabelText('Actual category'), { target: { value: 'cat-mortgage' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [
+          expect.objectContaining({
+            mortgages: [expect.objectContaining({ paymentCategoryId: 'cat-mortgage' })],
+          }),
+        ],
+      })
+    })
+
+    fireEvent.change(screen.getByLabelText('Actual category'), { target: { value: '' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [
+          expect.objectContaining({
+            mortgages: [expect.objectContaining({ paymentCategoryId: null })],
+          }),
+        ],
+      })
+    })
+  })
+
+  it('reads the rent comparison back once the server has one, and stays quiet without it (#643)', async () => {
+    const linked = withCategories(
+      withOneProperty({
+        kind: 'rental',
+        rentCents: 90_000,
+        rentCategoryId: 'cat-rent-income',
+        rentComparisonCents: 95_000,
+      }),
+    )
+    await open({ ...READS, '/api/settings': json(linked) })
+
+    expect(
+      within(property()).getByText('€ 950,00 actually moved through this category last month.'),
+    ).toBeTruthy()
+  })
+
+  it('shows no comparison line when the server has not resolved one yet (#643)', async () => {
+    const linkedButUnsynced = withCategories(
+      withOneProperty({
+        kind: 'rental',
+        rentCents: 90_000,
+        rentCategoryId: 'cat-rent-income',
+        rentComparisonCents: null,
+      }),
+    )
+    await open({ ...READS, '/api/settings': json(linkedButUnsynced) })
+
+    expect(
+      within(property()).queryByText(/actually moved through this category/),
+    ).toBeNull()
+  })
+
+  const mortgage = (extra: Partial<Payload['property']['properties'][number]['mortgages'][number]> = {}) => ({
+    principalCents: 20_000_000,
+    anchorDate: '2026-01-01',
+    rateBp: 350,
+    monthlyPaymentCents: 90_000,
+    remainingTermMonths: 240,
+    originalPrincipalCents: null,
+    paymentCategoryId: null,
+    paymentComparisonCents: null,
+    ...extra,
+  })
+
+  it('reads the mortgage payment comparison back once the server has one (#643)', async () => {
+    const linked = withCategories(
+      withOneProperty({
+        mortgages: [mortgage({ paymentCategoryId: 'cat-mortgage', paymentComparisonCents: 88_000 })],
+      }),
+    )
+    await open({ ...READS, '/api/settings': json(linked) })
+
+    expect(
+      within(property()).getByText('€ 880,00 actually moved through this category last month.'),
+    ).toBeTruthy()
+  })
+
+  it('shows no mortgage payment comparison line without one from the server (#643)', async () => {
+    const linkedButUnsynced = withCategories(
+      withOneProperty({
+        mortgages: [mortgage({ paymentCategoryId: 'cat-mortgage', paymentComparisonCents: null })],
+      }),
+    )
+    await open({ ...READS, '/api/settings': json(linkedButUnsynced) })
+
+    expect(
+      within(property()).queryByText(/actually moved through this category/),
+    ).toBeNull()
   })
 })
 

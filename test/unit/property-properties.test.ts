@@ -6,12 +6,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { settings } from '../../src/db/schema.ts'
+import { categoryMeta, settings } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   DEFAULT_PROPERTIES,
   earliestAnchorDate,
   grossYieldBp,
+  InvalidCategoryLinkError,
   loadProperties,
   MAX_MORTGAGES_PER_PROPERTY,
   netCashFlowCents,
@@ -22,17 +23,18 @@ import {
   saveProperties,
   standardMonthlyPaymentCents,
   totalEquityCents,
-  type Mortgage,
   type Property,
+  type PropertyMortgage,
 } from '../../src/domain/property/properties.ts'
 
-const mortgage = (overrides: Partial<Mortgage> = {}): Mortgage => ({
+const mortgage = (overrides: Partial<PropertyMortgage> = {}): PropertyMortgage => ({
   principalCents: 20_000_000,
   anchorDate: '2026-01-01',
   rateBp: 350,
   monthlyPaymentCents: 90_000,
   remainingTermMonths: 240,
   originalPrincipalCents: null,
+  paymentCategoryId: null,
   ...overrides,
 })
 
@@ -42,6 +44,7 @@ const property = (overrides: Partial<Property> = {}): Property => ({
   label: 'Home',
   propertyValueCents: 40_000_000,
   rentCents: null,
+  rentCategoryId: null,
   mortgages: [mortgage()],
   ...overrides,
 })
@@ -58,6 +61,19 @@ describe('the stored properties', () => {
 
   const write = (valueJson: string): void => {
     ctx.db.insert(settings).values({ tenantId: TENANT_ID, key: PROPERTY_KEY, valueJson }).run()
+  }
+
+  function seedCategory(id: string, overrides: { isIncome?: boolean; hidden?: boolean } = {}): void {
+    ctx.db
+      .insert(categoryMeta)
+      .values({
+        tenantId: TENANT_ID,
+        categoryId: id,
+        nameSnapshot: id,
+        isIncome: overrides.isIncome ?? false,
+        hidden: overrides.hidden ?? false,
+      })
+      .run()
   }
 
   it('is an empty list until somebody writes one', () => {
@@ -151,6 +167,94 @@ describe('the stored properties', () => {
     const loaded = loadProperties(ctx.db, TENANT_ID)
     expect(loaded.properties[0]?.mortgages).toEqual([mortgage()])
     expect(loaded.properties[1]?.mortgages).toEqual([])
+  })
+
+  it('accepts a rent category that is a known, non-hidden income category (#643)', () => {
+    seedCategory('cat-rent', { isIncome: true })
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ kind: 'rental', rentCents: 90_000, rentCategoryId: 'cat-rent' })],
+    })
+    expect(next.properties[0]?.rentCategoryId).toBe('cat-rent')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('accepts a payment category that is a known, non-hidden expense category (#643)', () => {
+    seedCategory('cat-mortgage', { isIncome: false })
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ mortgages: [mortgage({ paymentCategoryId: 'cat-mortgage' })] })],
+    })
+    expect(next.properties[0]?.mortgages[0]?.paymentCategoryId).toBe('cat-mortgage')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('lets both category links round-trip as null with no validation (#643)', () => {
+    const next = saveProperties(ctx.db, TENANT_ID, { properties: [property()] })
+    expect(next.properties[0]?.rentCategoryId).toBeNull()
+    expect(next.properties[0]?.mortgages[0]?.paymentCategoryId).toBeNull()
+  })
+
+  it('refuses a rent category nobody has ever seen (#643)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentCategoryId: 'nope' })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('refuses a rent category that is actually an expense category (#643)', () => {
+    seedCategory('cat-groceries', { isIncome: false })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentCategoryId: 'cat-groceries' })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('refuses a rent category that is hidden, even though the direction matches (#643)', () => {
+    seedCategory('cat-rent', { isIncome: true, hidden: true })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentCategoryId: 'cat-rent' })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('refuses a payment category nobody has ever seen (#643)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentCategoryId: 'nope' })] })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('refuses a payment category that is actually an income category (#643)', () => {
+    seedCategory('cat-salary', { isIncome: true })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentCategoryId: 'cat-salary' })] })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('refuses a payment category that is hidden, even though the direction matches (#643)', () => {
+    seedCategory('cat-mortgage', { isIncome: false, hidden: true })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentCategoryId: 'cat-mortgage' })] })],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+  })
+
+  it('does not persist the whole batch when one property in it names a bad link (#643)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [
+          property({ id: 'good' }),
+          property({ id: 'bad', kind: 'rental', rentCents: 90_000, rentCategoryId: 'nope' }),
+        ],
+      }),
+    ).toThrow(InvalidCategoryLinkError)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
   })
 })
 
