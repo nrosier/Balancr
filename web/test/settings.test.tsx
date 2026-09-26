@@ -367,6 +367,7 @@ const PAYLOAD: Payload = {
   ],
   benchmark: BENCHMARK,
   categoryTranslations: [],
+  schedules: [],
   property: { properties: [] },
   loans: [],
   debts: [],
@@ -2000,7 +2001,10 @@ describe('property', () => {
           propertyValueCents: 40_000_000,
           rentCents: null,
           rentCategoryId: null,
+          rentScheduleId: null,
           rentComparisonCents: null,
+          rentScheduleAmountCents: null,
+          rentScheduleApproximate: false,
           mortgages: [],
           ...extra,
         },
@@ -2056,6 +2060,7 @@ describe('property', () => {
                 propertyValueCents: 40_000_000,
                 rentCents: null,
                 rentCategoryId: null,
+                rentScheduleId: null,
                 mortgages: [],
               },
             ],
@@ -2148,6 +2153,7 @@ describe('property', () => {
                 propertyValueCents: 40_000_000,
                 rentCents: null,
                 rentCategoryId: null,
+                rentScheduleId: null,
                 mortgages: [
                   {
                     principalCents: 20_000_000,
@@ -2157,6 +2163,7 @@ describe('property', () => {
                     remainingTermMonths: 180,
                     originalPrincipalCents: null,
                     paymentCategoryId: null,
+                    paymentScheduleId: null,
                   },
                 ],
               },
@@ -2430,7 +2437,10 @@ describe('property', () => {
     remainingTermMonths: 240,
     originalPrincipalCents: null,
     paymentCategoryId: null,
+    paymentScheduleId: null,
     paymentComparisonCents: null,
+    paymentScheduleAmountCents: null,
+    paymentScheduleApproximate: false,
     ...extra,
   })
 
@@ -2458,6 +2468,103 @@ describe('property', () => {
     expect(
       within(property()).queryByText(/actually moved through this category/),
     ).toBeNull()
+  })
+
+  /** A non-completed and a completed schedule, for the two schedule pickers (#662). */
+  const withSchedules = (payload: Payload): Payload => ({
+    ...payload,
+    schedules: [
+      { id: 'sch-rent', label: 'Rent', categoryId: 'cat-rent-income', amountCents: 90_000, approximate: false },
+      { id: 'sch-mortgage', label: 'Mortgage', categoryId: 'cat-mortgage', amountCents: 95_000, approximate: true },
+    ],
+  })
+
+  it('lists the schedules from settings.schedules in the rent-schedule picker (#662)', async () => {
+    await open({ ...READS, '/api/settings': json(withSchedules(PAYLOAD)) })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    const select = screen.getByLabelText('Actual schedule') as HTMLSelectElement
+    expect(Array.from(select.options, (option) => option.text)).toEqual([
+      'Not linked',
+      'Rent — € 900,00',
+      'Mortgage — € 950,00 (approximate)',
+    ])
+  })
+
+  it('disables the rent category picker once a schedule is linked, and re-enables it once cleared (#662)', async () => {
+    await open({ ...READS, '/api/settings': json(withCategories(withSchedules(PAYLOAD))) })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    const categorySelect = screen.getByLabelText('Actual category') as HTMLSelectElement
+    expect(categorySelect.disabled).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Actual schedule'), { target: { value: 'sch-rent' } })
+    expect((screen.getByLabelText('Actual category') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.getByText("The linked schedule's own category drives the comparison above.")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Actual schedule'), { target: { value: '' } })
+    expect((screen.getByLabelText('Actual category') as HTMLSelectElement).disabled).toBe(false)
+  })
+
+  it('disables the mortgage payment-category picker once a schedule is linked (#662)', async () => {
+    await open({ ...READS, '/api/settings': json(withCategories(withSchedules(PAYLOAD))) })
+
+    addProperty()
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    const categorySelect = screen.getByLabelText('Actual category') as HTMLSelectElement
+    expect(categorySelect.disabled).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Actual schedule'), { target: { value: 'sch-mortgage' } })
+    expect((screen.getByLabelText('Actual category') as HTMLSelectElement).disabled).toBe(true)
+  })
+
+  it('sends the picked rent schedule, and null again once cleared (#662)', async () => {
+    const calls = await open({ ...READS, '/api/settings': json(withSchedules(PAYLOAD)) })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home' } })
+    fireEvent.change(screen.getByLabelText('Estimated value'), { target: { value: '400000' } })
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    fireEvent.change(screen.getByLabelText('Actual schedule'), { target: { value: 'sch-rent' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [expect.objectContaining({ rentScheduleId: 'sch-rent' })],
+      })
+    })
+
+    fireEvent.change(screen.getByLabelText('Actual schedule'), { target: { value: '' } })
+    fireEvent.click(saveProperty())
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({
+        properties: [expect.objectContaining({ rentScheduleId: null })],
+      })
+    })
+  })
+
+  it('reads back the scheduled amount alongside the category comparison, once a rent schedule is linked (#662)', async () => {
+    const linked = withCategories(
+      withSchedules(
+        withOneProperty({
+          kind: 'rental',
+          rentCents: 90_000,
+          rentScheduleId: 'sch-rent',
+          rentComparisonCents: 88_000,
+          rentScheduleAmountCents: 90_000,
+          rentScheduleApproximate: false,
+        }),
+      ),
+    )
+    await open({ ...READS, '/api/settings': json(linked) })
+
+    expect(
+      within(property()).getByText('€ 880,00 actually moved through this category last month.'),
+    ).toBeTruthy()
+    expect(within(property()).getByText('€ 900,00 scheduled for this rent.')).toBeTruthy()
   })
 })
 

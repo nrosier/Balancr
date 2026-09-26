@@ -401,6 +401,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
       categories: [],
     },
     categoryTranslations: [],
+    schedules: [],
     property: { properties: [] },
     integrations: {
       actual: {

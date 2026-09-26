@@ -6,8 +6,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
+import { categoryMeta, monthlyCategoryFacts, scheduleMeta } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
+import type { ActualSchedule } from '../../src/adapters/actual/queries.ts'
 import {
   loadCategoryMeta,
   loadCategorySpentForMonth,
@@ -16,9 +17,24 @@ import {
   loadFrequencies,
   persistFacts,
   syncCategoryMeta,
+  syncScheduleMeta,
 } from '../../src/domain/aggregate/facts.ts'
 import type { MonthlyFact } from '../../src/domain/aggregate/spend.ts'
 import { eq } from 'drizzle-orm'
+
+function schedule(id: string, overrides: Partial<ActualSchedule> = {}): ActualSchedule {
+  return {
+    id,
+    categoryId: null,
+    amountCents: -90_000,
+    approximate: false,
+    completed: false,
+    postsTransaction: true,
+    nextDate: null,
+    date: { kind: 'once', date: '2026-09-28' },
+    ...overrides,
+  }
+}
 
 let ctx: ReturnType<typeof createTestDb>
 let TENANT_ID: string
@@ -194,6 +210,59 @@ describe('syncCategoryMeta', () => {
     expect(
       ctx.db.select().from(categoryMeta).where(eq(categoryMeta.categoryId, 'salary')).get()?.nature,
     ).toBe('income')
+  })
+})
+
+describe('syncScheduleMeta (#662)', () => {
+  it('upserts a schedule on first sight', () => {
+    syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-1', { categoryId: 'cat-rent', amountCents: -90_000 })], new Map([['sch-1', 'Rent']]))
+
+    const row = ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()
+    expect(row).toMatchObject({
+      label: 'Rent',
+      categoryId: 'cat-rent',
+      amountCents: -90_000,
+      approximate: false,
+      completed: false,
+    })
+  })
+
+  it('falls back to the schedule id when it has no label', () => {
+    syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-1')], new Map())
+    expect(
+      ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()?.label,
+    ).toBe('sch-1')
+  })
+
+  it('fully refreshes every column on a second sync, unlike category_meta (#662)', () => {
+    syncScheduleMeta(
+      ctx.db,
+      TENANT_ID,
+      [schedule('sch-1', { categoryId: 'cat-rent', amountCents: -90_000, approximate: false, completed: false })],
+      new Map([['sch-1', 'Rent']]),
+    )
+
+    syncScheduleMeta(
+      ctx.db,
+      TENANT_ID,
+      [schedule('sch-1', { categoryId: 'cat-mortgage', amountCents: -95_000, approximate: true, completed: true })],
+      new Map([['sch-1', 'Mortgage']]),
+    )
+
+    const row = ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()
+    expect(row).toMatchObject({
+      label: 'Mortgage',
+      categoryId: 'cat-mortgage',
+      amountCents: -95_000,
+      approximate: true,
+      completed: true,
+    })
+  })
+
+  it('does nothing with an empty list rather than clearing the table', () => {
+    syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-1')], new Map())
+    syncScheduleMeta(ctx.db, TENANT_ID, [], new Map())
+    expect(ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()).toBeDefined()
   })
 })
 

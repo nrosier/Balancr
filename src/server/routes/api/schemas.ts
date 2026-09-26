@@ -1822,13 +1822,19 @@ const propertyMortgageSchema = z.object({
   originalPrincipalCents: cents().nullable(),
   /** The Actual expense category this payment is linked to (#643), or null if unlinked. */
   paymentCategoryId: z.string().nullable(),
+  /** The Actual schedule this payment is linked to (#662), or null if unlinked. */
+  paymentScheduleId: z.string().nullable(),
   /**
-   * What actually moved through `paymentCategoryId` in the latest synced month, for
-   * comparison against `monthlyPaymentCents` above. Null whenever there is nothing to
-   * compare yet — no category linked, or no fact row for that category/month — never
-   * a stand-in zero.
+   * What actually moved through `paymentCategoryId` — or, when a schedule is linked,
+   * its own resolved category — in the latest synced month, for comparison against
+   * `monthlyPaymentCents` above. Null whenever there is nothing to compare yet — no
+   * category linked, or no fact row for that category/month — never a stand-in zero.
    */
   paymentComparisonCents: cents().nullable(),
+  /** The linked schedule's own scheduled amount, or null when unlinked (#662). */
+  paymentScheduleAmountCents: cents().nullable(),
+  /** Whether `paymentScheduleAmountCents` is a range or approximation (#662). */
+  paymentScheduleApproximate: z.boolean(),
 })
 
 const propertySchema = z.object({
@@ -1840,14 +1846,33 @@ const propertySchema = z.object({
   rentCents: cents().nullable(),
   /** The Actual income category the rent above is linked to (#643), or null if unlinked. */
   rentCategoryId: z.string().nullable(),
+  /** The Actual schedule the rent above is linked to (#662), or null if unlinked. */
+  rentScheduleId: z.string().nullable(),
   /** Same null-means-nothing-to-compare contract as `propertyMortgageSchema.paymentComparisonCents`. */
   rentComparisonCents: cents().nullable(),
+  /** The linked schedule's own scheduled amount, or null when unlinked (#662). */
+  rentScheduleAmountCents: cents().nullable(),
+  /** Whether `rentScheduleAmountCents` is a range or approximation (#662). */
+  rentScheduleApproximate: z.boolean(),
   /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
   mortgages: z.array(propertyMortgageSchema),
 })
 
 export const propertiesSettingSchema = z.object({
   properties: z.array(propertySchema),
+})
+
+/**
+ * The picker's option list for the rent/payment schedule selects (#662) — every
+ * non-completed schedule this tenant's last sync saw, cached in `schedule_meta`.
+ */
+export const scheduleOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** The category the schedule's own rule resolves, or null when it resolves none. */
+  categoryId: z.string().nullable(),
+  amountCents: cents(),
+  approximate: z.boolean(),
 })
 
 /**
@@ -2082,6 +2107,12 @@ export const settingsSchema = z.object({
       translations: z.record(z.string(), z.string()),
     }),
   ),
+  /**
+   * Every non-completed schedule this tenant's last sync saw (#662), for the
+   * property rent/payment schedule pickers. Arrives with the rest of `/api/settings`,
+   * same "no second fetch" reasoning as `categoryTranslations` above.
+   */
+  schedules: z.array(scheduleOptionSchema),
   /**
    * Invites this tenant's owner has issued (#373), newest first. Never the code.
    *

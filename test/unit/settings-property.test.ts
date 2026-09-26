@@ -17,7 +17,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
-import { auditLog, categoryMeta, monthlyTotals, users } from '../../src/db/schema.ts'
+import { auditLog, categoryMeta, monthlyTotals, scheduleMeta, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { persistFacts } from '../../src/domain/aggregate/facts.ts'
 import type { MonthlyFact } from '../../src/domain/aggregate/spend.ts'
@@ -104,6 +104,24 @@ function seedCategory(id: string, overrides: { isIncome?: boolean; hidden?: bool
       nameSnapshot: id,
       isIncome: overrides.isIncome ?? false,
       hidden: overrides.hidden ?? false,
+    })
+    .run()
+}
+
+function seedSchedule(
+  id: string,
+  overrides: { categoryId?: string | null; completed?: boolean; amountCents?: number; approximate?: boolean } = {},
+): void {
+  ctx.db
+    .insert(scheduleMeta)
+    .values({
+      tenantId,
+      scheduleId: id,
+      label: id,
+      categoryId: overrides.categoryId ?? null,
+      amountCents: overrides.amountCents ?? -90_000,
+      approximate: overrides.approximate ?? false,
+      completed: overrides.completed ?? false,
     })
     .run()
 }
@@ -269,6 +287,84 @@ describe('PATCH /api/settings/property', () => {
     const issues = res.json<ErrorBody>().error.issues ?? []
     expect(issues.map((issue) => issue.path)).toContain('paymentCategoryId')
   })
+
+  it('round-trips a valid rent schedule link, with its cached label/amount surfacing (#662)', async () => {
+    seedCategory('cat-rent', { isIncome: true })
+    seedSchedule('sch-rent', { categoryId: 'cat-rent', amountCents: -90_000 })
+    const res = await send('/api/settings/property', {
+      properties: [
+        { ...BODY.properties[0], kind: 'rental' as const, rentCents: 90_000, rentScheduleId: 'sch-rent' },
+      ],
+    })
+
+    expect(res.statusCode).toBe(200)
+    const property = res.json<Settings>().property.properties[0]
+    expect(property?.rentScheduleId).toBe('sch-rent')
+    expect(property?.rentScheduleAmountCents).toBe(90_000)
+    expect(property?.rentScheduleApproximate).toBe(false)
+  })
+
+  it('round-trips a valid payment schedule link', async () => {
+    seedCategory('cat-mortgage', { isIncome: false })
+    seedSchedule('sch-mortgage', { categoryId: 'cat-mortgage', amountCents: -95_000, approximate: true })
+    const res = await send('/api/settings/property', {
+      properties: [
+        {
+          ...BODY.properties[0],
+          mortgages: [{ ...BODY.properties[0]!.mortgages[0]!, paymentScheduleId: 'sch-mortgage' }],
+        },
+      ],
+    })
+
+    expect(res.statusCode).toBe(200)
+    const mortgage = res.json<Settings>().property.properties[0]?.mortgages[0]
+    expect(mortgage?.paymentScheduleId).toBe('sch-mortgage')
+    expect(mortgage?.paymentScheduleAmountCents).toBe(95_000)
+    expect(mortgage?.paymentScheduleApproximate).toBe(true)
+  })
+
+  it('names the field for an unknown schedule link, as a 400, and does not persist', async () => {
+    const res = await send('/api/settings/property', {
+      properties: [
+        { ...BODY.properties[0], kind: 'rental' as const, rentCents: 90_000, rentScheduleId: 'nope' },
+      ],
+    })
+
+    expect(res.statusCode).toBe(400)
+    const issues = res.json<ErrorBody>().error.issues ?? []
+    expect(issues.map((issue) => issue.path)).toContain('rentScheduleId')
+    expect(loadProperties(ctx.db, tenantId).properties).toEqual([])
+  })
+
+  it('names the field for a completed schedule link, as a 400', async () => {
+    seedSchedule('sch-mortgage', { completed: true })
+    const res = await send('/api/settings/property', {
+      properties: [
+        {
+          ...BODY.properties[0],
+          mortgages: [{ ...BODY.properties[0]!.mortgages[0]!, paymentScheduleId: 'sch-mortgage' }],
+        },
+      ],
+    })
+
+    expect(res.statusCode).toBe(400)
+    const issues = res.json<ErrorBody>().error.issues ?? []
+    expect(issues.map((issue) => issue.path)).toContain('paymentScheduleId')
+  })
+
+  it('names the field for a schedule whose own category is in the wrong direction', async () => {
+    // 'cat-groceries' already exists as a non-income category, courtesy of `apiFixture()`.
+    seedSchedule('sch-rent', { categoryId: 'cat-groceries' })
+    const res = await send('/api/settings/property', {
+      properties: [
+        { ...BODY.properties[0], kind: 'rental' as const, rentCents: 90_000, rentScheduleId: 'sch-rent' },
+      ],
+    })
+
+    expect(res.statusCode).toBe(400)
+    const issues = res.json<ErrorBody>().error.issues ?? []
+    expect(issues.map((issue) => issue.path)).toContain('rentScheduleId')
+  })
 })
 
 describe('GET /api/settings — the property comparison figures (#643)', () => {
@@ -334,5 +430,34 @@ describe('GET /api/settings — the property comparison figures (#643)', () => {
     const property = (await getSettings()).property.properties[0]
     expect(property?.rentComparisonCents).toBe(95_000)
     expect(property?.mortgages[0]?.paymentComparisonCents).toBe(88_000)
+  })
+
+  it('sources the comparison from a linked schedule\'s own category, not a separately-set one (#662)', async () => {
+    const month = '2026-09'
+    seedCategory('cat-rent', { isIncome: true })
+    seedCategory('cat-sublet', { isIncome: true })
+    seedSchedule('sch-rent', { categoryId: 'cat-sublet' })
+    markMonthStored(month)
+    persistFacts(
+      ctx.db,
+      tenantId,
+      [fact(month, 'cat-rent', { spentCents: 95_000 }), fact(month, 'cat-sublet', { spentCents: 88_000 })],
+      [month],
+    )
+
+    await send('/api/settings/property', {
+      properties: [
+        {
+          ...BODY.properties[0],
+          kind: 'rental' as const,
+          rentCents: 90_000,
+          rentCategoryId: 'cat-rent',
+          rentScheduleId: 'sch-rent',
+        },
+      ],
+    })
+
+    const property = (await getSettings()).property.properties[0]
+    expect(property?.rentComparisonCents).toBe(88_000)
   })
 })

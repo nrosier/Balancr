@@ -16,8 +16,9 @@
  *    survive forever and keep showing up in charts as a ghost envelope.
  */
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import type { ActualSchedule } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
-import { categoryMeta, categoryTranslations, monthlyCategoryFacts } from '../../db/schema.ts'
+import { categoryMeta, categoryTranslations, monthlyCategoryFacts, scheduleMeta } from '../../db/schema.ts'
 import { monthsBefore } from '../../util/month.ts'
 import type { Transaction } from '../audit.ts'
 import type { ExpectedFrequency } from './baseline.ts'
@@ -181,6 +182,51 @@ export function syncCategoryMeta(
             // first sighting and is the user's to correct after that.
             isIncome: sql`excluded.is_income`,
             hidden: sql`excluded.hidden`,
+            updatedAt: new Date(),
+          },
+        })
+        .run()
+    }
+  })
+
+  return rows.length
+}
+
+/**
+ * Upserts `schedule_meta` from a nightly `fetchSchedules`/`fetchScheduleLabels`
+ * pass (#662). Unlike `syncCategoryMeta` there is no user-entered column to
+ * preserve, so every column is refreshed on every sync.
+ */
+export function syncScheduleMeta(
+  db: Db | Transaction,
+  tenantId: string,
+  schedules: readonly ActualSchedule[],
+  labels: ReadonlyMap<string, string>,
+): number {
+  if (schedules.length === 0) return 0
+
+  const rows = schedules.map((schedule) => ({
+    tenantId,
+    scheduleId: schedule.id,
+    label: labels.get(schedule.id) ?? schedule.id,
+    categoryId: schedule.categoryId,
+    amountCents: schedule.amountCents,
+    approximate: schedule.approximate,
+    completed: schedule.completed,
+  }))
+
+  db.transaction((tx) => {
+    for (let start = 0; start < rows.length; start += CHUNK) {
+      tx.insert(scheduleMeta)
+        .values(rows.slice(start, start + CHUNK))
+        .onConflictDoUpdate({
+          target: [scheduleMeta.tenantId, scheduleMeta.scheduleId],
+          set: {
+            label: sql`excluded.label`,
+            categoryId: sql`excluded.category_id`,
+            amountCents: sql`excluded.amount_cents`,
+            approximate: sql`excluded.approximate`,
+            completed: sql`excluded.completed`,
             updatedAt: new Date(),
           },
         })

@@ -60,6 +60,8 @@ interface MortgageDraft {
   originalPrincipalCents: string
   /** The Actual expense category this payment shows up in (#643), or null if unlinked. */
   paymentCategoryId: string | null
+  /** The Actual schedule this payment shows up in (#662), or null if unlinked. */
+  paymentScheduleId: string | null
 }
 
 /** One property's row while it is being typed: every box is text until it parses. */
@@ -71,6 +73,8 @@ interface Draft {
   rentCents: string
   /** The Actual income category this rent shows up in (#643), or null if unlinked. */
   rentCategoryId: string | null
+  /** The Actual schedule this rent shows up in (#662), or null if unlinked. */
+  rentScheduleId: string | null
   /** Empty means no mortgage — the list itself, not a separate draft state (#393). */
   mortgages: MortgageDraft[]
 }
@@ -85,6 +89,7 @@ const mortgageDraftOf = (mortgage: PropertyMortgage): MortgageDraft => ({
   originalPrincipalCents:
     mortgage.originalPrincipalCents === null ? '' : formatMoney(mortgage.originalPrincipalCents),
   paymentCategoryId: mortgage.paymentCategoryId,
+  paymentScheduleId: mortgage.paymentScheduleId,
 })
 
 const draftOf = (property: Property): Draft => ({
@@ -95,6 +100,7 @@ const draftOf = (property: Property): Draft => ({
     property.propertyValueCents === null ? '' : formatMoney(property.propertyValueCents),
   rentCents: property.rentCents === null ? '' : formatMoney(property.rentCents),
   rentCategoryId: property.rentCategoryId,
+  rentScheduleId: property.rentScheduleId,
   mortgages: property.mortgages.map(mortgageDraftOf),
 })
 
@@ -133,6 +139,7 @@ function parseMortgage(draft: MortgageDraft): PropertyMortgage | null {
   // invalid, since most mortgages already on file predate this field (#392).
   const originalText = draft.originalPrincipalCents.trim()
   const paymentCategoryId = draft.paymentCategoryId
+  const paymentScheduleId = draft.paymentScheduleId
   if (originalText === '') {
     return {
       principalCents,
@@ -142,6 +149,7 @@ function parseMortgage(draft: MortgageDraft): PropertyMortgage | null {
       remainingTermMonths,
       originalPrincipalCents: null,
       paymentCategoryId,
+      paymentScheduleId,
     }
   }
   const originalPrincipalCents = parseMoneyToCents(originalText)
@@ -154,6 +162,7 @@ function parseMortgage(draft: MortgageDraft): PropertyMortgage | null {
     remainingTermMonths,
     originalPrincipalCents,
     paymentCategoryId,
+    paymentScheduleId,
   }
 }
 
@@ -163,6 +172,7 @@ interface ParsedRow {
   propertyValueCents: number | null
   rentCents: number | null
   rentCategoryId: string | null
+  rentScheduleId: string | null
   mortgages: PropertyMortgage[]
   ok: boolean
 }
@@ -188,6 +198,7 @@ function parseRow(row: Draft): ParsedRow {
     propertyValueCents,
     rentCents,
     rentCategoryId: row.rentCategoryId,
+    rentScheduleId: row.rentScheduleId,
     mortgages,
     ok: !propertyValueInvalid && !rentInvalid && !mortgageInvalid,
   }
@@ -253,6 +264,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
           remainingTermMonths: '',
           originalPrincipalCents: '',
           paymentCategoryId: null,
+          paymentScheduleId: null,
         },
       ],
     })
@@ -291,6 +303,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
         propertyValueCents: parsed.propertyValueCents,
         rentCents: parsed.rentCents,
         rentCategoryId: parsed.rentCategoryId,
+        rentScheduleId: parsed.rentScheduleId,
         mortgages: parsed.mortgages,
       })
     })
@@ -329,6 +342,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                 propertyValueCents: parsed.propertyValueCents,
                 rentCents: parsed.rentCents,
                 rentCategoryId: parsed.rentCategoryId,
+                rentScheduleId: parsed.rentScheduleId,
                 mortgages: parsed.mortgages,
               }
               const equity = propertyEquityCents(asProperty, today)
@@ -361,13 +375,24 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                 }
                 if (
                   parsed.kind === 'rental' &&
-                  row.rentCategoryId !== null &&
+                  (row.rentCategoryId !== null || row.rentScheduleId !== null) &&
                   sourceProperty?.rentComparisonCents != null
                 ) {
                   reads.push(
                     t('settings:property.rentCategoryReads', {
                       value: formatMoney(sourceProperty.rentComparisonCents),
                     }),
+                  )
+                }
+                if (
+                  parsed.kind === 'rental' &&
+                  row.rentScheduleId !== null &&
+                  sourceProperty?.rentScheduleAmountCents != null
+                ) {
+                  reads.push(
+                    t('settings:property.rentScheduleReads', {
+                      value: formatMoney(sourceProperty.rentScheduleAmountCents),
+                    }) + (sourceProperty.rentScheduleApproximate ? ` ${t('settings:property.scheduleApprox')}` : ''),
                   )
                 }
                 const paidOff = paidOffBp(asProperty.mortgages, today)
@@ -465,7 +490,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                           id={`property-rent-category-${row.id}`}
                           className="field__input"
                           value={row.rentCategoryId ?? ''}
-                          disabled={locked}
+                          disabled={locked || row.rentScheduleId !== null}
                           onChange={(event) =>
                             edit(index, {
                               rentCategoryId: event.target.value === '' ? null : event.target.value,
@@ -476,6 +501,38 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                           {rentCategoryOptions.map((category) => (
                             <option key={category.categoryId} value={category.categoryId}>
                               {category.categoryName}
+                            </option>
+                          ))}
+                        </select>
+                        {row.rentScheduleId !== null && (
+                          <p className="property__reads muted">
+                            {t('settings:property.rentScheduleOverridesCategory')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {row.kind === 'rental' && (
+                      <div className="field">
+                        <label className="field__label" htmlFor={`property-rent-schedule-${row.id}`}>
+                          {t('settings:property.rentSchedule')}
+                        </label>
+                        <select
+                          id={`property-rent-schedule-${row.id}`}
+                          className="field__input"
+                          value={row.rentScheduleId ?? ''}
+                          disabled={locked}
+                          onChange={(event) =>
+                            edit(index, {
+                              rentScheduleId: event.target.value === '' ? null : event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">{t('settings:property.rentSchedulePlaceholder')}</option>
+                          {settings.schedules.map((schedule) => (
+                            <option key={schedule.id} value={schedule.id}>
+                              {schedule.label} — {formatMoney(schedule.amountCents)}
+                              {schedule.approximate ? ` ${t('settings:property.scheduleApprox')}` : ''}
                             </option>
                           ))}
                         </select>
@@ -623,7 +680,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                               id={`mortgage-payment-category-${idPrefix}`}
                               className="field__input"
                               value={mortgage.paymentCategoryId ?? ''}
-                              disabled={locked}
+                              disabled={locked || mortgage.paymentScheduleId !== null}
                               onChange={(event) =>
                                 editMortgage(index, mortgageIndex, {
                                   paymentCategoryId: event.target.value === '' ? null : event.target.value,
@@ -640,11 +697,51 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                               ))}
                             </select>
                             <p className="property__reads muted">
-                              {mortgage.paymentCategoryId !== null &&
-                              sourceMortgage?.paymentComparisonCents != null
-                                ? t('settings:property.mortgage.paymentCategoryReads', {
-                                    value: formatMoney(sourceMortgage.paymentComparisonCents),
-                                  })
+                              {mortgage.paymentScheduleId !== null
+                                ? t('settings:property.mortgage.paymentScheduleOverridesCategory')
+                                : mortgage.paymentCategoryId !== null &&
+                                    sourceMortgage?.paymentComparisonCents != null
+                                  ? t('settings:property.mortgage.paymentCategoryReads', {
+                                      value: formatMoney(sourceMortgage.paymentComparisonCents),
+                                    })
+                                  : ' '}
+                            </p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-payment-schedule-${idPrefix}`}>
+                              {t('settings:property.mortgage.paymentSchedule')}
+                            </label>
+                            <select
+                              id={`mortgage-payment-schedule-${idPrefix}`}
+                              className="field__input"
+                              value={mortgage.paymentScheduleId ?? ''}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, {
+                                  paymentScheduleId: event.target.value === '' ? null : event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">
+                                {t('settings:property.mortgage.paymentSchedulePlaceholder')}
+                              </option>
+                              {settings.schedules.map((schedule) => (
+                                <option key={schedule.id} value={schedule.id}>
+                                  {schedule.label} — {formatMoney(schedule.amountCents)}
+                                  {schedule.approximate ? ` ${t('settings:property.scheduleApprox')}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="property__reads muted">
+                              {mortgage.paymentScheduleId !== null &&
+                              sourceMortgage?.paymentScheduleAmountCents != null
+                                ? t('settings:property.mortgage.paymentScheduleReads', {
+                                    value: formatMoney(sourceMortgage.paymentScheduleAmountCents),
+                                  }) +
+                                  (sourceMortgage.paymentScheduleApproximate
+                                    ? ` ${t('settings:property.scheduleApprox')}`
+                                    : '')
                                 : ' '}
                             </p>
                           </div>
@@ -728,6 +825,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                   propertyValueCents: '',
                   rentCents: '',
                   rentCategoryId: null,
+                  rentScheduleId: null,
                   mortgages: [],
                 },
               ])
