@@ -43,6 +43,8 @@ import type {
   AiRun,
   AiRunList,
   AiRunPayload,
+  AuditEntry,
+  AuditTrail,
   PromptBody,
   PromptDiff,
   Settings as Payload,
@@ -540,6 +542,7 @@ const SECTION_HEADING: Record<string, string> = {
   '/settings/net-worth/loans': 'Loans',
   '/settings/net-worth/debts': 'Credit cards',
   '/settings/net-worth/goals': 'Savings goals',
+  '/settings/audit': 'Audit trail',
 }
 
 /**
@@ -4953,6 +4956,67 @@ describe('the AI log', () => {
 
     expect(await screen.findByText('Narrative')).toBeTruthy()
     expect(screen.getByText('Analysis')).toBeTruthy()
+  })
+})
+
+/**
+ * The audit trail (#592): every change a human approved, read-only, on its own
+ * General subtab.
+ *
+ * Owner-only on the server, so what is worth pinning here beyond the list/expand
+ * mechanics `AiLog`'s own tests already cover is the one thing new to this panel: the
+ * tab is not offered to a viewer at all, rather than rendered to show a failure.
+ */
+describe('the audit trail', () => {
+  const ENTRY: AuditEntry = {
+    id: 'audit-1',
+    action: 'settings.coicop',
+    entity: 'category_meta',
+    entityRef: 'cat-groceries',
+    actorId: null,
+    runId: null,
+    proposalId: null,
+    before: { coicop: null },
+    after: { coicop: '01' },
+    at: '2026-08-01T00:00:00Z',
+  }
+
+  it('lists every recorded change, and shows what changed once a row is opened', async () => {
+    await open({ ...READS, '/api/audit': json({ entries: [ENTRY] } satisfies AuditTrail) }, '/settings/audit')
+
+    expect(await screen.findByText('settings.coicop')).toBeTruthy()
+    expect(screen.getByText(/category_meta/)).toBeTruthy()
+    expect(screen.getByText(/cat-groceries/)).toBeTruthy()
+    expect(screen.getByText('System')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }))
+
+    expect(await screen.findByText(/"coicop":\s*null/)).toBeTruthy()
+    expect(screen.getByText(/"coicop":\s*"01"/)).toBeTruthy()
+  })
+
+  it('says nothing has been recorded yet, rather than drawing an empty table', async () => {
+    await open({ ...READS, '/api/audit': json({ entries: [] } satisfies AuditTrail) }, '/settings/audit')
+
+    expect(await screen.findByText('Nothing has been recorded yet.')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('is not offered to a viewer, whose direct visit lands on General instead', async () => {
+    await openPage(
+      {
+        '/api/settings': json({
+          ...PAYLOAD,
+          profile: { ...PAYLOAD.profile, role: 'viewer' },
+        } satisfies Payload),
+        '/api/ai/estimate': json(ESTIMATE),
+      },
+      '/settings/audit',
+      'Account',
+    )
+
+    expect(screen.queryByRole('link', { name: 'Audit trail' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Audit trail' })).toBeNull()
   })
 })
 

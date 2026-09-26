@@ -84,6 +84,25 @@
     },
     "used": "{{used}} of the monthly budget"
   },
+  "audit": {
+    "after": "After",
+    "before": "Before",
+    "caption_one": "The most recent recorded change.",
+    "caption_other": "The {{value}} most recent recorded changes, newest first.",
+    "column": {
+      "action": "Action",
+      "actor": "Who",
+      "entity": "Entity",
+      "when": "When"
+    },
+    "empty": "Nothing has been recorded yet.",
+    "hideChange": "Hide what changed",
+    "hint": "Every change a human approved to a setting or a suggestion, newest first. Owner-only: what changed can name a co-parent or an amount a viewer should not see.",
+    "none": "None",
+    "system": "System",
+    "title": "Audit trail",
+    "viewChange": "Show what changed"
+  },
   "benchmark": {
     "coicop": {
       "00": "00 — Not household consumption",
@@ -462,6 +481,7 @@
     "accounts": "Accounts",
     "ai": "AI",
     "aiLog": "AI log",
+    "audit": "Audit trail",
     "benchmark": "Benchmark",
     "debts": "Credit cards",
     "digest": "Monthly digest",

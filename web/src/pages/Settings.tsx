@@ -72,6 +72,7 @@ import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
 import { useRouter } from '../router.tsx'
 import { AiSection } from '../settings/Ai.tsx'
+import { AuditPanel } from '../settings/Audit.tsx'
 import { BenchmarkSection } from '../settings/Benchmark.tsx'
 import { DigestPanel } from '../settings/Digest.tsx'
 import { IntegrationsPanel } from '../settings/Integrations.tsx'
@@ -91,12 +92,13 @@ import { labelKeyFor, useSubsection, type Section } from '../ui/sections.ts'
 import { PageHeader } from './PageHeader.tsx'
 import '../settings/settings.css'
 
-type GeneralSubsectionId = 'general' | 'members' | 'status'
+type GeneralSubsectionId = 'general' | 'members' | 'status' | 'audit'
 
 const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
   { id: 'general', path: '/settings', labelKey: 'settings:nav.general' },
   { id: 'members', path: '/settings/members', labelKey: 'settings:nav.members' },
   { id: 'status', path: '/settings/status', labelKey: 'settings:status.title', nested: true },
+  { id: 'audit', path: '/settings/audit', labelKey: 'settings:nav.audit' },
 ]
 
 /**
@@ -104,18 +106,29 @@ const GENERAL_SUBSECTIONS: readonly Section<GeneralSubsectionId>[] = [
  * that come from the settings payload, versus the status panel, which reads `/api/status`
  * on its own and is job-control-heavy enough to want its own page (see the module doc
  * comment on why the two used to share a section).
+ *
+ * Audit (#592) is filtered out of the array for a viewer rather than rendered and left
+ * to show a failure: `GET /api/audit` is owner-only for the reason its own module doc
+ * comment gives, and there is no other read on this page gated by role rather than by
+ * which control is disabled. Filtering the array is also what makes a viewer's direct
+ * visit to `/settings/audit` safe — `useSubsection` falls back to `general` and
+ * corrects the URL bar to match, the same as any other tab this session does not have.
  */
 function GeneralSection(props: SettingsPanelProps): ReactNode {
   const { t, language } = useT()
-  const active = useSubsection(GENERAL_SUBSECTIONS)
+  const { owner } = props
+  const subsections = GENERAL_SUBSECTIONS.filter((section) => section.id !== 'audit' || owner)
+  const active = useSubsection(subsections)
   const { settings } = props
 
   return (
-    <SectionNav sections={GENERAL_SUBSECTIONS} variant="sub" ariaLabel={t('settings:nav.general')}>
+    <SectionNav sections={subsections} variant="sub" ariaLabel={t('settings:nav.general')}>
       {active === 'status' ? (
         <StatusPanel {...props} />
       ) : active === 'members' ? (
         <MembersPanel {...props} />
+      ) : active === 'audit' ? (
+        <AuditPanel />
       ) : (
         <>
           <LanguagePanel {...props} />
