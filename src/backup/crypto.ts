@@ -205,7 +205,7 @@ export async function encryptFile(
 ): Promise<number> {
   const header = buildHeader()
   const key = await deriveKey(passphrase, header)
-  const cipher = createCipheriv('aes-256-gcm', key, header.nonce)
+  const cipher = createCipheriv('aes-256-gcm', key, header.nonce, { authTagLength: TAG_BYTES })
   cipher.setAAD(header.bytes)
 
   await pipeline(
@@ -254,7 +254,7 @@ export async function decryptFile(
     await handle.read(tag, 0, TAG_BYTES, size - TAG_BYTES)
 
     const key = await deriveKey(passphrase, header)
-    const decipher = createDecipheriv('aes-256-gcm', key, header.nonce)
+    const decipher = createDecipheriv('aes-256-gcm', key, header.nonce, { authTagLength: TAG_BYTES })
     decipher.setAAD(header.bytes)
     decipher.setAuthTag(tag)
 

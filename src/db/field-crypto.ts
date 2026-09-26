@@ -27,7 +27,7 @@ export class FieldCryptoError extends Error {
 /** AES-256-GCM under `config.CONFIG_ENCRYPTION_KEY`. Returns base64 of `nonce || tag || ciphertext`. */
 export function encryptField(plaintext: string): string {
   const nonce = randomBytes(NONCE_BYTES)
-  const cipher = createCipheriv(ALGORITHM, config.CONFIG_ENCRYPTION_KEY, nonce)
+  const cipher = createCipheriv(ALGORITHM, config.CONFIG_ENCRYPTION_KEY, nonce, { authTagLength: TAG_BYTES })
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
   const tag = cipher.getAuthTag()
   return Buffer.concat([nonce, tag, ciphertext]).toString('base64')
@@ -50,7 +50,7 @@ export function decryptField(encoded: string): string {
   const tag = raw.subarray(NONCE_BYTES, NONCE_BYTES + TAG_BYTES)
   const ciphertext = raw.subarray(NONCE_BYTES + TAG_BYTES)
 
-  const decipher = createDecipheriv(ALGORITHM, config.CONFIG_ENCRYPTION_KEY, nonce)
+  const decipher = createDecipheriv(ALGORITHM, config.CONFIG_ENCRYPTION_KEY, nonce, { authTagLength: TAG_BYTES })
   decipher.setAuthTag(tag)
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
 }
