@@ -26,6 +26,7 @@ function transporter(): Transporter {
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: config.SMTP_SECURE,
+      requireTLS: config.SMTP_REQUIRE_TLS,
       auth:
         config.SMTP_USER === undefined
           ? undefined

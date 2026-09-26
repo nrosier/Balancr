@@ -279,6 +279,15 @@ const EnvSchema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
   /** Whether to connect over TLS from the start (port 465) rather than upgrade via STARTTLS. */
   SMTP_SECURE: bool('false'),
+  /**
+   * Whether to refuse to send rather than fall back to plaintext when the relay
+   * doesn't offer STARTTLS (S2, 2026-09-26 review). Nodemailer's own default for
+   * `secure: false` is "STARTTLS if offered, plaintext otherwise" — silent and
+   * indistinguishable from a successful encrypted send in the log or the UI. This
+   * flips that default; set to `false` only for a loopback relay, the same
+   * approved-exception shape `validateCustomBaseUrl` uses for `http://` there.
+   */
+  SMTP_REQUIRE_TLS: bool('true'),
   SMTP_USER: optionalText(),
   SMTP_PASS: optionalText(),
   /** The `From:` address on a digest email. Required once `SMTP_HOST` is set. */
@@ -652,6 +661,7 @@ export function configSummary(): Record<string, unknown> {
     SMTP_HOST: config.SMTP_HOST ?? 'unset',
     SMTP_PORT: config.SMTP_PORT,
     SMTP_SECURE: config.SMTP_SECURE,
+    SMTP_REQUIRE_TLS: config.SMTP_REQUIRE_TLS,
     SMTP_USER: config.SMTP_USER ?? 'unset',
     SMTP_PASS: secret(config.SMTP_PASS),
     SMTP_FROM: config.SMTP_FROM ?? 'unset',
