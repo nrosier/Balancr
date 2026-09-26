@@ -29,7 +29,7 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
-import { settings } from '../../db/schema.ts'
+import { categoryMeta, settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
 import { MAX_MORTGAGES_PER_PROPERTY, MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
 
@@ -46,7 +46,7 @@ export {
   standardMonthlyPaymentCents,
   totalEquityCents,
 } from './vocabulary.ts'
-export type { Mortgage, Property, PropertyKind } from './vocabulary.ts'
+export type { Mortgage, Property, PropertyKind, PropertyMortgage } from './vocabulary.ts'
 
 const log = logger.child({ module: 'property/properties' })
 
@@ -65,6 +65,14 @@ export const mortgageSchema = z
     remainingTermMonths: z.int().min(0).max(600),
     /** What the loan started at, or null when nobody has entered it (#392). */
     originalPrincipalCents: z.int().min(0).nullable().default(null),
+    /**
+     * The Actual expense category this payment should show up in, or null when
+     * nobody has linked one yet (#643). Validated in `saveProperties` rather than
+     * here, the same division as the rate/term bounds above — a category's
+     * direction and hidden state are facts about the tenant's data, not about the
+     * shape of this field.
+     */
+    paymentCategoryId: z.string().min(1).nullable().default(null),
   })
   .strict()
 
@@ -77,6 +85,8 @@ export const propertySchema = z
     label: z.string().max(80).default(''),
     propertyValueCents: z.int().min(0).nullable().default(null),
     rentCents: z.int().min(0).nullable().default(null),
+    /** The Actual income category this rent should show up in (#643). See `paymentCategoryId`. */
+    rentCategoryId: z.string().min(1).nullable().default(null),
     mortgages: z.array(mortgageSchema).max(MAX_MORTGAGES_PER_PROPERTY).default([]),
   })
   .strict()
@@ -145,12 +155,57 @@ export function loadProperties(db: Db, tenantId: string): Properties {
   return parsed.data
 }
 
+/**
+ * Thrown when a `rentCategoryId`/`paymentCategoryId` names no category this tenant
+ * has ever seen, names one of the wrong direction, or names a hidden one. Its own
+ * error rather than a `ZodError`, for the same reason `goal/goals.ts`'s
+ * `UnknownCategoryError` is: it is not a fact the shape of the body can tell. Hidden
+ * is rejected too, stricter than a goal's `assertKnownCategory` — a hidden category
+ * can stop receiving new transactions at any time, which would freeze the #643
+ * comparison silently rather than surfacing as a clear "pick another one." The route
+ * maps it to 400, same as a `ZodError`.
+ */
+export class InvalidCategoryLinkError extends Error {
+  constructor(
+    public readonly field: 'rentCategoryId' | 'paymentCategoryId',
+    categoryId: string,
+  ) {
+    super(`No income/expense category ${categoryId} is available for this tenant to link as ${field}.`)
+    this.name = 'InvalidCategoryLinkError'
+  }
+}
+
+/** Throws `InvalidCategoryLinkError` when `categoryId` is set but not a valid link target. */
+function assertCategoryDirection(
+  db: Db,
+  tenantId: string,
+  categoryId: string | null,
+  direction: 'income' | 'expense',
+  field: 'rentCategoryId' | 'paymentCategoryId',
+): void {
+  if (categoryId === null) return
+  const row = db
+    .select({ isIncome: categoryMeta.isIncome, hidden: categoryMeta.hidden })
+    .from(categoryMeta)
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, categoryId)))
+    .get()
+  if (row === undefined || row.hidden || row.isIncome !== (direction === 'income')) {
+    throw new InvalidCategoryLinkError(field, categoryId)
+  }
+}
+
 export function saveProperties(
   db: Db,
   tenantId: string,
   patch: { properties: PropertyPatch[] },
 ): Properties {
   const next = propertiesSchema.parse(patch ?? {})
+  for (const property of next.properties) {
+    assertCategoryDirection(db, tenantId, property.rentCategoryId, 'income', 'rentCategoryId')
+    for (const mortgage of property.mortgages) {
+      assertCategoryDirection(db, tenantId, mortgage.paymentCategoryId, 'expense', 'paymentCategoryId')
+    }
+  }
   const valueJson = JSON.stringify(next)
 
   db.insert(settings)

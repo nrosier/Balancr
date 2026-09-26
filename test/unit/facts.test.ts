@@ -10,6 +10,7 @@ import { categoryMeta, monthlyCategoryFacts } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   loadCategoryMeta,
+  loadCategorySpentForMonth,
   loadCategoryTrends,
   loadFacts,
   loadFrequencies,
@@ -435,5 +436,28 @@ describe('loadCategoryTrends', () => {
 
   it('asks for nothing when the window is empty', () => {
     expect(loadCategoryTrends(ctx.db, TENANT_ID, '2026-03', 0)).toEqual({ months: [], byCategory: new Map() })
+  })
+})
+
+describe('loadCategorySpentForMonth (#643)', () => {
+  it('reads the seeded figure back unchanged, with no sign flip', () => {
+    persistFacts(ctx.db, TENANT_ID, [fact('2026-02', 'rent-income', { spentCents: 90_000 })], ['2026-02'])
+    expect(loadCategorySpentForMonth(ctx.db, TENANT_ID, 'rent-income', '2026-02')).toBe(90_000)
+  })
+
+  it('is null when the category has no fact row at all', () => {
+    expect(loadCategorySpentForMonth(ctx.db, TENANT_ID, 'rent-income', '2026-02')).toBeNull()
+  })
+
+  it('is zero, not null, when a row exists with zero spend', () => {
+    // Easy to get backwards: a row that says "nothing moved" is a real answer, distinct
+    // from no row at all, which means the month was never synced.
+    persistFacts(ctx.db, TENANT_ID, [fact('2026-02', 'rent-income', { spentCents: 0 })], ['2026-02'])
+    expect(loadCategorySpentForMonth(ctx.db, TENANT_ID, 'rent-income', '2026-02')).toBe(0)
+  })
+
+  it('is null for a month the category has no row for, even once other months exist', () => {
+    persistFacts(ctx.db, TENANT_ID, [fact('2026-02', 'rent-income', { spentCents: 90_000 })], ['2026-02'])
+    expect(loadCategorySpentForMonth(ctx.db, TENANT_ID, 'rent-income', '2026-03')).toBeNull()
   })
 })

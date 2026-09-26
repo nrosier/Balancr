@@ -73,6 +73,7 @@ import {
   updateAccountMap,
   type AccountMapRow,
 } from '../../domain/aggregate/accounts.ts'
+import { loadCategorySpentForMonth } from '../../domain/aggregate/facts.ts'
 import { earliestStoredMonth, latestStoredMonth } from '../../domain/aggregate/month-store.ts'
 import { resolveInclusion, type ExclusionReason } from '../../domain/aggregate/networth.ts'
 import { loadLatestAccountBalances } from '../../domain/aggregate/networth-store.ts'
@@ -129,7 +130,7 @@ import {
   TooManyLoansError,
   updateLoan,
 } from '../../domain/loan/loans.ts'
-import { loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
+import { InvalidCategoryLinkError, loadProperties, PROPERTY_KEY, saveProperties } from '../../domain/property/properties.ts'
 import {
   AI_VISIBILITY_CHOICES,
   COICOP_CHOICES,
@@ -425,6 +426,7 @@ const propertyPatchRequest = z.strictObject({
       label: z.string().optional(),
       propertyValueCents: z.number().int().nullable().optional(),
       rentCents: z.number().int().nullable().optional(),
+      rentCategoryId: z.string().nullable().optional(),
       mortgages: z
         .array(
           z.strictObject({
@@ -434,6 +436,7 @@ const propertyPatchRequest = z.strictObject({
             monthlyPaymentCents: z.number().int(),
             remainingTermMonths: z.number().int(),
             originalPrincipalCents: z.number().int().nullable().optional(),
+            paymentCategoryId: z.string().nullable().optional(),
           }),
         )
         .optional(),
@@ -1163,6 +1166,34 @@ function digestSetting(db: Db, tenantId: string, isOwner: boolean): Settings['di
   }
 }
 
+/**
+ * `loadProperties`'s rows, plus what actually moved through each linked category in
+ * the latest synced month (#643) — a read-only comparison against the manually
+ * entered `rentCents`/`monthlyPaymentCents`, computed here rather than in
+ * `loadProperties` itself so that function stays pure storage, the same division
+ * `outstandingBalanceCents` draws between the stored mortgage and its priced balance.
+ * Null whenever there is nothing to compare yet: no category linked, or no stored
+ * month at all.
+ */
+function propertySetting(db: Db, tenantId: string): Settings['property'] {
+  const stored = loadProperties(db, tenantId)
+  const month = latestStoredMonth(db, tenantId)
+
+  const comparisonFor = (categoryId: string | null): number | null =>
+    categoryId === null || month === null ? null : loadCategorySpentForMonth(db, tenantId, categoryId, month)
+
+  return {
+    properties: stored.properties.map((property) => ({
+      ...property,
+      rentComparisonCents: comparisonFor(property.rentCategoryId),
+      mortgages: property.mortgages.map((mortgage) => ({
+        ...mortgage,
+        paymentComparisonCents: comparisonFor(mortgage.paymentCategoryId),
+      })),
+    })),
+  }
+}
+
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
 export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const user = requireUser(request)
@@ -1189,7 +1220,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     paramDefaults: DEFAULT_PARAMS,
     advice: riskProfileSetting(db, user.tenantId),
     benchmark: benchmarkSetting(db, user.tenantId),
-    property: loadProperties(db, user.tenantId),
+    property: propertySetting(db, user.tenantId),
     loans: listLoans(db, user.tenantId),
     debts: listDebts(db, user.tenantId),
     goals: listGoals(db, user.tenantId),
@@ -1613,6 +1644,9 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       // than in `parseBody` — same division as the household roster.
       if (error instanceof z.ZodError) {
         throw invalidBody('The request body was not valid.', fieldIssues(error))
+      }
+      if (error instanceof InvalidCategoryLinkError) {
+        throw invalidBody(error.message, [{ path: error.field, message: error.message }])
       }
       throw error
     }

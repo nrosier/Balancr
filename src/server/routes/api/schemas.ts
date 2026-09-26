@@ -1820,15 +1820,28 @@ const propertyMortgageSchema = z.object({
   remainingTermMonths: z.int(),
   /** What the loan started at, or null when nobody has entered it (#392). */
   originalPrincipalCents: cents().nullable(),
+  /** The Actual expense category this payment is linked to (#643), or null if unlinked. */
+  paymentCategoryId: z.string().nullable(),
+  /**
+   * What actually moved through `paymentCategoryId` in the latest synced month, for
+   * comparison against `monthlyPaymentCents` above. Null whenever there is nothing to
+   * compare yet — no category linked, or no fact row for that category/month — never
+   * a stand-in zero.
+   */
+  paymentComparisonCents: cents().nullable(),
 })
 
 const propertySchema = z.object({
   id: z.string(),
-  kind: z.enum(['primary', 'rental']),
+  kind: z.enum(['primary', 'rental', 'owned']),
   label: z.string(),
   propertyValueCents: cents().nullable(),
   /** Monthly rent received. Only meaningful for a `rental`. */
   rentCents: cents().nullable(),
+  /** The Actual income category the rent above is linked to (#643), or null if unlinked. */
+  rentCategoryId: z.string().nullable(),
+  /** Same null-means-nothing-to-compare contract as `propertyMortgageSchema.paymentComparisonCents`. */
+  rentComparisonCents: cents().nullable(),
   /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
   mortgages: z.array(propertyMortgageSchema),
 })

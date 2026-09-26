@@ -387,6 +387,34 @@ export function loadCategoryAvailableTrend(
     .map((month) => ({ month, valueCents: byMonth.get(month) as number }))
 }
 
+/**
+ * `spentCents` for one category in one month, or null when no fact row exists —
+ * distinguishing "never synced" from "synced with zero spend/income," the same
+ * distinction `loadCategoryAvailableTrend` draws by omitting rather than zero-filling
+ * a missing month. Already oriented (positive-out for expenses, positive-in for
+ * income) at write time — see `spend.ts`'s own doc comment — so this reads the
+ * column as-is, with no `toPositiveOut` reapplied.
+ */
+export function loadCategorySpentForMonth(
+  db: Db,
+  tenantId: string,
+  categoryId: string,
+  month: string,
+): number | null {
+  const row = db
+    .select({ spentCents: monthlyCategoryFacts.spentCents })
+    .from(monthlyCategoryFacts)
+    .where(
+      and(
+        eq(monthlyCategoryFacts.tenantId, tenantId),
+        eq(monthlyCategoryFacts.categoryId, categoryId),
+        eq(monthlyCategoryFacts.month, month),
+      ),
+    )
+    .get()
+  return row?.spentCents ?? null
+}
+
 /** Every category with a stored meta row, keyed by id. */
 export function loadCategoryMeta(
   db: Db,

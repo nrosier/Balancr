@@ -41,9 +41,9 @@ import {
   propertyEquityCents,
   propertyKinds,
   standardMonthlyPaymentCents,
-  type Mortgage,
   type Property,
   type PropertyKind,
+  type PropertyMortgage,
 } from '../shared.ts'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
@@ -58,6 +58,8 @@ interface MortgageDraft {
   remainingTermMonths: string
   /** Empty means "not entered", not zero — see `originalPrincipalCents`'s own doc comment. */
   originalPrincipalCents: string
+  /** The Actual expense category this payment shows up in (#643), or null if unlinked. */
+  paymentCategoryId: string | null
 }
 
 /** One property's row while it is being typed: every box is text until it parses. */
@@ -67,11 +69,13 @@ interface Draft {
   label: string
   propertyValueCents: string
   rentCents: string
+  /** The Actual income category this rent shows up in (#643), or null if unlinked. */
+  rentCategoryId: string | null
   /** Empty means no mortgage — the list itself, not a separate draft state (#393). */
   mortgages: MortgageDraft[]
 }
 
-const mortgageDraftOf = (mortgage: Mortgage): MortgageDraft => ({
+const mortgageDraftOf = (mortgage: PropertyMortgage): MortgageDraft => ({
   id: crypto.randomUUID(),
   principalCents: formatMoney(mortgage.principalCents),
   anchorDate: mortgage.anchorDate,
@@ -80,6 +84,7 @@ const mortgageDraftOf = (mortgage: Mortgage): MortgageDraft => ({
   remainingTermMonths: String(mortgage.remainingTermMonths),
   originalPrincipalCents:
     mortgage.originalPrincipalCents === null ? '' : formatMoney(mortgage.originalPrincipalCents),
+  paymentCategoryId: mortgage.paymentCategoryId,
 })
 
 const draftOf = (property: Property): Draft => ({
@@ -89,6 +94,7 @@ const draftOf = (property: Property): Draft => ({
   propertyValueCents:
     property.propertyValueCents === null ? '' : formatMoney(property.propertyValueCents),
   rentCents: property.rentCents === null ? '' : formatMoney(property.rentCents),
+  rentCategoryId: property.rentCategoryId,
   mortgages: property.mortgages.map(mortgageDraftOf),
 })
 
@@ -108,7 +114,7 @@ function parseTermMonths(raw: string): number | null {
   return value <= 600 ? value : null
 }
 
-function parseMortgage(draft: MortgageDraft): Mortgage | null {
+function parseMortgage(draft: MortgageDraft): PropertyMortgage | null {
   const principalCents = parseMoneyToCents(draft.principalCents)
   const rateBp = parseRateBp(draft.rateBp)
   const monthlyPaymentCents = parseMoneyToCents(draft.monthlyPaymentCents)
@@ -126,8 +132,17 @@ function parseMortgage(draft: MortgageDraft): Mortgage | null {
   // Optional, unlike every other mortgage field: empty means "not entered" rather than
   // invalid, since most mortgages already on file predate this field (#392).
   const originalText = draft.originalPrincipalCents.trim()
+  const paymentCategoryId = draft.paymentCategoryId
   if (originalText === '') {
-    return { principalCents, anchorDate, rateBp, monthlyPaymentCents, remainingTermMonths, originalPrincipalCents: null }
+    return {
+      principalCents,
+      anchorDate,
+      rateBp,
+      monthlyPaymentCents,
+      remainingTermMonths,
+      originalPrincipalCents: null,
+      paymentCategoryId,
+    }
   }
   const originalPrincipalCents = parseMoneyToCents(originalText)
   if (originalPrincipalCents === null) return null
@@ -138,6 +153,7 @@ function parseMortgage(draft: MortgageDraft): Mortgage | null {
     monthlyPaymentCents,
     remainingTermMonths,
     originalPrincipalCents,
+    paymentCategoryId,
   }
 }
 
@@ -146,7 +162,8 @@ interface ParsedRow {
   label: string
   propertyValueCents: number | null
   rentCents: number | null
-  mortgages: Mortgage[]
+  rentCategoryId: string | null
+  mortgages: PropertyMortgage[]
   ok: boolean
 }
 
@@ -161,13 +178,16 @@ function parseRow(row: Draft): ParsedRow {
 
   const parsedMortgages = row.mortgages.map(parseMortgage)
   const mortgageInvalid = parsedMortgages.some((mortgage) => mortgage === null)
-  const mortgages = parsedMortgages.filter((mortgage): mortgage is Mortgage => mortgage !== null)
+  const mortgages = parsedMortgages.filter(
+    (mortgage): mortgage is PropertyMortgage => mortgage !== null,
+  )
 
   return {
     kind: row.kind,
     label: row.label.trim(),
     propertyValueCents,
     rentCents,
+    rentCategoryId: row.rentCategoryId,
     mortgages,
     ok: !propertyValueInvalid && !rentInvalid && !mortgageInvalid,
   }
@@ -180,6 +200,17 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
   // Not the month being aggregated — this panel has no month. Every read-back is "as of
   // right now", because that is the balance the owner would see on a statement today.
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  // Hidden is excluded on both sides — see `InvalidCategoryLinkError`'s own doc comment
+  // in `properties.ts` for why a link is stricter here than `Goals.tsx`'s own picker.
+  const rentCategoryOptions = useMemo(
+    () => settings.categoryTranslations.filter((category) => category.isIncome && !category.hidden),
+    [settings.categoryTranslations],
+  )
+  const paymentCategoryOptions = useMemo(
+    () => settings.categoryTranslations.filter((category) => !category.isIncome && !category.hidden),
+    [settings.categoryTranslations],
+  )
 
   const [drafts, setDrafts] = useState<Draft[] | null>(null)
   // Memoized so an unrelated re-render (any other panel's `state.busy` toggling) doesn't
@@ -221,6 +252,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
           monthlyPaymentCents: '',
           remainingTermMonths: '',
           originalPrincipalCents: '',
+          paymentCategoryId: null,
         },
       ],
     })
@@ -258,6 +290,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
         label: parsed.label,
         propertyValueCents: parsed.propertyValueCents,
         rentCents: parsed.rentCents,
+        rentCategoryId: parsed.rentCategoryId,
         mortgages: parsed.mortgages,
       })
     })
@@ -295,11 +328,17 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                 label: parsed.label,
                 propertyValueCents: parsed.propertyValueCents,
                 rentCents: parsed.rentCents,
+                rentCategoryId: parsed.rentCategoryId,
                 mortgages: parsed.mortgages,
               }
               const equity = propertyEquityCents(asProperty, today)
               const cashFlow = netCashFlowCents(asProperty)
               const yieldBp = grossYieldBp(asProperty)
+              // Comparison figures are server-computed and read-only, so they come from
+              // the last-loaded settings row rather than from the (possibly unsaved)
+              // draft — matched by id since removing an earlier row shifts every index
+              // after it.
+              const sourceProperty = property.properties.find((stored) => stored.id === row.id)
 
               const reads: string[] = []
               if (!parsed.ok) {
@@ -315,6 +354,17 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                 }
                 if (parsed.kind === 'rental' && yieldBp !== null) {
                   reads.push(t('settings:property.yieldReads', { value: formatBp(yieldBp) }))
+                }
+                if (
+                  parsed.kind === 'rental' &&
+                  row.rentCategoryId !== null &&
+                  sourceProperty?.rentComparisonCents != null
+                ) {
+                  reads.push(
+                    t('settings:property.rentCategoryReads', {
+                      value: formatMoney(sourceProperty.rentComparisonCents),
+                    }),
+                  )
                 }
                 const paidOff = paidOffBp(asProperty.mortgages, today)
                 if (paidOff !== null) {
@@ -398,6 +448,32 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                         />
                       </div>
                     )}
+
+                    {row.kind === 'rental' && (
+                      <div className="field">
+                        <label className="field__label" htmlFor={`property-rent-category-${row.id}`}>
+                          {t('settings:property.rentCategory')}
+                        </label>
+                        <select
+                          id={`property-rent-category-${row.id}`}
+                          className="field__input"
+                          value={row.rentCategoryId ?? ''}
+                          disabled={locked}
+                          onChange={(event) =>
+                            edit(index, {
+                              rentCategoryId: event.target.value === '' ? null : event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">{t('settings:property.rentCategoryPlaceholder')}</option>
+                          {rentCategoryOptions.map((category) => (
+                            <option key={category.categoryId} value={category.categoryId}>
+                              {category.categoryName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   <div className="property__reads">
@@ -415,6 +491,10 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                       rateBp !== null &&
                       parseTermMonths(mortgage.remainingTermMonths) !== null
                     const idPrefix = `${row.id}-${mortgage.id}`
+                    // A mortgage has no server-side id (see `MortgageDraft.id`'s own doc
+                    // comment), so its comparison figure is matched by position, the same
+                    // way `editMortgage`/`removeMortgage` already address a mortgage row.
+                    const sourceMortgage = sourceProperty?.mortgages[mortgageIndex]
 
                     return (
                       <div className="property__mortgage" key={mortgage.id}>
@@ -522,6 +602,40 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                         </div>
 
                         <div className="field">
+                          <label className="field__label" htmlFor={`mortgage-payment-category-${idPrefix}`}>
+                            {t('settings:property.mortgage.paymentCategory')}
+                          </label>
+                          <select
+                            id={`mortgage-payment-category-${idPrefix}`}
+                            className="field__input"
+                            value={mortgage.paymentCategoryId ?? ''}
+                            disabled={locked}
+                            onChange={(event) =>
+                              editMortgage(index, mortgageIndex, {
+                                paymentCategoryId: event.target.value === '' ? null : event.target.value,
+                              })
+                            }
+                          >
+                            <option value="">
+                              {t('settings:property.mortgage.paymentCategoryPlaceholder')}
+                            </option>
+                            {paymentCategoryOptions.map((category) => (
+                              <option key={category.categoryId} value={category.categoryId}>
+                                {category.categoryName}
+                              </option>
+                            ))}
+                          </select>
+                          {mortgage.paymentCategoryId !== null &&
+                            sourceMortgage?.paymentComparisonCents != null && (
+                              <p className="property__reads muted">
+                                {t('settings:property.mortgage.paymentCategoryReads', {
+                                  value: formatMoney(sourceMortgage.paymentComparisonCents),
+                                })}
+                              </p>
+                            )}
+                        </div>
+
+                        <div className="field">
                           <label className="field__label" htmlFor={`mortgage-original-${idPrefix}`}>
                             {t('settings:property.mortgage.originalPrincipal')}
                           </label>
@@ -594,6 +708,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                   label: '',
                   propertyValueCents: '',
                   rentCents: '',
+                  rentCategoryId: null,
                   mortgages: [],
                 },
               ])

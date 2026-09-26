@@ -193,7 +193,12 @@ export {
   standardMonthlyPaymentCents,
   totalEquityCents,
 } from '../../src/domain/property/vocabulary.ts'
-export type { Mortgage, Property, PropertyKind } from '../../src/domain/property/vocabulary.ts'
+export type {
+  Mortgage,
+  Property,
+  PropertyKind,
+  PropertyMortgage,
+} from '../../src/domain/property/vocabulary.ts'
 
 // The loan vocabulary and the amortization it shares with the mortgage domain (#441).
 // Re-exported for the same reason the property arithmetic above is: the loans panel has to

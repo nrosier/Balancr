@@ -50,6 +50,19 @@ export const MAX_MORTGAGES_PER_PROPERTY = 3
  */
 export type Mortgage = AmortizedLoan
 
+/**
+ * A mortgage with the Actual category its payment should show up in (#643), or null
+ * when nobody has linked one yet.
+ *
+ * Its own type rather than a field added to `Mortgage`/`AmortizedLoan` directly: that
+ * type is shared with the car and personal loans in `domain/loan/loans.ts`, which have
+ * no such link and no data to put in it. Everything below that already takes a
+ * `Mortgage[]`/`AmortizedLoan[]` — `outstandingBalanceCents`, `standardMonthlyPaymentCents`,
+ * `paidOffBp`, `earliestAnchorDate` — accepts a `PropertyMortgage[]` too, since it only
+ * reads the fields `AmortizedLoan` already has.
+ */
+export type PropertyMortgage = Mortgage & { paymentCategoryId: string | null }
+
 export interface Property {
   id: string
   kind: PropertyKind
@@ -58,8 +71,10 @@ export interface Property {
   propertyValueCents: number | null
   /** Monthly rent received. Only meaningful for a `rental`. */
   rentCents: number | null
+  /** The Actual income category the rent above should show up in (#643), or null if unlinked. */
+  rentCategoryId: string | null
   /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
-  mortgages: Mortgage[]
+  mortgages: PropertyMortgage[]
 }
 
 /** Equity at `asOfDate`, or null when the property's value isn't tracked. */
