@@ -1505,9 +1505,19 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
    * Owner-only, like every other settings read/write on this page — the digest
    * covers the whole household's finances, not just the requester's own view of
    * them.
+   *
+   * Checks the current preference in addition to row existence (#585) — the PATCH
+   * handler above deletes the stored PDF the moment a tenant leaves `pdf` mode, but
+   * that is one call site's discipline, not a guarantee. A row this route would
+   * otherwise serve regardless of how it got there — a restored backup, a manual
+   * job run, a future migration — is exactly what a defence-in-depth check exists
+   * to catch.
    */
   app.get('/api/settings/digest/pdf', (request: FastifyRequest, reply: FastifyReply) => {
     const user = requireOwner(request)
+    if (loadDigestPreference(db, user.tenantId).mode !== 'pdf') {
+      throw notFound('No digest has been generated yet.')
+    }
     const stored = loadDigestPdf(db, user.tenantId)
     if (stored === null) throw notFound('No digest has been generated yet.')
 
