@@ -660,6 +660,41 @@ describe('PATCH /api/settings/integrations/ai', () => {
     expect(res.statusCode).toBe(403)
     expect(row(ctx.db).aiProvider).toBe('gemini-aistudio')
   })
+
+  it('refuses a budgetEur too large to round-trip through microEur, rather than storing a value GET can never parse back (#578)', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      ...modelFields,
+      provider: 'gemini-aistudio',
+      googleCloudProject: null,
+      budgetEur: 1e13,
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['budgetEur'])
+    expect(row(ctx.db).aiMonthlyBudgetEurMicro).toBe(15_000_000)
+    // The bug this guards: the old schema had no upper bound on `budgetEur`, so this
+    // request would have been accepted and stored, then every later `GET
+    // /api/settings` would 500 because `microEur()` rejects a value past
+    // `Number.MAX_SAFE_INTEGER` — bricking the settings screen for good.
+    expect((await get('/api/settings')).statusCode).toBe(200)
+  })
+
+  it('refuses a modelPrices entry too large to round-trip through microEur (#578)', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
+      googleCloudProject: null,
+      modelFast: 'gemini-3.7-flash',
+      modelDeep: 'gemini-3.1-pro-preview',
+      budgetEur: 15,
+      modelPrices: {
+        'gemini-3.7-flash': { inputEur: 1e13, cachedInputEur: 0, cacheWriteInputEur: 0, outputEur: 0 },
+      },
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(row(ctx.db).aiModelPricesJson).toBe('{}')
+    expect((await get('/api/settings')).statusCode).toBe(200)
+  })
 })
 
 // No cross-tenant isolation test for the three PATCH handlers above (actual/
