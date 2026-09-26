@@ -347,6 +347,52 @@ describe('when the server answers with a month', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('groups the savings rate and the goals list into one card (#652)', async () => {
+    serve(
+      json({
+        ...FULL,
+        goals: [
+          {
+            id: 'goal-1',
+            label: 'Emergency fund',
+            kind: 'liquid',
+            priority: 'normal',
+            categoryId: null,
+            targetCents: 500_000,
+            targetDate: null,
+            status: 'active',
+            doneAt: null,
+            currentCents: 250_000,
+            progressBp: 5_000,
+            met: false,
+            monthlyRateCents: null,
+            monthsToTarget: null,
+            etaMonth: null,
+            trendMonths: 0,
+            trendFrom: null,
+            trendTo: null,
+            requiredMonthlyCents: null,
+            pace: null,
+            categoryName: null,
+            categorySiblingCount: 0,
+          },
+        ],
+      } satisfies OverviewPayload),
+    )
+    const { container } = renderApp(<Overview />)
+
+    await screen.findByText('23,2%')
+    const rate = screen.getByText('23,2%')
+    const goal = await screen.findByText('Emergency fund')
+
+    // One shared `.savings-card` ancestor, not two cards sitting side by side — the
+    // whole point of #652 was that the rate and the goals stop reading as unrelated.
+    const savingsCard = container.querySelector('.savings-card')
+    expect(savingsCard).not.toBeNull()
+    expect(savingsCard?.contains(rate)).toBe(true)
+    expect(savingsCard?.contains(goal)).toBe(true)
+  })
+
   it('leaves every string translated', async () => {
     await i18nReady()
     renderApp(<Overview />)

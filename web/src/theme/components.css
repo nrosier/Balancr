@@ -157,6 +157,26 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 
+/*
+ * The savings-rate figure and the goals list (#652) each draw their own `.card` box
+ * elsewhere, so nested plainly inside another `.card` they'd double up border,
+ * background and shadow. Here they're header and body of one card instead: strip
+ * the inner boxes' own chrome and rule off the second one from the first.
+ */
+.savings-card .card {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.savings-card .card + .card {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .button {
