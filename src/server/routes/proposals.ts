@@ -26,7 +26,7 @@ import {
   type ProposalRow,
 } from '../../domain/ai/proposals.ts'
 import { requireOwner } from '../auth/guard.ts'
-import { badRequest, conflict, notFound } from '../errors.ts'
+import { badRequest, conflict, HttpError, notFound } from '../errors.ts'
 import { parseBody } from '../validate.ts'
 import {
   proposalAdjustRequest,
@@ -129,11 +129,17 @@ export function registerProposalRoutes(app: FastifyInstance, db: Db): void {
         await applyOne(db, user.tenantId, id, user.id)
         results.push({ id, ok: true, reason: null })
       } catch (error) {
-        results.push({
-          id,
-          ok: false,
-          reason: error instanceof Error ? error.message : String(error),
-        })
+        // Same rule `errors.ts` states for the response body generally (#587):
+        // only a message the code deliberately chose — `requirePending`'s 404/409s
+        // and `applyProposal`'s own `ProposalError` — reaches the client. Anything
+        // else can be `@actual-app/api` worker text or a `z.prettifyError` naming
+        // an internal payload field, so it goes to the log instead.
+        if (error instanceof HttpError || error instanceof ProposalError) {
+          results.push({ id, ok: false, reason: error.message })
+          continue
+        }
+        request.log.error({ err: error, id }, 'apply-batch: proposal failed to apply')
+        results.push({ id, ok: false, reason: 'Something went wrong applying this proposal.' })
       }
     }
 
