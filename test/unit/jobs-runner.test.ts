@@ -329,10 +329,12 @@ describe('runJob timeout (#583)', () => {
 })
 
 describe('jobsInFlight', () => {
-  it('never blocks a tenant on another tenant\'s same-named job', async () => {
-    // `jobsInFlight` scoping is what's under test here, not concurrent execution —
-    // every job still runs through the one shared queue (see its header comment),
-    // so tenant B's claim is checked before tenant A's blocking run is released.
+  it('never blocks a tenant on another tenant\'s same-named job, nor queues behind it (#602/Q8)', async () => {
+    // Since #602/Q8 each tenant has its own queue (`runner.ts`'s `queues` map,
+    // mirroring `adapters/actual/client.ts`'s per-tenant `workers`), so this is
+    // provable two ways: tenant B's claim does not read as busy, and — the part a
+    // process-wide queue would fail — tenant B's job actually finishes while
+    // tenant A's is still blocked, rather than merely settling eventually.
     const other = ctx.db.insert(tenants).values({ label: 'Second' }).returning().all()[0]!
 
     let releaseA: () => void = () => {}
@@ -352,12 +354,14 @@ describe('jobsInFlight', () => {
     expect(jobsInFlight(TENANT_ID)).toEqual(['sync'])
     expect(jobsInFlight(other.id)).toEqual([])
 
-    const runB = runJob(ctx.db, job('sync', async () => ({ ran: true })), other.id)
-    expect(jobsInFlight(other.id)).toEqual(['sync'])
+    // Awaited in full, with tenant A's still gated: a process-wide queue would
+    // leave this pending behind `runA` and the test would time out.
+    const resultB = await runJob(ctx.db, job('sync', async () => ({ ran: true })), other.id)
+    expect(resultB).toMatchObject({ status: 'ok', detail: { ran: true } })
+    expect(jobsInFlight(other.id)).toEqual([])
 
     releaseA()
-    const [, resultB] = await Promise.all([runA, runB])
-    expect(resultB).toMatchObject({ status: 'ok', detail: { ran: true } })
+    await runA
   })
 
   it('bare (no tenantId) reports every tenant\'s claims, deduplicated by name', async () => {

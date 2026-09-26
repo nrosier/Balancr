@@ -24,12 +24,15 @@
  * nothing else, and the alternative is asking whoever clicked to understand the
  * dependency graph.
  *
- * **One refresh at a time, and the refusal is honest about why.** Everything already
- * shares one queue because Actual's API is a local sync engine over a SQLite cache;
- * a second refresh could be queued safely, but a request that returns `202` and then
- * sits behind four jobs has told the caller something untrue. So a busy pipeline is
- * a `409`. What counts as busy is `jobsInFlight()` and not the `jobs` table — see
- * that function for why a `running` row is the wrong authority.
+ * **One refresh at a time per tenant, and the refusal is honest about why.** Each
+ * tenant already shares one queue for its own jobs (`runner.ts`) because Actual's
+ * API is a local sync engine over a SQLite cache; a second refresh for the same
+ * tenant could be queued safely, but a request that returns `202` and then sits
+ * behind four jobs has told the caller something untrue. So a busy pipeline is a
+ * `409`. That queue is scoped per tenant the same way the check guarding it is
+ * (#602/Q8) — tenant B's refresh never sits behind tenant A's. What counts as busy
+ * is `jobsInFlight(tenantId)` and not the `jobs` table — see that function for why
+ * a `running` row is the wrong authority.
  *
  * **Nothing here can write to a source.** It runs jobs, and no job writes to Actual
  * or Ghostfolio; for Actual that is enforced by the denylist test over the adapter's
