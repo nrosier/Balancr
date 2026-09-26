@@ -17,6 +17,7 @@ import {
   fetchBudgetMonths,
   fetchRecomputedSpend,
   fetchRecomputedSpendDaily,
+  fetchScheduleLabels,
   fetchSchedules,
   fetchSchedulesPaidThisMonth,
   type BudgetMonth,
@@ -41,7 +42,7 @@ import {
 import { FREQUENCY_WINDOW } from '../domain/aggregate/baseline.ts'
 import { committedForMonth, emptyCommitted } from '../domain/aggregate/committed.ts'
 import { buildDayCurves } from '../domain/aggregate/daycurve.ts'
-import { loadFrequencies, persistFacts, syncCategoryMeta } from '../domain/aggregate/facts.ts'
+import { loadFrequencies, persistFacts, syncCategoryMeta, syncScheduleMeta } from '../domain/aggregate/facts.ts'
 import { monthFingerprint } from '../domain/aggregate/fingerprint.ts'
 import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
@@ -259,6 +260,11 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       endOfMonth(load[load.length - 1] as string),
     )
 
+    // Fetched unconditionally, unlike `committed` below: `schedule_meta` (#662)
+    // should stay fresh even in a month with nothing committed to compute.
+    const schedules = await fetchSchedules(db, tenantId)
+    const scheduleLabels = await fetchScheduleLabels(db, tenantId)
+
     // What is still to come this month (#159). Read here rather than inside
     // `aggregateSpend` for the reason every clock-dependent figure is: the
     // aggregator is pure and this is a function of today. Only the current month
@@ -267,7 +273,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     const today = todayIn(config.TZ)
     const committed = targets.includes(currentMonth)
       ? committedForMonth({
-          schedules: await fetchSchedules(db, tenantId),
+          schedules,
           month: currentMonth,
           today,
           paidThisMonth: await fetchSchedulesPaidThisMonth(
@@ -305,7 +311,17 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
         })
       : null
 
-    return { ready: true as const, load, targets, history, recomputed, committed, dayCurves }
+    return {
+      ready: true as const,
+      load,
+      targets,
+      history,
+      recomputed,
+      committed,
+      dayCurves,
+      schedules,
+      scheduleLabels,
+    }
   })
 
   if (!fetched.ready) {
@@ -314,7 +330,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     log.warn('Actual reports no budget months at or before the current month')
     return { months: 0, facts: 0 }
   }
-  const { load, targets, history, recomputed, committed, dayCurves } = fetched
+  const { load, targets, history, recomputed, committed, dayCurves, schedules, scheduleLabels } = fetched
 
   const computed = await step('compute', async () => {
     const aggregate = aggregateSpend({
@@ -338,6 +354,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       // rows, so a category seen for the first time today gets its row now and is
       // classifiable by the next pass.
       const categories = syncCategoryMeta(tx, tenantId, aggregate.facts)
+      syncScheduleMeta(tx, tenantId, schedules, scheduleLabels)
       const facts = persistFacts(tx, tenantId, aggregate.facts, targets)
       // Month totals cover the target months, so the uncategorised backlog stored
       // here is the backlog over the months this install reports on

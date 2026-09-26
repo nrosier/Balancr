@@ -26,7 +26,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { GoogleGenAI, type GoogleGenAIOptions } from '@google/genai'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { testActualConnection } from '../../adapters/actual/test-connection.ts'
 import { resetAiClients } from '../../adapters/ai/client.ts'
@@ -49,7 +49,7 @@ import {
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { decryptField, encryptField } from '../../db/field-crypto.ts'
-import { tenantIntegrations } from '../../db/schema.ts'
+import { scheduleMeta, tenantIntegrations } from '../../db/schema.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
 import { withScopedHost } from '../../egress.ts'
 import {
@@ -132,6 +132,7 @@ import {
 } from '../../domain/loan/loans.ts'
 import {
   InvalidCategoryLinkError,
+  InvalidScheduleLinkError,
   loadProperties,
   PROPERTY_KEY,
   propertyKinds,
@@ -433,6 +434,7 @@ const propertyPatchRequest = z.strictObject({
       propertyValueCents: z.number().int().nullable().optional(),
       rentCents: z.number().int().nullable().optional(),
       rentCategoryId: z.string().nullable().optional(),
+      rentScheduleId: z.string().nullable().optional(),
       mortgages: z
         .array(
           z.strictObject({
@@ -443,6 +445,7 @@ const propertyPatchRequest = z.strictObject({
             remainingTermMonths: z.number().int(),
             originalPrincipalCents: z.number().int().nullable().optional(),
             paymentCategoryId: z.string().nullable().optional(),
+            paymentScheduleId: z.string().nullable().optional(),
           }),
         )
         .optional(),
@@ -1185,19 +1188,69 @@ function propertySetting(db: Db, tenantId: string): Settings['property'] {
   const stored = loadProperties(db, tenantId)
   const month = latestStoredMonth(db, tenantId)
 
-  const comparisonFor = (categoryId: string | null): number | null =>
+  const schedules = new Map(
+    db
+      .select({
+        scheduleId: scheduleMeta.scheduleId,
+        categoryId: scheduleMeta.categoryId,
+        amountCents: scheduleMeta.amountCents,
+        approximate: scheduleMeta.approximate,
+      })
+      .from(scheduleMeta)
+      .where(eq(scheduleMeta.tenantId, tenantId))
+      .all()
+      .map((row) => [row.scheduleId, row]),
+  )
+
+  const spentFor = (categoryId: string | null): number | null =>
     categoryId === null || month === null ? null : loadCategorySpentForMonth(db, tenantId, categoryId, month)
 
-  return {
-    properties: stored.properties.map((property) => ({
-      ...property,
-      rentComparisonCents: comparisonFor(property.rentCategoryId),
-      mortgages: property.mortgages.map((mortgage) => ({
-        ...mortgage,
-        paymentComparisonCents: comparisonFor(mortgage.paymentCategoryId),
-      })),
-    })),
+  // A linked schedule's own resolved category supersedes the manually-set category
+  // link for the comparison (#662) — falling back to the latter only when no
+  // schedule is linked, or the linked one has no resolved category of its own.
+  const comparisonFor = (scheduleId: string | null, categoryId: string | null): number | null => {
+    const schedule = scheduleId === null ? undefined : schedules.get(scheduleId)
+    return spentFor(schedule?.categoryId ?? categoryId)
   }
+
+  return {
+    properties: stored.properties.map((property) => {
+      const rentSchedule = property.rentScheduleId === null ? undefined : schedules.get(property.rentScheduleId)
+      return {
+        ...property,
+        rentComparisonCents: comparisonFor(property.rentScheduleId, property.rentCategoryId),
+        rentScheduleAmountCents: rentSchedule === undefined ? null : Math.abs(rentSchedule.amountCents),
+        rentScheduleApproximate: rentSchedule?.approximate ?? false,
+        mortgages: property.mortgages.map((mortgage) => {
+          const paymentSchedule =
+            mortgage.paymentScheduleId === null ? undefined : schedules.get(mortgage.paymentScheduleId)
+          return {
+            ...mortgage,
+            paymentComparisonCents: comparisonFor(mortgage.paymentScheduleId, mortgage.paymentCategoryId),
+            paymentScheduleAmountCents:
+              paymentSchedule === undefined ? null : Math.abs(paymentSchedule.amountCents),
+            paymentScheduleApproximate: paymentSchedule?.approximate ?? false,
+          }
+        }),
+      }
+    }),
+  }
+}
+
+/** The picker's option list for the rent/payment schedule selects (#662). */
+function scheduleOptions(db: Db, tenantId: string): Settings['schedules'] {
+  return db
+    .select({
+      id: scheduleMeta.scheduleId,
+      label: scheduleMeta.label,
+      categoryId: scheduleMeta.categoryId,
+      amountCents: scheduleMeta.amountCents,
+      approximate: scheduleMeta.approximate,
+    })
+    .from(scheduleMeta)
+    .where(and(eq(scheduleMeta.tenantId, tenantId), eq(scheduleMeta.completed, false)))
+    .all()
+    .map((row) => ({ ...row, amountCents: Math.abs(row.amountCents) }))
 }
 
 /** Everything the settings screen shows. See `settingsSchema` for the shape. */
@@ -1232,6 +1285,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     goals: listGoals(db, user.tenantId),
     integrations: loadIntegrations(db, user.tenantId, isOwner),
     categoryTranslations: loadCategoryTranslationRows(db, user.tenantId),
+    schedules: scheduleOptions(db, user.tenantId),
     // Every invite names who is being let in and when (#586) — the same "which doors
     // are open" reconnaissance value as a server hostname, just for the household
     // itself rather than its data connections. Empty for a viewer, same as
@@ -1651,7 +1705,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       if (error instanceof z.ZodError) {
         throw invalidBody('The request body was not valid.', fieldIssues(error))
       }
-      if (error instanceof InvalidCategoryLinkError) {
+      if (error instanceof InvalidCategoryLinkError || error instanceof InvalidScheduleLinkError) {
         throw invalidBody(error.message, [{ path: error.field, message: error.message }])
       }
       throw error

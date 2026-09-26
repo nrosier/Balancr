@@ -29,7 +29,7 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../../db/index.ts'
-import { categoryMeta, settings } from '../../db/schema.ts'
+import { categoryMeta, scheduleMeta, settings } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
 import { MAX_MORTGAGES_PER_PROPERTY, MAX_PROPERTIES, propertyKinds } from './vocabulary.ts'
 
@@ -73,6 +73,12 @@ export const mortgageSchema = z
      * shape of this field.
      */
     paymentCategoryId: z.string().min(1).nullable().default(null),
+    /**
+     * The Actual schedule this payment should show up in, or null when nobody has
+     * linked one yet (#662). When set, its own resolved category supersedes
+     * `paymentCategoryId` for the read-only comparison — see `assertKnownSchedule`.
+     */
+    paymentScheduleId: z.string().min(1).nullable().default(null),
   })
   .strict()
 
@@ -87,6 +93,8 @@ export const propertySchema = z
     rentCents: z.int().min(0).nullable().default(null),
     /** The Actual income category this rent should show up in (#643). See `paymentCategoryId`. */
     rentCategoryId: z.string().min(1).nullable().default(null),
+    /** The Actual schedule this rent should show up in (#662). See `paymentScheduleId`. */
+    rentScheduleId: z.string().min(1).nullable().default(null),
     mortgages: z.array(mortgageSchema).max(MAX_MORTGAGES_PER_PROPERTY).default([]),
   })
   .strict()
@@ -194,6 +202,56 @@ function assertCategoryDirection(
   }
 }
 
+/**
+ * Thrown when a `rentScheduleId`/`paymentScheduleId` names no schedule this tenant
+ * has ever synced, or one that is completed, or one whose own resolved category
+ * disagrees with the direction/hidden rule `InvalidCategoryLinkError` above
+ * enforces. Same 400 mapping as that error.
+ */
+export class InvalidScheduleLinkError extends Error {
+  constructor(
+    public readonly field: 'rentScheduleId' | 'paymentScheduleId',
+    scheduleId: string,
+  ) {
+    super(`No schedule ${scheduleId} is available for this tenant to link as ${field}.`)
+    this.name = 'InvalidScheduleLinkError'
+  }
+}
+
+/**
+ * Throws `InvalidScheduleLinkError` when `scheduleId` is set but not a valid link
+ * target. A schedule whose own rule resolves no category is allowed to link —
+ * mirroring `committed.ts`'s own tolerance for unallocated schedules — it just
+ * won't drive a comparison beyond its own scheduled amount.
+ */
+function assertKnownSchedule(
+  db: Db,
+  tenantId: string,
+  scheduleId: string | null,
+  direction: 'income' | 'expense',
+  field: 'rentScheduleId' | 'paymentScheduleId',
+): void {
+  if (scheduleId === null) return
+  const row = db
+    .select({ completed: scheduleMeta.completed, categoryId: scheduleMeta.categoryId })
+    .from(scheduleMeta)
+    .where(and(eq(scheduleMeta.tenantId, tenantId), eq(scheduleMeta.scheduleId, scheduleId)))
+    .get()
+  if (row === undefined || row.completed) {
+    throw new InvalidScheduleLinkError(field, scheduleId)
+  }
+  if (row.categoryId === null) return
+
+  const category = db
+    .select({ isIncome: categoryMeta.isIncome, hidden: categoryMeta.hidden })
+    .from(categoryMeta)
+    .where(and(eq(categoryMeta.tenantId, tenantId), eq(categoryMeta.categoryId, row.categoryId)))
+    .get()
+  if (category === undefined || category.hidden || category.isIncome !== (direction === 'income')) {
+    throw new InvalidScheduleLinkError(field, scheduleId)
+  }
+}
+
 export function saveProperties(
   db: Db,
   tenantId: string,
@@ -202,8 +260,10 @@ export function saveProperties(
   const next = propertiesSchema.parse(patch ?? {})
   for (const property of next.properties) {
     assertCategoryDirection(db, tenantId, property.rentCategoryId, 'income', 'rentCategoryId')
+    assertKnownSchedule(db, tenantId, property.rentScheduleId, 'income', 'rentScheduleId')
     for (const mortgage of property.mortgages) {
       assertCategoryDirection(db, tenantId, mortgage.paymentCategoryId, 'expense', 'paymentCategoryId')
+      assertKnownSchedule(db, tenantId, mortgage.paymentScheduleId, 'expense', 'paymentScheduleId')
     }
   }
   const valueJson = JSON.stringify(next)

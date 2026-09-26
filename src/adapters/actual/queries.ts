@@ -932,6 +932,26 @@ export async function fetchSchedules(db: Db, tenantId: string): Promise<ActualSc
     }))
 }
 
+const scheduleLabelShape = z.object({ id: z.string(), name: z.string().nullable().optional() })
+
+/**
+ * The one place a schedule's own name is captured — for the settings-page schedule
+ * picker (#662) only. Everywhere above in this module the parse deliberately drops
+ * `name`; this is a second, narrower read that never feeds `ActualSchedule`,
+ * `committed.ts`, or the AI/redaction path. A schedule with no name (Actual allows
+ * this) falls back to its id — a blank picker option is worse than a UUID.
+ */
+export async function fetchScheduleLabels(db: Db, tenantId: string): Promise<Map<string, string>> {
+  const raw = await withActual(db, tenantId, (actual) => actual.getSchedules())
+  const parsed = z.array(scheduleLabelShape).safeParse(raw)
+  if (!parsed.success) {
+    throw new Error(
+      `Actual "getSchedules" returned an unexpected shape: ${z.prettifyError(parsed.error)}`,
+    )
+  }
+  return new Map(parsed.data.map((schedule) => [schedule.id, schedule.name ?? schedule.id]))
+}
+
 const scheduleLinkRow = z.object({ schedule: z.string() })
 
 /**

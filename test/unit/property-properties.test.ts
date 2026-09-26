@@ -6,13 +6,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { categoryMeta, settings } from '../../src/db/schema.ts'
+import { categoryMeta, scheduleMeta, settings } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
   DEFAULT_PROPERTIES,
   earliestAnchorDate,
   grossYieldBp,
   InvalidCategoryLinkError,
+  InvalidScheduleLinkError,
   loadProperties,
   MAX_MORTGAGES_PER_PROPERTY,
   netCashFlowCents,
@@ -35,6 +36,7 @@ const mortgage = (overrides: Partial<PropertyMortgage> = {}): PropertyMortgage =
   remainingTermMonths: 240,
   originalPrincipalCents: null,
   paymentCategoryId: null,
+  paymentScheduleId: null,
   ...overrides,
 })
 
@@ -45,6 +47,7 @@ const property = (overrides: Partial<Property> = {}): Property => ({
   propertyValueCents: 40_000_000,
   rentCents: null,
   rentCategoryId: null,
+  rentScheduleId: null,
   mortgages: [mortgage()],
   ...overrides,
 })
@@ -72,6 +75,24 @@ describe('the stored properties', () => {
         nameSnapshot: id,
         isIncome: overrides.isIncome ?? false,
         hidden: overrides.hidden ?? false,
+      })
+      .run()
+  }
+
+  function seedSchedule(
+    id: string,
+    overrides: { categoryId?: string | null; completed?: boolean; amountCents?: number; approximate?: boolean } = {},
+  ): void {
+    ctx.db
+      .insert(scheduleMeta)
+      .values({
+        tenantId: TENANT_ID,
+        scheduleId: id,
+        label: id,
+        categoryId: overrides.categoryId ?? null,
+        amountCents: overrides.amountCents ?? 90_000,
+        approximate: overrides.approximate ?? false,
+        completed: overrides.completed ?? false,
       })
       .run()
   }
@@ -254,6 +275,136 @@ describe('the stored properties', () => {
         ],
       }),
     ).toThrow(InvalidCategoryLinkError)
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
+  })
+
+  it('accepts a rent schedule that is a known, non-completed schedule with no resolved category (#662)', () => {
+    seedSchedule('sched-rent')
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'sched-rent' })],
+    })
+    expect(next.properties[0]?.rentScheduleId).toBe('sched-rent')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('accepts a rent schedule whose own resolved category is a matching income category (#662)', () => {
+    seedCategory('cat-rent', { isIncome: true })
+    seedSchedule('sched-rent', { categoryId: 'cat-rent' })
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'sched-rent' })],
+    })
+    expect(next.properties[0]?.rentScheduleId).toBe('sched-rent')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('accepts a payment schedule that is a known, non-completed schedule with no resolved category (#662)', () => {
+    seedSchedule('sched-mortgage')
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'sched-mortgage' })] })],
+    })
+    expect(next.properties[0]?.mortgages[0]?.paymentScheduleId).toBe('sched-mortgage')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('accepts a payment schedule whose own resolved category is a matching expense category (#662)', () => {
+    seedCategory('cat-mortgage', { isIncome: false })
+    seedSchedule('sched-mortgage', { categoryId: 'cat-mortgage' })
+    const next = saveProperties(ctx.db, TENANT_ID, {
+      properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'sched-mortgage' })] })],
+    })
+    expect(next.properties[0]?.mortgages[0]?.paymentScheduleId).toBe('sched-mortgage')
+    expect(loadProperties(ctx.db, TENANT_ID)).toEqual(next)
+  })
+
+  it('lets both schedule links round-trip as null with no validation (#662)', () => {
+    const next = saveProperties(ctx.db, TENANT_ID, { properties: [property()] })
+    expect(next.properties[0]?.rentScheduleId).toBeNull()
+    expect(next.properties[0]?.mortgages[0]?.paymentScheduleId).toBeNull()
+  })
+
+  it('refuses a rent schedule nobody has ever synced (#662)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'nope' })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a rent schedule that is completed (#662)', () => {
+    seedSchedule('sched-rent', { completed: true })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'sched-rent' })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a rent schedule whose own resolved category is actually an expense category (#662)', () => {
+    seedCategory('cat-groceries', { isIncome: false })
+    seedSchedule('sched-rent', { categoryId: 'cat-groceries' })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'sched-rent' })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a rent schedule whose own resolved category is hidden, even though the direction matches (#662)', () => {
+    seedCategory('cat-rent', { isIncome: true, hidden: true })
+    seedSchedule('sched-rent', { categoryId: 'cat-rent' })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ kind: 'rental', rentCents: 90_000, rentScheduleId: 'sched-rent' })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a payment schedule nobody has ever synced (#662)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'nope' })] })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a payment schedule that is completed (#662)', () => {
+    seedSchedule('sched-mortgage', { completed: true })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'sched-mortgage' })] })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a payment schedule whose own resolved category is actually an income category (#662)', () => {
+    seedCategory('cat-salary', { isIncome: true })
+    seedSchedule('sched-mortgage', { categoryId: 'cat-salary' })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'sched-mortgage' })] })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('refuses a payment schedule whose own resolved category is hidden, even though the direction matches (#662)', () => {
+    seedCategory('cat-mortgage', { isIncome: false, hidden: true })
+    seedSchedule('sched-mortgage', { categoryId: 'cat-mortgage' })
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [property({ mortgages: [mortgage({ paymentScheduleId: 'sched-mortgage' })] })],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
+  })
+
+  it('does not persist the whole batch when one property in it names a bad schedule link (#662)', () => {
+    expect(() =>
+      saveProperties(ctx.db, TENANT_ID, {
+        properties: [
+          property({ id: 'good' }),
+          property({ id: 'bad', kind: 'rental', rentCents: 90_000, rentScheduleId: 'nope' }),
+        ],
+      }),
+    ).toThrow(InvalidScheduleLinkError)
     expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
   })
 })

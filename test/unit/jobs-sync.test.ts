@@ -12,8 +12,10 @@
  * feeding a small fixed window through `fetchBudgetMonths`/`fetchBudgetMonth`
  * makes both equal to that window, and choosing months well before the real
  * current one keeps `targets.includes(currentMonth)` false — so the
- * committed/day-curve branches, and the schedule fetches behind them, never
- * run and need no mock.
+ * committed/day-curve branches never run and need no mock. `fetchSchedules`/
+ * `fetchScheduleLabels` run regardless (#662, `schedule_meta` stays fresh even
+ * in a month with nothing committed to compute), so those two are stubbed to
+ * empty rather than left to reach a real Actual client.
  */
 import { asc, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -67,6 +69,8 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
     return Promise.resolve(found)
   },
   fetchRecomputedSpend: () => Promise.resolve([]),
+  fetchSchedules: () => Promise.resolve([]),
+  fetchScheduleLabels: () => Promise.resolve(new Map()),
 }))
 
 vi.mock('../../src/adapters/ghostfolio/client.ts', async (importOriginal) => ({

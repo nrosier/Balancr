@@ -382,6 +382,36 @@ export const categoryMeta = sqliteTable(
 )
 
 /**
+ * What Balancr knows about each Actual schedule, refreshed on every sync (#662).
+ *
+ * Unlike `categoryMeta` every column here is Actual-owned — there is no user-entered
+ * field to protect, so the sync upsert refreshes the whole row every time.
+ */
+export const scheduleMeta = sqliteTable(
+  'schedule_meta',
+  {
+    /** Actual's schedule id. */
+    scheduleId: text('schedule_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /**
+     * Actual's own schedule name. The one place this application captures it — see
+     * `fetchScheduleLabels`'s doc comment in `adapters/actual/queries.ts` for why
+     * that capture is kept separate from everything else this app reads from Actual.
+     */
+    label: text().notNull(),
+    /** Resolved from the schedule's owning rule, or null when no rule sets one. */
+    categoryId: text('category_id'),
+    amountCents: integer('amount_cents').notNull(),
+    approximate: integer({ mode: 'boolean' }).notNull().default(false),
+    completed: integer({ mode: 'boolean' }).notNull().default(false),
+    updatedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.scheduleId] })],
+)
+
+/**
  * An owner's own translation of one category's name into one locale (#479).
  *
  * Never holds a row for the household's configured source locale — that locale's

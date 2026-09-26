@@ -61,7 +61,11 @@ export type Mortgage = AmortizedLoan
  * `paidOffBp`, `earliestAnchorDate` — accepts a `PropertyMortgage[]` too, since it only
  * reads the fields `AmortizedLoan` already has.
  */
-export type PropertyMortgage = Mortgage & { paymentCategoryId: string | null }
+export type PropertyMortgage = Mortgage & {
+  paymentCategoryId: string | null
+  /** The Actual schedule this payment should show up in (#662), or null if unlinked. */
+  paymentScheduleId: string | null
+}
 
 export interface Property {
   id: string
@@ -73,6 +77,8 @@ export interface Property {
   rentCents: number | null
   /** The Actual income category the rent above should show up in (#643), or null if unlinked. */
   rentCategoryId: string | null
+  /** The Actual schedule the rent above should show up in (#662), or null if unlinked. */
+  rentScheduleId: string | null
   /** Empty when the property has no mortgage — paid off, or bought outright (#393). */
   mortgages: PropertyMortgage[]
 }

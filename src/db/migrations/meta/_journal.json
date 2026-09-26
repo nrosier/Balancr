@@ -330,6 +330,13 @@
       "when": 1790400000000,
       "tag": "0046_digest_pdf_stranded_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1790464449853,
+      "tag": "0047_aspiring_mentor",
+      "breakpoints": true
     }
   ]
 }
