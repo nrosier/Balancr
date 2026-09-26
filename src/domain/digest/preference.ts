@@ -7,8 +7,8 @@
  *
  * `locale` is left `undefined` by default on purpose rather than resolved and
  * stored here — a stored value would go stale the moment the owner switched their
- * account language, and `digest/render.ts` resolves it fresh at render time from the
- * owner's own `locale` when this is unset. See that module.
+ * account language, and `resolveDigestLocale` below resolves it fresh at render time
+ * from the owner's own `locale` when this is unset.
  *
  * In `settings`, like the household composition and the risk profile: a fact about
  * this deployment's preferences, not a computed one.

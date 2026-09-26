@@ -1,3 +1,21 @@
+/**
+ * The prompt-injection boundary the whole AI layer rests on.
+ *
+ * Every call sends a household's own data — category names, descriptions, notes
+ * someone typed — to a model that also takes instructions from an editable system
+ * prompt. Nothing stops that data from containing text that reads like a command, so
+ * the model has to be told, unambiguously, which half of the message is which.
+ * `DATA_OPEN`/`DATA_CLOSE` are that told: long, deliberately unlikely-to-collide
+ * markers wrapped around the data half, with `FENCE_CONTRACT` spelling out to the
+ * model that whatever sits between them is content, never instructions.
+ *
+ * Load-bearing in one specific way: `fenceData` refuses to send a payload that
+ * already contains either marker, because a payload that can close the fence early
+ * can write instructions outside it — the exact injection this exists to prevent.
+ * `promptBodyRequest` (`src/server/routes/settings.ts`) applies the same refusal to
+ * a prompt an owner is editing, so a saved prompt can never smuggle its way past a
+ * fence assembled around it later.
+ */
 import { AiError, type AiProvider } from './types.ts'
 
 /** Long, explicit markers around the only untrusted part of an AI request. */
