@@ -145,6 +145,37 @@ export interface JobStep {
 export type JobRow = typeof jobsTable.$inferSelect
 export type JobRunRow = typeof jobRunsTable.$inferSelect
 
+/** Raised by `runJob` when `job.run` outlives `config.JOB_TIMEOUT_MINUTES`. */
+export class JobTimeoutError extends Error {
+  constructor(minutes: number) {
+    super(`job did not finish within ${String(minutes)} minutes`)
+    this.name = 'JobTimeoutError'
+  }
+}
+
+/**
+ * Races `run` against a timer, rejecting with `JobTimeoutError` if the timer wins.
+ *
+ * `run` itself is left running either way — this only stops `runJob` from waiting on
+ * it forever. That is deliberate: the queue only cares that *something* settles so it
+ * can move on, and a job whose promise never resolves has no cancellation to offer.
+ */
+function withTimeout<T>(run: Promise<T>, minutes: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new JobTimeoutError(minutes)), minutes * 60_000)
+    run.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
+
 function upsert(db: Db, tenantId: string, name: string, set: Partial<JobRow>): void {
   db.insert(jobsTable)
     .values({ tenantId, name, ...set })
@@ -257,15 +288,18 @@ export function runJob(
 
     try {
       const detail =
-        (await job.run({
-          db,
-          tenantId,
-          now,
-          log: jobLog,
-          force: options.force ?? false,
-          step: makeStep(steps),
-          cursor: priorCursor,
-        })) ?? {}
+        (await withTimeout(
+          job.run({
+            db,
+            tenantId,
+            now,
+            log: jobLog,
+            force: options.force ?? false,
+            step: makeStep(steps),
+            cursor: priorCursor,
+          }),
+          config.JOB_TIMEOUT_MINUTES,
+        )) ?? {}
       const durationMs = Date.now() - started
       const finished = new Date()
       const runStatus = deriveRunStatus(true, steps)

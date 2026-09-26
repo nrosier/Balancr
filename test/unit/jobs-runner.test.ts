@@ -4,11 +4,12 @@
  * must still be written down, and `lastSuccessAt` must keep meaning "how stale
  * the data is" rather than "when we last tried".
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { asc, eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { jobRuns as jobRunsTable, jobs as jobsTable, tenants } from '../../src/db/schema.ts'
+import { config } from '../../src/config.ts'
 import {
   clearStaleRunning,
   deriveRunStatus,
@@ -289,6 +290,41 @@ describe('runJob', () => {
     ])
 
     expect(second).toMatchObject({ status: 'ok', detail: { ran: true } })
+  })
+})
+
+describe('runJob timeout (#583)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('records a run whose promise never settles as an error once the ceiling elapses, and releases the claim', async () => {
+    const stuck = job('stuck', () => new Promise(() => {}))
+    const result = runJob(ctx.db, stuck, TENANT_ID)
+
+    await vi.advanceTimersByTimeAsync(config.JOB_TIMEOUT_MINUTES * 60_000 + 1)
+
+    await expect(result).resolves.toMatchObject({ status: 'error' })
+    expect((await result).error).toMatch(/did not finish within/)
+    expect(row('stuck')).toMatchObject({ status: 'error' })
+    expect(jobsInFlight(TENANT_ID)).toEqual([])
+  })
+
+  it('does not let a job stuck forever poison the queue for the one behind it', async () => {
+    // Without the ceiling, this is exactly #583: `after` sits behind `stuck` in the
+    // one shared queue for ever, and no tenant's jobs run again until a restart.
+    const stuck = job('stuck', () => new Promise(() => {}))
+    const stuckResult = runJob(ctx.db, stuck, TENANT_ID)
+    const afterResult = runJob(ctx.db, job('after', async () => ({ ran: true })), TENANT_ID)
+
+    await vi.advanceTimersByTimeAsync(config.JOB_TIMEOUT_MINUTES * 60_000 + 1)
+
+    await expect(stuckResult).resolves.toMatchObject({ status: 'error' })
+    await expect(afterResult).resolves.toMatchObject({ status: 'ok', detail: { ran: true } })
   })
 })
 

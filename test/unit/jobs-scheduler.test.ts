@@ -125,7 +125,7 @@ describe('createScheduler', () => {
     await settle()
     expect(starts).toBe(1)
 
-    await vi.advanceTimersByTimeAsync(30 * TICK_MS)
+    await vi.advanceTimersByTimeAsync(10 * TICK_MS)
     expect(starts).toBe(1)
 
     release()
