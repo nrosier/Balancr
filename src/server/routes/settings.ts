@@ -180,7 +180,7 @@ import {
 } from '../../domain/ai/prompts.ts'
 import { estimatePromptValidation } from '../../domain/ai/prompt-validate.ts'
 import { loadRunCursor, recentRuns } from '../../domain/ai/runs.ts'
-import { recordAudit } from '../../domain/audit.ts'
+import { recordAudit, type AuditEntry } from '../../domain/audit.ts'
 import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../../domain/tenant/invites.ts'
 import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
@@ -2422,6 +2422,40 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
   )
 
   /**
+   * The find-or-404 + save + audit shape shared by the five category-level PATCH
+   * routes below (#601): load the row that becomes the audit entry's "before" (404
+   * if there is none), attempt the save, fold the domain layer's own not-found race
+   * — a sync dropping the category between the load and the save — into that same
+   * 404, then record what changed. `onOtherError` exists only for the translation
+   * route's extra `SourceLocaleError`, so the other four callers never have to
+   * declare a case that can never happen to them.
+   */
+  function patchCategoryField<Before>(
+    options: {
+      load: () => Before | undefined
+      save: () => void
+      notFoundError: new (...args: never[]) => Error
+      onOtherError?: (error: unknown) => void
+      audit: (before: Before) => Omit<AuditEntry, 'tenantId' | 'actorId'>
+    },
+    user: ReturnType<typeof requireOwner>,
+  ): Before {
+    const before = options.load()
+    if (before === undefined) throw notFound('No such category.')
+
+    try {
+      options.save()
+    } catch (error) {
+      if (error instanceof options.notFoundError) throw notFound('No such category.')
+      options.onOtherError?.(error)
+      throw error
+    }
+
+    recordAudit(db, { tenantId: user.tenantId, actorId: user.id, ...options.audit(before) })
+    return before
+  }
+
+  /**
    * Which reference line a category feeds (#43).
    *
    * The second writer of `category_meta.coicop_code`, and the only one a person can reach
@@ -2438,27 +2472,21 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { coicop } = parseBody(coicopPatchRequest, request.body)
 
-    const before = loadCategoryMapping(db, user.tenantId, categoryId)
-    if (before === undefined) throw notFound('No such category.')
-
-    try {
-      saveCoicop(db, user.tenantId, categoryId, coicop)
-    } catch (error) {
-      // Only reachable if the row disappeared between the two statements, which means a
-      // sync dropped the category — a 404 rather than a 500, because nothing is broken.
-      if (error instanceof MappingError) throw notFound('No such category.')
-      throw error
-    }
-
-    recordAudit(db, {
-      tenantId: user.tenantId,
-      action: 'settings.coicop',
-      entity: 'category_meta',
-      entityRef: categoryId,
-      actorId: user.id,
-      before: { coicopCode: before.coicop },
-      after: { coicopCode: coicop },
-    })
+    patchCategoryField(
+      {
+        load: () => loadCategoryMapping(db, user.tenantId, categoryId),
+        save: () => saveCoicop(db, user.tenantId, categoryId, coicop),
+        notFoundError: MappingError,
+        audit: (before) => ({
+          action: 'settings.coicop',
+          entity: 'category_meta',
+          entityRef: categoryId,
+          before: { coicopCode: before.coicop },
+          after: { coicopCode: coicop },
+        }),
+      },
+      user,
+    )
 
     return buildSettings(db, request)
   })
@@ -2481,30 +2509,25 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
       throw badRequest(`Unsupported locale: ${locale}`)
     }
 
-    const before = loadCategoryTranslationRows(db, user.tenantId).find(
-      (row) => row.categoryId === categoryId,
+    patchCategoryField(
+      {
+        load: () =>
+          loadCategoryTranslationRows(db, user.tenantId).find((row) => row.categoryId === categoryId),
+        save: () => saveCategoryTranslation(db, user.tenantId, categoryId, locale, name),
+        notFoundError: TranslationError,
+        onOtherError: (error) => {
+          if (error instanceof SourceLocaleError) throw badRequest(error.message)
+        },
+        audit: (before) => ({
+          action: 'settings.category-translation',
+          entity: 'category_translations',
+          entityRef: `${categoryId}:${locale}`,
+          before: { name: before.translations[locale] ?? null },
+          after: { name },
+        }),
+      },
+      user,
     )
-    if (before === undefined) throw notFound('No such category.')
-
-    try {
-      saveCategoryTranslation(db, user.tenantId, categoryId, locale, name)
-    } catch (error) {
-      // Only reachable if the row disappeared between the two statements — see the
-      // coicop route above for why that race is a 404, not a 500.
-      if (error instanceof TranslationError) throw notFound('No such category.')
-      if (error instanceof SourceLocaleError) throw badRequest(error.message)
-      throw error
-    }
-
-    recordAudit(db, {
-      tenantId: user.tenantId,
-      action: 'settings.category-translation',
-      entity: 'category_translations',
-      entityRef: `${categoryId}:${locale}`,
-      actorId: user.id,
-      before: { name: before.translations[locale] ?? null },
-      after: { name },
-    })
 
     return buildSettings(db, request)
   })
@@ -2529,27 +2552,21 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { custodyShared } = parseBody(custodySharedPatchRequest, request.body)
 
-    const before = loadCategoryMapping(db, user.tenantId, categoryId)
-    if (before === undefined) throw notFound('No such category.')
-
-    try {
-      saveCustodyShared(db, user.tenantId, categoryId, custodyShared)
-    } catch (error) {
-      // As above: only reachable if a sync dropped the category between the two
-      // statements, which is a 404 rather than a 500 because nothing is broken.
-      if (error instanceof MappingError) throw notFound('No such category.')
-      throw error
-    }
-
-    recordAudit(db, {
-      tenantId: user.tenantId,
-      action: 'settings.custodyShared',
-      entity: 'category_meta',
-      entityRef: categoryId,
-      actorId: user.id,
-      before: { custodyShared: before.custodyShared },
-      after: { custodyShared },
-    })
+    patchCategoryField(
+      {
+        load: () => loadCategoryMapping(db, user.tenantId, categoryId),
+        save: () => saveCustodyShared(db, user.tenantId, categoryId, custodyShared),
+        notFoundError: MappingError,
+        audit: (before) => ({
+          action: 'settings.custodyShared',
+          entity: 'category_meta',
+          entityRef: categoryId,
+          before: { custodyShared: before.custodyShared },
+          after: { custodyShared },
+        }),
+      },
+      user,
+    )
 
     return buildSettings(db, request)
   })
@@ -2573,25 +2590,21 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { aiVisibility } = parseBody(aiVisibilityPatchRequest, request.body)
 
-    const before = loadCategoryMapping(db, user.tenantId, categoryId)
-    if (before === undefined) throw notFound('No such category.')
-
-    try {
-      saveAiVisibility(db, user.tenantId, categoryId, aiVisibility)
-    } catch (error) {
-      if (error instanceof MappingError) throw notFound('No such category.')
-      throw error
-    }
-
-    recordAudit(db, {
-      tenantId: user.tenantId,
-      action: 'settings.aiVisibility',
-      entity: 'category_meta',
-      entityRef: categoryId,
-      actorId: user.id,
-      before: { aiVisibility: before.aiVisibility },
-      after: { aiVisibility },
-    })
+    patchCategoryField(
+      {
+        load: () => loadCategoryMapping(db, user.tenantId, categoryId),
+        save: () => saveAiVisibility(db, user.tenantId, categoryId, aiVisibility),
+        notFoundError: MappingError,
+        audit: (before) => ({
+          action: 'settings.aiVisibility',
+          entity: 'category_meta',
+          entityRef: categoryId,
+          before: { aiVisibility: before.aiVisibility },
+          after: { aiVisibility },
+        }),
+      },
+      user,
+    )
 
     return buildSettings(db, request)
   })
@@ -2609,25 +2622,21 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const categoryId = (request.params as { id: string }).id
     const { nature } = parseBody(naturePatchRequest, request.body)
 
-    const before = loadCategoryMapping(db, user.tenantId, categoryId)
-    if (before === undefined) throw notFound('No such category.')
-
-    try {
-      saveNature(db, user.tenantId, categoryId, nature)
-    } catch (error) {
-      if (error instanceof MappingError) throw notFound('No such category.')
-      throw error
-    }
-
-    recordAudit(db, {
-      tenantId: user.tenantId,
-      action: 'settings.nature',
-      entity: 'category_meta',
-      entityRef: categoryId,
-      actorId: user.id,
-      before: { nature: before.nature },
-      after: { nature },
-    })
+    patchCategoryField(
+      {
+        load: () => loadCategoryMapping(db, user.tenantId, categoryId),
+        save: () => saveNature(db, user.tenantId, categoryId, nature),
+        notFoundError: MappingError,
+        audit: (before) => ({
+          action: 'settings.nature',
+          entity: 'category_meta',
+          entityRef: categoryId,
+          before: { nature: before.nature },
+          after: { nature },
+        }),
+      },
+      user,
+    )
 
     return buildSettings(db, request)
   })
