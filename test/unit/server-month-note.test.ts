@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
+import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
 import { auditLog, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -174,6 +175,27 @@ describe('PATCH /api/budget/note', () => {
   it('records the write in the audit log', async () => {
     await patch('/api/budget/note', { month: MONTH, text: 'Dentist bill in March.' })
     expect(auditActions(ctx.db)).toContain('budget.monthNote')
+  })
+
+  it('records only a length, never the note text itself, in the audit entry (#581)', async () => {
+    await patch('/api/budget/note', { month: MONTH, text: 'Dentist bill in March.' })
+    await patch('/api/budget/note', { month: MONTH, text: 'Follow-up visit in April.' })
+
+    const entries = ctx.db
+      .select({ beforeJson: auditLog.beforeJson, afterJson: auditLog.afterJson })
+      .from(auditLog)
+      .where(eq(auditLog.action, 'budget.monthNote'))
+      .all()
+
+    expect(entries).toHaveLength(2)
+    for (const entry of entries) {
+      expect(entry.beforeJson).not.toContain('Dentist')
+      expect(entry.afterJson).not.toContain('Dentist')
+      expect(entry.afterJson).not.toContain('Follow-up')
+    }
+    // The bug this guards: before #581, `before`/`after` carried `{ text }` verbatim
+    // — every version of every month note, kept forever with no retention sweep.
+    expect(JSON.parse(entries[1]!.afterJson!)).toEqual({ chars: 'Follow-up visit in April.'.length })
   })
 
   it('refuses a write with no CSRF token', async () => {
