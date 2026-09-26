@@ -3513,6 +3513,14 @@ describe('the category table', () => {
     ])
   })
 
+  it('closes the picker for income and hidden categories, which the comparison skips (#651)', async () => {
+    await open(READS)
+
+    expect(picker('Coffee').disabled).toBe(false)
+    expect(picker('Salary').disabled).toBe(true)
+    expect(picker('Old subscription').disabled).toBe(true)
+  })
+
   it('flags a category as shared the moment the box is ticked (#44)', async () => {
     // The whole reason this control exists: `custody_shared` was settable only by
     // approving a proposal or answering a clarification, both of which need a key, so a
