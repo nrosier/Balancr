@@ -188,7 +188,7 @@ import { requireOwner, requireUser } from '../auth/guard.ts'
 import { setUserLocale } from '../auth/users.ts'
 import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
-import { integrationsTestRateLimit } from '../rate-limit.ts'
+import { enforceIntegrationsTestTenantCap, integrationsTestRateLimit } from '../rate-limit.ts'
 import { fieldIssues, parseBody } from '../validate.ts'
 import { APP_REVISION, APP_VERSION } from '../version.ts'
 import {
@@ -2216,6 +2216,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
       const user = requireOwner(request)
+      enforceIntegrationsTestTenantCap(db, user.tenantId)
       const candidate = parseBody(ghostfolioIntegrationTestRequest, request.body)
       const base = candidate.url.replace(/\/+$/, '')
 
@@ -2275,6 +2276,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
       const user = requireOwner(request)
+      enforceIntegrationsTestTenantCap(db, user.tenantId)
       const candidate = parseBody(aiIntegrationTestRequest, request.body)
       const location = candidate.googleCloudLocation ?? config.GOOGLE_CLOUD_LOCATION
       const storedRow = integrationsRow(db, user.tenantId)
@@ -2396,6 +2398,7 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     { ...integrationsTestRateLimit() },
     async (request: FastifyRequest): Promise<IntegrationTest> => {
       const user = requireOwner(request)
+      enforceIntegrationsTestTenantCap(db, user.tenantId)
       const candidate = parseBody(actualIntegrationTestRequest, request.body)
 
       const busy = jobsInFlight(user.tenantId)

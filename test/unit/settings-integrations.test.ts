@@ -28,7 +28,7 @@ import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import type { Db } from '../../src/db/index.ts'
 import { decryptField } from '../../src/db/field-crypto.ts'
-import { auditLog, categoryMeta, tenantIntegrations, users } from '../../src/db/schema.ts'
+import { auditLog, categoryMeta, rateLimits, tenantIntegrations, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadCategoryNames } from '../../src/domain/aggregate/facts.ts'
 import { saveCategoryTranslation } from '../../src/domain/i18n/category-translations.ts'
@@ -39,6 +39,7 @@ import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { ErrorBody } from '../../src/server/errors.ts'
+import { INTEGRATIONS_TEST_RATE_LIMIT } from '../../src/server/rate-limit.ts'
 import type { IntegrationTest, IntegrationsSetting, Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
@@ -75,11 +76,11 @@ let app: FastifyInstance
 let owner: string
 let viewer: string
 
-function signIn(db: Db, role: 'owner' | 'viewer'): string {
+function signIn(db: Db, role: 'owner' | 'viewer', tenantId = getSoleTenantId(db)): string {
   const row = db
     .insert(users)
     .values({
-      tenantId: getSoleTenantId(db),
+      tenantId,
       oidcSub: `sub-${crypto.randomUUID()}`,
       email: `${role}@example.test`,
       displayName: role,
@@ -99,13 +100,14 @@ function send(
   method: 'PATCH' | 'POST',
   url: string,
   body: object = {},
-  options: { token?: string; csrf?: boolean } = {},
+  options: { token?: string; csrf?: boolean; remoteAddress?: string } = {},
 ) {
   const csrf = newCsrfToken()
   return app.inject({
     method,
     url,
     payload: body,
+    ...(options.remoteAddress === undefined ? {} : { remoteAddress: options.remoteAddress }),
     cookies: {
       [SESSION_COOKIE]: options.token ?? owner,
       ...(options.csrf === false ? {} : { [CSRF_COOKIE]: csrf }),
@@ -116,8 +118,11 @@ function send(
 
 const patch = (url: string, body: object, options?: { token?: string; csrf?: boolean }) =>
   send('PATCH', url, body, options)
-const post = (url: string, body: object = {}, options?: { token?: string; csrf?: boolean }) =>
-  send('POST', url, body, options)
+const post = (
+  url: string,
+  body: object = {},
+  options?: { token?: string; csrf?: boolean; remoteAddress?: string },
+) => send('POST', url, body, options)
 
 /** The one `tenant_integrations` row, read fresh — never trusted from before a write. */
 function row(db: Db) {
@@ -1205,5 +1210,92 @@ describe('POST /api/settings/integrations/ai/test', () => {
     )
     expect(res.statusCode).toBe(403)
     expect(genai.calls).toHaveLength(0)
+  })
+})
+
+describe('the tenant-scoped integrations-test cap (#588/S7)', () => {
+  it('trips even when every request arrives from a different address', async () => {
+    genai.behavior = 'ok'
+
+    // Same owner, a fresh source address per request: the per-IP bucket alone
+    // never sees more than one request from any single address, so only a
+    // tenant-scoped second bucket can catch this.
+    for (let i = 0; i < INTEGRATIONS_TEST_RATE_LIMIT.max; i += 1) {
+      const res = await post(
+        '/api/settings/integrations/ai/test',
+        { provider: 'gemini-aistudio', apiKey: 'candidate-key' },
+        { remoteAddress: `203.0.113.${i + 1}` },
+      )
+      expect(res.statusCode).toBe(200)
+    }
+
+    const blocked = await post(
+      '/api/settings/integrations/ai/test',
+      { provider: 'gemini-aistudio', apiKey: 'candidate-key' },
+      { remoteAddress: '203.0.113.250' },
+    )
+    expect(blocked.statusCode).toBe(429)
+    expect(blocked.json<ErrorBody>().error.code).toBe('rate_limited')
+  })
+
+  it('shares the cap across the three integration-test routes', async () => {
+    vi.mocked(testActualConnection).mockResolvedValue({ ok: true, message: null })
+    genai.behavior = 'ok'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ accessToken: 'server-session-token' }) }),
+    )
+
+    for (let i = 0; i < INTEGRATIONS_TEST_RATE_LIMIT.max; i += 1) {
+      const route = i % 2 === 0 ? '/api/settings/integrations/ai/test' : '/api/settings/integrations/ghostfolio/test'
+      const body =
+        route === '/api/settings/integrations/ai/test'
+          ? { provider: 'gemini-aistudio', apiKey: 'candidate-key' }
+          : { url: 'http://ghostfolio.test:3333', securityToken: 'token' }
+      const res = await post(route, body, { remoteAddress: `203.0.113.${i + 1}` })
+      expect(res.statusCode).toBe(200)
+    }
+
+    const blocked = await post(
+      '/api/settings/integrations/actual/test',
+      { serverUrl: 'http://actual.test:5006', password: 'pw' },
+      { remoteAddress: '203.0.113.251' },
+    )
+    expect(blocked.statusCode).toBe(429)
+  })
+
+  it('keeps two tenants apart', async () => {
+    genai.behavior = 'ok'
+    const secondTenantId = createSecondTenant(ctx.db)
+    const secondOwner = signIn(ctx.db, 'owner', secondTenantId)
+
+    for (let i = 0; i < INTEGRATIONS_TEST_RATE_LIMIT.max; i += 1) {
+      const res = await post(
+        '/api/settings/integrations/ai/test',
+        { provider: 'gemini-aistudio', apiKey: 'candidate-key' },
+        { remoteAddress: `203.0.113.${i + 1}` },
+      )
+      expect(res.statusCode).toBe(200)
+    }
+
+    // The first tenant just exhausted its own bucket; the second tenant's owner,
+    // arriving from yet another address, is untouched by it.
+    const otherTenant = await post(
+      '/api/settings/integrations/ai/test',
+      { provider: 'gemini-aistudio', apiKey: 'candidate-key' },
+      { token: secondOwner, remoteAddress: '203.0.113.252' },
+    )
+    expect(otherTenant.statusCode).toBe(200)
+  })
+
+  it('writes tenant_id on the row it counts against, unlike every other bucket', async () => {
+    await post('/api/settings/integrations/ai/test', { provider: 'gemini-aistudio', apiKey: 'candidate-key' })
+
+    const row = ctx.db
+      .select()
+      .from(rateLimits)
+      .where(eq(rateLimits.key, `tenant-integrations-test:${getSoleTenantId(ctx.db)}`))
+      .get()
+    expect(row?.tenantId).toBe(getSoleTenantId(ctx.db))
   })
 })

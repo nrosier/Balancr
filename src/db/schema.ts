@@ -1434,12 +1434,18 @@ export const jobRuns = sqliteTable(
  * One row per `(bucket, client)`. `expires_at` is when the window ends, so an
  * expired row is indistinguishable from a fresh start and can be pruned at any
  * time without coordination.
+ *
+ * `tenant_id` is null for almost every row here, by design: every bucket but one
+ * is keyed by IP address or globally, where there is no single tenant to name.
+ * See `enforceIntegrationsTestTenantCap` in `rate-limit.ts` for the one
+ * tenant-scoped bucket that writes it (#588/S7).
  */
 export const rateLimits = sqliteTable(
   'rate_limits',
   {
     /** `<bucket>:<client key>` — the bucket keeps the AI window separate. */
     key: text().primaryKey(),
+    /** Set only for a tenant-scoped bucket; null for one keyed by IP or globally. */
     tenantId: text('tenant_id').references(() => tenants.id),
     count: integer().notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),

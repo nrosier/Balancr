@@ -23,6 +23,23 @@
  * from an untrusted peer never reaches this code, because `trustProxy` ignores the
  * header for such a peer and uses the socket address instead. That is the
  * difference between "the rate limit is bypassable with a header" and not.
+ *
+ * Every bucket above is keyed by IP (or global), and an IP rotation defeats that —
+ * accepted for all of them except the integrations-test bucket, where a pass means
+ * the server dialled an owner-chosen destination with a stored secret attached, so
+ * the amplification is worth closing (#588/S7). `enforceIntegrationsTestTenantCap`
+ * is a second, tenant-scoped bucket layered on top of `INTEGRATIONS_TEST_RATE_LIMIT`
+ * for exactly that route, the same "burst guard on top of, not instead of" shape
+ * `prompt-validate.ts`'s daily cap has with `aiRateLimit()`. It is also the one
+ * bucket that writes `rate_limits.tenant_id` — every IP- or globally-keyed bucket
+ * leaves it null, which is why it stayed unused before this.
+ *
+ * The invite-redemption bucket stays IP-only on purpose: the tenant a code belongs
+ * to is unknowable before the code is looked up, so there is no tenant to key a
+ * second bucket by, and the 64 bits of entropy it guards make brute-forcing
+ * infeasible regardless of how many addresses an attacker rotates through — the
+ * per-IP bucket is a burst throttle on an already-astronomical search space, not
+ * the thing standing between a guess and a match.
  */
 import rateLimit from '@fastify/rate-limit'
 import { and, eq, gt, lt, sql } from 'drizzle-orm'
@@ -107,6 +124,13 @@ export const loginRateLimit = (): { config: { rateLimit: typeof LOGIN_RATE_LIMIT
  * Same shape as `LOGIN_RATE_LIMIT`, for the same reason: guessing a short invite
  * code is the same threat shape as guessing a password, and there is no
  * deployment that wants this looser.
+ *
+ * Deliberately IP-only, with no tenant-scoped second bucket (#588/S7): unlike
+ * the integrations-test route, the tenant a code belongs to cannot be known
+ * before the code is looked up, so there is nothing to key a second bucket by.
+ * And unlike a password, what this guards is 64 bits of entropy — an IP rotation
+ * defeats the burst throttle, but brute-forcing the code itself stays infeasible
+ * regardless of how many addresses an attacker has.
  */
 export const INVITE_REDEEM_RATE_LIMIT = {
   max: 10,
@@ -135,12 +159,77 @@ export const INTEGRATIONS_TEST_RATE_LIMIT = {
   timeWindow: '1 hour',
 } as const
 
+/** `INTEGRATIONS_TEST_RATE_LIMIT.timeWindow` as milliseconds, for the tenant-scoped bucket below. */
+const INTEGRATIONS_TEST_WINDOW_MS = 60 * 60 * 1000
+
 /** Spreadable route options for the integration test routes. See `INTEGRATIONS_TEST_RATE_LIMIT`. */
 export const integrationsTestRateLimit = (): {
   config: { rateLimit: typeof INTEGRATIONS_TEST_RATE_LIMIT }
 } => ({
   config: { rateLimit: INTEGRATIONS_TEST_RATE_LIMIT },
 })
+
+/**
+ * The upsert both the plugin's store and `enforceIntegrationsTestTenantCap` share:
+ * one statement, so two concurrent requests cannot both read 4 and write 5. The
+ * `case` compares the *stored* `expires_at` against now, so an elapsed window
+ * restarts at 1 while a live one increments and keeps its original end.
+ *
+ * `tenantId` is only ever non-null for a tenant-scoped bucket — an IP- or
+ * globally-keyed bucket has no tenant to write, and passes `null`.
+ */
+function upsertRateLimitCounter(
+  db: Db,
+  key: string,
+  tenantId: string | null,
+  windowMs: number,
+  now: number,
+): { count: number; expiresAt: Date } {
+  const expires = now + windowMs
+  const rows = db
+    .insert(rateLimits)
+    .values({ key, tenantId, count: 1, expiresAt: new Date(expires) })
+    .onConflictDoUpdate({
+      target: rateLimits.key,
+      set: {
+        count: sql`case when ${rateLimits.expiresAt} <= ${now} then 1 else ${rateLimits.count} + 1 end`,
+        expiresAt: sql`case when ${rateLimits.expiresAt} <= ${now} then ${expires} else ${rateLimits.expiresAt} end`,
+      },
+    })
+    .returning()
+    .all()
+
+  const row = rows[0]
+  if (row === undefined) throw new Error('rate limit counter returned no row')
+  return row
+}
+
+/**
+ * The tenant-scoped half of the integrations-test guard (#588/S7). See the module
+ * header for why this is the one bucket worth keying by tenant instead of by IP.
+ *
+ * Same limit and window as `INTEGRATIONS_TEST_RATE_LIMIT`, so a tenant cannot
+ * exceed the intended hourly budget no matter how many source addresses its
+ * requests arrive from — a burst guard layered on top of the per-IP bucket, not a
+ * replacement for it.
+ */
+export function enforceIntegrationsTestTenantCap(db: Db, tenantId: string, now = new Date()): void {
+  const row = upsertRateLimitCounter(
+    db,
+    `tenant-integrations-test:${tenantId}`,
+    tenantId,
+    INTEGRATIONS_TEST_WINDOW_MS,
+    now.getTime(),
+  )
+  if (row.count > INTEGRATIONS_TEST_RATE_LIMIT.max) {
+    const retryAfterSeconds = Math.ceil(Math.max(0, row.expiresAt.getTime() - now.getTime()) / 1000)
+    throw new HttpError(
+      429,
+      'rate_limited',
+      `Too many integration tests for this household. Try again in ${retryAfterSeconds}s.`,
+    )
+  }
+}
 
 /** What the plugin hands the store's constructor and `child`. */
 interface StoreParams {
@@ -188,38 +277,15 @@ export function sqliteRateLimitStore(db: Db) {
     }
 
     /**
-     * One statement, so two concurrent requests cannot both read 4 and write 5.
-     *
-     * The upsert either starts a window or advances it: the `case` compares the
-     * *stored* `expires_at` against now, so an elapsed window restarts at 1 while a
-     * live one increments and keeps its original end. In JavaScript this would be a
-     * read followed by a write over a connection shared with the job queue.
+     * The upsert either starts a window or advances it — see
+     * `upsertRateLimitCounter`, shared with the tenant-scoped bucket below. In
+     * JavaScript this would be a read followed by a write over a connection
+     * shared with the job queue.
      */
     incr(key: string, callback: StoreCallback, timeWindow: number, _max: number): void {
       const now = Date.now()
-      const expires = now + timeWindow
-      const id = `${this.bucket}:${key}`
-
       try {
-        const rows = db
-          .insert(rateLimits)
-          .values({ key: id, count: 1, expiresAt: new Date(expires) })
-          .onConflictDoUpdate({
-            target: rateLimits.key,
-            set: {
-              count: sql`case when ${rateLimits.expiresAt} <= ${now} then 1 else ${rateLimits.count} + 1 end`,
-              expiresAt: sql`case when ${rateLimits.expiresAt} <= ${now} then ${expires} else ${rateLimits.expiresAt} end`,
-            },
-          })
-          .returning()
-          .all()
-
-        const row = rows[0]
-        if (row === undefined) {
-          callback(new Error('rate limit counter returned no row'))
-          return
-        }
-
+        const row = upsertRateLimitCounter(db, `${this.bucket}:${key}`, null, timeWindow, now)
         sweep(now)
         // `ttl` becomes `Retry-After`, so it is the time left in the window and
         // never the window's length — otherwise a client told to wait an hour
