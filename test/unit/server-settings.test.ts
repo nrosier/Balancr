@@ -359,6 +359,12 @@ describe('PATCH /api/settings/params', () => {
     expect(res.json<ErrorBody>().error.issues?.[0]?.path).toBe('baseline.windowMonths')
   })
 
+  it('refuses a basis-point or cents field with no sane ceiling (#595)', async () => {
+    const res = await patch('/api/settings/params', { overspend: { baselineAlertBp: 2_000_000 } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json<ErrorBody>().error.issues?.[0]?.path).toBe('overspend.baselineAlertBp')
+  })
+
   it('refuses two thresholds in the wrong order, and says which', async () => {
     // A cross-field rule, so it can only be checked after the merge — the failure
     // that would otherwise arrive as a 500 about someone else's mistake.
