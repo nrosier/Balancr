@@ -16,10 +16,13 @@
  *    evict a scheduled one, and an instance that was off for a month must not delete
  *    its own history on the way back up.
  */
+import { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import type { fork } from 'node:child_process'
+import Database from 'better-sqlite3'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta } from '../../src/db/schema.ts'
@@ -36,10 +39,16 @@ import { verifyBackup } from '../../src/backup/verify.ts'
 const PASS = 'a-passphrase-of-sixteen-plus'
 
 let db: ReturnType<typeof createTestDb>['db']
+let dbPath: string
 let dir: string
 
 beforeEach(() => {
-  const test = createTestDb()
+  // A real file, not `:memory:`: `writeSnapshot` now forks `vacuum-worker.ts` to run
+  // `VACUUM INTO` off the main thread (#608), and that worker opens its own connection
+  // to the source database by path — which only a file, not this process's private
+  // in-memory state, can be reopened from.
+  dbPath = join(mkdtempSync(join(tmpdir(), 'balancr-snapshot-src-')), 'source.db')
+  const test = createTestDb(dbPath)
   db = test.db
   applyMigrations(db as never)
   dir = mkdtempSync(join(tmpdir(), 'balancr-snapshot-'))
@@ -90,7 +99,7 @@ describe('writeSnapshot', () => {
       .run()
 
     const at = new Date('2026-09-03T03:00:12Z')
-    const snapshot = await writeSnapshot(db, dir, PASS, at)
+    const snapshot = await writeSnapshot(dbPath, dir, PASS, at)
     expect(snapshot.path).toBe(join(dir, snapshotName(at)))
 
     const result = await verifyBackup(snapshot.path, PASS)
@@ -103,7 +112,7 @@ describe('writeSnapshot', () => {
 
   it('leaves no plaintext and no partial file behind', async () => {
     const at = new Date('2026-09-03T03:00:12Z')
-    await writeSnapshot(db, dir, PASS, at)
+    await writeSnapshot(dbPath, dir, PASS, at)
 
     // The plaintext is the one thing in this whole feature that must not survive: it is
     // an unencrypted copy of the database sitting in a directory whose entire purpose is
@@ -120,15 +129,61 @@ describe('writeSnapshot', () => {
     // Without the clearing step this throws: `VACUUM INTO` refuses an existing target
     // and so does the `wx` open. One interrupted night would then fail every night after
     // it, which is the failure mode where a backup system is least likely to be noticed.
-    await expect(writeSnapshot(db, dir, PASS, at)).resolves.toBeDefined()
+    await expect(writeSnapshot(dbPath, dir, PASS, at)).resolves.toBeDefined()
     expect(readdirSync(dir)).toEqual([snapshotName(at)])
   })
 
   it('creates the directory it was pointed at', async () => {
     const nested = join(dir, 'a', 'b')
     expect(existsSync(nested)).toBe(false)
-    await writeSnapshot(db, nested, PASS, new Date('2026-09-03T03:00:12Z'))
+    await writeSnapshot(dbPath, nested, PASS, new Date('2026-09-03T03:00:12Z'))
     expect(existsSync(nested)).toBe(true)
+  })
+
+  it('runs VACUUM INTO in a forked worker, not on the caller (#608)', async () => {
+    // A wall-clock "does the event loop stall" test was tried and abandoned: inside
+    // Vitest's own worker process, a `fork()` call picks up 100ms+ of scheduling noise
+    // that has nothing to do with this code (reproduced identically against the fixed
+    // implementation), while a standalone script forking the same worker never sees more
+    // than a few milliseconds of jitter. What is actually checkable, deterministically,
+    // is the architecture itself: that the vacuum runs via `child_process.fork` against
+    // `vacuum-worker.ts`, rather than as a synchronous call on the caller's own
+    // connection — which is the change #608 made and the only thing that can move a
+    // blocking `VACUUM INTO` off the main thread, since better-sqlite3 has no async form
+    // of any statement.
+    vi.resetModules()
+    const forkSpy = vi.fn(
+      (_modulePath: string, args?: readonly string[]): ReturnType<typeof fork> => {
+        const [source, plainPath] = args ?? []
+        const sqlite = new Database(source, { readonly: true, fileMustExist: true })
+        try {
+          sqlite.prepare('VACUUM INTO ?').run(plainPath)
+        } finally {
+          sqlite.close()
+        }
+
+        const child = new EventEmitter() as unknown as ReturnType<typeof fork>
+        Object.assign(child, { stderr: new EventEmitter() })
+        setImmediate(() => child.emit('exit', 0))
+        return child
+      },
+    )
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      fork: forkSpy,
+    }))
+
+    const { writeSnapshot: freshWriteSnapshot } = await import('../../src/backup/snapshot.ts')
+    db.insert(categoryMeta)
+      .values({ tenantId: getSoleTenantId(db), categoryId: 'c1', nameSnapshot: 'Groceries' })
+      .run()
+
+    await freshWriteSnapshot(dbPath, dir, PASS, new Date('2026-09-03T03:00:12Z'))
+
+    expect(forkSpy).toHaveBeenCalledTimes(1)
+    const [modulePath, args] = forkSpy.mock.calls[0]!
+    expect(modulePath).toMatch(/vacuum-worker\.(ts|js)$/)
+    expect(args).toEqual([dbPath, expect.stringContaining('.plain')])
   })
 })
 

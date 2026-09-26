@@ -21,10 +21,35 @@
  */
 import { readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
+import { fork } from 'node:child_process'
 import { join } from 'node:path'
-import { sql } from 'drizzle-orm'
-import type { Db } from '../db/index.ts'
+import { fileURLToPath } from 'node:url'
 import { encryptFile } from './crypto.ts'
+
+const here = fileURLToPath(import.meta.url)
+/**
+ * The worker's own extension, not a hardcoded one — same reasoning as
+ * `adapters/actual/client.ts`'s `WORKER_PATH`: under `tsx` (dev) this module runs
+ * as `.ts` and `fork` inherits tsx's loader automatically, so a sibling `.ts` file
+ * just works; in the compiled build both are `.js` and plain Node needs no loader.
+ */
+const WORKER_PATH = join(here.slice(0, here.lastIndexOf('/')), `vacuum-worker${here.slice(here.lastIndexOf('.'))}`)
+
+/** Runs `vacuum-worker.ts` and resolves once it exits, rejecting with its stderr on a nonzero code. */
+function runVacuum(dbPath: string, plainPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = fork(WORKER_PATH, [dbPath, plainPath], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
+    let stderr = ''
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    child.once('error', reject)
+    child.once('exit', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`vacuum worker exited with code ${String(code)}: ${stderr.trim()}`))
+    })
+  })
+}
 
 /** `balancr-20260903T030112Z.db.enc` */
 const PREFIX = 'balancr-'
@@ -96,9 +121,14 @@ export interface Snapshot {
  * than a shared `/tmp`, and removed in a `finally` whether or not the encryption
  * worked. Anyone troubled by that window should look at `DATABASE_PATH` first: the same
  * bytes live there unencrypted, permanently.
+ *
+ * `dbPath` rather than a live `Db`, and that is what makes `vacuum-worker.ts` possible
+ * (#608): the only use this function ever had for the connection was the one blocking
+ * `VACUUM INTO` call, and a forked process cannot share an in-process connection object
+ * anyway — it needs a path to open its own.
  */
 export async function writeSnapshot(
-  db: Db,
+  dbPath: string,
   directory: string,
   passphrase: string,
   at: Date,
@@ -116,7 +146,7 @@ export async function writeSnapshot(
   await rm(part, { force: true })
 
   try {
-    db.run(sql`VACUUM INTO ${plain}`)
+    await runVacuum(dbPath, plain)
     const plainBytes = (await stat(plain)).size
     const bytes = await encryptFile(plain, part, passphrase)
     await rename(part, path)

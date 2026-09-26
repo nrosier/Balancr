@@ -36,11 +36,17 @@ const log = pino({ level: 'silent' })
 const PASS = 'a-passphrase-of-sixteen-plus'
 
 let db: ReturnType<typeof createTestDb>['db']
+let dbPath: string
 let dir: string
 let TENANT_ID: string
 
 beforeEach(() => {
-  const test = createTestDb()
+  // A real file, not `:memory:`: the job reads `config.DATABASE_PATH` directly
+  // (#608 — `writeSnapshot` forks a worker that opens its own connection to that
+  // path), so the source it backs up has to be a file this test can also point
+  // `DATABASE_PATH` at, not this `db` handle's private in-memory state.
+  dbPath = join(mkdtempSync(join(tmpdir(), 'balancr-job-backup-src-')), 'source.db')
+  const test = createTestDb(dbPath)
   db = test.db
   applyMigrations(db as never)
   TENANT_ID = getSoleTenantId(db)
@@ -67,6 +73,7 @@ const context = (now: Date): JobContext => ({ db, tenantId: TENANT_ID, log, now,
 async function freshJob(env: Record<string, string | undefined>): Promise<Job> {
   vi.resetModules()
   vi.stubEnv('BACKUP_DIR', dir)
+  vi.stubEnv('DATABASE_PATH', dbPath)
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value)
   return (await import('../../src/jobs/backup.ts')).backupJob
 }

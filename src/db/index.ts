@@ -34,10 +34,17 @@ export const db = drizzle(sqlite, { schema, casing: 'snake_case' })
 
 export type Db = typeof db
 
-/** For tests: an isolated in-memory database with the same settings. */
-export function createTestDb() {
-  const mem = openDatabase(':memory:')
-  return { sqlite: mem, db: drizzle(mem, { schema, casing: 'snake_case' }) }
+/**
+ * For tests: an isolated database with the same settings, in memory by default.
+ *
+ * A real path is for the rare test that needs a second, independent connection to
+ * the same data — `:memory:` is one connection's private state and cannot be
+ * reopened by anything else, including a forked child process (`vacuum-worker.ts`,
+ * #608's `backup-snapshot.test.ts`).
+ */
+export function createTestDb(path = ':memory:') {
+  const sqlite = openDatabase(path)
+  return { sqlite, db: drizzle(sqlite, { schema, casing: 'snake_case' }) }
 }
 
 export function closeDatabase(): void {
