@@ -108,10 +108,17 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
    *
    * A session, not `requireOwner`. The payload is the redacted bundle and nothing
    * else: aggregates, category names, and an opaque label where a sensitive category
-   * would be. `/api/insights` already hands the same signals and the same month's
-   * spend to any session, so gating the audit view harder than the numbers it
-   * explains would only mean the person who can read the conclusions cannot check
-   * them. What the owner alone may do is *spend* — that is `../ai.ts`.
+   * would be — with one deliberate exception, the month's own note
+   * (`RedactedPayload.note`, `redact.ts`), which crosses unmodified because
+   * redaction narrows what a *category* reveals and a note is not one. That is not
+   * a gap this route opens: `GET /api/budget/note` already hands a viewer the same
+   * text directly (#217), so stripping it from an audit view of a call that already
+   * had it would hide the input from the one screen built to show it, while
+   * changing nothing about what a viewer can read (#593). `/api/insights` already
+   * hands the same signals and the same month's spend to any session, so gating
+   * the audit view harder than the numbers it explains would only mean the person
+   * who can read the conclusions cannot check them. What the owner alone may do is
+   * *spend* — that is `../ai.ts`.
    */
   app.get('/api/insights/runs/:id/payload', (request: FastifyRequest) => {
     const { id } = request.params as { id: string }
