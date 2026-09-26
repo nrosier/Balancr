@@ -641,7 +641,8 @@
       "rateReads": "Reads as {{value}}.",
       "remove": "Remove mortgage",
       "term": "Months remaining",
-      "useStandardPayment": "Use the standard payment for this rate and term"
+      "useStandardPayment": "Use the standard payment for this rate and term",
+      "heading": "Mortgage {{n}}"
     },
     "none": "No properties yet. Add the one you live in, or one you rent out.",
     "propertyValue": "Estimated value",

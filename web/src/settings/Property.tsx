@@ -339,6 +339,10 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
               // draft — matched by id since removing an earlier row shifts every index
               // after it.
               const sourceProperty = property.properties.find((stored) => stored.id === row.id)
+              // A property's label is user-entered and often left blank for a while, so
+              // the heading falls back to the kind name rather than rendering empty.
+              const headingText =
+                parsed.label !== '' ? parsed.label : t(`settings:property.kind.${row.kind}`)
 
               const reads: string[] = []
               if (!parsed.ok) {
@@ -374,6 +378,9 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
 
               return (
                 <li className="property" key={row.id}>
+                  <div className="property__head">
+                    <h3 className="property__name">{headingText}</h3>
+                  </div>
                   <div className="property__fields">
                     <div className="field">
                       <label className="field__label" htmlFor={`property-kind-${row.id}`}>
@@ -498,194 +505,206 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
 
                     return (
                       <div className="property__mortgage" key={mortgage.id}>
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-principal-${idPrefix}`}>
-                            {t('settings:property.mortgage.principal')}
-                          </label>
-                          <input
-                            id={`mortgage-principal-${idPrefix}`}
-                            className="field__input num"
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            value={mortgage.principalCents}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { principalCents: event.target.value })
-                            }
-                          />
+                        <p className="property__mortgage-heading muted">
+                          {t('settings:property.mortgage.heading', { n: mortgageIndex + 1 })}
+                        </p>
+                        <div className="property__mortgage-fields">
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-principal-${idPrefix}`}>
+                              {t('settings:property.mortgage.principal')}
+                            </label>
+                            <input
+                              id={`mortgage-principal-${idPrefix}`}
+                              className="field__input num"
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              value={mortgage.principalCents}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { principalCents: event.target.value })
+                              }
+                            />
+                            <p className="property__reads muted">{' '}</p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-anchor-${idPrefix}`}>
+                              {t('settings:property.mortgage.anchorDate')}
+                            </label>
+                            <input
+                              id={`mortgage-anchor-${idPrefix}`}
+                              className="field__input"
+                              type="date"
+                              value={mortgage.anchorDate}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { anchorDate: event.target.value })
+                              }
+                            />
+                            <p className="property__reads muted">{' '}</p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-rate-${idPrefix}`}>
+                              {t('settings:property.mortgage.rate')}
+                            </label>
+                            <input
+                              id={`mortgage-rate-${idPrefix}`}
+                              className="field__input num"
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              value={mortgage.rateBp}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { rateBp: event.target.value })
+                              }
+                            />
+                            <p className="property__reads muted">
+                              {rateBp === null
+                                ? t('settings:property.invalid')
+                                : t('settings:property.mortgage.rateReads', {
+                                    value: formatBp(rateBp, { maxFractionDigits: 2 }),
+                                  })}
+                            </p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-term-${idPrefix}`}>
+                              {t('settings:property.mortgage.term')}
+                            </label>
+                            <input
+                              id={`mortgage-term-${idPrefix}`}
+                              className="field__input num"
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              value={mortgage.remainingTermMonths}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { remainingTermMonths: event.target.value })
+                              }
+                            />
+                            <p className="property__reads muted">{' '}</p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-payment-${idPrefix}`}>
+                              {t('settings:property.mortgage.payment')}
+                            </label>
+                            <input
+                              id={`mortgage-payment-${idPrefix}`}
+                              className="field__input num"
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              value={mortgage.monthlyPaymentCents}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { monthlyPaymentCents: event.target.value })
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="button button--quiet"
+                              disabled={locked || !canUseStandardPayment}
+                              onClick={() => applyStandardPayment(index, mortgageIndex)}
+                            >
+                              {t('settings:property.mortgage.useStandardPayment')}
+                            </button>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-payment-category-${idPrefix}`}>
+                              {t('settings:property.mortgage.paymentCategory')}
+                            </label>
+                            <select
+                              id={`mortgage-payment-category-${idPrefix}`}
+                              className="field__input"
+                              value={mortgage.paymentCategoryId ?? ''}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, {
+                                  paymentCategoryId: event.target.value === '' ? null : event.target.value,
+                                })
+                              }
+                            >
+                              <option value="">
+                                {t('settings:property.mortgage.paymentCategoryPlaceholder')}
+                              </option>
+                              {paymentCategoryOptions.map((category) => (
+                                <option key={category.categoryId} value={category.categoryId}>
+                                  {category.categoryName}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="property__reads muted">
+                              {mortgage.paymentCategoryId !== null &&
+                              sourceMortgage?.paymentComparisonCents != null
+                                ? t('settings:property.mortgage.paymentCategoryReads', {
+                                    value: formatMoney(sourceMortgage.paymentComparisonCents),
+                                  })
+                                : ' '}
+                            </p>
+                          </div>
+
+                          <div className="field">
+                            <label className="field__label" htmlFor={`mortgage-original-${idPrefix}`}>
+                              {t('settings:property.mortgage.originalPrincipal')}
+                            </label>
+                            <input
+                              id={`mortgage-original-${idPrefix}`}
+                              className="field__input num"
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              placeholder={t('settings:property.mortgage.originalPrincipalPlaceholder')}
+                              value={mortgage.originalPrincipalCents}
+                              disabled={locked}
+                              onChange={(event) =>
+                                editMortgage(index, mortgageIndex, { originalPrincipalCents: event.target.value })
+                              }
+                            />
+                            <p className="property__reads muted">
+                              {t('settings:property.mortgage.originalPrincipalHint')}
+                            </p>
+                          </div>
                         </div>
 
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-anchor-${idPrefix}`}>
-                            {t('settings:property.mortgage.anchorDate')}
-                          </label>
-                          <input
-                            id={`mortgage-anchor-${idPrefix}`}
-                            className="field__input"
-                            type="date"
-                            value={mortgage.anchorDate}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { anchorDate: event.target.value })
-                            }
-                          />
-                        </div>
-
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-rate-${idPrefix}`}>
-                            {t('settings:property.mortgage.rate')}
-                          </label>
-                          <input
-                            id={`mortgage-rate-${idPrefix}`}
-                            className="field__input num"
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="off"
-                            value={mortgage.rateBp}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { rateBp: event.target.value })
-                            }
-                          />
-                          <p className="property__reads muted">
-                            {rateBp === null
-                              ? t('settings:property.invalid')
-                              : t('settings:property.mortgage.rateReads', {
-                                  value: formatBp(rateBp, { maxFractionDigits: 2 }),
-                                })}
-                          </p>
-                        </div>
-
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-term-${idPrefix}`}>
-                            {t('settings:property.mortgage.term')}
-                          </label>
-                          <input
-                            id={`mortgage-term-${idPrefix}`}
-                            className="field__input num"
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="off"
-                            value={mortgage.remainingTermMonths}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { remainingTermMonths: event.target.value })
-                            }
-                          />
-                        </div>
-
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-payment-${idPrefix}`}>
-                            {t('settings:property.mortgage.payment')}
-                          </label>
-                          <input
-                            id={`mortgage-payment-${idPrefix}`}
-                            className="field__input num"
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            value={mortgage.monthlyPaymentCents}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { monthlyPaymentCents: event.target.value })
-                            }
-                          />
+                        <div className="property__mortgage-actions">
                           <button
                             type="button"
                             className="button button--quiet"
-                            disabled={locked || !canUseStandardPayment}
-                            onClick={() => applyStandardPayment(index, mortgageIndex)}
+                            disabled={locked}
+                            onClick={() => removeMortgage(index, mortgageIndex)}
                           >
-                            {t('settings:property.mortgage.useStandardPayment')}
+                            {t('settings:property.mortgage.remove')}
                           </button>
                         </div>
-
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-payment-category-${idPrefix}`}>
-                            {t('settings:property.mortgage.paymentCategory')}
-                          </label>
-                          <select
-                            id={`mortgage-payment-category-${idPrefix}`}
-                            className="field__input"
-                            value={mortgage.paymentCategoryId ?? ''}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, {
-                                paymentCategoryId: event.target.value === '' ? null : event.target.value,
-                              })
-                            }
-                          >
-                            <option value="">
-                              {t('settings:property.mortgage.paymentCategoryPlaceholder')}
-                            </option>
-                            {paymentCategoryOptions.map((category) => (
-                              <option key={category.categoryId} value={category.categoryId}>
-                                {category.categoryName}
-                              </option>
-                            ))}
-                          </select>
-                          {mortgage.paymentCategoryId !== null &&
-                            sourceMortgage?.paymentComparisonCents != null && (
-                              <p className="property__reads muted">
-                                {t('settings:property.mortgage.paymentCategoryReads', {
-                                  value: formatMoney(sourceMortgage.paymentComparisonCents),
-                                })}
-                              </p>
-                            )}
-                        </div>
-
-                        <div className="field">
-                          <label className="field__label" htmlFor={`mortgage-original-${idPrefix}`}>
-                            {t('settings:property.mortgage.originalPrincipal')}
-                          </label>
-                          <input
-                            id={`mortgage-original-${idPrefix}`}
-                            className="field__input num"
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            placeholder={t('settings:property.mortgage.originalPrincipalPlaceholder')}
-                            value={mortgage.originalPrincipalCents}
-                            disabled={locked}
-                            onChange={(event) =>
-                              editMortgage(index, mortgageIndex, { originalPrincipalCents: event.target.value })
-                            }
-                          />
-                          <p className="property__reads muted">
-                            {t('settings:property.mortgage.originalPrincipalHint')}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="button button--quiet"
-                          disabled={locked}
-                          onClick={() => removeMortgage(index, mortgageIndex)}
-                        >
-                          {t('settings:property.mortgage.remove')}
-                        </button>
                       </div>
                     )
                   })}
 
-                  <button
-                    type="button"
-                    className="button button--quiet"
-                    disabled={locked || row.mortgages.length >= MAX_MORTGAGES_PER_PROPERTY}
-                    onClick={() => addMortgage(index)}
-                  >
-                    {t('settings:property.mortgage.add')}
-                  </button>
+                  <div className="property__actions">
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      disabled={locked || row.mortgages.length >= MAX_MORTGAGES_PER_PROPERTY}
+                      onClick={() => addMortgage(index)}
+                    >
+                      {t('settings:property.mortgage.add')}
+                    </button>
 
-                  <button
-                    type="button"
-                    className="button button--quiet"
-                    disabled={locked}
-                    onClick={() => setDrafts(rows.filter((_, at) => at !== index))}
-                  >
-                    {t('settings:property.remove')}
-                  </button>
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      disabled={locked}
+                      onClick={() => setDrafts(rows.filter((_, at) => at !== index))}
+                    >
+                      {t('settings:property.remove')}
+                    </button>
+                  </div>
                 </li>
               )
             })}

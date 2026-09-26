@@ -2231,6 +2231,29 @@ describe('property', () => {
     expect(remaining[0]?.value).toBe('50000')
   })
 
+  it('names each property card with its label, falling back to the kind when blank (#661)', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'rental' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Antwerp flat' } })
+    expect(within(property()).getByRole('heading', { level: 3, name: 'Antwerp flat' })).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '' } })
+    expect(within(property()).getByRole('heading', { level: 3, name: 'Rental' })).toBeTruthy()
+  })
+
+  it('labels each mortgage sub-block with its position (#661)', async () => {
+    await open(READS)
+
+    addProperty()
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    expect(within(property()).getByText('Mortgage 1')).toBeTruthy()
+
+    fireEvent.click(within(property()).getByRole('button', { name: 'Add a mortgage' }))
+    expect(within(property()).getByText('Mortgage 2')).toBeTruthy()
+  })
+
   it('stops offering "Add a mortgage" once a property already has three (#393)', async () => {
     await open(READS)
 

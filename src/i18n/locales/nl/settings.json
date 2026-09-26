@@ -641,7 +641,8 @@
       "rateReads": "Komt neer op {{value}}.",
       "remove": "Hypotheek verwijderen",
       "term": "Resterende looptijd in maanden",
-      "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd"
+      "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd",
+      "heading": "Hypotheek {{n}}"
     },
     "none": "Nog geen eigendommen. Voeg toe waar je woont, of iets dat je verhuurt.",
     "propertyValue": "Geschatte waarde",
