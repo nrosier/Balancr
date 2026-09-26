@@ -161,4 +161,53 @@ describe('mode "email"', () => {
     expect(call.attachments[0].content.subarray(0, 5).toString('latin1')).toBe('%PDF-')
     expect(loadDigestPdf(db, tenantId)).toBeNull()
   })
+
+  it('builds the transport with requireTLS on and no auth block absent credentials (#580, #604)', async () => {
+    // `setMailTransport` bypasses `nodemailer.createTransport` entirely in the tests
+    // above, which is right for asserting what gets mailed but leaves the transport's
+    // own options — secure, requireTLS, whether auth is even attempted — unchecked.
+    // Spying on `createTransport` itself, rather than replacing its result, is what
+    // lets this test see what email.ts actually configures.
+    vi.resetModules()
+    vi.stubEnv('SMTP_HOST', 'smtp.example.test')
+    vi.stubEnv('SMTP_FROM', 'digest@example.test')
+    await (await import('../../src/i18n/index.ts')).initI18n()
+    const { default: freshNodemailer } = await import('nodemailer')
+    const createTransport = vi
+      .spyOn(freshNodemailer, 'createTransport')
+      .mockReturnValue({ sendMail: vi.fn().mockResolvedValue({}) } as never)
+    const freshDigest = await import('../../src/jobs/digest.ts')
+
+    storeSomeNarrative()
+    saveDigestPreference(db, tenantId, { mode: 'email', recipientEmails: ['a@example.test'] })
+
+    await freshDigest.digestJob.run({ db, tenantId, now: NOW, log: logger, step: noopStep })
+
+    expect(createTransport).toHaveBeenCalledTimes(1)
+    const options = createTransport.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(options).toMatchObject({ host: 'smtp.example.test', secure: false, requireTLS: true })
+    expect(options.auth).toBeUndefined()
+  })
+
+  it('passes SMTP_USER/SMTP_PASS to the transport as auth once both are set', async () => {
+    vi.resetModules()
+    vi.stubEnv('SMTP_HOST', 'smtp.example.test')
+    vi.stubEnv('SMTP_FROM', 'digest@example.test')
+    vi.stubEnv('SMTP_USER', 'relay-user')
+    vi.stubEnv('SMTP_PASS', 'relay-pass')
+    await (await import('../../src/i18n/index.ts')).initI18n()
+    const { default: freshNodemailer } = await import('nodemailer')
+    const createTransport = vi
+      .spyOn(freshNodemailer, 'createTransport')
+      .mockReturnValue({ sendMail: vi.fn().mockResolvedValue({}) } as never)
+    const freshDigest = await import('../../src/jobs/digest.ts')
+
+    storeSomeNarrative()
+    saveDigestPreference(db, tenantId, { mode: 'email', recipientEmails: ['a@example.test'] })
+
+    await freshDigest.digestJob.run({ db, tenantId, now: NOW, log: logger, step: noopStep })
+
+    const options = createTransport.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(options.auth).toEqual({ user: 'relay-user', pass: 'relay-pass' })
+  })
 })
