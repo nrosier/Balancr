@@ -1029,6 +1029,14 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                       <td className="table__cell--number">
                         <Money cents={category.spentCents} options={{ whole: true }} />
                       </td>
+                      {/*
+                        Disabled for income and hidden categories for the same reason
+                        as the shared/nature columns: the benchmark comparison skips
+                        both (mapping.ts), so a division picked here changes nothing
+                        (#651). The AI-visibility column three cells over stays
+                        editable regardless — that's the one answer these rows do
+                        affect.
+                      */}
                       <td>
                         <select
                           className="field__input"
@@ -1036,7 +1044,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
                             name: category.categoryName,
                           })}
                           value={choice}
-                          disabled={locked}
+                          disabled={locked || category.isIncome || category.hidden}
                           onChange={(event) => {
                             const raw = event.target.value
                             state.save(
