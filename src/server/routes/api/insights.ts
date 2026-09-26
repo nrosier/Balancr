@@ -82,7 +82,7 @@ import {
   usedEditedPrompt,
 } from '../../../domain/ai/narrative.ts'
 import { resolvePrompt } from '../../../domain/ai/prompts.ts'
-import { pendingProposals, renderProposal } from '../../../domain/ai/proposals.ts'
+import { pendingProposals, renderProposals } from '../../../domain/ai/proposals.ts'
 import { loadRun, loadRunPayload, recentRuns, type AiRunRow } from '../../../domain/ai/runs.ts'
 import type { Signal } from '../../../domain/aggregate/overspend.ts'
 import { monthRange } from '../../../util/month.ts'
@@ -178,20 +178,17 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
       materialityBp: card.materialityBp,
       createdAt: card.createdAt.toISOString(),
     })),
-    proposals: pendingProposals(db, tenantId).map((row) => {
-      const card = renderProposal(db, tenantId, row, locale)
-      return {
-        id: card.id,
-        type: card.type,
-        targetRef: card.targetRef,
-        targetName: card.targetName,
-        fields: card.fields,
-        createdAt: card.createdAt.toISOString(),
-        expiresAt: card.expiresAt?.toISOString() ?? null,
-        amountCents: card.amountCents,
-        explanation: card.explanation,
-      }
-    }),
+    proposals: renderProposals(db, tenantId, pendingProposals(db, tenantId), locale).map((card) => ({
+      id: card.id,
+      type: card.type,
+      targetRef: card.targetRef,
+      targetName: card.targetName,
+      fields: card.fields,
+      createdAt: card.createdAt.toISOString(),
+      expiresAt: card.expiresAt?.toISOString() ?? null,
+      amountCents: card.amountCents,
+      explanation: card.explanation,
+    })),
     // Reported on every read rather than only once exceeded, so the number is
     // visible before it becomes a banner.
     spend: {
