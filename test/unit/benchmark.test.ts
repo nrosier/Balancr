@@ -49,6 +49,7 @@ import {
 import {
   aiVisibilityOf,
   AI_VISIBILITY_CHOICES,
+  loadCategoryMapping,
   loadMapping,
   MappingError,
   saveAiVisibility,
@@ -1088,6 +1089,19 @@ describe('the COICOP mapping', () => {
     // No month, so no figure to show: a zero here is "not computed", and the panel
     // prints it as the euro figure it is rather than inventing one.
     expect(rows.every((row) => row.spentCents === 0)).toBe(true)
+  })
+
+  it('loadCategoryMapping finds the one row without loading the rest (#607)', () => {
+    seed([
+      { id: 'groceries', name: 'Groceries', coicop: '01', spentCents: 10_000 },
+      { id: 'rent', name: 'Rent', coicop: '04', spentCents: 90_000 },
+    ])
+
+    expect(loadCategoryMapping(ctx.db, TENANT_ID, 'rent')).toEqual({
+      ...loadMapping(ctx.db, TENANT_ID, null).find((row) => row.categoryId === 'rent'),
+      spentCents: 0,
+    })
+    expect(loadCategoryMapping(ctx.db, TENANT_ID, 'ghost')).toBeUndefined()
   })
 
   it('reports the stored code as stored, however deep it is', () => {
