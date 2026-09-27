@@ -28,7 +28,7 @@ to notice it by. A later review (F1, 2026-09-25) re-raised the same
 recommendation the original issue had already declined; it was not re-opened.
 
 **Where:** `src/domain/ai/proposals.ts` — see `applyProposal`'s own docstring
-for the full reasoning. **Issues:** [#540](https://github.com/nrosier/Balancr/issues/540).
+for the full reasoning. **Issues:** [#540](https://github.com/nrosier/balancr/issues/540).
 
 ## Tenant owners are trusted to choose integration destinations
 
@@ -51,7 +51,7 @@ restriction in front of Balancr rather than expect the app to filter it.
 
 **Where:** the `integrationUrl` schema's own comment in
 `src/server/routes/settings.ts`. **Issues:**
-[#549](https://github.com/nrosier/Balancr/issues/549) (this entry is that
+[#549](https://github.com/nrosier/balancr/issues/549) (this entry is that
 issue's fix — documenting the assumption, not changing the code).
 
 ## The production Compose file defaults to a mutable image tag
@@ -66,7 +66,7 @@ version is documented in the README's versioning section.
 
 **Where:** `compose.yaml:8`. **Issues:** raised and closed without a code
 change during triage of the 2026-09-25 code review; tracked instead in
-[#551](https://github.com/nrosier/Balancr/issues/551), which is scoped to the
+[#551](https://github.com/nrosier/balancr/issues/551), which is scoped to the
 two CI images that *do* need pinning (Trivy, Gitleaks) and explicitly excludes
 this one.
 
@@ -82,4 +82,4 @@ where a version-to-version diff is actually reviewable.
 
 **Where:** `renovate.json`'s own comment beside `pinDigests: false`.
 **Issues:** same triage as above — explicitly excluded from
-[#551](https://github.com/nrosier/Balancr/issues/551).
+[#551](https://github.com/nrosier/balancr/issues/551).

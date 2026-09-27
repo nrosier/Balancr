@@ -89,7 +89,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nrosier/Balancr.git"
+    "url": "git+https://github.com/nrosier/balancr.git"
   },
   "overrides": {
     "esbuild": ">=0.28.2",
