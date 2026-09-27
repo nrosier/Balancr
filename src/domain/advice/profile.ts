@@ -226,18 +226,12 @@ export function isPreset(profile: RiskProfile): boolean {
  * Same contract as `loadParams`: reading degrades, writing throws. A profile nobody
  * can parse should not take the portfolio page down, and the log names the key.
  */
-export function loadProfile(db: Db, tenantId: string): RiskProfile {
-  const row = db
-    .select({ valueJson: settings.valueJson })
-    .from(settings)
-    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PROFILE_KEY)))
-    .get()
-
-  if (!row) return DEFAULT_PROFILE
+function parseStoredProfile(valueJson: string | undefined): RiskProfile {
+  if (valueJson === undefined) return DEFAULT_PROFILE
 
   let raw: unknown
   try {
-    raw = JSON.parse(row.valueJson)
+    raw = JSON.parse(valueJson)
   } catch (error) {
     log.error({ err: error, key: PROFILE_KEY }, 'the stored risk profile is not JSON; using the default')
     return DEFAULT_PROFILE
@@ -254,6 +248,16 @@ export function loadProfile(db: Db, tenantId: string): RiskProfile {
   return parsed.data
 }
 
+export function loadProfile(db: Db, tenantId: string): RiskProfile {
+  const row = db
+    .select({ valueJson: settings.valueJson })
+    .from(settings)
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PROFILE_KEY)))
+    .get()
+
+  return parseStoredProfile(row?.valueJson)
+}
+
 /**
  * Validates and stores a patch, merged over what is there.
  *
@@ -267,31 +271,43 @@ export function loadProfile(db: Db, tenantId: string): RiskProfile {
  * numbers are the profile and a preset's name on somebody else's numbers is a lie.
  */
 export function saveProfile(db: Db, tenantId: string, patch: RiskProfilePatch): RiskProfile {
-  const current = loadProfile(db, tenantId)
   const incoming = patch ?? {}
 
-  const named = incoming.profile !== undefined && incoming.profile !== 'custom'
-  const bands = incoming.bands ?? (named ? undefined : current.bands)
-  const profile = incoming.profile ?? (incoming.bands === undefined ? current.profile : 'custom')
+  // Read-modify-write on one shared JSON blob (#590, matching `month-note.ts`'s own
+  // precedent): without a transaction, two concurrent saves each read the same row,
+  // and the second write silently overwrites the first save's change with a stale
+  // copy.
+  return db.transaction((tx) => {
+    const row = tx
+      .select({ valueJson: settings.valueJson })
+      .from(settings)
+      .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PROFILE_KEY)))
+      .get()
+    const current = parseStoredProfile(row?.valueJson)
 
-  // Built field by field rather than spread over `current`, so that dropping the bands
-  // is dropping them: a spread would carry the old ones back in, and the only thing
-  // stopping them from being stored would be `JSON.stringify` skipping an `undefined`.
-  const next = riskProfileSchema.parse({
-    profile,
-    toleranceBp: incoming.toleranceBp ?? current.toleranceBp,
-    minTradeCents: incoming.minTradeCents ?? current.minTradeCents,
-    ...(bands === undefined ? {} : { bands }),
-  })
+    const named = incoming.profile !== undefined && incoming.profile !== 'custom'
+    const bands = incoming.bands ?? (named ? undefined : current.bands)
+    const profile = incoming.profile ?? (incoming.bands === undefined ? current.profile : 'custom')
 
-  const valueJson = JSON.stringify(next)
-  db.insert(settings)
-    .values({ tenantId, key: PROFILE_KEY, valueJson })
-    .onConflictDoUpdate({
-      target: [settings.tenantId, settings.key],
-      set: { valueJson, updatedAt: new Date() },
+    // Built field by field rather than spread over `current`, so that dropping the bands
+    // is dropping them: a spread would carry the old ones back in, and the only thing
+    // stopping them from being stored would be `JSON.stringify` skipping an `undefined`.
+    const next = riskProfileSchema.parse({
+      profile,
+      toleranceBp: incoming.toleranceBp ?? current.toleranceBp,
+      minTradeCents: incoming.minTradeCents ?? current.minTradeCents,
+      ...(bands === undefined ? {} : { bands }),
     })
-    .run()
 
-  return next
+    const valueJson = JSON.stringify(next)
+    tx.insert(settings)
+      .values({ tenantId, key: PROFILE_KEY, valueJson })
+      .onConflictDoUpdate({
+        target: [settings.tenantId, settings.key],
+        set: { valueJson, updatedAt: new Date() },
+      })
+      .run()
+
+    return next
+  })
 }

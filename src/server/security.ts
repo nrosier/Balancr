@@ -51,7 +51,27 @@ export const contentSecurityPolicy = {
   'manifest-src': ["'self'"],
 } as const
 
+/**
+ * `no-store` + `vary: cookie` for every `/api/*` response, matching the same
+ * deny-by-default argument `guard.ts`/`csrf.ts` already make and the reasoning
+ * `spa.ts`'s own `sendShell` gives for the shell: with no `Cache-Control` at all, a
+ * shared cache keys on the URL alone and can serve one tenant's `/api/overview` to
+ * another's browser, and a browser's own disk cache keeps a viewer-hidden field or
+ * the note text of a logged-out session around for a co-parent on the same device to
+ * read after `POST /auth/logout` has cleared nothing but the cookie.
+ */
+function noStoreApiResponses(app: FastifyInstance): void {
+  app.addHook('onSend', (request, reply, payload, done) => {
+    if (request.url.split('?')[0]?.startsWith('/api/')) {
+      reply.header('cache-control', 'no-store')
+      reply.header('vary', 'cookie')
+    }
+    done(null, payload)
+  })
+}
+
 export async function registerSecurityHeaders(app: FastifyInstance): Promise<void> {
+  noStoreApiResponses(app)
   await app.register(helmet, {
     contentSecurityPolicy: {
       useDefaults: false,

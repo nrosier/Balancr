@@ -696,10 +696,11 @@ export function applyDerivedMirror(
  */
 export function setSourceOfTruth(db: Db, tenantId: string, id: string): AccountMapRow | null {
   const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
-  const row = db.select().from(accountMap).where(matches).all()[0]
-  if (row === undefined) return null
 
   return db.transaction((tx) => {
+    const row = tx.select().from(accountMap).where(matches).all()[0]
+    if (row === undefined) return null
+
     if (row.dedupeGroup !== null) {
       const group = tx
         .select()

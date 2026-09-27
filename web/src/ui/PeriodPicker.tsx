@@ -227,6 +227,11 @@ export function PeriodPicker({
                       key={key}
                       type="button"
                       disabled={disabled}
+                      aria-label={
+                        disabled
+                          ? t('periodPicker.noData', { period: `${monthNames[i]} ${focusYear}` })
+                          : undefined
+                      }
                       className={`period-picker__cell${isToday ? ' is-today' : ''}${isSelected ? ' is-selected' : ''}${disabled ? ' is-outside' : ''}`}
                       onClick={() => select({ kind: 'month', value: key })}
                     >
@@ -245,6 +250,7 @@ export function PeriodPicker({
                       key={key}
                       type="button"
                       disabled={disabled}
+                      aria-label={disabled ? t('periodPicker.noData', { period: key }) : undefined}
                       className={`period-picker__cell${isToday ? ' is-today' : ''}${isSelected ? ' is-selected' : ''}${disabled ? ' is-outside' : ''}`}
                       onClick={() => select({ kind: 'year', value: key })}
                     >

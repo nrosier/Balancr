@@ -310,21 +310,43 @@ export function offBudgetTransferLegIds(
 }
 
 /**
- * Reads the on-budget transfer legs in `[from, to]` and their counterparts'
- * `offbudget` status, then defers to `offBudgetTransferLegIds` for the rule
- * itself.
+ * Both legs of every boundary-crossing transfer, not just the on-budget side.
+ *
+ * `offBudgetTransferLegIds` deliberately returns only the on-budget leg, which
+ * is correct for `fetchRecomputedSpend` (already restricted to on-budget
+ * accounts, so the off-budget leg could never appear there anyway). A tag
+ * query has no such restriction — Actual's note can land on either leg of the
+ * same transfer — so a keep-list built from the on-budget side alone drops the
+ * off-budget leg whenever that is the one carrying the tag (#690). Exported
+ * for its test, same as `offBudgetTransferLegIds`.
+ */
+export function boundaryCrossingTransferLegIds(
+  legs: readonly TransferLeg[],
+  counterpartIsOffBudget: ReadonlyMap<string, boolean>,
+): string[] {
+  return legs
+    .filter((leg) => leg.transferId !== null && counterpartIsOffBudget.get(leg.transferId) === true)
+    .flatMap((leg) => [leg.id, leg.transferId as string])
+}
+
+/**
+ * The on-budget transfer legs in `[from, to]` and their counterparts'
+ * `offbudget` status — the two queries `offBudgetTransferLegIds` and
+ * `boundaryCrossingTransferLegIds` both need, shared so a boundary-crossing
+ * transfer is only looked up once regardless of which rule a caller wants
+ * applied to it.
  *
  * A second query rather than a single joined one: `transfer_id` has no `ref`
  * in Actual's AQL schema (unlike `account`), so a dotted path through it
  * (`transfer_id.account.offbudget`) does not compile — the counterpart's
  * account has to be looked up by id instead.
  */
-async function fetchOffBudgetTransferLegIds(
+async function fetchTransferCrossingData(
   db: Db,
   tenantId: string,
   from: string,
   to: string,
-): Promise<string[]> {
+): Promise<{ legs: TransferLeg[]; counterpartIsOffBudget: Map<string, boolean> }> {
   const legRows = await runAql(
     db,
     tenantId,
@@ -340,7 +362,7 @@ async function fetchOffBudgetTransferLegIds(
         .select(['id', 'transfer_id']),
     z.object({ id: z.string(), transfer_id: z.string().nullable() }),
   )
-  if (legRows.length === 0) return []
+  if (legRows.length === 0) return { legs: [], counterpartIsOffBudget: new Map() }
 
   const counterpartIds = [
     ...new Set(legRows.map((row) => row.transfer_id).filter((id): id is string => id !== null)),
@@ -357,10 +379,30 @@ async function fetchOffBudgetTransferLegIds(
   )
   const counterpartIsOffBudget = new Map(counterparts.map((row) => [row.id, row.offbudget]))
 
-  return offBudgetTransferLegIds(
-    legRows.map((row) => ({ id: row.id, transferId: row.transfer_id })),
+  return {
+    legs: legRows.map((row) => ({ id: row.id, transferId: row.transfer_id })),
     counterpartIsOffBudget,
-  )
+  }
+}
+
+async function fetchOffBudgetTransferLegIds(
+  db: Db,
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<string[]> {
+  const { legs, counterpartIsOffBudget } = await fetchTransferCrossingData(db, tenantId, from, to)
+  return offBudgetTransferLegIds(legs, counterpartIsOffBudget)
+}
+
+async function fetchBoundaryCrossingTransferLegIds(
+  db: Db,
+  tenantId: string,
+  from: string,
+  to: string,
+): Promise<string[]> {
+  const { legs, counterpartIsOffBudget } = await fetchTransferCrossingData(db, tenantId, from, to)
+  return boundaryCrossingTransferLegIds(legs, counterpartIsOffBudget)
 }
 
 /**
@@ -1048,7 +1090,7 @@ export function tagRegexPattern(tag: string): string {
   return `(?<!#)${escaped}([\\s#]|$)`
 }
 
-const tagMonthRow = z.object({ month: z.string(), amount: cents.nullable(), count: z.number() })
+const notedTxnRow = z.object({ date: z.string(), notes: z.string().nullable(), amount: cents.nullable() })
 
 export interface TagMonthTotal {
   tag: string
@@ -1059,19 +1101,25 @@ export interface TagMonthTotal {
 }
 
 /**
- * Net cost/gain per tag per month (#663), one AQL query per tag.
+ * Net cost/gain per tag per month (#663).
+ *
+ * One AQL round-trip regardless of tag count (#691): AQL has no way to group by
+ * "which tag's regex matched", so every candidate transaction (anything with a
+ * note, in range) is fetched once and matched against every tag's pattern in JS.
+ * The previous shape — one `$regexp`-filtered query per tag — re-scanned the same
+ * sync window once per household tag; this scans it once regardless of how many
+ * tags exist. A note naming more than one tag (`"#maintenance #rental"`) counts
+ * toward each, matching what N separate per-tag queries would each have counted.
  *
  * Unlike `fetchRecomputedSpend` this deliberately does *not* filter to on-budget
  * accounts: a tag exists precisely to cut across the boundary a category can't — a
  * mortgage payment leaving an off-budget loan account is exactly the kind of figure a
- * property-linked tag needs to see. `transferFilter`/`fetchOffBudgetTransferLegIds` are
- * reused unchanged even so: they already drop a pure internal transfer between two of
- * the household's own accounts while keeping the on-budget leg of one that crosses into
- * an off-budget account counted once, whether or not the query is itself restricted to
- * on-budget accounts.
- *
- * Sequential across `tags`, not `Promise.all` — same reasoning `fetchHistory` already
- * gives: every call goes through the Actual serialiser anyway.
+ * property-linked tag needs to see. `transferFilter` is reused, but paired with
+ * `fetchBoundaryCrossingTransferLegIds` rather than `fetchOffBudgetTransferLegIds`
+ * (#690): the latter only ever returns the *on-budget* leg of a crossing transfer, which
+ * is fine for `fetchRecomputedSpend` (restricted to on-budget accounts already, so the
+ * other leg could never show up there) but wrong here — Actual's own note can land on
+ * either leg, and a keep-list missing the off-budget side drops that leg's tag entirely.
  */
 export async function fetchTagMonthlyTotals(
   db: Db,
@@ -1080,32 +1128,38 @@ export async function fetchTagMonthlyTotals(
   from: string,
   to: string,
 ): Promise<TagMonthTotal[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
-  const out: TagMonthTotal[] = []
-  for (const tag of tags) {
-    const rows = await runAql(
-      db,
-      tenantId,
-      `tag-totals:${tag}`,
-      () =>
-        q('transactions')
-          .filter({
-            date: { $gte: from, $lte: to },
-            notes: { $regexp: tagRegexPattern(tag) },
-            ...transferFilter(keepLegIds),
-            starting_balance_flag: false,
-          })
-          .groupBy({ $month: '$date' })
-          .select([
-            { month: { $month: '$date' } },
-            { amount: { $sum: '$amount' } },
-            { count: { $count: '$id' } },
-          ]),
-      tagMonthRow,
-    )
-    for (const row of rows) {
-      out.push({ tag, month: row.month, netCents: row.amount ?? 0, txnCount: row.count })
+  if (tags.length === 0) return []
+
+  const keepLegIds = await fetchBoundaryCrossingTransferLegIds(db, tenantId, from, to)
+  const rows = await runAql(
+    db,
+    tenantId,
+    'tag-totals',
+    () =>
+      q('transactions')
+        .filter({
+          date: { $gte: from, $lte: to },
+          notes: { $ne: null },
+          ...transferFilter(keepLegIds),
+          starting_balance_flag: false,
+        })
+        .select(['date', 'notes', 'amount']),
+    notedTxnRow,
+  )
+
+  const patterns = tags.map((tag) => ({ tag, pattern: new RegExp(tagRegexPattern(tag)) }))
+  const buckets = new Map<string, { tag: string; month: string; netCents: number; txnCount: number }>()
+  for (const row of rows) {
+    if (row.notes === null) continue
+    const month = row.date.slice(0, 7)
+    for (const { tag, pattern } of patterns) {
+      if (!pattern.test(row.notes)) continue
+      const key = `${tag}\u0000${month}`
+      const bucket = buckets.get(key) ?? { tag, month, netCents: 0, txnCount: 0 }
+      bucket.netCents += row.amount ?? 0
+      bucket.txnCount += 1
+      buckets.set(key, bucket)
     }
   }
-  return out
+  return [...buckets.values()]
 }

@@ -110,6 +110,7 @@ const FULL: PortfolioPayload = {
   debts: [],
   totalDebtBalanceCents: 0,
   offBudgetAccounts: [],
+  reconciliationWarnings: [],
   ghostfolioConfigured: true,
 }
 
@@ -132,6 +133,7 @@ const EMPTY: PortfolioPayload = {
   debts: [],
   totalDebtBalanceCents: 0,
   offBudgetAccounts: [],
+  reconciliationWarnings: [],
   ghostfolioConfigured: true,
 }
 
@@ -1132,6 +1134,53 @@ describe('off-budget accounts (#353)', () => {
     await screen.findByRole('heading', { level: 2, name: 'Off-budget accounts' })
 
     expect(row('KBC Hypotheek')).toEqual(['KBC Hypotheek', '€ -180.000'])
+  })
+})
+
+describe('possible double counts against off-budget accounts (#689)', () => {
+  const WARNING: PortfolioPayload['reconciliationWarnings'][number] = {
+    kind: 'property',
+    label: 'House mortgage',
+    accountId: 'acct-mortgage',
+    accountName: 'Mortgage',
+  }
+
+  it('shows no notice when nothing was flagged', async () => {
+    serve(json(FULL))
+    renderApp(<Portfolio />)
+    await screen.findByRole('heading', { level: 2, name: 'Invested' })
+
+    expect(screen.queryByText('Possible double count')).toBeNull()
+  })
+
+  it('names the self-reported entry and the off-budget account it might duplicate', async () => {
+    serve(json({ ...FULL, reconciliationWarnings: [WARNING] }))
+    renderApp(<Portfolio />)
+
+    expect(await screen.findByText('Possible double count')).toBeTruthy()
+    expect(
+      screen.getByText('House mortgage might be the same money as the off-budget account "Mortgage".'),
+    ).toBeTruthy()
+    // Never merged or removed on its own — the reader decides which entry, if either, to drop.
+    expect(screen.getByText(/only you know which entry/)).toBeTruthy()
+  })
+
+  it('lists every warning, one per line', async () => {
+    serve(
+      json({
+        ...FULL,
+        reconciliationWarnings: [
+          WARNING,
+          { kind: 'loan', label: 'Car loan', accountId: 'acct-car', accountName: 'Car loan' },
+        ],
+      }),
+    )
+    renderApp(<Portfolio />)
+    await screen.findByText('Possible double count')
+
+    const items = screen.getAllByRole('listitem').map((item) => item.textContent)
+    expect(items).toContain('House mortgage might be the same money as the off-budget account "Mortgage".')
+    expect(items).toContain('Car loan might be the same money as the off-budget account "Car loan".')
   })
 })
 

@@ -193,7 +193,8 @@ import { createInvite, listInvites, revokeInvite, type TenantInvite } from '../.
 import { jobsInFlight } from '../../jobs/runner.ts'
 import { MAX_LINES } from '../../util/diff.ts'
 import { requireOwner, requireUser } from '../auth/guard.ts'
-import { setUserLocale } from '../auth/users.ts'
+import { destroyUserSessions } from '../auth/sessions.ts'
+import { listTenantUsers, setUserDisabled, setUserLocale, type TenantUserSummary } from '../auth/users.ts'
 import { badRequest, conflict, invalidBody, notFound } from '../errors.ts'
 import { rememberLocale } from '../locale.ts'
 import { enforceIntegrationsTestTenantCap, integrationsTestRateLimit } from '../rate-limit.ts'
@@ -220,6 +221,7 @@ import {
   type PromptDiff,
   type PromptSetting,
   type Settings,
+  type UserSetting,
 } from './api/schemas.ts'
 import { wireRun } from './api/insights.ts'
 import { busyError } from './refresh.ts'
@@ -588,6 +590,11 @@ const accountGroupRequest = z
  * — free text for "for Jo" — never shown to whoever redeems the code. */
 const inviteCreateRequest = z.strictObject({
   label: z.string().min(1).max(120).optional(),
+})
+
+/** #695: the one thing an owner may set on another user's account. */
+const userAccessPatchRequest = z.strictObject({
+  disabled: z.boolean(),
 })
 
 /**
@@ -1292,6 +1299,9 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
     // `digestSetting`'s `recipientEmails`: there is no owner-only *count* substitute
     // here, since "N invites are open" carries the same signal this hides.
     invites: isOwner ? listInvites(db, user.tenantId).map(toInviteSetting) : [],
+    // Who else currently has a foothold in this household's own data (#695) — empty
+    // for a viewer, same reasoning as `invites` right above.
+    users: isOwner ? listTenantUsers(db, user.tenantId).map(toUserSetting) : [],
     // The shared text first, then only those languages someone has actually written
     // an override for. Listing every supported locale unconditionally is what made
     // the divergence look mandatory: four entries carrying two texts, and no way to
@@ -1417,6 +1427,17 @@ const toInviteSetting = (invite: TenantInvite): InviteSetting => ({
   expiresAt: invite.expiresAt.toISOString(),
   redeemedAt: invite.redeemedAt === null ? null : invite.redeemedAt.toISOString(),
   revokedAt: invite.revokedAt === null ? null : invite.revokedAt.toISOString(),
+})
+
+/** `TenantUserSummary` as the wire shape (#695). */
+const toUserSetting = (row: TenantUserSummary): UserSetting => ({
+  id: row.id,
+  email: row.email,
+  displayName: row.displayName,
+  role: row.role,
+  disabled: row.disabled,
+  createdAt: row.createdAt.toISOString(),
+  lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.toISOString(),
 })
 
 /** One page of the AI log (#502) — small enough that "load more" feels immediate. */
@@ -3212,6 +3233,39 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     if (existing === undefined) throw notFound('No such invite.')
 
     revokeInvite(db, { tenantId: user.tenantId, inviteId: id, actorId: user.id })
+
+    return buildSettings(db, request)
+  })
+
+  /**
+   * Disables or re-enables another user's account (#695) — the in-app gesture that
+   * was missing when a co-parent's viewer account outlived the relationship it was
+   * created for. Ends every session the account currently holds the moment it goes
+   * disabled, so a cookie already in someone's browser doesn't stay valid for the
+   * rest of `SESSION_TTL_HOURS` on the strength of a column nobody re-checks until
+   * the next request. `setUserDisabled` itself refuses to leave the tenant with no
+   * enabled owner.
+   */
+  app.patch('/api/settings/users/:id', (request: FastifyRequest) => {
+    const user = requireOwner(request)
+    const id = (request.params as { id: string }).id
+    const { disabled } = parseBody(userAccessPatchRequest, request.body)
+
+    const before = listTenantUsers(db, user.tenantId).find((row) => row.id === id)
+    if (before === undefined) throw notFound('No such user.')
+
+    const updated = setUserDisabled(db, user.tenantId, id, disabled)
+    if (disabled) destroyUserSessions(db, id)
+
+    recordAudit(db, {
+      tenantId: user.tenantId,
+      action: 'settings.userAccess',
+      entity: 'users',
+      entityRef: id,
+      actorId: user.id,
+      before: { disabled: before.disabled },
+      after: { disabled: updated.disabled },
+    })
 
     return buildSettings(db, request)
   })

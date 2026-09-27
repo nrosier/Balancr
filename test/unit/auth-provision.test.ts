@@ -27,6 +27,7 @@ import { localCredentials, tenants, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { TOTP_PERIOD_SECONDS, verifyLocalLogin } from '../../src/server/auth/local.ts'
 import { provisionLocalCredential } from '../../src/server/auth/provision.ts'
+import { createSession, readSession } from '../../src/server/auth/sessions.ts'
 
 const EMAIL = 'nick@example.test'
 const PASSWORD = 'a-long-enough-break-glass-password'
@@ -178,6 +179,37 @@ describe('provisioning a local credential', () => {
       expect(result.role).toBe('owner')
       const row = db.select().from(users).where(eq(users.id, result.userId)).all()[0]
       expect(row?.tenantId).toBe(secondTenant.id)
+    } finally {
+      sqlite.close()
+    }
+  }, 30_000)
+
+  it('ends every session the account already holds, on a reset (#695)', async () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const first = await provisionLocalCredential(db, { email: EMAIL, password: PASSWORD })
+      const token = createSession(db, {
+        userId: first.userId,
+        method: 'local',
+        ip: undefined,
+        userAgent: undefined,
+      }).token
+      expect(readSession(db, token)).not.toBeNull()
+
+      // An operator runs this because they suspect a compromise — a cookie an
+      // attacker already holds must not outlive that suspicion.
+      await provisionLocalCredential(db, { email: EMAIL, password: 'a-different-one' })
+      expect(readSession(db, token)).toBeNull()
+    } finally {
+      sqlite.close()
+    }
+  }, 30_000)
+
+  it('has nothing to end on a brand-new account', async () => {
+    const { db, sqlite } = freshDb()
+    try {
+      // Just asserting this does not throw with no prior session to destroy.
+      await expect(provisionLocalCredential(db, { email: EMAIL, password: PASSWORD })).resolves.toBeDefined()
     } finally {
       sqlite.close()
     }

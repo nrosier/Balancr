@@ -97,11 +97,13 @@
     },
     "empty": "Nothing has been recorded yet.",
     "hideChange": "Hide what changed",
+    "hideChangeFor": "Hide what changed for the entry at {{when}}",
     "hint": "Every change a human approved to a setting or a suggestion, newest first. Owner-only: what changed can name a co-parent or an amount a viewer should not see.",
     "none": "None",
     "system": "System",
     "title": "Audit trail",
-    "viewChange": "Show what changed"
+    "viewChange": "Show what changed",
+    "viewChangeFor": "Show what changed for the entry at {{when}}"
   },
   "benchmark": {
     "coicop": {

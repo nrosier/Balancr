@@ -16,12 +16,12 @@
  * one (as a viewer). Promoting a viewer to owner is still a database edit; the
  * UI for it belongs with the settings screen.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
 import { logger } from '../../logger.ts'
-import { badRequest, forbidden } from '../errors.ts'
+import { badRequest, forbidden, notFound } from '../errors.ts'
 import type { OidcIdentity } from './oidc.ts'
 import type { SessionUser } from './sessions.ts'
 
@@ -105,4 +105,96 @@ export function setUserLocale(db: Db, userId: string, locale: string): SessionUs
 
   log.info({ userId, locale }, 'user locale changed')
   return toSessionUser(updated)
+}
+
+/** One row of the owner-only user list on the settings screen (#695). */
+export interface TenantUserSummary {
+  id: string
+  email: string | null
+  displayName: string | null
+  role: 'owner' | 'viewer'
+  disabled: boolean
+  createdAt: Date
+  lastSeenAt: Date | null
+}
+
+/**
+ * Every user in a tenant, oldest first — "who's had access the longest" is the
+ * question an owner deciding whether to revoke someone actually asks, and a
+ * display name is whatever the identity provider says today, not a stable sort key.
+ */
+export function listTenantUsers(db: Db, tenantId: string): TenantUserSummary[] {
+  return db
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      role: users.role,
+      disabled: users.disabled,
+      createdAt: users.createdAt,
+      lastSeenAt: users.lastSeenAt,
+    })
+    .from(users)
+    .where(eq(users.tenantId, tenantId))
+    .orderBy(users.createdAt)
+    .all()
+}
+
+/**
+ * Disables or re-enables a user's account (#695) — the write side of the check
+ * `resolveOidcUser`/`verifyLocalLogin` already make at every login.
+ *
+ * Refuses to leave a tenant with no *enabled* owner. Role has no in-app way back —
+ * see `setUserLocale`'s doc comment — so disabling the last one standing would turn
+ * a revoked co-parent's account into the gesture that locks the whole household out
+ * instead, recoverable only the way #695 itself describes recovery today: `sqlite3`
+ * against the data volume.
+ *
+ * Ending the account's sessions is the caller's job (`destroyUserSessions`), not
+ * this function's — this only flips the column an owner asked to flip.
+ */
+export function setUserDisabled(
+  db: Db,
+  tenantId: string,
+  userId: string,
+  disabled: boolean,
+): TenantUserSummary {
+  const target = db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+    .all()[0]
+  if (target === undefined) throw notFound('No such user.')
+
+  if (disabled && target.role === 'owner') {
+    const otherEnabledOwners = db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.tenantId, tenantId),
+          eq(users.role, 'owner'),
+          eq(users.disabled, false),
+          ne(users.id, userId),
+        ),
+      )
+      .all()
+    if (otherEnabledOwners.length === 0) {
+      throw badRequest('Cannot disable the only enabled owner.')
+    }
+  }
+
+  const updated = db.update(users).set({ disabled }).where(eq(users.id, userId)).returning().all()[0]
+  if (updated === undefined) throw notFound('No such user.')
+
+  log.info({ userId, disabled }, disabled ? 'user account disabled' : 'user account re-enabled')
+  return {
+    id: updated.id,
+    email: updated.email,
+    displayName: updated.displayName,
+    role: updated.role,
+    disabled: updated.disabled,
+    createdAt: updated.createdAt,
+    lastSeenAt: updated.lastSeenAt,
+  }
 }

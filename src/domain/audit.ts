@@ -171,6 +171,15 @@ export const AUDIT_ACTIONS = [
    */
   'settings.digest',
   /**
+   * A user's account was disabled, or re-enabled (#695).
+   *
+   * `entityRef` names the account that changed, not the owner who changed it — that's
+   * `actorId`, same split as every other entry here. `before`/`after` carry the one
+   * column that moved, the same shape `settings.locale`'s own entry uses for a
+   * change to a different single column of the same table.
+   */
+  'settings.userAccess',
+  /**
    * The Actual/Ghostfolio/Gemini credentials a tenant connects with (#369).
    *
    * `before`/`after` never carry a secret — only the same `*Configured` shape the

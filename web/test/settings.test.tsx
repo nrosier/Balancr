@@ -373,6 +373,7 @@ const PAYLOAD: Payload = {
   debts: [],
   goals: [],
   invites: [],
+  users: [],
   integrations: {
     actual: {
       serverUrl: 'https://actual.example.com',
@@ -5204,7 +5205,7 @@ describe('the AI log', () => {
     expect(screen.getByText('Narrative')).toBeTruthy()
     expect(screen.getByText('OK')).toBeTruthy()
     expect(screen.getByText('Budget cap reached')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Show the request and response' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /^Show the request and response/ })).toHaveLength(2)
   })
 
   it('shows the exact request and response text once a row is opened', async () => {
@@ -5219,7 +5220,7 @@ describe('the AI log', () => {
       } satisfies AiRunPayload),
     }, '/settings/ai/log')
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Show the request and response/ }))
 
     expect(
       await screen.findByText('system + instruction + fenced data, exactly as sent'),
@@ -5239,7 +5240,7 @@ describe('the AI log', () => {
       } satisfies AiRunPayload),
     }, '/settings/ai/log')
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Show the request and response' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Show the request and response/ }))
 
     expect(await screen.findByText('prepared but never sent')).toBeTruthy()
     expect(screen.getByText('No response is recorded for this run.')).toBeTruthy()
@@ -5337,7 +5338,7 @@ describe('the audit trail', () => {
     expect(screen.getByText(/cat-groceries/)).toBeTruthy()
     expect(screen.getByText('System')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Show what changed/ }))
 
     expect(await screen.findByText(/"coicop":\s*null/)).toBeTruthy()
     expect(screen.getByText(/"coicop":\s*"01"/)).toBeTruthy()

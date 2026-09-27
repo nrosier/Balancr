@@ -102,6 +102,7 @@
       "when": "When"
     },
     "hideTranscript": "Hide the request and response",
+    "hideTranscriptFor": "Hide the request and response for the call at {{when}}",
     "hint": "The exact text prepared for the model, and the exact text it sent back, for every recorded call.",
     "loadMore": "Load older calls",
     "loadingMore": "Loading…",
@@ -111,7 +112,8 @@
     "response": "Response",
     "responseUnavailable": "No response is recorded for this run.",
     "title": "Request and response log",
-    "viewTranscript": "Show the request and response"
+    "viewTranscript": "Show the request and response",
+    "viewTranscriptFor": "Show the request and response for the call at {{when}}"
   },
   "narrative": {
     "capped": "Monthly AI budget reached — showing the last analysis.",
@@ -171,6 +173,7 @@
       "when": "When"
     },
     "hidePayload": "Hide the payload",
+    "hidePayloadFor": "Hide the payload for the call at {{when}}",
     "hint": "Category names and amounts only. No payees, no transactions.",
     "kind": {
       "budget_nudge": "Budget nudge",
@@ -187,7 +190,8 @@
     "title": "What was sent",
     "tokens": "{{input}} in / {{output}} out",
     "unreadable": "The stored payload could not be read.",
-    "viewPayload": "Show the exact payload"
+    "viewPayload": "Show the exact payload",
+    "viewPayloadFor": "Show the exact payload for the call at {{when}}"
   },
   "promptCheck": {
     "conflict": {

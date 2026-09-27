@@ -313,15 +313,3 @@ export function latestStoredMonth(db: Db, tenantId: string): string | null {
     .get()
   return row?.month ?? null
 }
-
-/** Drops a month entirely. Used by tests and by a manual recompute. */
-export function forgetMonth(db: Db, tenantId: string, month: string): void {
-  db.transaction((tx) => {
-    tx.delete(monthlyTotals)
-      .where(and(eq(monthlyTotals.tenantId, tenantId), eq(monthlyTotals.month, month)))
-      .run()
-    tx.delete(recomputeMismatches)
-      .where(and(eq(recomputeMismatches.tenantId, tenantId), eq(recomputeMismatches.month, month)))
-      .run()
-  })
-}

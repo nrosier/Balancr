@@ -134,6 +134,7 @@ function Figures({
     loans,
     offBudgetAccounts,
     properties,
+    reconciliationWarnings,
   } = data
   const { investedValueCents, totalValueCents, twrBp } = data
 
@@ -226,6 +227,29 @@ function Figures({
               <h2 className="card__title">{t('portfolio:offBudget.title')}</h2>
               <OffBudgetAccountsTable accounts={offBudgetAccounts} />
             </section>
+          )}
+
+          {/*
+            #689 — nothing above stops a household from double-entering the same house
+            or mortgage as both an off-budget account and a self-reported property/loan/
+            debt, wrong in the flattering direction. This only warns; it never merges or
+            excludes anything, since only the household knows which entry is the real one.
+          */}
+          {reconciliationWarnings.length === 0 ? null : (
+            <div className="notice notice--warn" role="status">
+              <p className="notice__lead">{t('portfolio:reconcile.title')}</p>
+              <ul className="notice__list">
+                {reconciliationWarnings.map((warning, index) => (
+                  <li key={`${warning.kind}-${warning.accountId}-${index}`}>
+                    {t('portfolio:reconcile.line', {
+                      label: warning.label,
+                      accountName: warning.accountName,
+                    })}
+                  </li>
+                ))}
+              </ul>
+              <p className="notice__hint">{t('portfolio:reconcile.hint')}</p>
+            </div>
           )}
 
           {/*

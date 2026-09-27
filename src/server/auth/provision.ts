@@ -18,6 +18,7 @@ import type { Db } from '../../db/index.ts'
 import { localCredentials, users } from '../../db/schema.ts'
 import { getSoleTenantId } from '../../db/tenant.ts'
 import { ARGON2_OPTIONS, TOTP_PERIOD_SECONDS } from './local.ts'
+import { destroyUserSessions } from './sessions.ts'
 
 /**
  * 20 bytes, the length RFC 4226 specifies for an HMAC-SHA1 key and what every
@@ -144,6 +145,15 @@ export async function provisionLocalCredential(
     .run()
 
   const role = db.select().from(users).where(eq(users.id, userId)).all()[0]?.role ?? 'viewer'
+
+  // The credential just changed, but a cookie minted before this call is still a
+  // valid session row until this runs (#695). An operator runs this precisely
+  // because they suspect a compromise — the whole point is that whatever session
+  // an attacker already holds shouldn't outlive that suspicion by the rest of
+  // SESSION_TTL_HOURS. Nothing to end on a brand-new account (`prior === undefined`).
+  if (prior !== undefined) {
+    destroyUserSessions(db, userId)
+  }
 
   return {
     userId,

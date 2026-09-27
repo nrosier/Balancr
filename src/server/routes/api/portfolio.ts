@@ -40,6 +40,14 @@
  * Always the latest snapshot — no `?asOf=` (#345). A picker over Ghostfolio's own
  * history duplicated the Benchmark card's month/year control without its pro-ration,
  * on a page whose whole point is where things stand right now.
+ *
+ * `reconciliationWarnings` (#689) — `offBudgetAccounts` above is already summed into
+ * `overview.ts`'s net worth total, and `properties`/`loans`/`debts` above are added or
+ * subtracted from that same total on top. Nothing stops a household from double-entering
+ * the same house or the same mortgage on both sides, wrong in the flattering direction and
+ * looking entirely plausible. `findPossibleDoubleCounts` flags it; it never merges or
+ * excludes anything itself, since only the household knows which entry, if either, is the
+ * one to remove.
  */
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
@@ -66,6 +74,10 @@ import {
   loadSnapshot,
 } from '../../../domain/portfolio/store.ts'
 import {
+  findPossibleDoubleCounts,
+  type ReconciliationCandidate,
+} from '../../../domain/aggregate/reconcile.ts'
+import {
   earliestAnchorDate,
   grossYieldBp,
   loadProperties,
@@ -87,6 +99,45 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   const properties = loadProperties(db, tenantId).properties
   const loans = listLoans(db, tenantId)
   const debts = listDebts(db, tenantId)
+  const offBudgetAccounts = loadOffBudgetAccounts(db, tenantId)
+
+  // #689 — see the file doc comment. One or two candidates per property (its value,
+  // and its mortgage balance when it has one), one per loan, one per debt.
+  const reconciliationCandidates: ReconciliationCandidate[] = []
+  for (const property of properties) {
+    if (property.propertyValueCents !== null) {
+      reconciliationCandidates.push({
+        kind: 'property',
+        label: property.label,
+        valueCents: property.propertyValueCents,
+      })
+    }
+    if (property.mortgages.length > 0) {
+      reconciliationCandidates.push({
+        kind: 'property',
+        label: `${property.label} mortgage`.trim(),
+        valueCents: outstandingBalanceCents(property.mortgages, today),
+      })
+    }
+  }
+  for (const loan of loans) {
+    reconciliationCandidates.push({
+      kind: 'loan',
+      label: loan.label,
+      valueCents: loanBalanceCents(loan, today),
+    })
+  }
+  for (const debt of debts) {
+    reconciliationCandidates.push({ kind: 'debt', label: debt.label, valueCents: debt.balanceCents })
+  }
+  const reconciliationWarnings = findPossibleDoubleCounts(
+    reconciliationCandidates,
+    offBudgetAccounts.map((account) => ({
+      accountId: account.accountMapId,
+      name: account.name,
+      balanceCents: account.balanceCents,
+    })),
+  )
 
   return portfolioSchema.parse({
     freshness: freshness(db, tenantId),
@@ -179,12 +230,13 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
     totalDebtBalanceCents: totalDebtBalanceCents(debts),
     // Every off-budget account, any kind — the full list `netWorth.liquidOffBudgetCents`
     // (on `overviewSchema`) only summarizes the liquid slice of (#353).
-    offBudgetAccounts: loadOffBudgetAccounts(db, tenantId).map((account) => ({
+    offBudgetAccounts: offBudgetAccounts.map((account) => ({
       id: account.accountMapId,
       name: account.name,
       balanceCents: account.balanceCents,
       currency: account.currency,
     })),
+    reconciliationWarnings,
     ghostfolioConfigured: integrationAvailability(db, tenantId).ghostfolio,
   })
 }

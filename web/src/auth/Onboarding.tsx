@@ -44,6 +44,9 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
 
   const who = pending.displayName ?? pending.email
 
+  const issue = (path: string): string | undefined =>
+    error?.issues.find((candidate) => candidate.path === path)?.message
+
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     setBusy(true)
@@ -110,9 +113,15 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
                 name="label"
                 autoComplete="off"
                 required
+                maxLength={120}
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
               />
+              {issue('label') === undefined ? null : (
+                <p className="signin__fieldIssue" role="alert">
+                  {issue('label')}
+                </p>
+              )}
             </div>
           ) : (
             <div className="field">
@@ -126,9 +135,15 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
                 name="code"
                 autoComplete="off"
                 required
+                maxLength={64}
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
               />
+              {issue('code') === undefined ? null : (
+                <p className="signin__fieldIssue" role="alert">
+                  {issue('code')}
+                </p>
+              )}
             </div>
           )}
 
@@ -137,7 +152,7 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
           </button>
         </form>
 
-        {error === null ? null : (
+        {error === null || issue(mode === 'create' ? 'label' : 'code') !== undefined ? null : (
           <div className="notice notice--error signin__error" role="alert">
             {error.message}
             {error.requestId === null ? null : <p className="notice__meta">{error.requestId}</p>}

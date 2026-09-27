@@ -15,7 +15,6 @@ import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import {
-  forgetMonth,
   latestStoredMonth,
   loadMismatches,
   loadMonthTotals,
@@ -276,7 +275,7 @@ describe('persistMismatches', () => {
   })
 })
 
-describe('latestStoredMonth and forgetMonth', () => {
+describe('latestStoredMonth', () => {
   it('is null before the first sync', () => {
     expect(latestStoredMonth(ctx.db, TENANT_ID)).toBeNull()
   })
@@ -284,14 +283,5 @@ describe('latestStoredMonth and forgetMonth', () => {
   it('reports the highest month, not the last one written', () => {
     persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-02'), totals('2025-12')], [])
     expect(latestStoredMonth(ctx.db, TENANT_ID)).toBe('2026-02')
-  })
-
-  it('drops a month and its drift together', () => {
-    persistMonthTotals(ctx.db, TENANT_ID, [totals('2026-01'), totals('2026-02')], [])
-    persistMismatches(ctx.db, TENANT_ID, [mismatch('2026-01', 'food')], ['2026-01'])
-
-    forgetMonth(ctx.db, TENANT_ID, '2026-01')
-    expect(loadMonthTotals(ctx.db, TENANT_ID, ['2026-01', '2026-02']).map((m) => m.month)).toEqual(['2026-02'])
-    expect(loadMismatches(ctx.db, TENANT_ID, ['2026-01'])).toEqual([])
   })
 })

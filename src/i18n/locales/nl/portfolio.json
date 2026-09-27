@@ -163,6 +163,11 @@
     },
     "title": "Rekeningen buiten budget"
   },
+  "reconcile": {
+    "hint": "Balancr voegt hier niets samen en verwijdert niets — enkel jij weet welke van de twee, als het al klopt, moet verdwijnen.",
+    "line": "{{label}} zou hetzelfde geld kunnen zijn als de rekening buiten budget \"{{accountName}}\".",
+    "title": "Mogelijk dubbel geteld"
+  },
   "property": {
     "balanceEstimate": "Geschat door verder af te bouwen vanaf de saldi die laatst tegen een afrekening zijn bevestigd — geen enkele recenter dan {{date}}.",
     "caption_one": "Eén eigendom.",

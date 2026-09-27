@@ -1006,6 +1006,18 @@ export const offBudgetAccountSchema = z.object({
   currency: z.string(),
 })
 
+/**
+ * A self-reported property, mortgage, loan or debt that shares a name or a balance
+ * with an off-budget account also counted into net worth (#689) — a possible double
+ * count, never resolved automatically; see `domain/aggregate/reconcile.ts`.
+ */
+export const reconciliationWarningSchema = z.object({
+  kind: z.enum(['property', 'loan', 'debt']),
+  label: z.string(),
+  accountId: z.string(),
+  accountName: z.string(),
+})
+
 export const portfolioSchema = z.object({
   freshness: freshnessSchema,
   date: dateKey().nullable(),
@@ -1073,6 +1085,11 @@ export const portfolioSchema = z.object({
    * `netWorth.liquidOffBudgetCents` on `overviewSchema` for the liquid slice of this.
    */
   offBudgetAccounts: z.array(offBudgetAccountSchema),
+  /**
+   * Possible double counts between the properties/loans/debts above and the
+   * off-budget accounts above (#689) — see `reconciliationWarningSchema`.
+   */
+  reconciliationWarnings: z.array(reconciliationWarningSchema),
   /** Whether Ghostfolio is set up for this tenant (#370). */
   ghostfolioConfigured: z.boolean(),
 })
@@ -2048,6 +2065,22 @@ export const inviteSettingSchema = z.object({
 })
 
 /**
+ * One user in the tenant, as the owner-only user-management panel lists it (#695).
+ * `email`/`displayName` are the provider's, `role`/`disabled` are Balancr's own —
+ * see `users.ts`'s doc comment for why the second pair is never set through here
+ * for the acting owner's own row (that's `profile`).
+ */
+export const userSettingSchema = z.object({
+  id: z.string(),
+  email: z.string().nullable(),
+  displayName: z.string().nullable(),
+  role: z.enum(['owner', 'viewer']),
+  disabled: z.boolean(),
+  createdAt: z.string(),
+  lastSeenAt: z.string().nullable(),
+})
+
+/**
  * `POST /api/settings/invites`, on success — the one place the plaintext code
  * appears. Not part of `settingsSchema`: showing it once, on the response to
  * the call that minted it, is the whole point of hashing it at rest.
@@ -2147,6 +2180,13 @@ export const settingsSchema = z.object({
    * legitimate need to enumerate.
    */
   invites: z.array(inviteSettingSchema),
+  /**
+   * Every user in the tenant (#695), for the owner-only user-management panel.
+   *
+   * Empty for a viewer, same reasoning as `invites`: who else has a foothold in the
+   * household's own data is not something a viewer has a legitimate need to enumerate.
+   */
+  users: z.array(userSettingSchema),
   prompts: z.array(promptSchema),
   /**
    * `PROMPT_EDITING` (#454, #468): `full` or `locked`. Every prompt key stays editable in
@@ -2661,6 +2701,7 @@ export type GoalSetting = z.infer<typeof goalSettingSchema>
 export type OverviewGoal = z.infer<typeof overviewGoalSchema>
 export type IntegrationsSetting = z.infer<typeof integrationsSettingSchema>
 export type InviteSetting = z.infer<typeof inviteSettingSchema>
+export type UserSetting = z.infer<typeof userSettingSchema>
 export type InviteCreated = z.infer<typeof inviteCreatedSchema>
 export type IntegrationTest = z.infer<typeof integrationTestSchema>
 export type BenchmarkWire = z.infer<typeof benchmarkComparisonSchema>

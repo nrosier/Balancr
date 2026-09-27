@@ -187,6 +187,24 @@ describe('projectGoal', () => {
     expect(projection.monthsToTarget).toBeNull()
     expect(projection.etaMonth).toBeNull()
   })
+
+  it('rates a gappy trend by elapsed calendar months, not by point count (#688)', () => {
+    // A category-kind goal's trend omits months with no fact row rather than
+    // carrying the previous one forward (Apr/May/Jun never synced here) — the
+    // rate must still be over the true 6-month span, not the 3 points found.
+    const progress = computeGoalProgress(GOAL, 500_000)
+    const gappy = [
+      { month: '2026-03', valueCents: 0 },
+      { month: '2026-07', valueCents: 30_000 },
+      { month: '2026-08', valueCents: 40_000 },
+      { month: '2026-09', valueCents: 50_000 },
+    ]
+
+    const projection = projectGoal(progress, gappy, '2026-09')
+
+    // 50 000 gained over 6 months (Mar -> Sep), not 3.
+    expect(projection.monthlyRateCents).toBe(8_333)
+  })
 })
 
 describe('requiredMonthlySavingsCents', () => {

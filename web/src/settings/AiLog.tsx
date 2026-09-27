@@ -116,6 +116,10 @@ export function AiLog(): ReactNode {
                                 type="button"
                                 className="button button--quiet"
                                 aria-expanded={open}
+                                aria-label={t(
+                                  open ? 'ai:log.hideTranscriptFor' : 'ai:log.viewTranscriptFor',
+                                  { when: formatDateTime(run.createdAt) },
+                                )}
                                 onClick={() => setOpened(open ? null : run.id)}
                               >
                                 {open ? t('ai:log.hideTranscript') : t('ai:log.viewTranscript')}

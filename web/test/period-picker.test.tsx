@@ -91,7 +91,8 @@ describe('PeriodPicker', () => {
     renderApp(<Controlled />)
     open()
 
-    const feb = within(screen.getByRole('dialog')).getByRole('button', { name: 'Feb' })
+    // Disabled cells gain a ", no data" suffix on their accessible name.
+    const feb = within(screen.getByRole('dialog')).getByRole('button', { name: /^Feb/ })
     expect(feb.hasAttribute('disabled')).toBe(true)
     expect(feb.className).toContain('is-outside')
 
@@ -107,7 +108,7 @@ describe('PeriodPicker', () => {
 
     // 2026 has data (August); the same twelve-year block also covers 2016, which has none.
     expect(screen.getByRole('button', { name: '2026' }).hasAttribute('disabled')).toBe(false)
-    expect(screen.getByRole('button', { name: '2016' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /^2016/ }).hasAttribute('disabled')).toBe(true)
   })
 
   it('pages the month grid by year with the nav buttons', () => {

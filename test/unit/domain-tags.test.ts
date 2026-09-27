@@ -162,6 +162,25 @@ describe('loadTagTotals', () => {
     expect(loadTagTotals(ctx.db, TENANT_ID, '2026-02')).toEqual([])
   })
 
+  it('still counts a fact older than the 24-month series window toward all-time (#692)', () => {
+    // The three summary figures are summed in SQL over every stored row, unbounded;
+    // only the `byMonth` series returned for the chart is capped. A month outside
+    // that window must still move `allTimeNetCents` without appearing in `byMonth`.
+    syncTagMeta(ctx.db, TENANT_ID, [tag('t1', { tag: 'rental-a' })])
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [total('rental-a', '2024-01', { netCents: -7_000 })],
+      new Map([['rental-a', 't1']]),
+      ['2024-01'],
+    )
+
+    const [row] = loadTagTotals(ctx.db, TENANT_ID, '2026-02')
+
+    expect(row?.allTimeNetCents).toBe(-7_000)
+    expect(row?.byMonth).toEqual([])
+  })
+
   it('gives a tag with meta but no facts all-zero totals and an empty series', () => {
     syncTagMeta(ctx.db, TENANT_ID, [tag('t1', { tag: 'rental-a' })])
     expect(loadTagTotals(ctx.db, TENANT_ID, '2026-02')).toEqual([
