@@ -783,36 +783,17 @@ export function dismissMirror(db: Db, tenantId: string, id: string): AccountMapR
   })
 }
 
-export function ungroupAccount(db: Db, tenantId: string, id: string): AccountMapRow | null {
-  const matches = and(eq(accountMap.id, id), eq(accountMap.tenantId, tenantId))
-  return db.transaction((tx) => {
-    const row =
-      tx
-        .update(accountMap)
-        .set({ dedupeGroup: null, isSourceOfTruth: true })
-        .where(matches)
-        .returning()
-        .all()[0] ?? null
-    if (row === null) return null
-    // Ungrouping is as much a decision as grouping was — it says these two accounts
-    // are not one — so a matcher must not simply re-propose what was just undone.
-    markDecided(tx, tenantId, [id], ['dedupeGroup', 'isSourceOfTruth'])
-    return tx.select().from(accountMap).where(matches).all()[0] ?? null
-  })
-}
-
 /**
  * Separates every member of an account's group in one transaction, not just the row
  * named.
  *
- * `ungroupAccount` frees one row and leaves the rest of the group standing, which is
- * right for a group of three or more but is the exact footgun for the common case of
- * a group of two: freeing the source-of-truth side alone leaves its twin as the sole
- * member of a group with no source of truth, and its money silently stops counting.
- * The settings panel only ever shows a whole pair as one block, so "unlink" from
- * there has to mean the whole pair, symmetrically — every member becomes its own
- * source of truth and keeps counting for itself, exactly like an account that was
- * never linked.
+ * Freeing only the row named would be right for a group of three or more but is the
+ * exact footgun for the common case of a group of two: freeing the source-of-truth
+ * side alone leaves its twin as the sole member of a group with no source of truth,
+ * and its money silently stops counting. The settings panel only ever shows a whole
+ * pair as one block, so "unlink" from there has to mean the whole pair, symmetrically
+ * — every member becomes its own source of truth and keeps counting for itself,
+ * exactly like an account that was never linked.
  */
 export function unlinkGroup(db: Db, tenantId: string, id: string): AccountMapRow[] {
   return db.transaction((tx) => {
@@ -834,8 +815,8 @@ export function unlinkGroup(db: Db, tenantId: string, id: string): AccountMapRow
       .set({ dedupeGroup: null, isSourceOfTruth: true })
       .where(and(inArray(accountMap.id, ids), eq(accountMap.tenantId, tenantId)))
       .run()
-    // Same reasoning as `ungroupAccount`: unlinking is a decision, so a later sync
-    // must not silently re-propose what was just taken apart.
+    // Unlinking is a decision, so a later sync must not silently re-propose what
+    // was just taken apart.
     markDecided(tx, tenantId, ids, ['dedupeGroup', 'isSourceOfTruth'])
 
     return tx

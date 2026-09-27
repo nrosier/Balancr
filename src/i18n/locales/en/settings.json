@@ -264,6 +264,7 @@
     "aprPlaceholder": "e.g. what the statement calls APR",
     "aprReads": "Reads as {{value}}.",
     "balance": "Outstanding balance",
+    "capHint": "Up to {{value}} cards.",
     "create": "Add this card",
     "hint": "Revolving balances — a credit card, a store card. No fixed schedule: the balance is whatever you last confirmed against a statement. Subtracted from net worth and shown on the portfolio page the next time either loads; nothing here recomputes.",
     "interestReads": "{{value}} estimated interest next month at this rate.",
@@ -328,6 +329,7 @@
       "toggle_one": "Show {{value}} archived goal",
       "toggle_other": "Show {{value}} archived goals"
     },
+    "capHint": "Up to {{value}} goals.",
     "categoryLabel": "Budget category",
     "categoryPlaceholder": "Choose a category…",
     "create": "Add this goal",
@@ -459,7 +461,8 @@
     "save": "Save this loan",
     "term": "Months remaining",
     "title": "Loans",
-    "useStandardPayment": "Use the standard payment for this rate and term"
+    "useStandardPayment": "Use the standard payment for this rate and term",
+    "useStandardPaymentHint": "Fill in the outstanding balance, interest rate and months remaining first."
   },
   "members": {
     "createButton": "Create invite",
@@ -615,6 +618,7 @@
   },
   "property": {
     "add": "Add a property",
+    "capHint": "Up to {{value}} properties.",
     "cashFlowReads": "{{value}} left after the mortgage payment each month.",
     "equityReads": "{{value}} of equity today.",
     "hint": "What you own — the home you live in, or a place you rent out. A change is reflected in net worth and on the portfolio page the next time either loads; nothing here recomputes.",
@@ -630,6 +634,7 @@
     "mortgage": {
       "add": "Add a mortgage",
       "anchorDate": "Balance as of",
+      "capHint": "Up to {{value}} mortgages per property.",
       "originalPrincipal": "Original loan amount",
       "originalPrincipalHint": "Optional. Lets Balancr show how much of the loan is paid off.",
       "originalPrincipalPlaceholder": "e.g. what the loan was on day one",
@@ -648,6 +653,7 @@
       "remove": "Remove mortgage",
       "term": "Months remaining",
       "useStandardPayment": "Use the standard payment for this rate and term",
+      "useStandardPaymentHint": "Fill in the outstanding balance, interest rate and months remaining first.",
       "heading": "Mortgage {{n}}"
     },
     "none": "No properties yet. Add the one you live in, or one you rent out.",

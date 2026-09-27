@@ -813,6 +813,16 @@
   font-size: var(--type-xs);
 }
 
+/* A per-row colour swatch, e.g. a tag's own colour. Only `background-color` is set
+   inline by whoever uses this — everything else here is the same for every dot. */
+.tag-dot {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.5em;
+  border-radius: 50%;
+}
+
 /*
  * A short label the eye reads as a state rather than as a word: the active prompt
  * version, a finding's severity, a run's outcome. Neutral by default — the tone

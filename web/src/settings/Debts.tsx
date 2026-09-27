@@ -337,6 +337,7 @@ export function DebtsPanel({ settings, state, owner }: SettingsPanelProps): Reac
             {t('settings:debts.add')}
           </button>
         </div>
+        <p className="panel__meta muted">{t('settings:debts.capHint', { value: MAX_DEBTS })}</p>
       </form>
     </Panel>
   )

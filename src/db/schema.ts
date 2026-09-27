@@ -65,7 +65,7 @@ export const users = sqliteTable(
     locale: text().notNull().default('en'),
     role: text({ enum: ['owner', 'viewer'] })
       .notNull()
-      .default('owner'),
+      .default('viewer'),
     disabled: integer({ mode: 'boolean' }).notNull().default(false),
     createdAt: createdAt(),
     lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
@@ -1762,6 +1762,10 @@ export const schema = {
   pendingIdentities,
   accountMap,
   categoryMeta,
+  categoryTranslations,
+  scheduleMeta,
+  tagMeta,
+  tagMonthlyFacts,
   clarificationQueue,
   monthlyCategoryFacts,
   monthlyTotals,

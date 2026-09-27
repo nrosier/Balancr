@@ -93,7 +93,7 @@ describe('redeeming an invite', () => {
       provisioned += 1
     })
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Redeem an invite code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redeem an invite code' }))
     fireEvent.change(screen.getByLabelText('Invite code'), { target: { value: 'A1B2-C3D4-E5F6-A7B8' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -110,7 +110,7 @@ describe('redeeming an invite', () => {
     serve(json({ error: { code: 'bad_request', message: 'Those details are not correct.' } }, 400))
     onboard()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Redeem an invite code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redeem an invite code' }))
     fireEvent.change(screen.getByLabelText('Invite code'), { target: { value: 'WRONGCODE' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -122,7 +122,7 @@ describe('redeeming an invite', () => {
     serve(json({ error: { code: 'bad_request', message: 'Those details are not correct.' } }, 400))
     onboard()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Redeem an invite code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redeem an invite code' }))
     fireEvent.change(screen.getByLabelText('Invite code'), { target: { value: 'WRONGCODE' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('alert')
@@ -152,7 +152,7 @@ describe('mode switching', () => {
     expect(screen.getByLabelText('Household name')).toBeTruthy()
     expect(screen.queryByLabelText('Invite code')).toBeNull()
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Redeem an invite code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redeem an invite code' }))
     expect(screen.queryByLabelText('Household name')).toBeNull()
     expect(screen.getByLabelText('Invite code')).toBeTruthy()
   })

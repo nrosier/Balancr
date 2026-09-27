@@ -112,29 +112,6 @@ export type Properties = z.infer<typeof propertiesSchema>
 
 export const DEFAULT_PROPERTIES: Properties = propertiesSchema.parse({})
 
-/**
- * A property recorded before mortgages became a list (#393) has a lone `mortgage` key
- * (object or null) instead of `mortgages`. Rewritten to the new shape before validation
- * runs, so upgrading the code doesn't turn a real stored record into "invalid" and wipe it
- * the way `loadProperties` degrades actual corruption below.
- */
-function migrateLegacyMortgage(raw: unknown): unknown {
-  if (raw === null || typeof raw !== 'object' || !('properties' in raw)) return raw
-  const properties = (raw as { properties: unknown }).properties
-  if (!Array.isArray(properties)) return raw
-
-  return {
-    ...raw,
-    properties: properties.map((property) => {
-      if (property === null || typeof property !== 'object' || !('mortgage' in property)) {
-        return property
-      }
-      const { mortgage, ...rest } = property as { mortgage: unknown }
-      return { ...rest, mortgages: mortgage === null ? [] : [mortgage] }
-    }),
-  }
-}
-
 export function loadProperties(db: Db, tenantId: string): Properties {
   const row = db
     .select({ valueJson: settings.valueJson })
@@ -152,7 +129,7 @@ export function loadProperties(db: Db, tenantId: string): Properties {
     return DEFAULT_PROPERTIES
   }
 
-  const parsed = propertiesSchema.safeParse(migrateLegacyMortgage(raw))
+  const parsed = propertiesSchema.safeParse(raw)
   if (!parsed.success) {
     log.error(
       { key: PROPERTY_KEY, issues: z.prettifyError(parsed.error) },

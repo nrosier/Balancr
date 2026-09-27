@@ -440,6 +440,9 @@ export function LoansPanel({ settings, state, owner }: SettingsPanelProps): Reac
                       >
                         {t('settings:loans.useStandardPayment')}
                       </button>
+                      {!canUseStandardPayment && (
+                        <p className="loan__reads muted">{t('settings:loans.useStandardPaymentHint')}</p>
+                      )}
                     </div>
 
                     <div className="field">

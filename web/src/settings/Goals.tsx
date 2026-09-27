@@ -400,6 +400,7 @@ export function GoalsPanel({ settings, state, owner }: SettingsPanelProps): Reac
             {t('settings:goals.add')}
           </button>
         </div>
+        <p className="panel__meta muted">{t('settings:goals.capHint', { value: MAX_GOALS })}</p>
       </form>
 
       {archived.length > 0 && (

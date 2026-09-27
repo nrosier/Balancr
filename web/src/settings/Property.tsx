@@ -670,6 +670,11 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                             >
                               {t('settings:property.mortgage.useStandardPayment')}
                             </button>
+                            {!canUseStandardPayment && (
+                              <p className="property__reads muted">
+                                {t('settings:property.mortgage.useStandardPaymentHint')}
+                              </p>
+                            )}
                           </div>
 
                           <div className="field">
@@ -802,6 +807,9 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                       {t('settings:property.remove')}
                     </button>
                   </div>
+                  <p className="property__reads muted">
+                    {t('settings:property.mortgage.capHint', { value: MAX_MORTGAGES_PER_PROPERTY })}
+                  </p>
                 </li>
               )
             })}
@@ -841,6 +849,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
             {state.pending === 'property' ? t('shell.loading') : t('action.save')}
           </button>
         </div>
+        <p className="panel__meta muted">{t('settings:property.capHint', { value: MAX_PROPERTIES })}</p>
       </form>
     </Panel>
   )

@@ -180,7 +180,9 @@ export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): Re
             {failure.message}
           </p>
         )}
-        <Issue message={failure?.issues.find((candidate) => candidate.path === 'text')?.message} />
+        <Issue
+          message={failure?.issues.find((candidate) => candidate.path === 'text' || candidate.path === '')?.message}
+        />
 
         <button type="submit" className="button button--primary" disabled={locked || draft === null || tooLong}>
           {busy ? t('shell.loading') : t('action.save')}

@@ -25,7 +25,6 @@ import {
   loadAccountMap,
   setSourceOfTruth,
   syncAccountMap,
-  ungroupAccount,
   unlinkGroup,
   updateAccountMap,
 } from '../../src/domain/aggregate/accounts.ts'
@@ -127,7 +126,7 @@ describe('account map', () => {
     expect(loadAccountMap(db, tenantB)[0]?.kind).not.toBe('credit')
   })
 
-  it("never reads, dismisses, ungroups or unlinks another tenant's account by id (#701)", () => {
+  it("never reads, dismisses, or unlinks another tenant's account by id (#701)", () => {
     syncAccountMap(db, tenantA, [
       { source: 'actual', externalId: 'a-1', name: 'A checking' },
       { source: 'ghostfolio', externalId: 'a-2', name: 'A checking (GF)' },
@@ -140,7 +139,6 @@ describe('account map', () => {
 
     // B supplies A's id for every one of the four mutations: none may see or touch it.
     expect(setSourceOfTruth(db, tenantB, rowA2.id)).toBeNull()
-    expect(ungroupAccount(db, tenantB, rowA1.id)).toBeNull()
     expect(unlinkGroup(db, tenantB, rowA1.id)).toEqual([])
 
     const untouched = loadAccountMap(db, tenantA).find((row) => row.id === rowA1.id)
