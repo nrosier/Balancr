@@ -122,6 +122,24 @@ describe('security headers', () => {
   })
 })
 
+describe('cache directives on /api/* (#696)', () => {
+  it('refuses to be cached, and varies on cookie', async () => {
+    // No shared cache should key an API response on the URL alone — that is how
+    // tenant A's /api/overview ends up served to tenant B — and no disk cache should
+    // outlive a logout, which clears the cookie but cannot reach into a browser's
+    // HTTP cache.
+    const res = await app.inject({ method: 'GET', url: '/api/settings' })
+    expect(res.headers['cache-control']).toBe('no-store')
+    expect(res.headers.vary).toBe('cookie')
+  })
+
+  it('leaves a non-API route untouched', async () => {
+    const res = await app.inject({ method: 'GET', url: '/healthz' })
+    expect(res.headers['cache-control']).toBeUndefined()
+    expect(res.headers.vary).toBeUndefined()
+  })
+})
+
 describe('error handling', () => {
   it('answers an unknown path with the envelope, not Fastify’s default', async () => {
     const res = await app.inject({ method: 'GET', url: '/nope' })

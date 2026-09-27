@@ -129,6 +129,10 @@ export function Ledger({ runs, month }: LedgerProps): ReactNode {
                           type="button"
                           className="button button--quiet"
                           aria-expanded={open}
+                          aria-label={t(
+                            open ? 'ai:privacy.hidePayloadFor' : 'ai:privacy.viewPayloadFor',
+                            { when: formatDateTime(run.createdAt) },
+                          )}
                           onClick={() => setOpened(open ? null : run.id)}
                         >
                           {open ? t('ai:privacy.hidePayload') : t('ai:privacy.viewPayload')}

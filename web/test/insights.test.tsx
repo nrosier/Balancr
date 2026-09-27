@@ -1747,7 +1747,7 @@ describe('the ledger', () => {
     // asked for until somebody wants to read one.
     expect(fetchMock).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Show the exact payload' })[0]!)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Show the exact payload/ })[0]!)
     await screen.findByText(/"Groceries"/)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/insights/runs/run-findings/payload')
@@ -1763,7 +1763,7 @@ describe('the ledger', () => {
     })
     renderApp(<Ledger runs={RUNS} month={null} />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Show the exact payload' })[0]!)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Show the exact payload/ })[0]!)
     await screen.findByText(/"month"/)
 
     const pre = document.querySelector('.payload')
@@ -1780,7 +1780,7 @@ describe('the ledger', () => {
     })
     renderApp(<Ledger runs={RUNS} month={null} />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Show the exact payload' })[0]!)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Show the exact payload/ })[0]!)
     await screen.findByText(/"month"/)
 
     expect(document.querySelector('.payload')?.hasAttribute('tabindex')).toBe(false)
@@ -1813,7 +1813,7 @@ describe('the ledger', () => {
     fireEvent.click(screen.getAllByRole('button')[0]!)
     await screen.findByText(/"a": 1/)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide the payload' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Hide the payload/ }))
     expect(screen.queryByText(/"a": 1/)).toBeNull()
   })
 

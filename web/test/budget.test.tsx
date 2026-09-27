@@ -1348,8 +1348,11 @@ describe('the month picker', () => {
     await screen.findByText('€ 3.100')
 
     const dialog = openMonthPicker()
+    // A disabled cell's accessible name gains a ", no data" suffix (aria-label),
+    // so match by prefix rather than the exact visible text.
     const enabled = (name: string): boolean =>
-      !(within(dialog).getByRole('button', { name }) as HTMLButtonElement).disabled
+      !(within(dialog).getByRole('button', { name: new RegExp(`^${name}`) }) as HTMLButtonElement)
+        .disabled
     expect(enabled('Jun')).toBe(true)
     expect(enabled('Jul')).toBe(true)
     expect(enabled('Aug')).toBe(true)
@@ -1368,7 +1371,9 @@ describe('the month picker', () => {
 
     const dialog = openMonthPicker()
     expect((within(dialog).getByRole('button', { name: 'Aug' }) as HTMLButtonElement).disabled).toBe(false)
-    expect((within(dialog).getByRole('button', { name: 'Jul' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      (within(dialog).getByRole('button', { name: /^Jul/ }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('stands aside on the Notes tab, which has a month control of its own (#281)', async () => {
@@ -1515,7 +1520,7 @@ describe('a month nobody computed', () => {
     expect(screen.getByRole('button', { name: 'Month' }).textContent).toContain('May 2026')
     fireEvent.click(screen.getByRole('button', { name: 'Month' }))
     const dialog = screen.getByRole('dialog')
-    expect((within(dialog).getByRole('button', { name: 'May' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(dialog).getByRole('button', { name: /^May/ }) as HTMLButtonElement).disabled).toBe(true)
     expect((within(dialog).getByRole('button', { name: 'Jun' }) as HTMLButtonElement).disabled).toBe(false)
     expect((within(dialog).getByRole('button', { name: 'Jul' }) as HTMLButtonElement).disabled).toBe(false)
     expect((within(dialog).getByRole('button', { name: 'Aug' }) as HTMLButtonElement).disabled).toBe(false)

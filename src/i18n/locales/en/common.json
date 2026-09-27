@@ -158,6 +158,7 @@
   },
   "periodPicker": {
     "next": "Next",
+    "noData": "{{period}}, no data",
     "previous": "Previous"
   },
   "privacy": {

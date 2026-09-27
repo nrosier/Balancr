@@ -20,8 +20,13 @@ import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { initI18n } from '../../src/i18n/index.ts'
 import { createSecondTenant } from '../helpers/second-tenant.ts'
 import {
+  dismissMirror,
+  groupAccounts,
   loadAccountMap,
+  setSourceOfTruth,
   syncAccountMap,
+  ungroupAccount,
+  unlinkGroup,
   updateAccountMap,
 } from '../../src/domain/aggregate/accounts.ts'
 import { loadMonthTotals, persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
@@ -120,6 +125,33 @@ describe('account map', () => {
     const result = updateAccountMap(db, tenantA, bId, { kind: 'credit' })
     expect(result).toBeNull()
     expect(loadAccountMap(db, tenantB)[0]?.kind).not.toBe('credit')
+  })
+
+  it("never reads, dismisses, ungroups or unlinks another tenant's account by id (#701)", () => {
+    syncAccountMap(db, tenantA, [
+      { source: 'actual', externalId: 'a-1', name: 'A checking' },
+      { source: 'ghostfolio', externalId: 'a-2', name: 'A checking (GF)' },
+    ])
+    syncAccountMap(db, tenantB, [{ source: 'actual', externalId: 'b-1', name: 'B checking' }])
+
+    const [rowA1, rowA2] = loadAccountMap(db, tenantA)
+    if (rowA1 === undefined || rowA2 === undefined) throw new Error('expected two rows')
+    const groupId = groupAccounts(db, tenantA, [rowA1.id, rowA2.id], rowA1.id)
+
+    // B supplies A's id for every one of the four mutations: none may see or touch it.
+    expect(setSourceOfTruth(db, tenantB, rowA2.id)).toBeNull()
+    expect(ungroupAccount(db, tenantB, rowA1.id)).toBeNull()
+    expect(unlinkGroup(db, tenantB, rowA1.id)).toEqual([])
+
+    const untouched = loadAccountMap(db, tenantA).find((row) => row.id === rowA1.id)
+    expect(untouched?.dedupeGroup).toBe(groupId)
+    expect(untouched?.isSourceOfTruth).toBe(true)
+
+    // Same direction, reversed: A supplies B's id to dismiss a mirror suggestion.
+    const rowB = loadAccountMap(db, tenantB)[0]
+    if (rowB === undefined) throw new Error('expected a row')
+    expect(dismissMirror(db, tenantA, rowB.id)).toBeNull()
+    expect(loadAccountMap(db, tenantB)[0]?.dedupeGroup).toBeNull()
   })
 })
 

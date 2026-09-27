@@ -25,6 +25,7 @@ import {
   portfolioMetrics,
   portfolioSnapshots,
   recomputeMismatches,
+  tagMonthlyFacts,
 } from '../../db/schema.ts'
 
 export interface ResetResult {
@@ -35,13 +36,14 @@ export interface ResetResult {
 /**
  * Every table this deletes from, and the name each answer carries.
  *
- * A list rather than nine separate statements written out, so the audit entry and
+ * A list rather than ten separate statements written out, so the audit entry and
  * the one test asserting "exactly these tables" both read from the same source
  * instead of three copies that could each drift from the schema's own section on
  * their own.
  */
 const COMPUTED_TABLES = [
   { name: 'monthly_category_facts', table: monthlyCategoryFacts },
+  { name: 'tag_monthly_facts', table: tagMonthlyFacts },
   { name: 'monthly_totals', table: monthlyTotals },
   { name: 'recompute_mismatches', table: recomputeMismatches },
   { name: 'monthly_hygiene', table: monthlyHygiene },

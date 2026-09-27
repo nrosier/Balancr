@@ -1,5 +1,5 @@
 /**
- * The wipe-scope contract `resetComputedData` exists to guarantee: exactly the nine
+ * The wipe-scope contract `resetComputedData` exists to guarantee: exactly the ten
  * "computed facts" tables empty out, and nothing else does — durable state, identity,
  * configuration and the AI ledger all survive untouched.
  *
@@ -20,6 +20,7 @@ import {
   auditLog,
   categoryGuessCandidates,
   categoryMeta,
+  categoryTranslations,
   clarificationQueue,
   jobs,
   monthlyCategoryFacts,
@@ -32,8 +33,11 @@ import {
   proposals,
   prompts,
   recomputeMismatches,
+  scheduleMeta,
   sessions,
   settings,
+  tagMeta,
+  tagMonthlyFacts,
   users,
 } from '../../src/db/schema.ts'
 import { resetComputedData } from '../../src/domain/aggregate/reset.ts'
@@ -45,6 +49,7 @@ let TENANT_ID: string
 
 const COMPUTED_TABLES = [
   { name: 'monthly_category_facts', table: monthlyCategoryFacts },
+  { name: 'tag_monthly_facts', table: tagMonthlyFacts },
   { name: 'monthly_totals', table: monthlyTotals },
   { name: 'recompute_mismatches', table: recomputeMismatches },
   { name: 'monthly_hygiene', table: monthlyHygiene },
@@ -177,7 +182,16 @@ function seed(tenantId: string, suffix = '1'): { userId: string; accountMapId: s
 
   db.insert(jobs).values({ name: `sync-${suffix}`, tenantId }).run()
 
+  db.insert(scheduleMeta)
+    .values({ tenantId, scheduleId: `sched-${suffix}`, label: 'Rent', amountCents: 90_000 })
+    .run()
+  db.insert(tagMeta).values({ tenantId, tagId: `tag-${suffix}`, tag: 'rental' }).run()
+  db.insert(categoryTranslations)
+    .values({ tenantId, categoryId: 'cat-1', locale: 'en', name: 'Utilities' })
+    .run()
+
   db.insert(monthlyCategoryFacts).values({ tenantId, month: '2026-08', categoryId: 'cat-1' }).run()
+  db.insert(tagMonthlyFacts).values({ tenantId, month: '2026-08', tagId: `tag-${suffix}` }).run()
   db.insert(monthlyTotals).values({ tenantId, month: '2026-08' }).run()
   db.insert(recomputeMismatches)
     .values({
@@ -231,7 +245,7 @@ function seed(tenantId: string, suffix = '1'): { userId: string; accountMapId: s
 }
 
 describe('resetComputedData', () => {
-  it('empties exactly the nine computed tables and nothing else', () => {
+  it('empties exactly the ten computed tables and nothing else', () => {
     seed(TENANT_ID)
 
     const result = resetComputedData(ctx.db, TENANT_ID)
@@ -252,6 +266,9 @@ describe('resetComputedData', () => {
     expect(ctx.db.select().from(sessions).all()).toHaveLength(1)
     expect(ctx.db.select().from(accountMap).all()).toHaveLength(1)
     expect(ctx.db.select().from(categoryMeta).all()).toHaveLength(1)
+    expect(ctx.db.select().from(scheduleMeta).all()).toHaveLength(1)
+    expect(ctx.db.select().from(tagMeta).all()).toHaveLength(1)
+    expect(ctx.db.select().from(categoryTranslations).all()).toHaveLength(1)
     expect(ctx.db.select().from(clarificationQueue).all()).toHaveLength(1)
     expect(ctx.db.select().from(settings).all()).toHaveLength(1)
     expect(ctx.db.select().from(prompts).all()).toHaveLength(1)

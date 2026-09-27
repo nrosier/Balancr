@@ -102,6 +102,7 @@
       "when": "Wanneer"
     },
     "hideTranscript": "Verberg de vraag en het antwoord",
+    "hideTranscriptFor": "Verberg de vraag en het antwoord voor de aanroep op {{when}}",
     "hint": "De exacte tekst die voor het model werd opgesteld, en de exacte tekst die het teruggaf, voor elke geregistreerde aanroep.",
     "loadMore": "Oudere aanroepen laden",
     "loadingMore": "Laden…",
@@ -111,7 +112,8 @@
     "response": "Antwoord",
     "responseUnavailable": "Voor deze aanroep is geen antwoord geregistreerd.",
     "title": "Vraag- en antwoordlog",
-    "viewTranscript": "Toon de vraag en het antwoord"
+    "viewTranscript": "Toon de vraag en het antwoord",
+    "viewTranscriptFor": "Toon de vraag en het antwoord voor de aanroep op {{when}}"
   },
   "narrative": {
     "capped": "Maandelijks AI-budget bereikt — dit is de laatste analyse.",
@@ -171,6 +173,7 @@
       "when": "Wanneer"
     },
     "hidePayload": "Verberg de verzonden gegevens",
+    "hidePayloadFor": "Verberg de verzonden gegevens voor de aanroep op {{when}}",
     "hint": "Enkel categorienamen en bedragen. Geen tegenpartijen, geen verrichtingen.",
     "kind": {
       "budget_nudge": "Budgetbijstelling",
@@ -187,7 +190,8 @@
     "title": "Wat is verzonden",
     "tokens": "{{input}} in / {{output}} uit",
     "unreadable": "De bewaarde gegevens konden niet worden gelezen.",
-    "viewPayload": "Toon de exacte verzonden gegevens"
+    "viewPayload": "Toon de exacte verzonden gegevens",
+    "viewPayloadFor": "Toon de exacte verzonden gegevens voor de aanroep op {{when}}"
   },
   "promptCheck": {
     "conflict": {

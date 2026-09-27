@@ -215,10 +215,11 @@ describe('GET /api/overview', () => {
     expect(body.history).toEqual([{ date: SNAPSHOT_DATE, totalCents: 4_820_000 }])
   })
 
-  it('states cover in hundredths of a month, over the mean of the window', async () => {
+  it('states cover in hundredths of a month, against typical spend rather than this month\'s (#687)', async () => {
     const body = (await get('/api/overview')).json()
-    // Mean of 310 000 and 352 000 is 331 000; 1 240 000 / 331 000 = 3.745…
-    expect(body.emergencyFundCentimonths).toBe(375)
+    // The judged month (352 000) is excluded (#686); with one prior month, its
+    // EWMA is just that month's own spend: 310 000. 1 240 000 / 310 000 = 4.0.
+    expect(body.emergencyFundCentimonths).toBe(400)
   })
 
   it('sends the monthly flows the savings card sums over, beside the net-worth points', async () => {
@@ -1225,6 +1226,142 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
   })
 })
 
+describe('reconciliation warnings against off-budget accounts (#689)', () => {
+  function addMortgageOffBudgetAccount(): string {
+    syncAccountMap(ctx.db, TENANT_ID, [
+      { source: 'actual', externalId: 'acct-mortgage', name: 'Mortgage', offBudget: true },
+    ])
+    const mortgageId = loadAccountMap(ctx.db, TENANT_ID).find(
+      (row) => row.externalId === 'acct-mortgage',
+    )?.id
+    if (mortgageId === undefined) throw new Error('the fixture failed to map acct-mortgage')
+
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth(SNAPSHOT_DATE, [
+        {
+          accountMapId: mortgageId,
+          source: 'actual',
+          externalId: 'acct-mortgage',
+          name: 'Mortgage',
+          kind: 'other',
+          valueCents: -18_000_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+    return mortgageId
+  }
+
+  it('flags a property whose mortgage balance agrees with an off-budget account', async () => {
+    const mortgageId = addMortgageOffBudgetAccount()
+    saveProperties(ctx.db, TENANT_ID, {
+      properties: [
+        {
+          id: 'prop-1',
+          kind: 'primary',
+          label: 'House',
+          propertyValueCents: 40_000_000,
+          rentCents: null,
+          mortgages: [
+            {
+              principalCents: 18_000_000,
+              anchorDate: '2020-01-01',
+              rateBp: 0,
+              monthlyPaymentCents: 0,
+              remainingTermMonths: 600,
+              originalPrincipalCents: null,
+            },
+          ],
+        },
+      ],
+    })
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.reconciliationWarnings).toEqual(
+      expect.arrayContaining([
+        {
+          kind: 'property',
+          label: 'House mortgage',
+          accountId: mortgageId,
+          accountName: 'Mortgage',
+        },
+      ]),
+    )
+    // The value alone (40M) doesn't agree with the -18M mortgage account, and its
+    // name doesn't either — only the mortgage-balance candidate should fire.
+    expect(body.reconciliationWarnings).toHaveLength(1)
+  })
+
+  it('flags a loan whose label names an off-budget account', async () => {
+    syncAccountMap(ctx.db, TENANT_ID, [
+      { source: 'actual', externalId: 'acct-car-loan', name: 'Car loan', offBudget: true },
+    ])
+    const carLoanId = loadAccountMap(ctx.db, TENANT_ID).find(
+      (row) => row.externalId === 'acct-car-loan',
+    )?.id
+    if (carLoanId === undefined) throw new Error('the fixture failed to map acct-car-loan')
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth(SNAPSHOT_DATE, [
+        {
+          accountMapId: carLoanId,
+          source: 'actual',
+          externalId: 'acct-car-loan',
+          name: 'Car loan',
+          kind: 'other',
+          valueCents: -900_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+    createLoan(ctx.db, TENANT_ID, {
+      kind: 'car',
+      label: 'Car loan',
+      openingDate: '2025-03-01',
+      principalCents: 1_500_000,
+      anchorDate: '2025-03-01',
+      rateBp: 0,
+      monthlyPaymentCents: 0,
+      remainingTermMonths: 600,
+      originalPrincipalCents: null,
+      extraMonthlyPaymentCents: null,
+    })
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.reconciliationWarnings).toEqual([
+      { kind: 'loan', label: 'Car loan', accountId: carLoanId, accountName: 'Car loan' },
+    ])
+  })
+
+  it('answers an empty list when nothing off-budget agrees with anything self-reported', async () => {
+    addMortgageOffBudgetAccount()
+    saveProperties(ctx.db, TENANT_ID, {
+      properties: [
+        {
+          id: 'prop-1',
+          kind: 'rental',
+          label: 'Antwerp flat',
+          propertyValueCents: 25_000_000,
+          rentCents: 90_000,
+          mortgages: [],
+        },
+      ],
+    })
+
+    const body = (await get('/api/portfolio')).json()
+    expect(body.reconciliationWarnings).toEqual([])
+  })
+})
+
 describe('the advice on GET /api/portfolio', () => {
   /**
    * The one place in the read API that computes rather than reads, so it gets tested
@@ -2059,23 +2196,20 @@ describe('the endpoint count documented at the top of ai.ts (#603)', () => {
 })
 
 describe('months of cover', () => {
-  // The two cases a fixture cannot produce, tested directly. Both answer null,
-  // and both would otherwise be a number on the dashboard: `Infinity` renders as
-  // nonsense, and a division by an average of zero is not a figure about money.
-  it('is unknown rather than infinite when there is no spend to divide by', () => {
-    expect(emergencyFundCentimonths(1_240_000, [])).toBeNull()
-    expect(emergencyFundCentimonths(1_240_000, [{ spentCents: 0 }, { spentCents: 0 }])).toBeNull()
-  })
-
-  it('averages the window rather than reading the latest month', () => {
-    // A holiday or an annual premium in one month would otherwise halve the
-    // figure and read as an emergency.
-    const spiky = [{ spentCents: 100_000 }, { spentCents: 100_000 }, { spentCents: 400_000 }]
-    expect(emergencyFundCentimonths(600_000, spiky)).toBe(300)
-    expect(emergencyFundCentimonths(600_000, [{ spentCents: 400_000 }])).toBe(150)
+  // The typical-spend smoothing itself — the EWMA of previous months, excluding
+  // the month being judged (#686) — is `typicalMonthlySpendCents`'s own contract,
+  // covered by `household.test.ts`'s "emergency fund" suite. What's left to check
+  // here is `emergencyFundCentimonths`'s own division, now that it takes that
+  // figure directly rather than a spend history (#687).
+  it('is unknown rather than infinite when there is nothing to divide by', () => {
+    // `null` (no prior month) and `0` (a household that has spent nothing) both
+    // would otherwise be a number on the dashboard: `Infinity` renders as
+    // nonsense, and a division by zero is not a figure about money.
+    expect(emergencyFundCentimonths(1_240_000, null)).toBeNull()
+    expect(emergencyFundCentimonths(1_240_000, 0)).toBeNull()
   })
 
   it('is hundredths of a month, so a fraction never becomes a float', () => {
-    expect(emergencyFundCentimonths(333_333, [{ spentCents: 100_000 }])).toBe(333)
+    expect(emergencyFundCentimonths(333_333, 100_000)).toBe(333)
   })
 })

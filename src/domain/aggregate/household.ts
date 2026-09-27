@@ -60,6 +60,27 @@ function householdSignal(
   }
 }
 
+/**
+ * Typical monthly spend to measure the emergency-fund cushion against.
+ *
+ * The EWMA of every month except the one being judged, so a holiday month or an
+ * annual premium landing in the judged month cannot shorten its own cushion on
+ * paper (#686). This is the one denominator "months of cover" uses anywhere in
+ * the app — the Overview headline figure and this module's `emergency_fund_short`
+ * alert both call this, so the two surfaces cannot disagree (#687).
+ *
+ * `null` when there is no prior month to measure against — an EWMA of nothing is
+ * an error rather than a zero.
+ */
+export function typicalMonthlySpendCents(
+  spendHistory: readonly MonthValue[],
+  halfLifeMonths: number,
+): number | null {
+  const previous = spendHistory.slice(0, -1).map((entry) => entry.cents)
+  if (previous.length === 0) return null
+  return Math.round(ewma(previous, halfLifeMonths))
+}
+
 export function householdSignals(input: HouseholdInput): Signal[] {
   const { params, totals } = input
   const signals: Signal[] = []
@@ -133,11 +154,8 @@ export function householdSignals(input: HouseholdInput): Signal[] {
   // budget-allocation nudge below needs it in both directions: a positive
   // shortfall to fill, or its absence to know the fund is already covered.
   let shortfallCents = 0
-  // Judged against the EWMA of *previous* months, same as `income_change` above —
-  // the judged month itself must not shorten its own cushion on paper (#686).
-  const previousSpend = input.spendHistory.slice(0, -1).map((entry) => entry.cents)
-  if (input.netWorth && previousSpend.length > 0) {
-    const typicalSpend = Math.round(ewma(previousSpend, params.baseline.halfLifeMonths))
+  const typicalSpend = typicalMonthlySpendCents(input.spendHistory, params.baseline.halfLifeMonths)
+  if (input.netWorth && typicalSpend !== null) {
     if (typicalSpend > 0) {
       // Basis points of a month, so "2.4 months" survives being an integer.
       // Named `targetMonthsBp` rather than `targetBp` because `savings_rate_low`

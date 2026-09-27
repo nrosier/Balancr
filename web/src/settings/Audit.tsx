@@ -89,7 +89,16 @@ function EntryRow({
         <td className="table__cell--code">{entry.actorId ?? t('settings:audit.system')}</td>
         <td>
           {hasChange ? (
-            <button type="button" className="button button--quiet" aria-expanded={open} onClick={onToggle}>
+            <button
+              type="button"
+              className="button button--quiet"
+              aria-expanded={open}
+              aria-label={t(
+                open ? 'settings:audit.hideChangeFor' : 'settings:audit.viewChangeFor',
+                { when: formatDateTime(entry.at) },
+              )}
+              onClick={onToggle}
+            >
               {open ? t('settings:audit.hideChange') : t('settings:audit.viewChange')}
             </button>
           ) : null}

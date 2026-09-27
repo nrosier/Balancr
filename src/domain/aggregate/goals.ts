@@ -131,7 +131,11 @@ export function projectGoal(
 
   const first = trend[0] as { month: string; valueCents: number }
   const last = trend.at(-1) as { month: string; valueCents: number }
-  const elapsedMonths = trend.length - 1
+  // `trend.length - 1` is only the elapsed span for a contiguous trend. A
+  // category-kind goal's trend (`loadCategoryAvailableTrend`) omits months with
+  // no fact row rather than carrying the previous one forward, so a gap would
+  // otherwise halve the true elapsed time and double the apparent rate (#688).
+  const elapsedMonths = monthsBetween(first.month, last.month)
   const monthlyRateCents = Math.round((last.valueCents - first.valueCents) / elapsedMonths)
 
   // A non-positive rate is still reported — "losing ground" is worth saying — but

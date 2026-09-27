@@ -333,13 +333,20 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
         </div>
 
         <Issue message={state.issue('googleCloudProject')} />
+        <Issue message={state.issue('baseUrl')} />
 
         <div className="integrations__actions">
           <button
             type="submit"
             className="button button--primary"
             disabled={
-              locked || draft === null || modelFast === '' || modelDeep === '' || !customPricesComplete || !budgetValid
+              locked ||
+              draft === null ||
+              modelFast === '' ||
+              modelDeep === '' ||
+              !customPricesComplete ||
+              !budgetValid ||
+              (isCustom && baseUrl === '')
             }
           >
             {state.pending === 'integrations-ai' ? t('shell.loading') : t('action.save')}

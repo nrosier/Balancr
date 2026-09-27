@@ -66,35 +66,41 @@ import {
   outstandingBalanceCents,
   totalEquityCents,
 } from '../../../domain/property/properties.ts'
+import { typicalMonthlySpendCents } from '../../../domain/aggregate/household.ts'
+import { loadParams } from '../../../domain/aggregate/params.ts'
 import { freshness } from './freshness.ts'
 import { overviewSchema, type Overview } from './schemas.ts'
 
 /**
  * Months of liquid cover, in hundredths of a month.
  *
- * The denominator is the mean spend of the months given rather than this month's,
- * because a single month with a holiday or an annual insurance premium in it would
- * otherwise halve the figure and read as an emergency. `null` when there is no
- * spend to divide by — a household that has spent nothing has infinite cover, and
- * `Infinity` is not a thing to render.
+ * The denominator is `typicalMonthlySpendCents` — the same EWMA-of-previous-months
+ * figure the Findings panel's `emergency_fund_short` alert is judged against
+ * (#687) — rather than this month's own spend, because a single month with a
+ * holiday or an annual insurance premium in it would otherwise halve the figure
+ * and read as an emergency. `null` when there is nothing to divide by — a
+ * household with no spend history, or that has spent nothing, has infinite
+ * cover, and `Infinity` is not a thing to render.
  *
  * Hundredths rather than a float for the reason the whole API avoids floats: the
  * client formats `450` as `4,5`, and no arithmetic anywhere has to be trusted with
  * a fraction.
  */
-export function emergencyFundCentimonths(
-  liquidCents: number,
-  spendHistory: readonly { spentCents: number }[],
-): number | null {
-  if (spendHistory.length === 0) return null
-  const total = spendHistory.reduce((sum, month) => sum + month.spentCents, 0)
-  const mean = total / spendHistory.length
-  if (mean <= 0) return null
-  return Math.round((liquidCents / mean) * 100)
+export function emergencyFundCentimonths(liquidCents: number, typicalSpendCents: number | null): number | null {
+  if (typicalSpendCents === null || typicalSpendCents <= 0) return null
+  return Math.round((liquidCents / typicalSpendCents) * 100)
 }
 
-/** How many months of spend the cover figure averages over. A year, seasonality and all. */
-export const COVER_WINDOW_MONTHS = 12
+/**
+ * How many months of spend the cover figure's EWMA averages over.
+ *
+ * `config.JOBS_HISTORY_MONTHS`, not some Overview-local window: this is fed
+ * through the same `typicalMonthlySpendCents` the Findings panel's
+ * `emergency_fund_short` alert uses, over the same series `jobs/signals.ts`
+ * builds its own `totalsHistory` from — matching windows is what makes "the same
+ * figure" actually true rather than merely close (#687).
+ */
+export const COVER_WINDOW_MONTHS = config.JOBS_HISTORY_MONTHS
 
 export function buildOverview(
   db: Db,
@@ -112,6 +118,11 @@ export function buildOverview(
   const flows = loadMonthTotals(db, tenantId, months)
   const coverWindow =
     month === null ? [] : loadTrailingTotals(db, tenantId, month, COVER_WINDOW_MONTHS)
+  const params = loadParams(db, tenantId)
+  const typicalSpend = typicalMonthlySpendCents(
+    coverWindow.map((entry) => ({ month: entry.month, cents: entry.spentCents })),
+    params.baseline.halfLifeMonths,
+  )
   // Priced as of right now, not as of `netWorth.date`: a mortgage amortizes with the
   // calendar, not with whatever night the net-worth job last ran (#227).
   const today = new Date().toISOString().slice(0, 10)
@@ -218,7 +229,7 @@ export function buildOverview(
             savingsRateBp: totals.savingsRateBp,
           },
     emergencyFundCentimonths:
-      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, coverWindow),
+      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, typicalSpend),
     hygiene:
       hygiene === null || month === null
         ? null

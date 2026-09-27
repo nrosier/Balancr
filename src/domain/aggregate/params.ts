@@ -166,24 +166,16 @@ export type AggregateParamsPatch = z.input<typeof aggregateParamsSchema>
 export const DEFAULT_PARAMS: AggregateParams = aggregateParamsSchema.parse({})
 
 /**
- * Reads the stored parameters, falling back to the defaults.
- *
  * A malformed row logs and degrades to defaults rather than throwing: the
  * nightly job going dark because someone saved a bad threshold would be a worse
  * failure than analysing with the default one, and the log says which key broke.
  */
-export function loadParams(db: Db, tenantId: string): AggregateParams {
-  const row = db
-    .select({ valueJson: settings.valueJson })
-    .from(settings)
-    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PARAMS_KEY)))
-    .get()
-
-  if (!row) return DEFAULT_PARAMS
+function parseStoredParams(valueJson: string | undefined): AggregateParams {
+  if (valueJson === undefined) return DEFAULT_PARAMS
 
   let raw: unknown
   try {
-    raw = JSON.parse(row.valueJson)
+    raw = JSON.parse(valueJson)
   } catch (error) {
     log.error({ err: error, key: PARAMS_KEY }, 'stored parameters are not JSON; using defaults')
     return DEFAULT_PARAMS
@@ -200,6 +192,17 @@ export function loadParams(db: Db, tenantId: string): AggregateParams {
   return parsed.data
 }
 
+/** Reads the stored parameters, falling back to the defaults. */
+export function loadParams(db: Db, tenantId: string): AggregateParams {
+  const row = db
+    .select({ valueJson: settings.valueJson })
+    .from(settings)
+    .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PARAMS_KEY)))
+    .get()
+
+  return parseStoredParams(row?.valueJson)
+}
+
 /**
  * Validates and stores a patch, merging it over what is already there.
  *
@@ -209,26 +212,39 @@ export function loadParams(db: Db, tenantId: string): AggregateParams {
  * be reported to whoever is trying to save it.
  */
 export function saveParams(db: Db, tenantId: string, patch: AggregateParamsPatch): AggregateParams {
-  const current = loadParams(db, tenantId) as Record<string, Record<string, unknown>>
   const incoming = (patch ?? {}) as Record<string, Record<string, unknown>>
 
-  const merged: Record<string, unknown> = { ...current }
-  for (const [group, values] of Object.entries(incoming)) {
-    merged[group] = { ...(current[group] ?? {}), ...(values ?? {}) }
-  }
+  // Read-modify-write on one shared JSON blob (#590, matching `month-note.ts`'s own
+  // precedent): without a transaction, two concurrent saves for different groups
+  // both read the same row, and the second write silently overwrites the first
+  // save's group with a stale copy.
+  return db.transaction((tx) => {
+    const row = tx
+      .select({ valueJson: settings.valueJson })
+      .from(settings)
+      .where(and(eq(settings.tenantId, tenantId), eq(settings.key, PARAMS_KEY)))
+      .get()
 
-  const next = aggregateParamsSchema.parse(merged)
-  const valueJson = JSON.stringify(next)
+    const current = parseStoredParams(row?.valueJson) as Record<string, Record<string, unknown>>
 
-  db.insert(settings)
-    .values({ tenantId, key: PARAMS_KEY, valueJson })
-    .onConflictDoUpdate({
-      target: [settings.tenantId, settings.key],
-      set: { valueJson, updatedAt: new Date() },
-    })
-    .run()
+    const merged: Record<string, unknown> = { ...current }
+    for (const [group, values] of Object.entries(incoming)) {
+      merged[group] = { ...(current[group] ?? {}), ...(values ?? {}) }
+    }
 
-  return next
+    const next = aggregateParamsSchema.parse(merged)
+    const valueJson = JSON.stringify(next)
+
+    tx.insert(settings)
+      .values({ tenantId, key: PARAMS_KEY, valueJson })
+      .onConflictDoUpdate({
+        target: [settings.tenantId, settings.key],
+        set: { valueJson, updatedAt: new Date() },
+      })
+      .run()
+
+    return next
+  })
 }
 
 /**

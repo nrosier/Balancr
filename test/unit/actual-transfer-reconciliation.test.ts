@@ -3,9 +3,14 @@
  * #333: a transfer that crosses the on-budget/off-budget boundary keeps its
  * category in Actual, so Balancr's own recomputed sum must count it too
  * instead of dropping every transfer as a same-side wash.
+ *
+ * `boundaryCrossingTransferLegIds` (#690) is the tag query's own version of the
+ * same rule: since that query is not restricted to on-budget accounts, a note
+ * can land on either leg, so both must be kept rather than only the on-budget one.
  */
 import { describe, expect, it } from 'vitest'
 import {
+  boundaryCrossingTransferLegIds,
   offBudgetTransferLegIds,
   transferFilter,
   type TransferLeg,
@@ -57,6 +62,28 @@ describe('offBudgetTransferLegIds', () => {
     ])
 
     expect(offBudgetTransferLegIds(legs, counterpartIsOffBudget)).toEqual(['leg-crossing'])
+  })
+})
+
+describe('boundaryCrossingTransferLegIds', () => {
+  it('keeps both legs of a crossing transfer, not just the on-budget one (#690)', () => {
+    // A tag query has no on-budget restriction, so Actual's note could be on
+    // either side of the same event — dropping the off-budget leg from the
+    // keep-list would silently zero out a tag placed there.
+    const legs: TransferLeg[] = [{ id: 'leg-onbudget', transferId: 'leg-offbudget' }]
+    const counterpartIsOffBudget = new Map([['leg-offbudget', true]])
+
+    expect(boundaryCrossingTransferLegIds(legs, counterpartIsOffBudget)).toEqual([
+      'leg-onbudget',
+      'leg-offbudget',
+    ])
+  })
+
+  it('drops a same-side wash, same as offBudgetTransferLegIds', () => {
+    const legs: TransferLeg[] = [{ id: 'leg-a', transferId: 'leg-b' }]
+    const counterpartIsOffBudget = new Map([['leg-b', false]])
+
+    expect(boundaryCrossingTransferLegIds(legs, counterpartIsOffBudget)).toEqual([])
   })
 })
 

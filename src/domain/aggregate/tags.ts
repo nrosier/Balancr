@@ -11,11 +11,11 @@
  * derived from that one stored series at read time (`loadTagTotals`), not stored as
  * separate columns: there is nothing a read-time sum over the series can't answer.
  */
-import { and, eq, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gte, notInArray, sql } from 'drizzle-orm'
 import type { ActualTag, TagMonthTotal } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
 import { tagMeta, tagMonthlyFacts } from '../../db/schema.ts'
-import { addMonths, monthRange } from '../../util/month.ts'
+import { addMonths } from '../../util/month.ts'
 import type { Transaction } from '../audit.ts'
 import type { PersistResult } from './facts.ts'
 
@@ -135,6 +135,15 @@ export interface TagTotal {
 }
 
 /**
+ * How much of the per-month series a page load returns — a display decision, not the
+ * sync job's own retention window (`config.JOBS_HISTORY_MONTHS`), the same split
+ * `budget.ts`'s own `HISTORY_MONTHS` draws for its trend charts (#692). Facts outside
+ * this window still count fully toward `allTimeNetCents` below; only the chart-sized
+ * `byMonth` series is bounded.
+ */
+const TAG_SERIES_MONTHS = 24
+
+/**
  * Every non-hidden tag with its three summary views, derived from the stored monthly
  * series rather than from a separately-maintained column — see this file's own doc
  * comment for why. "All-time" means every month `tag_monthly_facts` has ever held for
@@ -143,6 +152,12 @@ export interface TagTotal {
  *
  * `currentMonth` anchors both other windows: rolling 12 is the 12 months ending with
  * it, this-year is every stored month sharing its calendar year.
+ *
+ * The three summary figures are summed in SQL, not read row-by-row into JS: this is a
+ * request-time read, and `tag_monthly_facts` grows monotonically with tenant age × tag
+ * count with no retention cleanup of its own (#692), the same reasoning
+ * `loadNetWorthHistory` already gives for pushing its own sum into SQL. Only the
+ * `byMonth` series — capped to `TAG_SERIES_MONTHS` — still needs individual rows.
  */
 export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): TagTotal[] {
   const metaRows = db
@@ -152,7 +167,34 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
     .all()
   if (metaRows.length === 0) return []
 
-  const factRows = db.select().from(tagMonthlyFacts).where(eq(tagMonthlyFacts.tenantId, tenantId)).all()
+  const rolling12Start = addMonths(currentMonth, -11)
+  const yearPrefix = currentMonth.slice(0, 4)
+
+  const totalsRows = db
+    .select({
+      tagId: tagMonthlyFacts.tagId,
+      allTimeNetCents: sql<number>`sum(${tagMonthlyFacts.netCents})`,
+      rolling12NetCents: sql<number>`sum(case when ${tagMonthlyFacts.month} >= ${rolling12Start} then ${tagMonthlyFacts.netCents} else 0 end)`,
+      thisYearNetCents: sql<number>`sum(case when ${tagMonthlyFacts.month} like ${`${yearPrefix}%`} then ${tagMonthlyFacts.netCents} else 0 end)`,
+    })
+    .from(tagMonthlyFacts)
+    .where(eq(tagMonthlyFacts.tenantId, tenantId))
+    .groupBy(tagMonthlyFacts.tagId)
+    .all()
+  const totalsByTagId = new Map(totalsRows.map((row) => [row.tagId, row]))
+
+  const seriesCutoff = addMonths(currentMonth, -(TAG_SERIES_MONTHS - 1))
+  const factRows = db
+    .select({
+      tagId: tagMonthlyFacts.tagId,
+      month: tagMonthlyFacts.month,
+      netCents: tagMonthlyFacts.netCents,
+      txnCount: tagMonthlyFacts.txnCount,
+    })
+    .from(tagMonthlyFacts)
+    .where(and(eq(tagMonthlyFacts.tenantId, tenantId), gte(tagMonthlyFacts.month, seriesCutoff)))
+    .orderBy(tagMonthlyFacts.month)
+    .all()
 
   const byTagId = new Map<string, { month: string; netCents: number; txnCount: number }[]>()
   for (const row of factRows) {
@@ -164,27 +206,16 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
     series.push({ month: row.month, netCents: row.netCents, txnCount: row.txnCount })
   }
 
-  const rolling12 = new Set(monthRange(addMonths(currentMonth, -11), currentMonth))
-  const yearPrefix = currentMonth.slice(0, 4)
-
   return metaRows.map((meta) => {
-    const series = (byTagId.get(meta.tagId) ?? []).sort((a, b) => a.month.localeCompare(b.month))
-    let allTime = 0
-    let rolling = 0
-    let thisYear = 0
-    for (const point of series) {
-      allTime += point.netCents
-      if (rolling12.has(point.month)) rolling += point.netCents
-      if (point.month.startsWith(yearPrefix)) thisYear += point.netCents
-    }
+    const totals = totalsByTagId.get(meta.tagId)
     return {
       id: meta.tagId,
       tag: meta.tag,
       color: meta.color,
-      allTimeNetCents: allTime,
-      rolling12NetCents: rolling,
-      thisYearNetCents: thisYear,
-      byMonth: series,
+      allTimeNetCents: totals?.allTimeNetCents ?? 0,
+      rolling12NetCents: totals?.rolling12NetCents ?? 0,
+      thisYearNetCents: totals?.thisYearNetCents ?? 0,
+      byMonth: byTagId.get(meta.tagId) ?? [],
     }
   })
 }

@@ -163,6 +163,11 @@
     },
     "title": "Off-budget accounts"
   },
+  "reconcile": {
+    "hint": "Balancr never merges or removes anything here — only you know which entry, if either, is the one to drop.",
+    "line": "{{label}} might be the same money as the off-budget account \"{{accountName}}\".",
+    "title": "Possible double count"
+  },
   "property": {
     "balanceEstimate": "Estimated by amortizing forward from balances last confirmed against a statement — none more recently than {{date}}.",
     "caption_one": "One property.",

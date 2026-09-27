@@ -17,10 +17,10 @@ import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb, type Db } from '../../src/db/index.ts'
-import { users } from '../../src/db/schema.ts'
+import { tenants, users } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { OidcIdentity } from '../../src/server/auth/oidc.ts'
-import { resolveOidcUser } from '../../src/server/auth/users.ts'
+import { listTenantUsers, resolveOidcUser, setUserDisabled } from '../../src/server/auth/users.ts'
 import { HttpError } from '../../src/server/errors.ts'
 
 function freshDb(): ReturnType<typeof createTestDb> {
@@ -189,6 +189,108 @@ describe('a disabled account', () => {
       expect(thrown).toBeInstanceOf(HttpError)
       expect((thrown as HttpError).statusCode).toBe(403)
       expect(db.select().from(users).all()[0]?.disabled).toBe(true)
+    } finally {
+      sqlite.close()
+    }
+  })
+})
+
+describe('listing a tenant’s users (#695)', () => {
+  it('lists oldest first', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const first = seedUser(db, { oidcSub: 'ak-1', email: 'first@example.test' })
+      const second = seedUser(db, { oidcSub: 'ak-2', email: 'second@example.test', role: 'viewer' })
+
+      const rows = listTenantUsers(db, getSoleTenantId(db))
+      expect(rows.map((r) => r.id)).toEqual([first, second])
+      expect(rows[1]?.role).toBe('viewer')
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('does not see another tenant’s users', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      seedUser(db)
+      const mine = getSoleTenantId(db)
+      const otherTenant = db.insert(tenants).values({ label: 'Other' }).returning().all()[0]
+      if (otherTenant === undefined) throw new Error('no tenant')
+      db.insert(users).values({ tenantId: otherTenant.id, email: 'stranger@example.test' }).run()
+
+      expect(listTenantUsers(db, otherTenant.id)).toHaveLength(1)
+      expect(listTenantUsers(db, mine)).toHaveLength(1)
+    } finally {
+      sqlite.close()
+    }
+  })
+})
+
+describe('disabling or re-enabling a user (#695)', () => {
+  it('flips the column', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const tenantId = getSoleTenantId(db)
+      const owner = seedUser(db, { oidcSub: 'owner', email: 'owner@example.test' })
+      const viewer = seedUser(db, { oidcSub: 'viewer', email: 'viewer@example.test', role: 'viewer' })
+
+      const disabled = setUserDisabled(db, tenantId, viewer, true)
+      expect(disabled.disabled).toBe(true)
+      expect(db.select().from(users).where(eq(users.id, viewer)).all()[0]?.disabled).toBe(true)
+
+      const reenabled = setUserDisabled(db, tenantId, viewer, false)
+      expect(reenabled.disabled).toBe(false)
+      // The owner was never touched.
+      expect(db.select().from(users).where(eq(users.id, owner)).all()[0]?.disabled).toBe(false)
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('refuses to disable the only enabled owner', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const tenantId = getSoleTenantId(db)
+      const owner = seedUser(db)
+
+      // Disabling the last owner standing would lock the whole household out, with
+      // no in-app way back — the same reasoning `setUserLocale`'s own doc comment
+      // gives for why role has no in-app path back either.
+      expect(() => setUserDisabled(db, tenantId, owner, true)).toThrow(/only enabled owner/)
+      expect(db.select().from(users).where(eq(users.id, owner)).all()[0]?.disabled).toBe(false)
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('allows disabling one owner while another stays enabled', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const tenantId = getSoleTenantId(db)
+      const first = seedUser(db, { oidcSub: 'owner-1', email: 'owner1@example.test' })
+      const second = seedUser(db, { oidcSub: 'owner-2', email: 'owner2@example.test' })
+
+      const result = setUserDisabled(db, tenantId, first, true)
+      expect(result.disabled).toBe(true)
+      expect(db.select().from(users).where(eq(users.id, second)).all()[0]?.disabled).toBe(false)
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('rejects a user id that does not exist in that tenant', () => {
+    const { db, sqlite } = freshDb()
+    try {
+      const tenantId = getSoleTenantId(db)
+      let thrown: unknown
+      try {
+        setUserDisabled(db, tenantId, 'not-a-real-user', true)
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBeInstanceOf(HttpError)
+      expect((thrown as HttpError).statusCode).toBe(404)
     } finally {
       sqlite.close()
     }

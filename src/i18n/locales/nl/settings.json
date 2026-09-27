@@ -97,11 +97,13 @@
     },
     "empty": "Er is nog niets geregistreerd.",
     "hideChange": "Verberg wat er veranderde",
+    "hideChangeFor": "Verberg wat er veranderde voor de vermelding op {{when}}",
     "hint": "Elke wijziging die een mens goedkeurde aan een instelling of een suggestie, nieuwste eerst. Alleen voor de eigenaar: wat er veranderde kan de naam van een co-ouder of een bedrag noemen dat een meelezer niet zou mogen zien.",
     "none": "Geen",
     "system": "Systeem",
     "title": "Auditlog",
-    "viewChange": "Toon wat er veranderde"
+    "viewChange": "Toon wat er veranderde",
+    "viewChangeFor": "Toon wat er veranderde voor de vermelding op {{when}}"
   },
   "benchmark": {
     "coicop": {
