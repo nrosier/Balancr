@@ -133,6 +133,7 @@ export type {
   SpendMonthSetting,
   Status,
   Suggestion,
+  TagTotals,
 } from '../../src/server/routes/api/schemas.ts'
 
 export {

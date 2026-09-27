@@ -372,6 +372,32 @@ export const forecastSchema = z.object({
 export type Forecast = z.infer<typeof forecastSchema>
 
 // ---------------------------------------------------------------------------
+//  Tags (#663)
+// ---------------------------------------------------------------------------
+
+export const tagMonthTotalSchema = z.object({
+  month: monthKey(),
+  netCents: cents(),
+  txnCount: z.int().nonnegative(),
+})
+
+export const tagTotalSchema = z.object({
+  id: z.string(),
+  tag: z.string(),
+  color: z.string().nullable(),
+  allTimeNetCents: cents(),
+  rolling12NetCents: cents(),
+  thisYearNetCents: cents(),
+  byMonth: z.array(tagMonthTotalSchema),
+})
+
+export const tagTotalsSchema = z.object({
+  freshness: freshnessSchema,
+  tags: z.array(tagTotalSchema),
+})
+export type TagTotals = z.infer<typeof tagTotalsSchema>
+
+// ---------------------------------------------------------------------------
 //  Scenario (#51)
 // ---------------------------------------------------------------------------
 

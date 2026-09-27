@@ -111,7 +111,8 @@
     "overview": "Overview",
     "portfolio": "Portfolio",
     "scenario": "Scenario",
-    "settings": "Settings"
+    "settings": "Settings",
+    "tags": "Tags"
   },
   "notConfigured": {
     "actual": {
@@ -150,6 +151,9 @@
     },
     "settings": {
       "lede": "Language, prompts, thresholds and which source owns each account."
+    },
+    "tags": {
+      "lede": "Net cost or gain for anything tagged in Actual, cutting across categories and budget lines."
     }
   },
   "periodPicker": {

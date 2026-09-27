@@ -1,0 +1,13 @@
+{
+  "table": {
+    "caption_one": "Eén tag bijgehouden.",
+    "caption_other": "{{value}} tags bijgehouden.",
+    "column": {
+      "allTime": "Sinds altijd",
+      "rolling12": "Laatste 12 maanden",
+      "tag": "Tag",
+      "thisYear": "Dit jaar"
+    }
+  },
+  "title": "Totalen per tag"
+}

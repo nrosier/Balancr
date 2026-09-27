@@ -28,6 +28,7 @@ import {
   IconPortfolio,
   IconScenario,
   IconSettings,
+  IconTags,
   type IconProps,
 } from './shell/icons.tsx'
 
@@ -119,6 +120,12 @@ export const ROUTES: readonly AppRoute[] = [
     labelKey: 'nav.scenario',
     Icon: IconScenario,
     ...page(() => import('./pages/Scenario.tsx'), 'Scenario'),
+  },
+  {
+    path: '/tags',
+    labelKey: 'nav.tags',
+    Icon: IconTags,
+    ...page(() => import('./pages/Tags.tsx'), 'Tags'),
   },
   {
     path: '/insights',

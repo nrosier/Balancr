@@ -412,6 +412,31 @@ export const scheduleMeta = sqliteTable(
 )
 
 /**
+ * What Balancr knows about each Actual tag, refreshed on every sync (#663).
+ *
+ * Every column here is Actual-owned — there is no user-entered field to protect, so the
+ * sync upsert refreshes the whole row every time, same as `scheduleMeta`. `tag` is
+ * captured only for this feature's own page — see `fetchTags`'s doc comment in
+ * `adapters/actual/queries.ts` for why that capture stays clear of `redact.ts`/Gemini.
+ */
+export const tagMeta = sqliteTable(
+  'tag_meta',
+  {
+    /** Actual's own tag id, from `getTags()`. */
+    tagId: text('tag_id').notNull(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** The tag string itself, without its leading `#`. */
+    tag: text().notNull(),
+    color: text(),
+    hidden: integer({ mode: 'boolean' }).notNull().default(false),
+    updatedAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.tagId] })],
+)
+
+/**
  * An owner's own translation of one category's name into one locale (#479).
  *
  * Never holds a row for the household's configured source locale — that locale's
@@ -578,6 +603,33 @@ export const monthlyCategoryFacts = sqliteTable(
     primaryKey({ columns: [t.tenantId, t.month, t.categoryId] }),
     index('facts_month_idx').on(t.month),
     index('facts_category_idx').on(t.categoryId),
+  ],
+)
+
+/**
+ * Per-tag net cost/gain per month (#663), rebuilt idempotently like
+ * `monthlyCategoryFacts` — same upsert-not-delete-then-insert reasoning, and the same
+ * explicit stale-row removal so a tag no longer used in a recomputed month doesn't
+ * survive as a ghost row. `netCents` is signed in Actual's own convention: negative is
+ * a net cost, positive a net gain. All three requested views (all-time, rolling window,
+ * this year) are sums over this one stored series, computed at read time rather than
+ * stored — there is nothing here `loadTagTotals` couldn't derive from the raw rows.
+ */
+export const tagMonthlyFacts = sqliteTable(
+  'tag_monthly_facts',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    month: text().notNull(), // YYYY-MM
+    tagId: text('tag_id').notNull(),
+    netCents: integer('net_cents').notNull().default(0),
+    txnCount: integer('txn_count').notNull().default(0),
+    computedAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.month, t.tagId] }),
+    index('tag_facts_month_idx').on(t.month),
   ],
 )
 

@@ -101,6 +101,16 @@ export const IconInsights = (props: IconProps): ReactNode =>
     props,
   )
 
+/** Tags — a price tag, its hole and knot. */
+export const IconTags = (props: IconProps): ReactNode =>
+  svg(
+    <>
+      <path d="M10.5 3.5H5.8A1.5 1.5 0 0 0 4.7 4L3.5 9.7a1.5 1.5 0 0 0 .44 1.4l6 6a1.5 1.5 0 0 0 2.12 0l4.9-4.9a1.5 1.5 0 0 0 0-2.12l-6-6a1.5 1.5 0 0 0-1.06-.44Z" />
+      <circle cx="8" cy="7.5" r="1.2" />
+    </>,
+    props,
+  )
+
 /** Settings. */
 export const IconSettings = (props: IconProps): ReactNode =>
   svg(
