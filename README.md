@@ -14,8 +14,8 @@
   badge drifts from package.json, or if a dynamic one comes back.
 -->
 <p align="center">
-  <a href="https://github.com/nrosier/Balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/Balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/Balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.1-blue"></a>
+  <a href="https://github.com/nrosier/balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/balancr/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/nrosier/balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.1-blue"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -223,8 +223,8 @@ API key (a paid one — the free tier may use prompts to improve Google's models
 provider can then be changed per tenant in Settings, including to native Anthropic Claude.
 
 ```bash
-git clone https://github.com/nrosier/Balancr.git
-cd Balancr
+git clone https://github.com/nrosier/balancr.git
+cd balancr
 cp .env.example .env && chmod 600 .env   # then fill it in
 docker compose up -d
 ```
@@ -1035,7 +1035,7 @@ for details). Existing deployments upgrade in place.
 `docker pull` now resolves `latest` to `2.5.1`; a release candidate is
 published under its own tag only, same as before.
 
-Progress is tracked as [issues](https://github.com/nrosier/Balancr/issues), grouped
+Progress is tracked as [issues](https://github.com/nrosier/balancr/issues), grouped
 by milestone. [`CHANGELOG.md`](CHANGELOG.md) records what each version changed and
 why, one entry per release — this section used to repeat that history in prose and no
 longer does.

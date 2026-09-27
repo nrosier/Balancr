@@ -88,7 +88,7 @@ granted only for the duration of a call made on that tenant's behalf, via
 configured integration host from permanently widening what *any* fetch in the
 process can reach. The mechanism's current implementation (a process-global
 map rather than a per-call context) has a narrower residual gap — see
-[#548](https://github.com/nrosier/Balancr/issues/548).
+[#548](https://github.com/nrosier/balancr/issues/548).
 
 Tenant-controlled Actual/Ghostfolio URLs are themselves unrestricted — no
 scheme check, no block on private/internal addresses — because self-hosted

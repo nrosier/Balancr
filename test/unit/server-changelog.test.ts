@@ -26,7 +26,7 @@ All notable changes to Balancr.
 
 ### Added
 
-- **A thing happened** ([#12](https://github.com/nrosier/Balancr/issues/12)).
+- **A thing happened** ([#12](https://github.com/nrosier/balancr/issues/12)).
   More detail on the same bullet.
 - Another bullet.
 
@@ -67,7 +67,7 @@ describe('parseChangelog', () => {
   it('builds the release link from the version, not from the markdown', () => {
     const changelog = parseChangelog(FIXTURE)
     expect(changelog.entries[0]?.releaseUrl).toBe(
-      'https://github.com/nrosier/Balancr/releases/tag/v0.2.0',
+      'https://github.com/nrosier/balancr/releases/tag/v0.2.0',
     )
   })
 

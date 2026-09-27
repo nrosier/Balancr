@@ -65,7 +65,7 @@ export function parseChangelog(raw: string | null): Changelog {
       // Built from the version, not parsed out of the markdown — the tag
       // convention (`git tag` shows `v0.9.0`, `v0.10.0`, …) is stable even
       // where the body text itself changes.
-      releaseUrl: `https://github.com/nrosier/Balancr/releases/tag/v${entry.version}`,
+      releaseUrl: `https://github.com/nrosier/balancr/releases/tag/v${entry.version}`,
     })),
   })
 }

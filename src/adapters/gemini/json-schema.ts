@@ -36,7 +36,7 @@
  * whole run. Scalar bounds (`minimum`, `maximum`) stay: they are cheap, they do
  * not multiply, and they were verified to pass.
  *
- * [#96]: https://github.com/nrosier/Balancr/issues/96
+ * [#96]: https://github.com/nrosier/balancr/issues/96
  */
 
 /**

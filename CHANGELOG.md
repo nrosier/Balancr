@@ -11,107 +11,107 @@ rather than when the feature list ends.
 ### Added
 
 - **A property's rent, and a mortgage's monthly payment, can now be linked to an Actual Budget category**
-  ([#643](https://github.com/nrosier/Balancr/issues/643)). The link is validated for direction (rent must point at an income category, a payment at an expense one) and rejects a hidden category; once linked, a read-only line compares the stored figure against the category's actual spend/income for the latest synced month. Deliberately read-only for now — no reconciliation UX yet.
+  ([#643](https://github.com/nrosier/balancr/issues/643)). The link is validated for direction (rent must point at an income category, a payment at an expense one) and rejects a hidden category; once linked, a read-only line compares the stored figure against the category's actual spend/income for the latest synced month. Deliberately read-only for now — no reconciliation UX yet.
 
 ### Changed
 
 - **Integrations settings splits into Actual Budget / Ghostfolio subtabs**, mirroring the earlier Net worth split
-  ([#650](https://github.com/nrosier/Balancr/issues/650)). Presentation only — the settings API is unchanged.
+  ([#650](https://github.com/nrosier/balancr/issues/650)). Presentation only — the settings API is unchanged.
 - **The Overview page's savings rate and savings goals now share one "Savings" card** instead of the rate sitting in the top metrics grid
-  ([#652](https://github.com/nrosier/Balancr/issues/652)).
+  ([#652](https://github.com/nrosier/balancr/issues/652)).
 
 ### Fixed
 
 - **The category-mapping table's COICOP division picker stayed enabled for income and hidden categories**, which the benchmark comparison already skips
-  ([#651](https://github.com/nrosier/Balancr/issues/651)). It's now disabled for both, matching the existing pattern on the shared/nature columns of the same row.
+  ([#651](https://github.com/nrosier/balancr/issues/651)). It's now disabled for both, matching the existing pattern on the shared/nature columns of the same row.
 - **Saving a property with kind "owned" 400'd** — the `PATCH /api/settings/property` request schema hand-maintained a shorter kind list than the domain's own, even though the settings form already let a user pick it
-  ([#658](https://github.com/nrosier/Balancr/issues/658)).
+  ([#658](https://github.com/nrosier/balancr/issues/658)).
 
 ## [2.5.0] — 2026-09-26
 
 ### Security
 
 - **The egress guard's per-call host allowance was a process-global map, not actually scoped to the call that requested it**
-  ([#548](https://github.com/nrosier/Balancr/issues/548)). It now rides `AsyncLocalStorage`, so one tenant's in-flight request can no longer widen — even briefly — what a concurrent call from another tenant is allowed to reach.
+  ([#548](https://github.com/nrosier/balancr/issues/548)). It now rides `AsyncLocalStorage`, so one tenant's in-flight request can no longer widen — even briefly — what a concurrent call from another tenant is allowed to reach.
 - **A stored AI API key survived a changed custom OpenAI-compatible base URL, unlike the equivalent Actual/Ghostfolio secrets**
-  ([#579](https://github.com/nrosier/Balancr/issues/579)). Changing the base URL host now invalidates the stored key, matching the pattern already enforced for the other two integrations.
+  ([#579](https://github.com/nrosier/balancr/issues/579)). Changing the base URL host now invalidates the stored key, matching the pattern already enforced for the other two integrations.
 - **The local-auth failed-attempt counter and TOTP replay check were read-modify-write, not atomic**
-  ([#550](https://github.com/nrosier/Balancr/issues/550)), leaving a race that could let concurrent login attempts dodge a lockout or replay a TOTP code. Both are now atomic.
+  ([#550](https://github.com/nrosier/balancr/issues/550)), leaving a race that could let concurrent login attempts dodge a lockout or replay a TOTP code. Both are now atomic.
 - **AES-256-GCM cipher/decipher calls didn't pin `authTagLength`**
-  ([#616](https://github.com/nrosier/Balancr/issues/616)), relying on Node's default instead of an explicit, defense-in-depth pin.
+  ([#616](https://github.com/nrosier/balancr/issues/616)), relying on Node's default instead of an explicit, defense-in-depth pin.
 - **Digest email delivery allowed a silent cleartext fallback if the relay didn't offer STARTTLS**
-  ([#580](https://github.com/nrosier/Balancr/issues/580)). STARTTLS is now required by default.
+  ([#580](https://github.com/nrosier/balancr/issues/580)). STARTTLS is now required by default.
 - **Integration test-connection requests had no tenant-scoped rate cap**
-  ([#588](https://github.com/nrosier/Balancr/issues/588)), letting one tenant's test-connection traffic run unbounded.
+  ([#588](https://github.com/nrosier/balancr/issues/588)), letting one tenant's test-connection traffic run unbounded.
 - **`forgetProbe` deleted every tenant's probe row for a source, unscoped**
-  ([#589](https://github.com/nrosier/Balancr/issues/589)). It had no remaining callers, so it was removed rather than given a tenant-scoped path that would immediately go unused again.
+  ([#589](https://github.com/nrosier/balancr/issues/589)). It had no remaining callers, so it was removed rather than given a tenant-scoped path that would immediately go unused again.
 - **Settings responses leaked another tenant's integration hostnames, sync id, model prices/budget, and pending invites to a viewer**
-  ([#586](https://github.com/nrosier/Balancr/issues/586)). All four are now masked from viewer-role responses.
+  ([#586](https://github.com/nrosier/balancr/issues/586)). All four are now masked from viewer-role responses.
 
 ### Added
 
 - **Monthly digest as a downloadable PDF or an emailed one**
-  ([#52](https://github.com/nrosier/Balancr/issues/52)). The AI narrative can now be delivered as a rendered PDF or by email instead of only being viewed on the Insights page; digest mode, recipients, and stored PDFs are all tenant-scoped.
+  ([#52](https://github.com/nrosier/balancr/issues/52)). The AI narrative can now be delivered as a rendered PDF or by email instead of only being viewed on the Insights page; digest mode, recipients, and stored PDFs are all tenant-scoped.
 - **The audit trail is readable, not just written**
-  ([#592](https://github.com/nrosier/Balancr/issues/592)). An owner-only `GET /api/audit` route and a new "General > Audit trail" settings panel show an expandable before/after view; the tab is hidden entirely for viewers rather than shown and rejected.
+  ([#592](https://github.com/nrosier/balancr/issues/592)). An owner-only `GET /api/audit` route and a new "General > Audit trail" settings panel show an expandable before/after view; the tab is hidden entirely for viewers rather than shown and rejected.
 
 ### Changed
 
 - **`SESSION_SECRET`, a required env var with no runtime consumer, has been removed**
-  ([#552](https://github.com/nrosier/Balancr/issues/552)). Existing deployments can drop it from `.env`; it was never read.
+  ([#552](https://github.com/nrosier/balancr/issues/552)). Existing deployments can drop it from `.env`; it was never read.
 
 ### Fixed
 
 - **A generated migration's `PRAGMA foreign_keys=OFF` was a no-op inside Drizzle's own transaction, so an upgrade could still cascade-delete child rows it meant to preserve**
-  ([#577](https://github.com/nrosier/Balancr/issues/577)).
+  ([#577](https://github.com/nrosier/balancr/issues/577)).
 - **An owner could permanently brick the settings screen by entering an unbounded `budgetEur` or AI model price, and overspend's own basis-point/cents fields had the same gap**
-  ([#578](https://github.com/nrosier/Balancr/issues/578), [#595](https://github.com/nrosier/Balancr/issues/595)). Both are now bounded to what the app's own storage (`microEur`, cents) can represent.
+  ([#578](https://github.com/nrosier/balancr/issues/578), [#595](https://github.com/nrosier/balancr/issues/595)). Both are now bounded to what the app's own storage (`microEur`, cents) can represent.
 - **A hung job could stall every tenant's queue — `buildDigestPdf` among them — with no timeout to break it**
-  ([#583](https://github.com/nrosier/Balancr/issues/583)). The job queue is now also scoped per tenant to match `jobsInFlight`'s own accounting ([#602](https://github.com/nrosier/Balancr/issues/602)), and the sync job's compute-step writes ([#591](https://github.com/nrosier/Balancr/issues/591)) and `saveMonthNote`'s read-modify-write ([#590](https://github.com/nrosier/Balancr/issues/590)) now each run inside one transaction instead of several.
+  ([#583](https://github.com/nrosier/balancr/issues/583)). The job queue is now also scoped per tenant to match `jobsInFlight`'s own accounting ([#602](https://github.com/nrosier/balancr/issues/602)), and the sync job's compute-step writes ([#591](https://github.com/nrosier/balancr/issues/591)) and `saveMonthNote`'s read-modify-write ([#590](https://github.com/nrosier/balancr/issues/590)) now each run inside one transaction instead of several.
 - **The month note was retained verbatim, forever, in `audit_log`, bypassing its own retention window**
-  ([#581](https://github.com/nrosier/Balancr/issues/581)). Household/digest change audit entries now record the shape of what changed rather than the values themselves ([#582](https://github.com/nrosier/Balancr/issues/582)), and a failed apply-batch no longer echoes the raw exception message back to the caller ([#587](https://github.com/nrosier/Balancr/issues/587)).
+  ([#581](https://github.com/nrosier/balancr/issues/581)). Household/digest change audit entries now record the shape of what changed rather than the values themselves ([#582](https://github.com/nrosier/balancr/issues/582)), and a failed apply-batch no longer echoes the raw exception message back to the caller ([#587](https://github.com/nrosier/balancr/issues/587)).
 - **Digest recipients were exposed to each other and to a viewer instead of being bcc'd/masked**
-  ([#572](https://github.com/nrosier/Balancr/issues/572), [#573](https://github.com/nrosier/Balancr/issues/573), [#584](https://github.com/nrosier/Balancr/issues/584)). Recipients are now bcc'd on send and masked from viewer-role settings responses.
+  ([#572](https://github.com/nrosier/balancr/issues/572), [#573](https://github.com/nrosier/balancr/issues/573), [#584](https://github.com/nrosier/balancr/issues/584)). Recipients are now bcc'd on send and masked from viewer-role settings responses.
 - **A stale digest PDF could survive a mode change or get served after switching away from PDF mode, and checking whether one existed loaded its full bytes into memory just to answer a boolean**
-  ([#585](https://github.com/nrosier/Balancr/issues/585), [#594](https://github.com/nrosier/Balancr/issues/594)). The route now checks the current mode before serving a stored PDF (a migration also sweeps existing stranded rows), existence is a single-row check rather than a full blob load, and the embedded net worth chart is now capped at 180 points ([#609](https://github.com/nrosier/Balancr/issues/609)).
+  ([#585](https://github.com/nrosier/balancr/issues/585), [#594](https://github.com/nrosier/balancr/issues/594)). The route now checks the current mode before serving a stored PDF (a migration also sweeps existing stranded rows), existence is a single-row check rather than a full blob load, and the embedded net worth chart is now capped at 180 points ([#609](https://github.com/nrosier/balancr/issues/609)).
 - **Four whole-table reads did their sort/filter/limit in application code instead of SQL**
-  ([#606](https://github.com/nrosier/Balancr/issues/606)). `/api/insights`'s proposal target-name lookups are now batched instead of one-per-proposal ([#605](https://github.com/nrosier/Balancr/issues/605)), and category mapping now has a targeted single-row lookup instead of scanning the whole table ([#607](https://github.com/nrosier/Balancr/issues/607)).
+  ([#606](https://github.com/nrosier/balancr/issues/606)). `/api/insights`'s proposal target-name lookups are now batched instead of one-per-proposal ([#605](https://github.com/nrosier/balancr/issues/605)), and category mapping now has a targeted single-row lookup instead of scanning the whole table ([#607](https://github.com/nrosier/balancr/issues/607)).
 - **The nightly `VACUUM INTO` ran on the main thread, blocking every other request for its duration**
-  ([#608](https://github.com/nrosier/Balancr/issues/608)). It now runs in a forked worker.
+  ([#608](https://github.com/nrosier/balancr/issues/608)). It now runs in a forked worker.
 - **The migrations folder path used `URL.pathname` instead of `fileURLToPath`**
-  ([#598](https://github.com/nrosier/Balancr/issues/598)), which mishandles spaces and special characters in a filesystem path on some platforms.
+  ([#598](https://github.com/nrosier/balancr/issues/598)), which mishandles spaces and special characters in a filesystem path on some platforms.
 
 ## [2.4.0] — 2026-09-25
 
 ### Security
 
 - **A "test connection" request could be tricked into sending a tenant's stored Actual/Ghostfolio secret to an attacker-controlled host**
-  ([#534](https://github.com/nrosier/Balancr/issues/534)). The stored-secret fallback (used when a test-connection request omits the password/token) is now gated on the candidate URL matching, scheme and host, the URL the secret was last verified against; a candidate URL embedding credentials (`user:pass@host`) is rejected outright.
+  ([#534](https://github.com/nrosier/balancr/issues/534)). The stored-secret fallback (used when a test-connection request omits the password/token) is now gated on the candidate URL matching, scheme and host, the URL the secret was last verified against; a candidate URL embedding credentials (`user:pass@host`) is rejected outright.
 - **A tenant's saved Actual/Ghostfolio URL widened the whole process's egress allowlist, not just that tenant's own traffic**
-  ([#535](https://github.com/nrosier/Balancr/issues/535)). `withScopedHost` (renamed from `withTestHost`) now grants a host for the duration of one call made on that tenant's behalf — Ghostfolio's real traffic included, not just its test-connection check — instead of adding it to a set every fetch in the process is checked against. A PATCH that changes a stored host now also invalidates the secret verified against the old one.
+  ([#535](https://github.com/nrosier/balancr/issues/535)). `withScopedHost` (renamed from `withTestHost`) now grants a host for the duration of one call made on that tenant's behalf — Ghostfolio's real traffic included, not just its test-connection check — instead of adding it to a set every fetch in the process is checked against. A PATCH that changes a stored host now also invalidates the secret verified against the old one.
 - **The Actual worker's real per-tenant traffic ran through a completely unguarded `fetch`, unlike its own test-connection check**
-  ([#536](https://github.com/nrosier/Balancr/issues/536)). Each tenant's long-lived worker process now installs the egress guard on open and scopes every later request to that tenant's own server URL, mirroring the pattern above already established for Ghostfolio.
+  ([#536](https://github.com/nrosier/balancr/issues/536)). Each tenant's long-lived worker process now installs the egress guard on open and scopes every later request to that tenant's own server URL, mirroring the pattern above already established for Ghostfolio.
 - **AI retention nulled the old request/response text but left the full redacted payload readable indefinitely, including the one field sent unredacted (the month note)**
-  ([#539](https://github.com/nrosier/Balancr/issues/539)). Past `AI_RUNS_TEXT_RETENTION_DAYS`, `payload_json` is now cleared alongside it; the dedup hash is kept, since a hash can't be turned back into the payload it was computed from.
+  ([#539](https://github.com/nrosier/balancr/issues/539)). Past `AI_RUNS_TEXT_RETENTION_DAYS`, `payload_json` is now cleared alongside it; the dedup hash is kept, since a hash can't be turned back into the payload it was computed from.
 - **A remote Actual write could outlive a proposal that was rejected while the write was in flight, with nothing recording that it happened**
-  ([#540](https://github.com/nrosier/Balancr/issues/540)). That race is a known, accepted tradeoff — both remote handlers are idempotent, so recovery is a manual re-apply, not a double-apply — but it now logs a warning with the proposal's id, type, and target ref, so the re-apply has something to notice.
+  ([#540](https://github.com/nrosier/balancr/issues/540)). That race is a known, accepted tradeoff — both remote handlers are idempotent, so recovery is a manual re-apply, not a double-apply — but it now logs a warning with the proposal's id, type, and target ref, so the re-apply has something to notice.
 - **The README's privacy claims hadn't kept up with what the app actually does**
-  ([#541](https://github.com/nrosier/Balancr/issues/541), [#542](https://github.com/nrosier/Balancr/issues/542)). It now discloses that the free-text month note is sent to the AI unredacted, by design, and that an approved proposal does write back to Actual — Ghostfolio remains unconditionally read-only.
+  ([#541](https://github.com/nrosier/balancr/issues/541), [#542](https://github.com/nrosier/balancr/issues/542)). It now discloses that the free-text month note is sent to the AI unredacted, by design, and that an approved proposal does write back to Actual — Ghostfolio remains unconditionally read-only.
 
 ### Added
 
 - **Prompt versions can be given a short, household-chosen name**, distinct from the existing "why this version exists" note
-  ([#530](https://github.com/nrosier/Balancr/issues/530)).
+  ([#530](https://github.com/nrosier/balancr/issues/530)).
 
 ### Changed
 
 - **Settings shrinks from 13 top-level tabs to 7**
-  ([#528](https://github.com/nrosier/Balancr/issues/528)). AI provider config, Prompts, and the AI activity log move under one new AI section; Accounts, Property, Loans, Debts, and Goals move under a new Net worth section.
+  ([#528](https://github.com/nrosier/balancr/issues/528)). AI provider config, Prompts, and the AI activity log move under one new AI section; Accounts, Property, Loans, Debts, and Goals move under a new Net worth section.
 
 ### Fixed
 
 - **Checking one prompt version's safety verdict could flip a sibling version's badge back to "Not checked"**
-  ([#529](https://github.com/nrosier/Balancr/issues/529)). Each row's verdict is now tracked independently instead of sharing one last-checked slot.
+  ([#529](https://github.com/nrosier/balancr/issues/529)). Each row's verdict is now tracked independently instead of sharing one last-checked slot.
 
 ## [2.3.9] — 2026-09-25
 
@@ -120,13 +120,13 @@ rather than when the feature list ends.
 - **A Dockerfile comment claimed every `FROM` was already a bare digest with
   no tag, contradicting the paragraph right after it explaining why the tag
   is kept**
-  ([#526](https://github.com/nrosier/Balancr/issues/526)). Reworded to
+  ([#526](https://github.com/nrosier/balancr/issues/526)). Reworded to
   describe what `pinDigests: false` actually governs — converting a floating
   tag to a digest, not refreshing an existing tag+digest pin. Comment-only,
   no build behavior changed.
 - **A rate-limit test's cost and runtime depended on `RATE_LIMIT_AI_PER_HOUR`,
   an ambient config value, rather than a value fixed by the test itself**
-  ([#527](https://github.com/nrosier/Balancr/issues/527)). The burst now
+  ([#527](https://github.com/nrosier/balancr/issues/527)). The burst now
   loops against `AI_RATE_LIMIT.max`, the exact constant the route's limiter
   was actually built from, instead of independently re-reading config.
 
@@ -136,9 +136,9 @@ rather than when the feature list ends.
 
 - **Savings goals: category-linked goals, a required-monthly-savings figure,
   a pace status, and a done/archive lifecycle**
-  ([#407](https://github.com/nrosier/Balancr/issues/407),
-  [#522](https://github.com/nrosier/Balancr/pull/522),
-  [#524](https://github.com/nrosier/Balancr/pull/524)). Alongside the
+  ([#407](https://github.com/nrosier/balancr/issues/407),
+  [#522](https://github.com/nrosier/balancr/pull/522),
+  [#524](https://github.com/nrosier/balancr/pull/524)). Alongside the
   existing net-worth-kind goals (`liquid`/`invested`/`total`), a goal can now
   target a specific Actual Budget envelope's rolling balance, and several
   goals can share one envelope — the pool splits proportional to urgency
@@ -156,8 +156,8 @@ rather than when the feature list ends.
 
 - **Settings → AI gained a log tab: every recorded call, with its exact raw
   request and response text**
-  ([#497](https://github.com/nrosier/Balancr/issues/497),
-  [#501](https://github.com/nrosier/Balancr/pull/501)). `ai_runs` now stores
+  ([#497](https://github.com/nrosier/balancr/issues/497),
+  [#501](https://github.com/nrosier/balancr/pull/501)). `ai_runs` now stores
   the exact system+instruction+data text prepared for the provider and the
   exact raw reply on every row, including `blocked`/`capped` calls (recorded
   as "prepared but never sent"); a `reused` row resolves its response from
@@ -170,10 +170,10 @@ rather than when the feature list ends.
 - **A rejudged past month's `net_worth_high` and `emergency_fund_short`
   signals, and the narrative bundle for a past month, no longer cite a net
   worth synced after that month closed**
-  ([#498](https://github.com/nrosier/Balancr/issues/498),
-  [#504](https://github.com/nrosier/Balancr/issues/504),
-  [#505](https://github.com/nrosier/Balancr/pull/505),
-  [#508](https://github.com/nrosier/Balancr/pull/508)). Both the narrative
+  ([#498](https://github.com/nrosier/balancr/issues/498),
+  [#504](https://github.com/nrosier/balancr/issues/504),
+  [#505](https://github.com/nrosier/balancr/pull/505),
+  [#508](https://github.com/nrosier/balancr/pull/508)). Both the narrative
   bundle and the nightly signals job read the tenant's *latest* net-worth
   snapshot regardless of which month was being analysed, so an earlier
   month's narrative or a rejudged past month could pick up a balance from
@@ -183,8 +183,8 @@ rather than when the feature list ends.
   the latest snapshot on or before the month's own end.
 - **A stale Gemini prompt cache no longer fails every call until the
   process restarts**
-  ([#499](https://github.com/nrosier/Balancr/issues/499),
-  [#506](https://github.com/nrosier/Balancr/pull/506)). Google deletes a
+  ([#499](https://github.com/nrosier/balancr/issues/499),
+  [#506](https://github.com/nrosier/balancr/pull/506)). Google deletes a
   `caches.create()` resource server-side after its own TTL (one hour), but
   the held cache name was reused forever; a call made after the TTL sent a
   now-deleted name and failed outright with 403 `CachedContent not found`,
@@ -194,8 +194,8 @@ rather than when the feature list ends.
   instead of failing the call.
 - **Privacy mode now masks the figures in Findings, Pending and Ledger, the
   same as it already did for the Narrative**
-  ([#489](https://github.com/nrosier/Balancr/issues/489),
-  [#507](https://github.com/nrosier/Balancr/pull/507)). Narrative's own
+  ([#489](https://github.com/nrosier/balancr/issues/489),
+  [#507](https://github.com/nrosier/balancr/pull/507)). Narrative's own
   masking shipped in 2.3.4; these three render through
   normal React rather than raw markdown, so they reuse the existing
   `<Private>`/`data-private` mechanism instead of Narrative's `<amount>`
@@ -203,18 +203,18 @@ rather than when the feature list ends.
   fields and AI explanation, and the raw redacted request/response JSON
   are all wrapped now.
 - **The AI log's run list can reach transcripts past the first 50**
-  ([#502](https://github.com/nrosier/Balancr/issues/502),
-  [#509](https://github.com/nrosier/Balancr/pull/509)). The log always
+  ([#502](https://github.com/nrosier/balancr/issues/502),
+  [#509](https://github.com/nrosier/balancr/pull/509)). The log always
   asked for the newest 50 runs with no way to page past them, so once a
   tenant passed 50 recorded calls, everything older became permanently
   unreachable through the screen. A "Load older calls" button now pages
   backwards from a cursor.
 - **`ai_runs`'s stored request/response text is now cleared after a
   retention window instead of growing forever**
-  ([#503](https://github.com/nrosier/Balancr/issues/503),
-  [#511](https://github.com/nrosier/Balancr/pull/511),
-  [#512](https://github.com/nrosier/Balancr/issues/512),
-  [#515](https://github.com/nrosier/Balancr/pull/515)). A new nightly job
+  ([#503](https://github.com/nrosier/balancr/issues/503),
+  [#511](https://github.com/nrosier/balancr/pull/511),
+  [#512](https://github.com/nrosier/balancr/issues/512),
+  [#515](https://github.com/nrosier/balancr/pull/515)). A new nightly job
   nulls the two text columns on rows older than
   `AI_RUNS_TEXT_RETENTION_DAYS` (default 90) — cost, tokens and status stay
   on the row forever, since the spend ledger and audit trail read those
@@ -224,10 +224,10 @@ rather than when the feature list ends.
 - **A same-millisecond tie in the AI log no longer sorts in a coin-flipped
   order, and that ordering now survives any future migration that rebuilds
   the table**
-  ([#510](https://github.com/nrosier/Balancr/issues/510),
-  [#513](https://github.com/nrosier/Balancr/pull/513),
-  [#514](https://github.com/nrosier/Balancr/issues/514),
-  [#519](https://github.com/nrosier/Balancr/pull/519)). Two AI runs
+  ([#510](https://github.com/nrosier/balancr/issues/510),
+  [#513](https://github.com/nrosier/balancr/pull/513),
+  [#514](https://github.com/nrosier/balancr/issues/514),
+  [#519](https://github.com/nrosier/balancr/pull/519)). Two AI runs
   recorded in the same millisecond — routine in tests, possible for a fast
   nightly job — used to break their tie on a random UUID, an effective
   coin flip for "newest first." The tiebreak now uses a persisted `seq`
@@ -248,8 +248,8 @@ rather than when the feature list ends.
 - **A negative expense-envelope figure in the AI narrative is now written as
   a positive amount, with the overspend carried in the wording instead of a
   bare minus sign**
-  ([#494](https://github.com/nrosier/Balancr/issues/494),
-  [#496](https://github.com/nrosier/Balancr/pull/496)). Rule 12 (#493)
+  ([#494](https://github.com/nrosier/balancr/issues/494),
+  [#496](https://github.com/nrosier/balancr/pull/496)). Rule 12 (#493)
   already told the model that a negative leftover figure on an expense
   envelope means an overspend, but said nothing about how to print the
   figure itself, so a sentence built around that explanation still ended
@@ -260,8 +260,8 @@ rather than when the feature list ends.
 - **The narrative card's byline, edited-prompt notice, stale banner and
   rewrite offer now sit below a rule and some spacing instead of running
   straight into the model's paragraph**
-  ([#495](https://github.com/nrosier/Balancr/issues/495),
-  [#496](https://github.com/nrosier/Balancr/pull/496)).
+  ([#495](https://github.com/nrosier/balancr/issues/495),
+  [#496](https://github.com/nrosier/balancr/pull/496)).
 
 ## [2.3.5] — 2026-09-23
 
@@ -270,8 +270,8 @@ rather than when the feature list ends.
 - **The AI narrative no longer leaks a raw internal field name into its
   prose, and now reads a category's negative leftover figure as an
   overspend instead of leaving it uninterpreted**
-  ([#492](https://github.com/nrosier/Balancr/issues/492),
-  [#493](https://github.com/nrosier/Balancr/pull/493)). The narrative
+  ([#492](https://github.com/nrosier/balancr/issues/492),
+  [#493](https://github.com/nrosier/balancr/pull/493)). The narrative
   prompt already told the model not to echo an internal field name
   verbatim, but that instruction lived only in the editable prompt body,
   with no backstop for an edit — or a stale, pre-existing install — that
@@ -290,8 +290,8 @@ rather than when the feature list ends.
 
 - **The AI narrative now masks the figures in its own prose under privacy
   mode, instead of leaving them fully readable**
-  ([#489](https://github.com/nrosier/Balancr/issues/489),
-  [#490](https://github.com/nrosier/Balancr/pull/490)). Privacy mode blurs a
+  ([#489](https://github.com/nrosier/balancr/issues/489),
+  [#490](https://github.com/nrosier/balancr/pull/490)). Privacy mode blurs a
   fixed set of elements by attribute, but `markdown.ts`'s whole safety
   argument rests on emitting no attribute at all, so a masked figure gets
   its own bare tag, `<amount>`, instead. Masking is deliberately
@@ -304,8 +304,8 @@ rather than when the feature list ends.
   their figures unmasked and remain open under #489.
 - **The Benchmark card's "Difference" column explains itself instead of
   reading as a third share figure**
-  ([#401](https://github.com/nrosier/Balancr/issues/401),
-  [#491](https://github.com/nrosier/Balancr/pull/491)). Difference isn't
+  ([#401](https://github.com/nrosier/balancr/issues/401),
+  [#491](https://github.com/nrosier/balancr/pull/491)). Difference isn't
   derived from the two share columns beside it — in a size-adjusted
   ("level") comparison it also carries any gap in the household's overall
   spending, not just how that spending splits between groups — so the
@@ -318,8 +318,8 @@ rather than when the feature list ends.
 
 - **Category names can now be translated per locale, independent of whatever
   language the household typed them in on the Actual side**
-  ([#479](https://github.com/nrosier/Balancr/issues/479),
-  [#487](https://github.com/nrosier/Balancr/pull/487)). A new "category
+  ([#479](https://github.com/nrosier/balancr/issues/479),
+  [#487](https://github.com/nrosier/balancr/pull/487)). A new "category
   source language" setting on the Actual integration records the language
   the household actually authored its categories in; a per-locale
   translation table (owner-edited, empty by default — no machine
@@ -335,17 +335,17 @@ rather than when the feature list ends.
 
 - **The prompt editor no longer offers "make it active straight away" for a
   gated prompt key it can't actually activate immediately**
-  ([#481](https://github.com/nrosier/Balancr/issues/481),
-  [#482](https://github.com/nrosier/Balancr/pull/482)). The button rendered
+  ([#481](https://github.com/nrosier/balancr/issues/481),
+  [#482](https://github.com/nrosier/balancr/pull/482)). The button rendered
   regardless of whether the key was gated behind the AI-judge safety check
-  introduced in [#455](https://github.com/nrosier/Balancr/issues/455),
+  introduced in [#455](https://github.com/nrosier/balancr/issues/455),
   promising an activation that `resolvePrompt` would then refuse.
 - **The AI narrative no longer relies on a prompt instruction to format
   cents and basis points for display — `redact()` does it directly**
-  ([#476](https://github.com/nrosier/Balancr/issues/476),
-  [#477](https://github.com/nrosier/Balancr/pull/477),
-  [#478](https://github.com/nrosier/Balancr/issues/478),
-  [#480](https://github.com/nrosier/Balancr/pull/480)). Asking the model to
+  ([#476](https://github.com/nrosier/balancr/issues/476),
+  [#477](https://github.com/nrosier/balancr/pull/477),
+  [#478](https://github.com/nrosier/balancr/issues/478),
+  [#480](https://github.com/nrosier/balancr/pull/480)). Asking the model to
   turn raw cents/bp figures into display strings itself was fragile — a
   rewritten narrative prompt and judge rubric narrowed how often it went
   wrong, but didn't remove the underlying risk of a model dropping the
@@ -356,12 +356,12 @@ rather than when the feature list ends.
 ### Security
 
 - **Fixed a path-traversal risk in how the Actual worker resolves its data
-  directory** ([#483](https://github.com/nrosier/Balancr/pull/483),
+  directory** ([#483](https://github.com/nrosier/balancr/pull/483),
   flagged by Aikido as `Sast#728549212`). `getOrSpawnWorker` built a
   filesystem path from tenant-controlled input without constraining it to
   the intended data directory first.
 - **Bumped `protobufjs` from `7.6.6` to `8.8.0`**
-  ([#486](https://github.com/nrosier/Balancr/pull/486)), fixing a
+  ([#486](https://github.com/nrosier/balancr/pull/486)), fixing a
   denial-of-service advisory flagged by Aikido
   (`AIKIDO-2026-115254`).
 
@@ -371,7 +371,7 @@ rather than when the feature list ends.
 
 - **The prompt editor can now delete a stored version, and "Check" always
   judges the text actually in the box**
-  ([#475](https://github.com/nrosier/Balancr/pull/475)). Every edit is a new
+  ([#475](https://github.com/nrosier/balancr/pull/475)). Every edit is a new
   row, but there was no way to remove one — only "Activate" (roll back)
   existed. Deleting is now allowed, including the active version:
   `resolvePrompt`'s built-in fallback already makes "no active row" a safe,
@@ -390,10 +390,10 @@ rather than when the feature list ends.
 
 - **`analysis.system` is now gated under `locked` too, and `PROMPT_EDITING`
   drops the now-redundant `analysis_only` mode**
-  ([#468](https://github.com/nrosier/Balancr/issues/468)). `PROMPT_EDITING`
+  ([#468](https://github.com/nrosier/balancr/issues/468)). `PROMPT_EDITING`
   is `full` or `locked` — `locked` (the new default, previously `full`) puts
   both prompts behind the same AI-judge safety check `narrative.system` has
-  had since [#452](https://github.com/nrosier/Balancr/issues/452)–[#455](https://github.com/nrosier/Balancr/issues/455);
+  had since [#452](https://github.com/nrosier/balancr/issues/452)–[#455](https://github.com/nrosier/balancr/issues/455);
   `full` leaves both fully editable, no gate. See Upgrading below for an
   installation with `analysis_only` set. Also adds a rule asking the
   analysis prompt to write clarification guesses in plain language, with no
@@ -403,7 +403,7 @@ rather than when the feature list ends.
 
 - **A `locked` customization is now layered as a short addition on
   Balancr's own base prompt, not a full replacement**
-  ([#468](https://github.com/nrosier/Balancr/issues/468)). Balancr's own
+  ([#468](https://github.com/nrosier/balancr/issues/468)). Balancr's own
   instructions are always sent first, in full; a household's stored text
   follows as a lightweight addition that only has to avoid fighting the
   base rather than independently satisfy the whole rubric — which is what
@@ -427,11 +427,11 @@ pass a safety check before it can be activated).
 ### Added
 
 - **A deployment-wide lock and safety gate for the editable narrative prompt**
-  ([#452](https://github.com/nrosier/Balancr/issues/452),
-  [#453](https://github.com/nrosier/Balancr/issues/453),
-  [#454](https://github.com/nrosier/Balancr/issues/454),
-  [#455](https://github.com/nrosier/Balancr/issues/455),
-  [#459](https://github.com/nrosier/Balancr/issues/459)). Edits to the one AI
+  ([#452](https://github.com/nrosier/balancr/issues/452),
+  [#453](https://github.com/nrosier/balancr/issues/453),
+  [#454](https://github.com/nrosier/balancr/issues/454),
+  [#455](https://github.com/nrosier/balancr/issues/455),
+  [#459](https://github.com/nrosier/balancr/issues/459)). Edits to the one AI
   pass with no output-grounding are now bound in length, checked by a
   code-owned judge call before they can be activated, and enforced again at
   use time so a legacy row or direct edit can't bypass the check. A
@@ -441,14 +441,14 @@ pass a safety check before it can be activated).
   the prompt editor now shows what is actually stored under a lock instead of
   a substituted default.
 - **Non-mortgage debt tracking: fixed-schedule loans and revolving
-  credit-card debt** ([#441](https://github.com/nrosier/Balancr/issues/441),
-  [#442](https://github.com/nrosier/Balancr/issues/442)), alongside the
+  credit-card debt** ([#441](https://github.com/nrosier/balancr/issues/441),
+  [#442](https://github.com/nrosier/balancr/issues/442)), alongside the
   existing mortgage tracking.
 
 ### Changed
 
 - **The frontend bundle now splits by route and loads ECharts on demand**
-  ([#435](https://github.com/nrosier/Balancr/issues/435)), cutting the
+  ([#435](https://github.com/nrosier/balancr/issues/435)), cutting the
   initial page load's script size.
 
 ## [2.2.0] — 2026-09-20
@@ -456,8 +456,8 @@ pass a safety check before it can be activated).
 ### Added
 
 - **Provider-neutral AI configuration and execution**
-  ([#406](https://github.com/nrosier/Balancr/issues/406),
-  [#422](https://github.com/nrosier/Balancr/issues/422)-[#427](https://github.com/nrosier/Balancr/issues/427)).
+  ([#406](https://github.com/nrosier/balancr/issues/406),
+  [#422](https://github.com/nrosier/balancr/issues/422)-[#427](https://github.com/nrosier/balancr/issues/427)).
   Google Gemini remains available through AI Studio and Vertex AI; tenants can
   now also select official OpenAI and xAI/Grok presets, an operator-approved
   custom OpenAI-compatible endpoint, or native Anthropic Claude through the
@@ -467,8 +467,8 @@ pass a safety check before it can be activated).
   other integrations are preview functionality covered by automated contract
   tests and should pass the settings panel's capability test before use.
 - **Up to three mortgages per property**
-  ([#393](https://github.com/nrosier/Balancr/issues/393),
-  [#402](https://github.com/nrosier/Balancr/issues/402)), so a second mortgage,
+  ([#393](https://github.com/nrosier/balancr/issues/393),
+  [#402](https://github.com/nrosier/balancr/issues/402)), so a second mortgage,
   HELOC or renovation loan can sit alongside the primary loan. Existing stored
   properties migrate automatically, and portfolio balances and payments sum all
   attached loans.
@@ -476,45 +476,45 @@ pass a safety check before it can be activated).
 ### Changed
 
 - **Overview now shows committed spending still to come as its own metric**
-  ([#397](https://github.com/nrosier/Balancr/issues/397),
-  [#403](https://github.com/nrosier/Balancr/issues/403)) instead of explaining
+  ([#397](https://github.com/nrosier/balancr/issues/397),
+  [#403](https://github.com/nrosier/balancr/issues/403)) instead of explaining
   the open month's savings-rate proration in prose.
 - **Dead frontend code and implicit dependencies were removed**
-  ([#404](https://github.com/nrosier/Balancr/issues/404),
-  [#405](https://github.com/nrosier/Balancr/issues/405)); TypeScript now rejects
+  ([#404](https://github.com/nrosier/balancr/issues/404),
+  [#405](https://github.com/nrosier/balancr/issues/405)); TypeScript now rejects
   unused locals and parameters in both server and web builds.
 
 ### Fixed
 
 - **Benchmark category mappings are tenant-scoped on every read and write**
-  ([#409](https://github.com/nrosier/Balancr/issues/409),
-  [#415](https://github.com/nrosier/Balancr/issues/415)), closing a path that
+  ([#409](https://github.com/nrosier/balancr/issues/409),
+  [#415](https://github.com/nrosier/balancr/issues/415)), closing a path that
   could disclose or modify another household's category settings.
 - **AI prompts, spend totals and budget enforcement are tenant-scoped**
-  ([#410](https://github.com/nrosier/Balancr/issues/410),
-  [#411](https://github.com/nrosier/Balancr/issues/411),
-  [#417](https://github.com/nrosier/Balancr/issues/417),
-  [#418](https://github.com/nrosier/Balancr/issues/418)); one household can no
+  ([#410](https://github.com/nrosier/balancr/issues/410),
+  [#411](https://github.com/nrosier/balancr/issues/411),
+  [#417](https://github.com/nrosier/balancr/issues/417),
+  [#418](https://github.com/nrosier/balancr/issues/418)); one household can no
   longer change another's prompt or consume its allowance.
 - **Every egress redirect is validated before it is followed**
-  ([#412](https://github.com/nrosier/Balancr/issues/412),
-  [#419](https://github.com/nrosier/Balancr/issues/419)), including connection
+  ([#412](https://github.com/nrosier/balancr/issues/412),
+  [#419](https://github.com/nrosier/balancr/issues/419)), including connection
   tests that run in worker processes, so an approved URL cannot redirect a
   request to a disallowed destination.
 - **Failed backup restores roll moved database files back into place**
-  ([#413](https://github.com/nrosier/Balancr/issues/413),
-  [#420](https://github.com/nrosier/Balancr/issues/420)); pre-restore names are
+  ([#413](https://github.com/nrosier/balancr/issues/413),
+  [#420](https://github.com/nrosier/balancr/issues/420)); pre-restore names are
   collision-resistant and a failed install no longer leaves the live path absent.
 - **Audit records retain and enforce their tenant metadata**
-  ([#414](https://github.com/nrosier/Balancr/issues/414),
-  [#421](https://github.com/nrosier/Balancr/issues/421)) instead of writing
+  ([#414](https://github.com/nrosier/balancr/issues/414),
+  [#421](https://github.com/nrosier/balancr/issues/421)) instead of writing
   unscoped rows that could become a future isolation hazard.
 
 ## [2.1.0] — 2026-09-18
 
 ### Added
 
-- **A household now picks its own country** ([#244](https://github.com/nrosier/Balancr/issues/244))
+- **A household now picks its own country** ([#244](https://github.com/nrosier/balancr/issues/244))
   in Settings → Household, and the benchmark comparison resolves its reference file
   from that country instead of always reading Belgium's. `BENCHMARK_PATH` (a single
   file) is now `BENCHMARK_DIR` (one file per country, `<dir>/<country>.yaml`); the
@@ -531,7 +531,7 @@ pass a safety check before it can be activated).
 ### Changed
 
 - **The Belgian benchmark reference figure is inflation-adjusted to August 2026**
-  ([#398](https://github.com/nrosier/Balancr/issues/398)) instead of sitting at
+  ([#398](https://github.com/nrosier/balancr/issues/398)) instead of sitting at
   Statbel's 2024 survey price. It's scaled forward by chaining Eurostat's
   annual-average HICP for Belgium with Statbel's own national CPI (base
   2025=100), giving €3.952,95/month (395295 cents), up from €3.689,19. The
@@ -544,7 +544,7 @@ pass a safety check before it can be activated).
 ### Changed
 
 - **The portfolio page's mortgage balance is now labelled as an estimate**
-  ([#392](https://github.com/nrosier/Balancr/issues/392)) — it was already a live
+  ([#392](https://github.com/nrosier/balancr/issues/392)) — it was already a live
   amortization from the mortgage's anchor date rather than a fresh statement read,
   but nothing on screen said so. It now shows with a `≈` and an info tip naming the
   last-confirmed date, alongside a new "share of the original loan paid off" figure
@@ -578,11 +578,11 @@ pass a safety check before it can be activated).
 
 ### Added
 
-- **A third property kind, `owned`** ([#390](https://github.com/nrosier/Balancr/issues/390)),
+- **A third property kind, `owned`** ([#390](https://github.com/nrosier/balancr/issues/390)),
   for a home the household owns outright but neither lives in nor rents out — bought
   outright, inherited, held for a family member. Sits alongside `primary`/`rental` in
   Settings → Property with no rent field and no cash-flow/yield reads, same as `primary`.
-- **Local dev without a real Actual or Ghostfolio** ([#391](https://github.com/nrosier/Balancr/issues/391)).
+- **Local dev without a real Actual or Ghostfolio** ([#391](https://github.com/nrosier/balancr/issues/391)).
   `ACTUAL_FAKE_BACKEND=true` swaps in an in-memory fake Actual with a generated budget;
   `npm run fake:ghostfolio` stands up a fake Ghostfolio server; `npm run fake:seed` maps
   the fake categories to COICOP divisions and a custody split so Benchmark and Custody
@@ -591,7 +591,7 @@ pass a safety check before it can be activated).
 ### Fixed
 
 - **Benchmark/Custody's own period toggle still looked like a second datepicker after
-  2.0.1's fix** ([#389](https://github.com/nrosier/Balancr/issues/389)). Moving the
+  2.0.1's fix** ([#389](https://github.com/nrosier/balancr/issues/389)). Moving the
   control into the card wasn't enough — it was still the same calendar-popover
   `PeriodPicker` the page's Month toolbar uses, with every date cell wired to a no-op
   unless the click happened to change Month/Year. It's now a plain two-state toggle with
@@ -604,7 +604,7 @@ pass a safety check before it can be activated).
 ### Fixed
 
 - **Budget → Benchmark/Custody's own Period picker looked like a duplicate of
-  the page's Month picker** ([#389](https://github.com/nrosier/Balancr/issues/389)).
+  the page's Month picker** ([#389](https://github.com/nrosier/balancr/issues/389)).
   Each card draws its own comparison-period picker above the page's separate
   Month toolbar with no card boundary between them, reading as the same
   control rendered twice. The picker now sits inside the card/notice box it
@@ -623,7 +623,7 @@ Three fixes found while shaking out rc.1.
 ### Fixed
 
 - **Every Actual sync read crashed with "query.serialize is not a function"**
-  ([#381](https://github.com/nrosier/Balancr/issues/381)). `@actual-app/api`'s
+  ([#381](https://github.com/nrosier/balancr/issues/381)). `@actual-app/api`'s
   `aqlQuery` calls `query.serialize()` on its argument, but `queries.ts`
   already serializes the query before sending it over IPC to the worker fork
   — a live `Query`'s methods cannot survive structured cloning — so the
@@ -633,7 +633,7 @@ Three fixes found while shaking out rc.1.
   without changing how the IPC boundary serializes.
 - **Settings' "Test connection" gave no feedback when clicked without
   retyping a stored secret**
-  ([#382](https://github.com/nrosier/Balancr/issues/382)). A secret field is
+  ([#382](https://github.com/nrosier/balancr/issues/382)). A secret field is
   always blank on load, so testing an already-configured Actual, Ghostfolio
   or Gemini connection without first retyping its password/token did
   nothing — the button was disabled with no explanation. The button is now
@@ -643,7 +643,7 @@ Three fixes found while shaking out rc.1.
   one rather than refusing — the stored secret is still never echoed back
   to the browser.
 - **Sankey chart ("Where the money goes") node labels had no explicit
-  colour** ([#383](https://github.com/nrosier/Balancr/issues/383)). Every
+  colour** ([#383](https://github.com/nrosier/balancr/issues/383)). Every
   other chart element gets its colour from the shared ECharts theme, but a
   sankey series only inherits that global text colour when it sets no
   label config of its own — and this chart already sets `label.width`/
@@ -653,8 +653,8 @@ Three fixes found while shaking out rc.1.
 ## [2.0.0-rc.1] — 2026-09-18
 
 Closes the v2.0.0 Multi-tenant milestone: every feature issue in it
-([#367](https://github.com/nrosier/Balancr/issues/367)-[#373](https://github.com/nrosier/Balancr/issues/373),
-[#376](https://github.com/nrosier/Balancr/issues/376)-[#380](https://github.com/nrosier/Balancr/issues/380))
+([#367](https://github.com/nrosier/balancr/issues/367)-[#373](https://github.com/nrosier/balancr/issues/373),
+[#376](https://github.com/nrosier/balancr/issues/376)-[#380](https://github.com/nrosier/balancr/issues/380))
 is closed, so what remains before `2.0.0` is testing rather than building. A
 single Balancr instance can now hold more than one household's data, each
 isolated behind its own encrypted integration credentials, its own job
@@ -665,31 +665,31 @@ what it shows.
 ### Added
 
 - **Per-tenant data and integrations**
-  ([#367](https://github.com/nrosier/Balancr/issues/367),
-  [#369](https://github.com/nrosier/Balancr/issues/369)). Every table now
+  ([#367](https://github.com/nrosier/balancr/issues/367),
+  [#369](https://github.com/nrosier/balancr/issues/369)). Every table now
   carries a `tenant_id`; an in-place upgrade backfills one literal "Default"
   tenant onto all of it, so an existing deployment's data and behavior are
   unchanged. Actual and Ghostfolio credentials move from `.env` into the
   database, one row per tenant, imported once from `.env` on first boot after
   the upgrade and never read from there again.
 - **Reversible field encryption for stored credentials**
-  ([#368](https://github.com/nrosier/Balancr/issues/368)). Integration
+  ([#368](https://github.com/nrosier/balancr/issues/368)). Integration
   credentials at rest are AES-256-GCM encrypted under a new required
   `CONFIG_ENCRYPTION_KEY`. The app now refuses to boot without it — generate
   one with `openssl rand -base64 32` and add it to `.env` before upgrading.
 - **Per-tenant integration clients and job scheduling**
-  ([#371](https://github.com/nrosier/Balancr/issues/371),
-  [#372](https://github.com/nrosier/Balancr/issues/372)). Actual, Ghostfolio
+  ([#371](https://github.com/nrosier/balancr/issues/371),
+  [#372](https://github.com/nrosier/balancr/issues/372)). Actual, Ghostfolio
   and Gemini each get their own client instance per tenant, and the nightly
   jobs fan out over every tenant rather than assuming one.
 - **`tenantId` threaded through the request, domain and job layers**
-  ([#376](https://github.com/nrosier/Balancr/issues/376)-[#380](https://github.com/nrosier/Balancr/issues/380)).
+  ([#376](https://github.com/nrosier/balancr/issues/376)-[#380](https://github.com/nrosier/balancr/issues/380)).
   Every route and background job now carries a real tenant id instead of
   assuming the sole one; `/readyz` fans its checks out per tenant and reports
   the worst of each. Follow-up hardening closed the cross-tenant read paths
   this uncovered.
 - **Self-service tenant onboarding**
-  ([#373](https://github.com/nrosier/Balancr/issues/373)), behind a new
+  ([#373](https://github.com/nrosier/balancr/issues/373)), behind a new
   `MULTI_TENANT_ONBOARDING_ENABLED` flag that defaults to `false`. A new OIDC
   identity may only redeem an invite into an existing tenant until the flag is
   turned on; redeeming an invite is unaffected either way, since it never
@@ -724,7 +724,7 @@ The production image moves from Alpine to Chainguard's Wolfi-based glibc image.
 
 ### Changed
 
-- **Production Docker image is now Chainguard/Wolfi-based (glibc), not Alpine (musl)** ([#363](https://github.com/nrosier/Balancr/issues/363)).
+- **Production Docker image is now Chainguard/Wolfi-based (glibc), not Alpine (musl)** ([#363](https://github.com/nrosier/balancr/issues/363)).
   Native modules (`better-sqlite3`, `argon2`) are built end to end on a glibc
   base, avoiding a musl/glibc mismatch. The container still runs as UID 1000
   rather than the base image's own nonroot default, so every existing
@@ -733,7 +733,7 @@ The production image moves from Alpine to Chainguard's Wolfi-based glibc image.
 
 ### Fixed
 
-- **npm's `allowScripts` gate was silently blocking a nested `better-sqlite3` install script** vendored inside `@actual-app/api`/`@actual-app/core`, which ships no prebuilt binary and needs it to compile from source ([#363](https://github.com/nrosier/Balancr/issues/363)).
+- **npm's `allowScripts` gate was silently blocking a nested `better-sqlite3` install script** vendored inside `@actual-app/api`/`@actual-app/core`, which ships no prebuilt binary and needs it to compile from source ([#363](https://github.com/nrosier/balancr/issues/363)).
   A sync job would fail with "Could not locate the bindings file" rather than
   loading the module. This affected the Alpine image too, not just Chainguard.
 
@@ -744,7 +744,7 @@ it closes.
 
 ### Fixed
 
-- **Savings rate folds in this month's committed-but-unspent money** ([#361](https://github.com/nrosier/Balancr/issues/361)).
+- **Savings rate folds in this month's committed-but-unspent money** ([#361](https://github.com/nrosier/balancr/issues/361)).
   The rate for a still-open month only divided by spend that had already
   posted, so a schedule waiting to charge — rent, an insurance direct debit —
   was invisible to it until the money actually left the account. The rate's
@@ -760,7 +760,7 @@ no longer conflates on-budget and off-budget liquid money.
 
 ### Changed
 
-- **Directly available splits into On budget and Off budget** ([#359](https://github.com/nrosier/Balancr/issues/359)).
+- **Directly available splits into On budget and Off budget** ([#359](https://github.com/nrosier/balancr/issues/359)).
   #353 named off-budget accounts and summed them into net worth's total, but
   Overview's Directly available row still mixed the two together — a reader
   had no way to tell how much of it sits outside the budget without opening
@@ -775,14 +775,14 @@ and net worth's total finally shows what its off-budget accounts are.
 
 ### Fixed
 
-- **Insights → Findings gets the Month/Year period picker** ([#352](https://github.com/nrosier/Balancr/issues/352)).
+- **Insights → Findings gets the Month/Year period picker** ([#352](https://github.com/nrosier/balancr/issues/352)).
   Narrative and Ledger already picked up the month+year `PeriodPicker` in
   1.1.0; Findings kept the month-only picker because most of what it shows
   — over-assigned, burn-rate, baseline/irregular-expense, hygiene, drift —
   is irreducibly month-shaped. Year mode now shows each month's own
   findings, grouped by month, rather than inventing a year-shaped
   computation none of those signals have.
-- **Off-budget Actual accounts are named, not just summed** ([#353](https://github.com/nrosier/Balancr/issues/353)).
+- **Off-budget Actual accounts are named, not just summed** ([#353](https://github.com/nrosier/balancr/issues/353)).
   Net worth's total has always included off-budget accounts (a mortgage, a
   house-value tracker) but never showed what they were. A new net-worth
   breakdown row and a Portfolio card now name them and their balance —
@@ -796,7 +796,7 @@ resolved month's figures even once the page's own picker was turned to Year.
 
 ### Fixed
 
-- **Spent and Income sum the page's own year** ([#355](https://github.com/nrosier/Balancr/issues/355)).
+- **Spent and Income sum the page's own year** ([#355](https://github.com/nrosier/balancr/issues/355)).
   Turning the picker to Year changed which month the server resolved
   `totals` for, but the Spent and Income cards kept the one resolved
   month's figures — unlike the savings-rate card beside them, already
@@ -812,7 +812,7 @@ own instead of following the page's own month/year picker.
 
 ### Fixed
 
-- **Savings rate follows the Budget page's picker** ([#351](https://github.com/nrosier/Balancr/issues/351)).
+- **Savings rate follows the Budget page's picker** ([#351](https://github.com/nrosier/balancr/issues/351)).
   #345's placement matrix called for one page-level picker driving every card
   on Budget's tabs, but the savings-rate card shipped with its own independent
   period control anyway. It now has no picker of its own there and simply
@@ -826,7 +826,7 @@ scenario simulator's and Settings → Thresholds' inputs.
 
 ### Added
 
-- **Custom Month/Year period picker** ([#345](https://github.com/nrosier/Balancr/issues/345)).
+- **Custom Month/Year period picker** ([#345](https://github.com/nrosier/balancr/issues/345)).
   Replaces `react-multi-date-picker` with a compact, self-built control — a
   sliding Month/Year pill toggle opening a popover with prev/next nav and a
   4×3 grid, styled entirely from `theme/tokens.css` with no calendar library.
@@ -838,7 +838,7 @@ scenario simulator's and Settings → Thresholds' inputs.
   Overview gets its own independent picker, Insights' Narrative/Ledger tabs
   gain a year alongside the existing month, and Portfolio's `?asOf=`
   filtering is reverted in favor of always showing the latest snapshot.
-- **Hoverable field explanations** ([#346](https://github.com/nrosier/Balancr/issues/346)).
+- **Hoverable field explanations** ([#346](https://github.com/nrosier/balancr/issues/346)).
   A new `InfoTip` control — the app's first hover/click-reveal tooltip
   primitive — sits next to each input's label on the scenario simulator and
   every one of Settings → Thresholds' ~22 tuning parameters, opening on
@@ -847,7 +847,7 @@ scenario simulator's and Settings → Thresholds' inputs.
 
 ## [1.1.2] — 2026-09-14
 
-Restyles `SectionNav`'s tab strip ([#349](https://github.com/nrosier/Balancr/issues/349)).
+Restyles `SectionNav`'s tab strip ([#349](https://github.com/nrosier/balancr/issues/349)).
 
 ### Changed
 
@@ -897,7 +897,7 @@ in this milestone besides the two features below already shipped as `1.0.1`,
 
 ### Added
 
-- **Scenario simulator** ([#51](https://github.com/nrosier/Balancr/issues/51)). A
+- **Scenario simulator** ([#51](https://github.com/nrosier/balancr/issues/51)). A
   what-if calculator, seeded with the household's own numbers rather than an
   arbitrary round figure: its current monthly investment contribution and its
   current invested net worth. Editing the amount, growth rate, horizon, or the
@@ -906,7 +906,7 @@ in this milestone besides the two features below already shipped as `1.0.1`,
   a recurring change, applied only in month one; loan/bond scenarios are left for
   a later issue.
 - **Benchmark card period picker: Month / Year, pro-rated**
-  ([#323](https://github.com/nrosier/Balancr/issues/323)). The Statbel benchmark
+  ([#323](https://github.com/nrosier/balancr/issues/323)). The Statbel benchmark
   card can now compare against a full year to date instead of only the latest
   month, pro-rating the reference side for any period that isn't a finished whole
   month. The nightly `above_benchmark` signal is pro-rated the same way, so the
@@ -917,7 +917,7 @@ in this milestone besides the two features below already shipped as `1.0.1`,
 ### Fixed
 
 - **Off-budget transfers no longer break data-quality reconciliation**
-  ([#333](https://github.com/nrosier/Balancr/issues/333)). A transfer that
+  ([#333](https://github.com/nrosier/balancr/issues/333)). A transfer that
   crosses the on-budget/off-budget boundary keeps a real category on its
   on-budget leg in Actual, but Balancr's own recomputed spend was
   unconditionally excluding every transfer as a same-side wash — so a
@@ -930,7 +930,7 @@ in this milestone besides the two features below already shipped as `1.0.1`,
 ### Added
 
 - **Data Quality card explains what's costing points**
-  ([#329](https://github.com/nrosier/Balancr/issues/329)). Each deduction
+  ([#329](https://github.com/nrosier/balancr/issues/329)). Each deduction
   row on the Overview page's Data Quality card is now a disclosure button
   when there are matching findings behind it — clicking it renders the
   specific finding sentences via the same catalogue the Insights and
@@ -938,25 +938,25 @@ in this milestone besides the two features below already shipped as `1.0.1`,
   transaction or account a deduction is even about. A deduction with no
   matching findings still renders as plain text, no button.
 - **Ghostfolio's endpoint checks moved onto its own Services card**
-  ([#331](https://github.com/nrosier/Balancr/issues/331)). The per-path
+  ([#331](https://github.com/nrosier/balancr/issues/331)). The per-path
   probe detail used to live only under the Queue tab, separate from the
   Ghostfolio card's own at-a-glance verdict on Services. It now sits
   behind a disclosure button on the card itself — the same click-to-expand
   pattern as the Data Quality card above — so seeing *why* Ghostfolio is
   degraded no longer means switching tabs.
 - **Queue tab's job and probe lists now render as cards**
-  ([#325](https://github.com/nrosier/Balancr/issues/325)), matching the
+  ([#325](https://github.com/nrosier/balancr/issues/325)), matching the
   Services tab's own grid instead of the bordered list rows left over from
   before that split.
 - **AI usage monitoring moved from its own Settings tab into Status**
-  ([#325](https://github.com/nrosier/Balancr/issues/325)). Nothing on the
+  ([#325](https://github.com/nrosier/balancr/issues/325)). Nothing on the
   old Spend tab was actually a setting — it was read-only cost/usage
   monitoring plus a single "run an analysis now" control — so it now lives
   behind the AI service card, the same way Services already answers "is my
   stuff working" for Actual and Ghostfolio. Settings loses its standalone
   Spend nav entry.
 - **Household split into Household/Comparison sub-tabs**
-  ([#327](https://github.com/nrosier/Balancr/issues/327)). Settings →
+  ([#327](https://github.com/nrosier/balancr/issues/327)). Settings →
   Benchmark → Household used to mix "who lives here" (roster and
   shared-cost editing) with "what we compare against" (the Statbel
   average-household correction) in one form; they're now separate
@@ -971,7 +971,7 @@ four-row checklist.
 ### Added
 
 - **Status panel: three at-a-glance service cards replace the flat check
-  list** ([#325](https://github.com/nrosier/Balancr/issues/325)). Actual
+  list** ([#325](https://github.com/nrosier/balancr/issues/325)). Actual
   Budget, Ghostfolio and AI — the three things someone actually wants to
   check — now render as their own cards on a new Services tab, each with a
   badge and a last-synced time instead of being buried inside a list of
@@ -980,7 +980,7 @@ four-row checklist.
   danger-zone reset control — moved to a second Queue tab rather than being
   dropped.
 - **Sync's named steps and `buildJobHistory` are now tested against a real
-  run** ([#326](https://github.com/nrosier/Balancr/issues/326)). The
+  run** ([#326](https://github.com/nrosier/balancr/issues/326)). The
   per-job history the Queue tab's "Show history" toggle reads had shipped
   with no test coverage of its own; it now has both, plus a
   `JOB_HISTORY_KEEP`-bounded history table and `/api/status/history`
@@ -1007,7 +1007,7 @@ than treated as blockers — the choice `rc.1`'s own checklist left open.
 ### Added
 
 - **Uitgavetempo also reads the buffer, not just the budget**
-  ([#324](https://github.com/nrosier/Balancr/pull/324)). The burn-rate projection
+  ([#324](https://github.com/nrosier/balancr/pull/324)). The burn-rate projection
   flagged a category the same way whether or not there was anything left to absorb
   it: someone who overbudgets on purpose some months, to build a cushion for the
   months they don't, saw every drawdown month read as a plain overspend warning,
@@ -1021,13 +1021,13 @@ than treated as blockers — the choice `rc.1`'s own checklist left open.
 ### Known, shipped as documented limitations
 
 - **The break-glass local login is unreachable in the shipped topology**
-  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  ([#297](https://github.com/nrosier/balancr/issues/297)). Because the container
   publishes no host port, the peer address is always the reverse proxy — so the
   credential documented as existing "for when nobody can sign in" can be enrolled
   and never used. Fail-safe in the security direction, and a recovery path that does
   not work; this ships as a documented gap rather than a blocker.
 - **Two verification boxes stay unwalked**
-  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  ([#47](https://github.com/nrosier/balancr/issues/47)): the cost cap's degrade path
   against a real key, and the rate limits under a deliberate burst. Both need a
   decision on somebody's own deployment rather than on code, and neither blocks
   this release.
@@ -1039,7 +1039,7 @@ The committed-spend check finally covers every day of the month, not just today.
 ### Fixed
 
 - **A schedule paid a day or two off its computed date was still counted as
-  still to come** ([#321](https://github.com/nrosier/Balancr/issues/321)).
+  still to come** ([#321](https://github.com/nrosier/balancr/issues/321)).
   `rc.6`/`rc.7` fixed this only for a transaction dated exactly `today`; an
   approximate schedule — Actual's own "around a date" option — routinely
   posts a transaction a day or two early or late, which that exact check
@@ -1048,7 +1048,7 @@ The committed-spend check finally covers every day of the month, not just today.
   that amount. The check now counts a linked transaction anywhere in the
   month, the same tolerance Actual's own "Paid" status already gives it.
 - **Chart tooltips showed the literal text `<span data-private>€ 123</span>`
-  instead of a blurred figure** ([#319](https://github.com/nrosier/Balancr/issues/319)).
+  instead of a blurred figure** ([#319](https://github.com/nrosier/balancr/issues/319)).
   The budget-vs-assigned bullet chart, category trend sparkline and
   net-worth line chart built their tooltip through ECharts' `valueFormatter`,
   which escapes its return value as plain text rather than inserting it as
@@ -1064,8 +1064,8 @@ rc.6's fix didn't fix anything. This one does.
 ### Fixed
 
 - **`next_date` is not Actual's "already posted" signal, so rc.6's fix for
-  [#315](https://github.com/nrosier/Balancr/issues/315) never fired**
-  ([#317](https://github.com/nrosier/Balancr/issues/317)). Actual's own
+  [#315](https://github.com/nrosier/balancr/issues/315) never fired**
+  ([#317](https://github.com/nrosier/balancr/issues/317)). Actual's own
   background schedule-advancer declines to move `next_date` past today's
   occurrence on the exact day it falls due, even once a transaction has
   posted against it — so a same-day bill already paid was still double-
@@ -1080,7 +1080,7 @@ Another one found by using it, in the figure the rc.5 control exists to fix in b
 ### Fixed
 
 - **A same-day schedule occurrence already posted was still counted as still
-  to come** ([#315](https://github.com/nrosier/Balancr/issues/315)). The
+  to come** ([#315](https://github.com/nrosier/balancr/issues/315)). The
   committed-spend figure that feeds the burn-rate projection compared an
   occurrence's date against today only, so a bill due today that had already
   posted — and was marked paid — landed in both the month's real spend and
@@ -1096,7 +1096,7 @@ The general-purpose version of the fix `rc.4` needed by hand.
 ### Added
 
 - **An owner-only Settings control that force-resets every table Balancr
-  computes** ([#313](https://github.com/nrosier/Balancr/issues/313)). Wipes
+  computes** ([#313](https://github.com/nrosier/balancr/issues/313)). Wipes
   budget facts, signals, net worth and portfolio snapshots — the nine tables
   `src/db/schema.ts` marks as rebuilt idempotently — and starts the same jobs
   a nightly run would, recomputing everything from Actual, Ghostfolio and
@@ -1114,7 +1114,7 @@ different shape of category.
 ### Fixed
 
 - **The spending-pace projection now reads a category's own day-of-month shape,
-  not just a flat rate** ([#311](https://github.com/nrosier/Balancr/issues/311)).
+  not just a flat rate** ([#311](https://github.com/nrosier/balancr/issues/311)).
   Even with `rc.3`'s two-transaction floor, a linear extrapolation still misjudges
   two common shapes: a bill that reliably lands in a narrow window (a utility bill
   always posting days 8–13) reads as overspending until that window arrives, and a
@@ -1132,7 +1132,7 @@ One fix, found the same way `rc.2`'s were: using it.
 ### Fixed
 
 - **The spending-pace projection stopped treating one transaction as a rate**
-  ([#309](https://github.com/nrosier/Balancr/issues/309)). A category with a
+  ([#309](https://github.com/nrosier/balancr/issues/309)). A category with a
   monthly lump sum and no Actual schedule behind it — a hand-entered utility
   bill, a haircut — read as "all spent on day 3" and got extrapolated over the
   rest of the month as if that were a trickle, projecting several times the
@@ -1151,7 +1151,7 @@ nothing; the setting is a question the AI boundary could not previously answer.
 ### Added
 
 - **A third answer per envelope: keep it out of the payload entirely**
-  ([#278](https://github.com/nrosier/Balancr/issues/278)). An envelope could be
+  ([#278](https://github.com/nrosier/balancr/issues/278)). An envelope could be
   ordinary or flagged sensitive, where sensitive still sent the figures under an
   opaque label — on the argument that a number with no name attached is not private.
   That argument is sound and it is not the whole of what somebody means when they ask
@@ -1168,7 +1168,7 @@ nothing; the setting is a question the AI boundary could not previously answer.
 ### Fixed
 
 - **The month in words reads the month's note**
-  ([#298](https://github.com/nrosier/Balancr/issues/298)). The note was collected,
+  ([#298](https://github.com/nrosier/balancr/issues/298)). The note was collected,
   stored, and read by the budget nudge, and never put in front of the narrative — so a
   movement the household had already explained in writing came back described as
   unexplained drift. The note now crosses on the narrative call and on no other: one
@@ -1186,23 +1186,23 @@ nothing; the setting is a question the AI boundary could not previously answer.
   field where what reaches Google is the owner's decision rather than the redactor's is
   now said as much, in the panel hint and in the README.
 - **The stale-review rewrite handed back the paragraph it was replacing**
-  ([#306](https://github.com/nrosier/Balancr/issues/306)). The banner saying the facts
+  ([#306](https://github.com/nrosier/balancr/issues/306)). The banner saying the facts
   have moved since a review was written offered to re-run it, and posted without the
   flag that replaces a cached row — so the button returned the very paragraph the
   banner was complaining about, with no error and no clue that nothing had happened.
   One prop was choosing both what the request sends and how the button reads.
 - **The custody tab says why there is no split**
-  ([#280](https://github.com/nrosier/Balancr/issues/280)). Two of the reasons a split
+  ([#280](https://github.com/nrosier/balancr/issues/280)). Two of the reasons a split
   is unavailable drew an empty pane, which reads as a bug rather than as an answer.
   That was defensible while the figures shared a page with an empty-month notice, and
   stopped being so when the comparison moved behind a tab of its own. Each reason now
   says its own thing, because two of them are somebody's own arrangement rather than a
   fault and they do not deserve the same sentence.
 - **The Benchmark tab says why there is no comparison, for all four reasons**
-  ([#300](https://github.com/nrosier/Balancr/issues/300)). The same gap in the same
+  ([#300](https://github.com/nrosier/balancr/issues/300)). The same gap in the same
   kind of pane one tab over, found by going looking for the first one's siblings.
 - **Overview's savings rate can be read over a period**
-  ([#296](https://github.com/nrosier/Balancr/issues/296)). The Budget page's card got
+  ([#296](https://github.com/nrosier/balancr/issues/296)). The Budget page's card got
   a period chooser in `0.11.6` and Overview's did not, because the server was not
   sending the flows it needed. One calendar month is the reading most distorted by when
   a salary or a large bill happened to land, so two cards disagreeing about the same
@@ -1213,13 +1213,13 @@ nothing; the setting is a question the AI boundary could not previously answer.
 Unchanged from `rc.1`, and both waiting on a decision rather than on code:
 
 - **The break-glass local login is unreachable in the shipped topology**
-  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  ([#297](https://github.com/nrosier/balancr/issues/297)). Because the container
   publishes no host port, the peer address is always the reverse proxy — so the
   credential documented as existing "for when nobody can sign in" can be enrolled and
   never used. Fail-safe in the security direction, and a recovery path that does not
   work.
 - **Two verification boxes are unwalked**
-  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  ([#47](https://github.com/nrosier/balancr/issues/47)): the cost cap's degrade path
   against a real key, and the rate limits under a deliberate burst.
 
 ## [1.0.0-rc.1] — 2026-09-07
@@ -1250,13 +1250,13 @@ testing rather than building.
 ### Known before 1.0.0
 
 - **The break-glass login is unreachable in the shipped topology**
-  ([#297](https://github.com/nrosier/Balancr/issues/297)). Because the container
+  ([#297](https://github.com/nrosier/balancr/issues/297)). Because the container
   publishes no host port, the peer address is always the reverse proxy — so the
   credential documented as existing "for when nobody can sign in" can be enrolled
   and never used. Fail-safe in the security direction, and a recovery path that does
   not work.
 - **Two verification boxes are unwalked**
-  ([#47](https://github.com/nrosier/Balancr/issues/47)): the cost cap's degrade path
+  ([#47](https://github.com/nrosier/balancr/issues/47)): the cost cap's degrade path
   against a real key, and the rate limits under a deliberate burst. Both need a
   decision on somebody's own deployment rather than code.
 
@@ -1265,7 +1265,7 @@ testing rather than building.
 ### Added
 
 - **The savings rate reads over a period, not one calendar month**
-  ([#288](https://github.com/nrosier/Balancr/issues/288)). One month is the reading
+  ([#288](https://github.com/nrosier/balancr/issues/288)). One month is the reading
   most distorted by when a salary or a large bill happened to land: a quarterly
   insurance premium can turn a perfectly ordinary month into a rate somebody worries
   about. The Budget page's savings card now carries a chooser — this month, the
@@ -1281,12 +1281,12 @@ testing rather than building.
   ships two years of monthly flows, so switching periods is arithmetic on what the
   page is holding. The Overview page's own savings card still shows one month —
   giving it a period needs the server to send flows it does not send yet
-  ([#296](https://github.com/nrosier/Balancr/issues/296)).
+  ([#296](https://github.com/nrosier/balancr/issues/296)).
 
 ### Changed
 
 - **`npm run probe` is now the reconciliation acceptance test**
-  ([#46](https://github.com/nrosier/Balancr/issues/46)). It reconciled one month —
+  ([#46](https://github.com/nrosier/balancr/issues/46)). It reconciled one month —
   and on a real budget file that was `months.at(-1)`, a month the calendar has not
   reached, so it reconciled zero against zero and proved nothing. It now takes the
   last three months that have *started*, because the failures worth catching only
@@ -1306,7 +1306,7 @@ testing rather than building.
 ### Fixed
 
 - **The probe stopped warning that an envelope budget is not an envelope budget**
-  ([#293](https://github.com/nrosier/Balancr/issues/293)). It tested for the budget
+  ([#293](https://github.com/nrosier/balancr/issues/293)). It tested for the budget
   type Actual stopped calling `rollover`, so a healthy envelope budget was reported
   as suspect while `tracking` — the one budget type whose carryover figures really
   are not what the budget means — passed in silence. It now asks the same shared
@@ -1328,7 +1328,7 @@ testing rather than building.
 ### Added
 
 - **A shared cost says which side of it lands in Actual**
-  ([#289](https://github.com/nrosier/Balancr/issues/289)). A €600 line flagged as
+  ([#289](https://github.com/nrosier/balancr/issues/289)). A €600 line flagged as
   shared with a co-parent is either a whole invoice you bear 60% of, or your 60%
   of a €1.000 cost — and nothing in the data distinguishes them. Balancr assumed
   the first, which on the other arrangement applies the share twice: €700 paid at
@@ -1344,7 +1344,7 @@ testing rather than building.
   past 100%. Every roster already saved reads exactly as it did.
 
 - **The average Belgian household ships filled in, and can be corrected**
-  ([#290](https://github.com/nrosier/Balancr/issues/290)). The euro comparison was
+  ([#290](https://github.com/nrosier/balancr/issues/290)). The euro comparison was
   built and switched off: `reference_household` shipped commented out, so a
   configured roster changed the numbers on screen not at all, because in the
   fallback mix basis a household's size cancels out algebraically. It now carries
@@ -1364,7 +1364,7 @@ testing rather than building.
 ### Fixed
 
 - **The narrative stopped costing two model calls per run**
-  ([#282](https://github.com/nrosier/Balancr/issues/282)). Every narrative logged
+  ([#282](https://github.com/nrosier/balancr/issues/282)). Every narrative logged
   `hit MAX_TOKENS; retrying once at a higher ceiling`, so every narrative was two
   calls: one that produced nothing usable and was billed in full, and one at the
   retry ceiling that produced the answer. The ceiling was sized for the prose the
@@ -1375,8 +1375,8 @@ testing rather than building.
   understating a run.
 
 - **The household form says which box is wrong, which is empty, and why Save is
-  greyed out** ([#283](https://github.com/nrosier/Balancr/issues/283),
-  [#287](https://github.com/nrosier/Balancr/issues/287)). Add someone gave a row
+  greyed out** ([#283](https://github.com/nrosier/balancr/issues/283),
+  [#287](https://github.com/nrosier/balancr/issues/287)). Add someone gave a row
   with no year of birth, so the row was invalid, so the panel's only Save was
   disabled — and nothing on screen said either of those things. The row printed a
   number-format rule, which reads as a complaint about text nobody had typed, and
@@ -1388,7 +1388,7 @@ testing rather than building.
   touched it.
 
 - **The Notes tab no longer shows a month picker that does nothing**
-  ([#281](https://github.com/nrosier/Balancr/issues/281)). It showed two month
+  ([#281](https://github.com/nrosier/balancr/issues/281)). It showed two month
   selectors and only one of them worked — the toolbar picker refetched a payload
   that tab renders nothing from, while the note kept the month it mounted with. An
   inert control and a wasted request per click. Hidden on that tab rather than
@@ -1401,7 +1401,7 @@ testing rather than building.
 ### Added
 
 - **Every proposal card says why it proposes that number**
-  ([#273](https://github.com/nrosier/Balancr/issues/273)). A budget-amount
+  ([#273](https://github.com/nrosier/balancr/issues/273)). A budget-amount
   proposal used to show a before → after diff, an editable amount, and nothing
   about where the figure came from — while the reasoning existed at every stage
   and was discarded at every stage. A card now carries one line: which envelope
@@ -1417,8 +1417,8 @@ testing rather than building.
 ### Fixed
 
 - **The month note has its own Budget tab instead of appearing above every one**
-  ([#272](https://github.com/nrosier/Balancr/pull/272)). The per-month note
-  [#270](https://github.com/nrosier/Balancr/issues/270) introduced was rendered
+  ([#272](https://github.com/nrosier/balancr/pull/272)). The per-month note
+  [#270](https://github.com/nrosier/balancr/issues/270) introduced was rendered
   above the tab strip, so it followed you onto Envelopes, Trend and every other
   subsection whether or not you were thinking about it. It is now a tab of its
   own.
@@ -1426,7 +1426,7 @@ testing rather than building.
 ### Documentation
 
 - **What leaves the machine, and how to copy the database**
-  ([#48](https://github.com/nrosier/Balancr/issues/48)). Two questions the source
+  ([#48](https://github.com/nrosier/balancr/issues/48)). Two questions the source
   answers only if you are willing to read `redact.ts` and `jobs/ai.ts` first, which
   is not a fair thing to ask of someone deciding whether to point this at their own
   money. The README now states which four hosts are ever contacted and that only
@@ -1437,7 +1437,7 @@ testing rather than building.
   sensitive does *not* withhold — the amounts and the classification stay, so a
   broad category is still inferable — because a privacy claim with an unstated
   exception is worse than no claim
-  ([#278](https://github.com/nrosier/Balancr/issues/278) tracks a real
+  ([#278](https://github.com/nrosier/balancr/issues/278) tracks a real
   per-envelope exclusion). And, for the reader who legitimately runs without
   `BACKUP_PASSPHRASE` because a host snapshot covers the volume: which two files
   that snapshot has to catch, and why the app should be stopped first.
@@ -1445,7 +1445,7 @@ testing rather than building.
 ### Changed
 
 - **Renovate's weekly lockfile refresh merges itself on green**
-  ([#275](https://github.com/nrosier/Balancr/issues/275)). A
+  ([#275](https://github.com/nrosier/balancr/issues/275)). A
   `lockFileMaintenance` pull request has nothing reviewable in it: `package.json`
   does not change, so only transitive versions move, and only inside the ranges
   their parents already allow. CI passing is the whole review. GitHub's own
@@ -1458,8 +1458,8 @@ testing rather than building.
 ### Changed
 
 - **The budget note moved from Settings to Budget, and from one note to one
-  per month** ([#270](https://github.com/nrosier/Balancr/issues/270)). The
-  free-text note ([#217](https://github.com/nrosier/Balancr/issues/217)) used
+  per month** ([#270](https://github.com/nrosier/balancr/issues/270)). The
+  free-text note ([#217](https://github.com/nrosier/balancr/issues/217)) used
   to live on Settings' "AI usage" tab as a single running string framed as
   "what's coming up." It is now a card above the tab strip on the Budget
   page, keyed by month: mostly context for the current month's own spending
@@ -1469,7 +1469,7 @@ testing rather than building.
   nudge on the Insights page now reads the note for the month it is actually
   nudging, instead of one note shared across every month. The month stepper
   on the new card is disabled while an edit is unsaved, the same guard
-  [#268](https://github.com/nrosier/Balancr/issues/268) added for
+  [#268](https://github.com/nrosier/balancr/issues/268) added for
   Benchmark's household draft.
 
 ## [0.11.2] — 2026-09-06
@@ -1477,7 +1477,7 @@ testing rather than building.
 ### Added
 
 - **Thresholds, Benchmark and General split into subsection tabs**
-  ([#262](https://github.com/nrosier/Balancr/issues/262)), the same tab-strip
+  ([#262](https://github.com/nrosier/balancr/issues/262)), the same tab-strip
   component (#200) already used one level up, reused a level deeper.
   Thresholds gets one subsection per threshold group, still derived from the
   payload's own schema rather than a hand-written list, so a group added to
@@ -1489,7 +1489,7 @@ testing rather than building.
 ### Fixed
 
 - **The narrative default named a specific household**
-  ([#261](https://github.com/nrosier/Balancr/issues/261)). The built-in
+  ([#261](https://github.com/nrosier/balancr/issues/261)). The built-in
   narrative system prompt's opening sentence described this app's own real
   deployment instead of a household in the generic terms every other prompt
   in the file uses — real, identifying detail hardcoded into shipped source
@@ -1505,7 +1505,7 @@ testing rather than building.
 ### Fixed
 
 - **The 12-month forecast projecting a one-off as if it recurred, and ignoring
-  untagged spend entirely** ([#49](https://github.com/nrosier/Balancr/issues/49),
+  untagged spend entirely** ([#49](https://github.com/nrosier/balancr/issues/49),
   reported directly against the just-shipped forecast as "too optimistic"). An
   `irregular`-cadence income or fixed category was being repeated forward every
   twelve months by mistakenly borrowing `baseline.ts`'s smoothing-window map as a
@@ -1519,7 +1519,7 @@ testing rather than building.
 
 ### Added
 
-- **A 12-month cashflow forecast** ([#49](https://github.com/nrosier/Balancr/issues/49)).
+- **A 12-month cashflow forecast** ([#49](https://github.com/nrosier/balancr/issues/49)).
   A new `/forecast` page projects the checking balance forward a year from
   recurring income and fixed-cost baselines, plus known quarterly and annual
   bills placed in the actual month they land rather than smeared evenly across
@@ -1527,14 +1527,14 @@ testing rather than building.
   alongside the usual freshness bar; an account with no aggregated month or no
   net-worth snapshot yet sees an empty state rather than a zeroed-out forecast.
 - **Advice on where unbudgeted money should go**
-  ([#252](https://github.com/nrosier/Balancr/issues/252)). A category can now
+  ([#252](https://github.com/nrosier/balancr/issues/252)). A category can now
   be tagged `savings` or `investments` in Settings. Three new deterministic
   findings read that tag: unbudgeted money fills an emergency-fund shortfall
   from a tagged savings envelope first, routes what's left toward investments
   once the fund is covered, and a withdrawal well above a tagged envelope's
   usual baseline is flagged the same way an income change already is. None of
   this is ever written back to Actual.
-- **A way to force a narrative rewrite** ([#226](https://github.com/nrosier/Balancr/issues/226)).
+- **A way to force a narrative rewrite** ([#226](https://github.com/nrosier/balancr/issues/226)).
   The insights page now offers a "Rewrite it anyway" control under a narrative
   that already exists and isn't stale, using the same price-then-confirm flow
   already used for writing the first review or refreshing a stale one.
@@ -1542,13 +1542,13 @@ testing rather than building.
 ### Fixed
 
 - **A budget-amount proposal skewed low by the still-accumulating current month**
-  ([#251](https://github.com/nrosier/Balancr/issues/251)). The trailing average
+  ([#251](https://github.com/nrosier/balancr/issues/251)). The trailing average
   behind a proposed amount is now built only from finished months, so a partial
   month no longer sits in the average's 60%-weighted "recent" bucket dragging
   the suggestion down. Proposals are also now generated only for the current
   month — a closed month has nothing left to act on.
 - **A narrative retry ceiling below the run's own cost estimate**
-  ([#248](https://github.com/nrosier/Balancr/issues/248)). The token ceiling
+  ([#248](https://github.com/nrosier/balancr/issues/248)). The token ceiling
   used on a truncated narrative's retry sat below the estimate the cost guard
   itself assumes a narrative can need, so a retry that used exactly that much
   could still be cut off. The retry ceiling now tracks the same estimate.
@@ -1558,7 +1558,7 @@ testing rather than building.
 ### Fixed
 
 - **The monthly narrative sometimes cut off mid-sentence**
-  ([#221](https://github.com/nrosier/Balancr/issues/221)). Gemini's finish
+  ([#221](https://github.com/nrosier/balancr/issues/221)). Gemini's finish
   reason was only read when the response came back empty, so a non-empty
   answer truncated by the token ceiling was stored and rendered as if it
   were complete. A truncated call now retries once at double the ceiling;
@@ -1571,7 +1571,7 @@ testing rather than building.
 ### Added
 
 - **An editable figure on budget-amount proposals**
-  ([#220](https://github.com/nrosier/Balancr/issues/220)). The amount #45's
+  ([#220](https://github.com/nrosier/balancr/issues/220)). The amount #45's
   weighted trailing average proposes — or #217's note-driven nudge on top of
   it — is now a field the owner can edit before pressing apply, rather than
   only a binary accept/reject. An edited figure supersedes the pending
@@ -1579,7 +1579,7 @@ testing rather than building.
   budgeted rejects the proposal outright instead of erroring on "no change
   requested."
 - **Owned property and its mortgage, tracked as their own kind of position**
-  ([#227](https://github.com/nrosier/Balancr/issues/227)). Any property held
+  ([#227](https://github.com/nrosier/balancr/issues/227)). Any property held
   outright — a home lived in, a flat let out — with an optional mortgage whose
   outstanding balance amortizes forward from a principal, rate and remaining
   term set once at whatever point the owner's last statement was true, rather
@@ -1589,9 +1589,9 @@ testing rather than building.
   rebalance engine — a paid-down room isn't a position either one can buy or
   sell to correct.
 - **Insights, Budget and Portfolio split into section tabs**
-  ([#228](https://github.com/nrosier/Balancr/issues/228),
-  [#230](https://github.com/nrosier/Balancr/issues/230),
-  [#229](https://github.com/nrosier/Balancr/issues/229)), reusing the
+  ([#228](https://github.com/nrosier/balancr/issues/228),
+  [#230](https://github.com/nrosier/balancr/issues/230),
+  [#229](https://github.com/nrosier/balancr/issues/229)), reusing the
   horizontal tab-strip component Settings (#200) introduced. Each page's
   freshness bar and any page-wide notices stay above the tabs since they
   qualify every section, not one; a bookmark to a specific tab's path lands
@@ -1600,7 +1600,7 @@ testing rather than building.
 ### Changed
 
 - **The sign-out control moved to the bottom of the sidebar nav**
-  ([#231](https://github.com/nrosier/Balancr/issues/231)), out of the header,
+  ([#231](https://github.com/nrosier/balancr/issues/231)), out of the header,
   matching where the rest of the account-level chrome already lives.
 
 ## [0.10.6] — 2026-09-05
@@ -1608,7 +1608,7 @@ testing rather than building.
 ### Added
 
 - **A running "what's coming up" note the budget-amount proposal can read**
-  ([#217](https://github.com/nrosier/Balancr/issues/217)). One owner-editable,
+  ([#217](https://github.com/nrosier/balancr/issues/217)). One owner-editable,
   free-text note on the settings page — a dentist bill, an annual renewal,
   anything the trailing average couldn't know about — plus an optional,
   owner-priced AI pass that reads it alongside #45's own budget-amount
@@ -1622,7 +1622,7 @@ testing rather than building.
 ### Added
 
 - **A category guess for the transactions the deterministic path leaves behind**
-  ([#216](https://github.com/nrosier/Balancr/issues/216)). Below the payee-history
+  ([#216](https://github.com/nrosier/balancr/issues/216)). Below the payee-history
   confidence bar #45 already checks, a candidate is now kept in a per-month cache
   instead of dropped. The owner can select any of them from the Insights page,
   price a guess before anything is spent, and press it — never the nightly job on
@@ -1636,7 +1636,7 @@ testing rather than building.
 
 ### Added
 
-- **The first person on the scale can now have a name** ([#215](https://github.com/nrosier/Balancr/issues/215)).
+- **The first person on the scale can now have a name** ([#215](https://github.com/nrosier/balancr/issues/215)).
   The household's "You" sentence reads with whatever the owner types into a
   plain text box beside the roster instead of a fixed placeholder. It stays
   outside the roster on purpose — no birth year, no custody share — and the
@@ -1647,7 +1647,7 @@ testing rather than building.
 
 ### Added
 
-- **An approved proposal can now write to Actual** ([#45](https://github.com/nrosier/Balancr/issues/45)).
+- **An approved proposal can now write to Actual** ([#45](https://github.com/nrosier/balancr/issues/45)).
   The nightly job proposes a category for an uncategorised transaction, drawn
   from what its payee has been filed under before, or a new budgeted amount for
   a category that has run over its trailing average for months running — no
@@ -1661,7 +1661,7 @@ testing rather than building.
 ### Added
 
 - **The settings page is now a tab strip, not one long scroll**
-  ([#200](https://github.com/nrosier/Balancr/issues/200)). General, Prompts, Risk,
+  ([#200](https://github.com/nrosier/balancr/issues/200)). General, Prompts, Risk,
   Thresholds, Accounts, Benchmark and AI usage each get their own `/settings/*`
   route, so a bookmark or a reload lands back on the section it left rather than
   the top of everything.
@@ -1669,7 +1669,7 @@ testing rather than building.
 ### Fixed
 
 - **Privacy mode's blur had two gaps left over from #171**
-  ([#171](https://github.com/nrosier/Balancr/issues/171)). Chart axis labels
+  ([#171](https://github.com/nrosier/balancr/issues/171)). Chart axis labels
   render as SVG text, not canvas, so a DOM filter reaches them the same as any
   other money figure — the budget-versus-actual and category-trend charts now
   blur their axes along with the net worth chart, instead of leaving a
@@ -1683,7 +1683,7 @@ testing rather than building.
 
 ### Added
 
-- **A privacy mode that blurs money on screen** ([#171](https://github.com/nrosier/Balancr/issues/171)).
+- **A privacy mode that blurs money on screen** ([#171](https://github.com/nrosier/balancr/issues/171)).
   A header toggle and a Ctrl/Cmd+Shift+E shortcut apply a CSS blur to every money
   figure and holdings quantity — `<Money>`/`<Private>` mark the ones outside a small,
   enforced set of exceptions (AI-operational-cost figures, account configuration
@@ -1698,7 +1698,7 @@ testing rather than building.
 ### Fixed
 
 - **A sync run failed wholesale when a schedule's rule held a non-`set` action**
-  ([#203](https://github.com/nrosier/Balancr/issues/203)). Actual sends `field: null`
+  ([#203](https://github.com/nrosier/balancr/issues/203)). Actual sends `field: null`
   for rule actions where a field genuinely does not apply — `link-schedule` and the
   like — rather than omitting the key, and `ruleShape`'s `field` was `.optional()`,
   which tolerates a missing key but not an explicit `null`. Every `getRules()` response
@@ -1709,7 +1709,7 @@ testing rather than building.
 ### Added
 
 - **A month's facts can change after it closes without the rest of the app quietly
-  disagreeing with itself** ([#162](https://github.com/nrosier/Balancr/issues/162)).
+  disagreeing with itself** ([#162](https://github.com/nrosier/balancr/issues/162)).
   `persistFacts` overwrote every month in the sync window unconditionally, but nothing
   recorded whether a pass actually changed anything — so the signals job, which only
   re-judges the last two months, and the AI analysis, which only re-runs for the same
@@ -1720,7 +1720,7 @@ testing rather than building.
   opt-in: a changed past month is never re-run on its own, only marked stale for the
   owner to price and press.
 - **The nightly AI pass no longer pays three times for an answer that cannot have
-  moved** ([#160](https://github.com/nrosier/Balancr/issues/160)). `CATCHUP_NIGHTS`
+  moved** ([#160](https://github.com/nrosier/balancr/issues/160)). `CATCHUP_NIGHTS`
   re-runs the analysis for the same just-closed month on each of the first few nights
   of a new one, and every one of those calls used to cost the same as the first.
   `findReusableRun` now checks, before the budget gate, whether an identical call —
@@ -1734,7 +1734,7 @@ testing rather than building.
 ### Fixed
 
 - **The nightly signals job no longer crashes when two Statbel benchmark groups are
-  over threshold in the same month** ([#198](https://github.com/nrosier/Balancr/issues/198)).
+  over threshold in the same month** ([#198](https://github.com/nrosier/balancr/issues/198)).
   `above_benchmark` signals are household-level — one row per benchmark group (#43),
   with no category of their own — and the storage key collapsed every one of them onto
   the same row. A month with, say, both `transport` and `recreation` running hot at
@@ -1745,7 +1745,7 @@ testing rather than building.
 ### Changed
 
 - **Milestone `v0.9.0` closes without Actual-writing proposal handlers**
-  ([#45](https://github.com/nrosier/Balancr/issues/45)). The rest of the milestone —
+  ([#45](https://github.com/nrosier/balancr/issues/45)). The rest of the milestone —
   the Statbel benchmark, the shared-cost split, the schedule-aware spend projection, and
   the insights page's month picker — is done and on screen. #45 is a different kind of
   change from those four: every one of Balancr's writes so far has been to its own SQLite,
@@ -1761,7 +1761,7 @@ testing rather than building.
 ### Added
 
 - **A month picker on the insights page, the same one the budget page has had since
-  `0.6.0`** ([#158](https://github.com/nrosier/Balancr/issues/158),
+  `0.6.0`** ([#158](https://github.com/nrosier/balancr/issues/158),
   `src/server/routes/api/insights.ts`, `web/src/pages/Insights.tsx`). Reading what the
   analysis said about a past month meant whatever the last nightly run happened to cover,
   with no way to ask for July's after moving on — the two pages could disagree about what
@@ -1790,7 +1790,7 @@ testing rather than building.
 ### Added
 
 - **How long a class has been outside its band, and a narrative that can say so**
-  ([#183](https://github.com/nrosier/Balancr/issues/183),
+  ([#183](https://github.com/nrosier/balancr/issues/183),
   `src/domain/advice/persistence.ts`). The portfolio page states today's drift: equities are
   at 85%, the ceiling is 75%, here is the trade that would close it. What no screen stated is
   that the same sentence was true in August and in July — and that is the difference between
@@ -1841,7 +1841,7 @@ testing rather than building.
 ### Added
 
 - **A projection that knows what the month has already committed**
-  ([#159](https://github.com/nrosier/Balancr/issues/159),
+  ([#159](https://github.com/nrosier/balancr/issues/159),
   `src/domain/aggregate/committed.ts`). Rent leaves on the 28th, and until it does a burn
   rate built on elapsed time says one of two wrong things: on the 3rd it extrapolates one
   direct debit into ten, and on the 20th it reports an envelope as comfortable that has a
@@ -1898,7 +1898,7 @@ testing rather than building.
 ### Added
 
 - **What a cost shared with a co-parent actually costs you**
-  ([#44](https://github.com/nrosier/Balancr/issues/44),
+  ([#44](https://github.com/nrosier/balancr/issues/44),
   `src/domain/aggregate/custody.ts`). Paying the whole school bill in September is a 200%
   overrun against your own norm and roughly half of it was never economically yours. The
   budget page gained a card that says so: a row per flagged category with spending that
@@ -1962,7 +1962,7 @@ testing rather than building.
 ### Added
 
 - **A month's spending, compared with Belgian households**
-  ([#43](https://github.com/nrosier/Balancr/issues/43)). Your own twelve-month norm cannot
+  ([#43](https://github.com/nrosier/balancr/issues/43)). Your own twelve-month norm cannot
   answer "is €650 a month on food a lot", so the budget page gained the card that can.
   Statbel's Household Budget Survey publishes the share of its total an average household
   spends on each of ten lines; `config/statbel-benchmark.yaml` carries those shares with
@@ -2030,7 +2030,7 @@ testing rather than building.
 ### Added
 
 - **A risk profile, in numbers rather than an adjective**
-  ([#41](https://github.com/nrosier/Balancr/issues/41)). "Some risk, but not super high
+  ([#41](https://github.com/nrosier/balancr/issues/41)). "Some risk, but not super high
   risk" cannot motivate a trade, so Settings → Risk profile is where it becomes twelve
   numbers: a floor, a target and a ceiling for equities, bonds, property and commodities,
   plus the two thresholds that decide when a drift is worth acting on at all. Three presets
@@ -2038,7 +2038,7 @@ testing rather than building.
   the server rather than being written out again in the browser — a second copy of
   "balanced" is a second definition of the profile the advice was computed against.
 - **Editing a band makes the profile `custom`, and the panel says so as it happens**
-  ([#41](https://github.com/nrosier/Balancr/issues/41)). The profile in force is the
+  ([#41](https://github.com/nrosier/balancr/issues/41)). The profile in force is the
   numbers; the name is a label on them. So a hand edit sends the bands and no name, an
   untouched preset sends the name and no bands, and the two are mutually exclusive by
   construction. All four bands travel together, because four targets with one left over
@@ -2066,7 +2066,7 @@ testing rather than building.
   Each suggestion states which case it is. One figure quoted for both would be wrong by a
   factor of three in whichever case it was not written for.
 - **What acting would cost, from the tax module, on every card**
-  ([#42](https://github.com/nrosier/Balancr/issues/42) put to work). The same
+  ([#42](https://github.com/nrosier/balancr/issues/42) put to work). The same
   `describeTaxEstimate` a digest would call, so the estimate reads identically everywhere
   and the browser holds no second copy of the tax vocabulary. `taxOmits` is never empty on
   a sale: the realised gain needs a cost base this app never sees, and a total that
@@ -2105,7 +2105,7 @@ testing rather than building.
 ### Added
 
 - **What a trade actually costs, in euros, before it is made**
-  ([#42](https://github.com/nrosier/Balancr/issues/42)). The Belgian taxes on a concrete
+  ([#42](https://github.com/nrosier/balancr/issues/42)). The Belgian taxes on a concrete
   transaction: beurstaks on the way in and out, roerende voorheffing on a dividend, the
   Reynders levy on a bond fund's interest component, and the capital-gains tax that arrived
   in 2026. Every figure is computed in TypeScript from a dated rules file — the model is
@@ -2117,7 +2117,7 @@ testing rather than building.
   before the oldest ruleset is refused rather than estimated, because the alternative is an
   estimate under rules that were not in force.
 - **A `status` field instead of a disclaimer in a comment**
-  ([#42](https://github.com/nrosier/Balancr/issues/42)). Every rate carries the article it
+  ([#42](https://github.com/nrosier/balancr/issues/42)). Every rate carries the article it
   came from (`WDRT art. 1262`, `WIB92 art. 19bis`), the day it was last checked, and
   `status: confirmed | transcribed`. Everything shipped is `transcribed` — transcribed from
   published guidance, not verified against the law by anyone — and that field drives a
@@ -2168,7 +2168,7 @@ testing rather than building.
 ### Added
 
 - **A curated fund universe: the only instruments advice may propose**
-  ([#40](https://github.com/nrosier/Balancr/issues/40)). A YAML file, written by the person
+  ([#40](https://github.com/nrosier/balancr/issues/40)). A YAML file, written by the person
   whose money it is, read fresh on every use so an edit needs no restart. `assertProposable`
   is the only way to turn an ISIN into a fund a proposal may act on, and the same gate is
   exported as a Zod schema (`proposableIsinSchema`) so a payload type cannot be written that
@@ -2178,13 +2178,13 @@ testing rather than building.
   the point of use, because "the fund list was broken so I ignored it" is not a thing to do
   quietly when the next step is a trade.
 - **ISIN check-digit validation**
-  ([#40](https://github.com/nrosier/Balancr/issues/40)). The only claim in a hand-written
+  ([#40](https://github.com/nrosier/balancr/issues/40)). The only claim in a hand-written
   fund list that code can verify without a network. A transposed pair of characters is
   otherwise a valid-looking reference to a different instrument, and the refusal says which
   mistake it was — wrong length, wrong shape, or `ends in 4 but its check digit is 3` —
   because the fix differs and the reader has a KID in front of them.
 - **Three rules the loader enforces, and a fourth that expires**
-  ([#40](https://github.com/nrosier/Balancr/issues/40)). Accumulating share classes only
+  ([#40](https://github.com/nrosier/balancr/issues/40)). Accumulating share classes only
   (a distributing one pays out dividends that Belgian roerende voorheffing taxes at 30%
   every year, which is a different decision and not an interchangeable one); EEA-domiciled
   UCITS only (the passport that means a KID exists and a Belgian broker can sell it — why
@@ -2194,7 +2194,7 @@ testing rather than building.
   merely flagged — and leaves it out of what the model is shown at all, so a stale fund is
   never offered and then refused.
 - **`FUND_UNIVERSE_PATH` and `FUND_UNIVERSE_MAX_AGE_DAYS`**
-  ([#40](https://github.com/nrosier/Balancr/issues/40)). The path defaults to
+  ([#40](https://github.com/nrosier/balancr/issues/40)). The path defaults to
   `./config/fund-universe.yaml`, which nothing creates: `config/fund-universe.example.yaml`
   is a template of eleven accumulating UCITS funds that ships in the image beside it, and
   copying a template is not the same as having vetted it. Both values appear in the startup
@@ -2207,7 +2207,7 @@ testing rather than building.
 ### Added
 
 - **Deployment hardening, verified rather than declared**
-  ([#39](https://github.com/nrosier/Balancr/issues/39)). Non-root, a read-only root
+  ([#39](https://github.com/nrosier/balancr/issues/39)). Non-root, a read-only root
   filesystem, `cap_drop: ALL` and `no-new-privileges` were already in the Dockerfile and
   `compose.yaml` — as configuration, which is to say as claims. `scripts/verify-image.sh`
   now starts the built image with exactly those flags and asks the running container: is
@@ -2217,7 +2217,7 @@ testing rather than building.
   restart a healthy container every interval, forever. CI runs it on every image build.
   Runnable by hand, which is why it is a script rather than workflow YAML.
 - **Egress restricted to the hosts this deployment is configured for**
-  ([#39](https://github.com/nrosier/Balancr/issues/39)). `EGRESS_MODE=enforce` by
+  ([#39](https://github.com/nrosier/balancr/issues/39)). `EGRESS_MODE=enforce` by
   default: a connection to anything that is not Actual, Ghostfolio, the OIDC issuer or
   Google's Gemini endpoint is refused, and the host is logged. The allowlist is derived
   from the same `.env` values the adapters read, so it cannot drift from the
@@ -2231,13 +2231,13 @@ testing rather than building.
   a native module, or a child process — stated plainly in `src/egress.ts` rather than
   oversold, and the reason the network-level rule is still worth having.
 - **The mode of `.env` is checked at every start**
-  ([#39](https://github.com/nrosier/Balancr/issues/39)). One line if the file holding the
+  ([#39](https://github.com/nrosier/balancr/issues/39)). One line if the file holding the
   Actual password, Ghostfolio token, Gemini key, session secret and backup passphrase is
   group- or world-readable, naming the mode and the command that fixes it. A warning, not
   a refusal. Silent in a container, where compose reads `.env` on the host and there is
   no such file to have a mode.
 - **Image size and startup time recorded in the job summary**
-  ([#39](https://github.com/nrosier/Balancr/issues/39)) — 410 MB and one second to the
+  ([#39](https://github.com/nrosier/balancr/issues/39)) — 410 MB and one second to the
   first `/healthz` on amd64 today — with ceilings a little above those. Not targets:
   tripwires, so a change that doubles either has to be a deliberate edit to the script
   rather than something nobody noticed.
@@ -2245,7 +2245,7 @@ testing rather than building.
 ### Fixed
 
 - **The runtime prune understood one of the two prebuild layouts, and shipped seven
-  unloadable binaries per image** ([#39](https://github.com/nrosier/Balancr/issues/39)).
+  unloadable binaries per image** ([#39](https://github.com/nrosier/balancr/issues/39)).
   `scripts/prune-runtime-deps.mjs` handled `prebuilds/<platform>-<arch>/` directories,
   which is what `argon2` ships, and not flat `prebuilds/<platform>-<arch>.node` files,
   which is what `better-sqlite3` 13 ships — so every image up to this one carried all
@@ -2264,7 +2264,7 @@ testing rather than building.
 ### Added
 
 - **Nightly encrypted backups, and a restore that has been performed rather than
-  assumed** ([#38](https://github.com/nrosier/Balancr/issues/38)). Almost everything in
+  assumed** ([#38](https://github.com/nrosier/balancr/issues/38)). Almost everything in
   the database is recomputed from Actual and Ghostfolio by morning; what is not is the
   part you typed — every category description, COICOP code and sensitivity flag built up
   by answering questions about your own budget, plus the prompt versions and the cost
@@ -2301,7 +2301,7 @@ testing rather than building.
 ### Added
 
 - **The AI layer is optional, and an instance without it says so instead of refusing
-  to start** ([#165](https://github.com/nrosier/Balancr/issues/165)). `vertex` is the
+  to start** ([#165](https://github.com/nrosier/balancr/issues/165)). `vertex` is the
   default provider and needs `GOOGLE_CLOUD_PROJECT`, so a copied `.env.example` with
   the Gemini block untouched could not boot at all — a paid dependency demanded of
   someone who wanted the budget figures. Missing credentials now switch the model off
@@ -2336,7 +2336,7 @@ testing rather than building.
 ### Fixed
 
 - **Context caching is no longer asked for at a size it cannot be granted**
-  ([#121](https://github.com/nrosier/Balancr/issues/121)). Google will not cache a
+  ([#121](https://github.com/nrosier/balancr/issues/121)). Google will not cache a
   context below 1024 tokens. Balancr's system prompts are 453 and 589 tokens, so every
   process start spent a failed `caches.create` per model to rediscover that, and wrote
   `context caching unavailable` into the log of a system that was working exactly as
@@ -2352,7 +2352,7 @@ testing rather than building.
   the authority, and a create that is attempted and rejected still falls back to sending
   the instruction inline.
 
-  The mechanism stays. The fund universe ([#40](https://github.com/nrosier/Balancr/issues/40))
+  The mechanism stays. The fund universe ([#40](https://github.com/nrosier/balancr/issues/40))
   is what caching was built for and what will push the prompt past the floor, at which
   point this check stops firing and nothing else changes.
 
@@ -2368,7 +2368,7 @@ testing rather than building.
 ### Added
 
 - **Refresh on demand, all of it or one source**
-  ([#122](https://github.com/nrosier/Balancr/issues/122)). Until now the only way to
+  ([#122](https://github.com/nrosier/balancr/issues/122)). Until now the only way to
   make a figure current was to wait for the schedule or restart the container. Every
   page already says how old its numbers are; this puts the control next to the
   sentence, and each page starts only the jobs whose figures it shows — the budget
@@ -2425,7 +2425,7 @@ testing rather than building.
 ### Added
 
 - **The insights page — findings, the narrative, both queues, and the ledger of
-  every call** ([#32](https://github.com/nrosier/Balancr/issues/32)). The last of
+  every call** ([#32](https://github.com/nrosier/balancr/issues/32)). The last of
   the five views, and the one that had to show its own workings: it renders what a
   model concluded about a month, so it also renders every call that was made and
   exactly what went out in each one. The five sections are in that order on purpose
@@ -2451,7 +2451,7 @@ testing rather than building.
   Both queues are read-only in this version and **say so on screen** rather than
   implying it by the absence of buttons: answering a clarification re-analyses the
   month and applying a proposal writes an audit row, and both belong to
-  [#43](https://github.com/nrosier/Balancr/issues/43)–[#45](https://github.com/nrosier/Balancr/issues/45).
+  [#43](https://github.com/nrosier/balancr/issues/43)–[#45](https://github.com/nrosier/balancr/issues/45).
   Shipping the queues before the buttons is deliberate — the queue is what tells you
   the analysis is asking about the right categories, and that is worth reading early.
   Clarification cards show the model's guess rather than an open question, with the
@@ -2481,7 +2481,7 @@ testing rather than building.
 ### Added
 
 - **Readiness, a probe that actually runs, and job state on screen**
-  ([#37](https://github.com/nrosier/Balancr/issues/37)). Three questions that were
+  ([#37](https://github.com/nrosier/balancr/issues/37)). Three questions that were
   being asked of one endpoint now have one endpoint each. `/healthz` stays liveness
   and touches nothing — the container health check reads it, and restarting Balancr
   because Ghostfolio is restarting turns one outage into two. `GET /readyz` is the
@@ -2536,7 +2536,7 @@ testing rather than building.
 ### Changed
 
 - **One set of instructions for the assistant, not one per language**
-  ([#133](https://github.com/nrosier/Balancr/issues/133)). The prompts were seeded
+  ([#133](https://github.com/nrosier/balancr/issues/133)). The prompts were seeded
   under every supported locale, which made the locale fallback in `resolvePrompt`
   unreachable and turned an edit into a silent half-change: tightening the rule
   "never state a figure you were not given" in English left the Dutch copy of that
@@ -2610,7 +2610,7 @@ testing rather than building.
 ### Added
 
 - **A contrast check in the gate, and it derives its pairs from the stylesheets**
-  ([#35](https://github.com/nrosier/Balancr/issues/35)). `npm run contrast:check`
+  ([#35](https://github.com/nrosier/balancr/issues/35)). `npm run contrast:check`
   reads every rule under `web/src`, measures each foreground against its stated
   background, and fails under 4.5:1 for text or 3:1 for a border, a plotted shape
   or the focus ring — in both themes. A hand-kept list of pairs was the obvious
@@ -2661,7 +2661,7 @@ testing rather than building.
 ### Fixed
 
 - **The duplicate-account panel now says what it found, and a "no" now sticks**
-  ([#131](https://github.com/nrosier/Balancr/issues/131)). It used to offer every
+  ([#131](https://github.com/nrosier/balancr/issues/131)). It used to offer every
   Ghostfolio account against every non-checking Actual account, so an instance with
   five unrelated accounts — a meal-voucher card, two eco-cheque balances, some cash and
   a savings account — read as a wall of suggestions pairing things that have nothing to
@@ -2672,7 +2672,7 @@ testing rather than building.
   within €1 or 0.1%, and a matching currency. At least one signal must be something
   other than currency, only the best match per Ghostfolio account is offered, and a
   cash account is never crossed with a portfolio — the account kind derived in
-  [#124](https://github.com/nrosier/Balancr/issues/124) is what makes that possible,
+  [#124](https://github.com/nrosier/balancr/issues/124) is what makes that possible,
   including the direction the old filter structurally excluded: a broker balance mirrored
   into an *on-budget* Actual account.
 
@@ -2694,7 +2694,7 @@ testing rather than building.
 ### Added
 
 - **The interface's language is decided in one place now, and the document says
-  which one it is** ([#34](https://github.com/nrosier/Balancr/issues/34)). The
+  which one it is** ([#34](https://github.com/nrosier/balancr/issues/34)). The
   resolution order — the signed-in account's own setting, then a `balancr_locale`
   cookie, then a q-weighted `Accept-Language`, then `DEFAULT_LOCALE`, every rung
   filtered against `SUPPORTED_LOCALES` — lives in `src/server/locale.ts` and is
@@ -2760,7 +2760,7 @@ testing rather than building.
 
 - **Net worth no longer counts bank cash twice** on an instance where a tool syncs bank
   accounts into Ghostfolio as well as Actual
-  ([#124](https://github.com/nrosier/Balancr/issues/124)). On the reporting instance
+  ([#124](https://github.com/nrosier/balancr/issues/124)). On the reporting instance
   that was roughly a third of the total, entered once from each source, and labelled
   invested — so the emergency-buffer figure and the allocation were both wrong in the
   same direction at the same time.
@@ -2811,7 +2811,7 @@ testing rather than building.
 
 - **Every `account_map` row now records which of its fields a person decided**, so a
   derived classifier can improve a guess without erasing an answer
-  ([#132](https://github.com/nrosier/Balancr/issues/132)). `kind` said `savings` and
+  ([#132](https://github.com/nrosier/balancr/issues/132)). `kind` said `savings` and
   nothing distinguished a rule having said so from a person having said so, which made
   the classifier #124 needs unbuildable: `defaultKind` runs only on insert, so it can
   never reach an existing account, and a version that re-derived unconditionally would
@@ -2844,7 +2844,7 @@ testing rather than building.
 ### Added
 
 - **Both charts now start where the data starts, not where the install does**
-  ([#114](https://github.com/nrosier/Balancr/issues/114)). `net_worth_snapshots` and
+  ([#114](https://github.com/nrosier/balancr/issues/114)). `net_worth_snapshots` and
   `portfolio_metrics` are written one row per day a job ran, so a fortnight-old
   install had a fortnight of history and a time axis with a dot on it — while Actual
   had been answering `getAccountBalance` for any date all along and Ghostfolio had
@@ -2900,7 +2900,7 @@ testing rather than building.
 - **Portfolio page** — the value of everything held, the reported time-weighted
   return, an allocation treemap by asset class, and a holdings table of what is
   actually held, largest first
-  ([#31](https://github.com/nrosier/Balancr/issues/31)).
+  ([#31](https://github.com/nrosier/balancr/issues/31)).
   Annual cost is deliberately not drawn: `ter_annual_cents` has no source yet, and a
   card that always reads "not known yet" teaches a reader that the placeholder means
   nothing.
@@ -2908,7 +2908,7 @@ testing rather than building.
 ### Fixed
 
 - **A holding's price is labelled with the currency it is quoted in**, rather than
-  with the base currency ([#134](https://github.com/nrosier/Balancr/issues/134)).
+  with the base currency ([#134](https://github.com/nrosier/balancr/issues/134)).
   Ghostfolio converts a position's *value* for us and leaves its *quote* in the
   instrument's own currency, so one row carries two currencies — but the row had one
   `currency` column and the table drew the price with a euro sign regardless. A
@@ -2925,7 +2925,7 @@ testing rather than building.
 ### Security
 - **Ghostfolio could be written to by anyone who added a line, and only the absence
   of that line was stopping it**
-  ([#120](https://github.com/nrosier/Balancr/issues/120)). The adapter's one request
+  ([#120](https://github.com/nrosier/balancr/issues/120)). The adapter's one request
   helper took `RequestInit`, so `method` and `body` were caller-supplied: every read
   omitted them and got a GET, which made the read-only promise a property of today's
   code rather than of its types. `POST /api/v1/order` and `POST /api/v1/import` are
@@ -2944,7 +2944,7 @@ testing rather than building.
 ### Fixed
 - **Copying `.env.example` refused to boot, complaining that a variable left
   deliberately blank was too short**
-  ([#118](https://github.com/nrosier/Balancr/issues/118)). Nine variables ship empty
+  ([#118](https://github.com/nrosier/balancr/issues/118)). Nine variables ship empty
   in that file and six of them were declared `z.string().min(1).optional()` —
   optional, so absent was fine, but `.min(1)` rejected the empty string the file
   actually supplies. The message read as a rule about length, which invites putting a
@@ -2954,7 +2954,7 @@ testing rather than building.
   `ACTUAL_PASSWORD` is a misconfiguration and not booting is the right answer. A test
   reads the real `.env.example`, fills in only what it asks for, and asserts it boots.
 - **`ACTUAL_E2E_PASSWORD` failures blamed the wrong thing, or nothing at all**
-  ([#119](https://github.com/nrosier/Balancr/issues/119)). Actual only reads that
+  ([#119](https://github.com/nrosier/balancr/issues/119)). Actual only reads that
   password when the budget carries an `encryptKeyId`, so a blank value on an
   unencrypted budget is a complete configuration and always was. When it *is*
   encrypted, Actual's own error — "File Household is encrypted. Please provide a
@@ -2966,7 +2966,7 @@ testing rather than building.
   untouched — blaming encryption for a wrong sync id would send someone to the wrong
   line of `.env`.
 - **Actual's sync engine wrote plain text into an otherwise structured log**
-  ([#123](https://github.com/nrosier/Balancr/issues/123)). Its logger gates progress
+  ([#123](https://github.com/nrosier/balancr/issues/123)). Its logger gates progress
   and breadcrumbs behind a `verboseMode` that defaults to on, so every hourly sync put
   ten unparseable lines through `console.log` in the middle of pino's JSON — one of
   them naming the budget file path. `init` is now passed `verbose` tied to
@@ -2977,7 +2977,7 @@ testing rather than building.
 
 ### Added
 - **The settings page — the one screen in the application that writes**
-  ([#33](https://github.com/nrosier/Balancr/issues/33)). Six panels over the eleven
+  ([#33](https://github.com/nrosier/balancr/issues/33)). Six panels over the eleven
   `/api/settings` routes and the two `/api/ai` ones: language, the thresholds the
   aggregation engine judges by, the prompt editor with its diff and its priced dry run,
   the account mapping that decides which of two tools counts a shared investment
@@ -3011,7 +3011,7 @@ testing rather than building.
 
 ### Fixed
 - **The portfolio job still failed every pass: Ghostfolio moved every identity field
-  into `assetProfile`** ([#113](https://github.com/nrosier/Balancr/issues/113)). The
+  into `assetProfile`** ([#113](https://github.com/nrosier/balancr/issues/113)). The
   diagnostic added in `0.5.7` did exactly what it was written for — it printed the
   keys the holding did have, and `assetProfile` was one of them while `symbol`,
   `isin`, `name`, `currency`, `dataSource` and `assetClass` were all absent. Current
@@ -3030,7 +3030,7 @@ testing rather than building.
 
 - **Time-weighted return was permanently null and the value series permanently empty,
   because Ghostfolio moved the performance endpoint to `/api/v2`**
-  ([#115](https://github.com/nrosier/Balancr/issues/115)). `/api/v1/portfolio/performance`
+  ([#115](https://github.com/nrosier/balancr/issues/115)). `/api/v1/portfolio/performance`
   now 404s. Nothing said so: #113 refused the details call first, so the pass never
   reached this one, and the two defects hid behind a single error. v2 is tried first
   and a 404 falls back to v1, so an instance old enough to lack v2 keeps working and
@@ -3040,14 +3040,14 @@ testing rather than building.
 
   The v2 response is a superset, so one schema covers both. On the live instance it
   returns **401 daily points back to 2025-07-29** — which is the history
-  [#114](https://github.com/nrosier/Balancr/issues/114) is about, and part of why the
+  [#114](https://github.com/nrosier/balancr/issues/114) is about, and part of why the
   net-worth chart draws a single dot.
 
 ## [0.5.7] — 2026-09-02
 
 ### Fixed
 - **The portfolio job failed every pass on a Ghostfolio release whose holdings do not
-  name themselves** ([#107](https://github.com/nrosier/Balancr/issues/107)). The
+  name themselves** ([#107](https://github.com/nrosier/balancr/issues/107)). The
   symbol is the key of the map the holdings arrive in, not a field inside them — and
   the code that flattened the map to a list dropped the key, then reported `symbol`
   as missing. So a required field was reported absent by the same function that had
@@ -3065,7 +3065,7 @@ testing rather than building.
   and then never read — and on a live instance it failed every pass over a label no
   code would have looked at.
 - **The envelope-budget warning fired on envelope budgets**
-  ([#108](https://github.com/nrosier/Balancr/issues/108)). Actual renamed its budget
+  ([#108](https://github.com/nrosier/balancr/issues/108)). Actual renamed its budget
   styles: `rollover` became `envelope`, and `report` became `tracking`. The check
   tested only the old name, so it warned about carryover figures on exactly the
   configuration those figures assume — and would have stayed quiet on `tracking`,
@@ -3074,7 +3074,7 @@ testing rather than building.
   `budgetType` is read nowhere else. A warning that cries wolf on a correct setup
   teaches the reader to skip the one that isn't a false alarm, which is the cost.
 - **An OIDC redirect URI mismatch could not be diagnosed**
-  ([#110](https://github.com/nrosier/Balancr/issues/110)). The value is derived from
+  ([#110](https://github.com/nrosier/balancr/issues/110)). The value is derived from
   `PUBLIC_BASE_URL` rather than configured — deliberately, since reading it from a
   `Host` header would let a request choose where the authorization code is sent — and
   the provider compares it byte for byte. It was also the one value nothing printed,
@@ -3093,7 +3093,7 @@ testing rather than building.
 
 ### Added
 - **The Authentik provider setup is documented**
-  ([#109](https://github.com/nrosier/Balancr/issues/109)): which three values come
+  ([#109](https://github.com/nrosier/balancr/issues/109)): which three values come
   off the provider page, the redirect URI to register with a worked example and its
   Strict matching mode, why it is derived rather than configured, what the resulting
   error looks like when it does not match, and the scopes with the reason
@@ -3103,7 +3103,7 @@ testing rather than building.
 
 ### Fixed
 - **The logs did not say which build was running**
-  ([#104](https://github.com/nrosier/Balancr/issues/104)). A container answering
+  ([#104](https://github.com/nrosier/balancr/issues/104)). A container answering
   `"version":"0.5.0"` had in fact been pulled at `0.5.4`; the image was pulled and
   the container was never recreated. Establishing that took matching the digest
   `docker compose pull` printed against manifest digests read out of workflow logs,
@@ -3131,7 +3131,7 @@ testing rather than building.
 
 ### Added
 - **The budget page** (`web/src/pages/Budget.tsx`,
-  [#30](https://github.com/nrosier/Balancr/issues/30)) — one month over one request to
+  [#30](https://github.com/nrosier/balancr/issues/30)) — one month over one request to
   `GET /api/budget`, answered in the order someone actually asks: four totals, then where
   the money went, then whether each envelope held, then whether the month is on pace, then
   a year of shape per envelope. Each answer narrower than the one before it, which is also
@@ -3223,7 +3223,7 @@ testing rather than building.
 
 ### Fixed
 - **Every AI analysis call was rejected before the model ever saw it**
-  ([#96](https://github.com/nrosier/Balancr/issues/96)). Gemini answered
+  ([#96](https://github.com/nrosier/balancr/issues/96)). Gemini answered
   `400 INVALID_ARGUMENT` to the structured findings pass while the free-text
   narrative in the same run succeeded, so each nightly run recorded
   `analysisStatus: error`, fell back to deterministic findings with nothing ranking
@@ -3259,7 +3259,7 @@ testing rather than building.
 
 ### Fixed
 - **Ghostfolio sends `holdings` two ways, and both are now read**
-  ([#95](https://github.com/nrosier/Balancr/issues/95)). `/api/v1/portfolio/details`
+  ([#95](https://github.com/nrosier/balancr/issues/95)). `/api/v1/portfolio/details`
   returns a symbol-keyed map on the releases the adapter was written against and a plain
   list on current ones; only the map was accepted, so the portfolio job failed on every
   run against a live server and no holdings, allocation or TWR were ever stored. Both

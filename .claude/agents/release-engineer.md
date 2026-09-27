@@ -19,7 +19,7 @@ milestone is complete, patches carry the work in between, and 1.0.0 ships when
 testing says so rather than when the feature list ends.**
 
 Before assuming "next release = patch bump": check the "Up Next" GitHub milestone
-(`gh api repos/nrosier/Balancr/milestones`). If it's at 0 open issues, the batch of
+(`gh api repos/nrosier/balancr/milestones`). If it's at 0 open issues, the batch of
 work since the last release is a **minor**, regardless of what the requester
 called it. Surface this conflict rather than silently picking either — it's a
 public, visible-to-others action (see v2.5.0's own precedent: asked, user chose
