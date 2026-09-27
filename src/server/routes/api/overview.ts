@@ -130,7 +130,14 @@ export function buildOverview(
   // measured against the calendar, not against whichever night the net-worth job last
   // ran, so the trend `projectGoal` measures a rate over always ends at today's month.
   const asOfMonth = today.slice(0, 7)
-  const goalsWithProgress = loadGoalsWithProgress(db, tenantId, netWorth, asOfMonth, today)
+  // Same adjustment the headline card below applies (property equity, loans, debts
+  // folded into `totalCents`) — a `total`-kind goal is priced against that card's own
+  // figure, not the raw net-worth snapshot the card itself never shows (#684).
+  const adjustedNetWorth =
+    netWorth === null
+      ? null
+      : { ...netWorth, totalCents: netWorth.totalCents + (propertyEquity ?? 0) - loanBalance - debtBalance }
+  const goalsWithProgress = loadGoalsWithProgress(db, tenantId, adjustedNetWorth, asOfMonth, today)
   const categoryNames = loadCategoryNames(db, tenantId, locale)
   const goals = goalsWithProgress.map((goal) => ({
     id: goal.id,
@@ -164,7 +171,7 @@ export function buildOverview(
         ? null
         : {
             date: netWorth.date,
-            totalCents: netWorth.totalCents + (propertyEquity ?? 0) - loanBalance - debtBalance,
+            totalCents: adjustedNetWorth?.totalCents ?? netWorth.totalCents,
             liquidCents: netWorth.liquidCents,
             investedCents: netWorth.investedCents,
             debtCents: netWorth.debtCents,

@@ -161,7 +161,7 @@ export function useSettings(): SettingsState {
 
   const issue = useCallback(
     (path: string): string | undefined =>
-      error?.issues.find((candidate) => candidate.path === path)?.message,
+      error?.issues.find((candidate) => candidate.path === path || candidate.path.startsWith(`${path}.`))?.message,
     [error],
   )
 

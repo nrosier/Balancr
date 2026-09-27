@@ -11,6 +11,7 @@ import { tagMeta, tagMonthlyFacts } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import type { ActualTag, TagMonthTotal } from '../../src/adapters/actual/queries.ts'
 import { loadTagTotals, persistTagFacts, syncTagMeta } from '../../src/domain/aggregate/tags.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 function tag(id: string, overrides: Partial<ActualTag> = {}): ActualTag {
   return { id, tag: id, color: null, hidden: false, ...overrides }
@@ -173,6 +174,37 @@ describe('loadTagTotals', () => {
         thisYearNetCents: 0,
         byMonth: [],
       },
+    ])
+  })
+})
+
+describe('tenant isolation (#699)', () => {
+  it('keeps tag_meta and tag_monthly_facts scoped per tenant, even when the tag id collides', () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+
+    syncTagMeta(ctx.db, TENANT_ID, [tag('t1', { tag: 'rental-a', color: '#ff0000' })])
+    syncTagMeta(ctx.db, otherTenantId, [tag('t1', { tag: 'rental-b', color: '#00ff00' })])
+
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [total('rental-a', '2026-01', { netCents: -1_000 })],
+      new Map([['rental-a', 't1']]),
+      ['2026-01'],
+    )
+    persistTagFacts(
+      ctx.db,
+      otherTenantId,
+      [total('rental-b', '2026-01', { netCents: -9_000 })],
+      new Map([['rental-b', 't1']]),
+      ['2026-01'],
+    )
+
+    expect(loadTagTotals(ctx.db, TENANT_ID, '2026-01')).toEqual([
+      expect.objectContaining({ tag: 'rental-a', allTimeNetCents: -1_000 }),
+    ])
+    expect(loadTagTotals(ctx.db, otherTenantId, '2026-01')).toEqual([
+      expect.objectContaining({ tag: 'rental-b', allTimeNetCents: -9_000 }),
     ])
   })
 })

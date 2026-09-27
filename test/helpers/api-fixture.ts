@@ -23,6 +23,7 @@ import type { AccountValue } from '../../src/domain/aggregate/networth.ts'
 import { persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import { persistSignals } from '../../src/domain/aggregate/signals-store.ts'
 import type { MonthlyFact, MonthTotals } from '../../src/domain/aggregate/spend.ts'
+import { persistTagFacts, syncTagMeta } from '../../src/domain/aggregate/tags.ts'
 import {
   persistPortfolioMetrics,
   persistPortfolioSnapshots,
@@ -130,6 +131,20 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
   // while passing every assertion that did not look.
   syncCategoryMeta(db, tenantId, facts)
   persistFacts(db, tenantId, facts, months)
+
+  // One tag across both months, so `/api/tags` has something to walk — same
+  // domain functions the job calls, mirroring the category facts above.
+  syncTagMeta(db, tenantId, [{ id: 'tag-rental', tag: 'rental', color: '#ff0000', hidden: false }])
+  persistTagFacts(
+    db,
+    tenantId,
+    [
+      { tag: 'rental', month: PREVIOUS_MONTH, netCents: -25_000, txnCount: 2 },
+      { tag: 'rental', month: MONTH, netCents: -25_000, txnCount: 2 },
+    ],
+    new Map([['rental', 'tag-rental']]),
+    months,
+  )
 
   persistSignals(
     db,
