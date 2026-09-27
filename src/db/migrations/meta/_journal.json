@@ -344,6 +344,20 @@
       "when": 1790499113974,
       "tag": "0048_square_photon",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1790514704000,
+      "tag": "0049_property_legacy_mortgage_sweep",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1790514983334,
+      "tag": "0050_slimy_toad",
+      "breakpoints": true
     }
   ]
 }

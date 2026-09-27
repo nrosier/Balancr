@@ -17,7 +17,7 @@
  *    its own history on the way back up.
  */
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { fork } from 'node:child_process'
@@ -184,6 +184,29 @@ describe('writeSnapshot', () => {
     const [modulePath, args] = forkSpy.mock.calls[0]!
     expect(modulePath).toMatch(/vacuum-worker\.(ts|js)$/)
     expect(args).toEqual([dbPath, expect.stringContaining('.plain')])
+  })
+
+  it('locks the intermediate plaintext to 0600, not VACUUM INTO\'s own default (#698)', async () => {
+    // The plaintext is gone by the time `writeSnapshot` returns, so the only way to
+    // check its mode is to look while it still exists — right as `encryptFile` opens
+    // it, which is the last moment before this test's own passthrough deletes it.
+    vi.resetModules()
+    let modeWhenEncrypted: number | undefined
+    vi.doMock('../../src/backup/crypto.ts', async (importOriginal) => {
+      const original = await importOriginal<typeof import('../../src/backup/crypto.ts')>()
+      return {
+        ...original,
+        encryptFile: async (source: string, destination: string, passphrase: string) => {
+          modeWhenEncrypted = statSync(source).mode & 0o777
+          return original.encryptFile(source, destination, passphrase)
+        },
+      }
+    })
+
+    const { writeSnapshot: freshWriteSnapshot } = await import('../../src/backup/snapshot.ts')
+    await freshWriteSnapshot(dbPath, dir, PASS, new Date('2026-09-03T03:00:12Z'))
+
+    expect(modeWhenEncrypted).toBe(0o600)
   })
 })
 

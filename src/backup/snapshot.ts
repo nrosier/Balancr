@@ -19,7 +19,7 @@
  * descriptions and COICOP codes someone answered questions to build, the prompt
  * versions, the AI ledger. That is what this backs up.
  */
-import { readdir, rename, rm, stat, unlink } from 'node:fs/promises'
+import { chmod, readdir, rename, rm, stat, unlink } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
 import { fork } from 'node:child_process'
 import { join } from 'node:path'
@@ -147,6 +147,10 @@ export async function writeSnapshot(
 
   try {
     await runVacuum(dbPath, plain)
+    // `VACUUM INTO` creates the file at SQLite's own default mode (0644 & ~umask), not
+    // the 0600 the docstring above promises — only the encrypted outputs get an
+    // explicit mode from `createWriteStream`. This is the one place that can fix it.
+    await chmod(plain, 0o600)
     const plainBytes = (await stat(plain)).size
     const bytes = await encryptFile(plain, part, passphrase)
     await rename(part, path)

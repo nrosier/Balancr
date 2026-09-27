@@ -3,8 +3,10 @@
  * `benchmark/household.ts` and `ai/upcoming-note.ts`: reading degrades to the default
  * and never throws, writing validates and throws.
  */
+import { readFileSync } from 'node:fs'
+import { sql } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import { applyMigrations, migrationsFolder } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
 import { categoryMeta, scheduleMeta, settings } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
@@ -174,20 +176,6 @@ describe('the stored properties', () => {
     expect(() =>
       saveProperties(ctx.db, TENANT_ID, { properties: [property({ mortgages: tooMany })] }),
     ).toThrow()
-  })
-
-  it('migrates a property stored before mortgages became a list (#393)', () => {
-    write(
-      JSON.stringify({
-        properties: [
-          { id: 'home', kind: 'primary', label: 'Home', propertyValueCents: 40_000_000, rentCents: null, mortgage: mortgage() },
-          { id: 'cottage', kind: 'owned', label: 'Cottage', propertyValueCents: 10_000_000, rentCents: null, mortgage: null },
-        ],
-      }),
-    )
-    const loaded = loadProperties(ctx.db, TENANT_ID)
-    expect(loaded.properties[0]?.mortgages).toEqual([mortgage()])
-    expect(loaded.properties[1]?.mortgages).toEqual([])
   })
 
   it('accepts a rent category that is a known, non-hidden income category (#643)', () => {
@@ -406,6 +394,71 @@ describe('the stored properties', () => {
       }),
     ).toThrow(InvalidScheduleLinkError)
     expect(loadProperties(ctx.db, TENANT_ID)).toEqual(DEFAULT_PROPERTIES)
+  })
+
+  describe('the 0049 sweep (#683)', () => {
+    /**
+     * Replays the shipped statement rather than a paraphrase of it, same discipline as
+     * the 0046 sweep test: by the time a test database exists the migration has
+     * already run over an empty table, so the only way to exercise it is to write
+     * pre-migration rows and run the file's own SQL.
+     */
+    const sweep = (): void => {
+      const source = readFileSync(`${migrationsFolder}/0049_property_legacy_mortgage_sweep.sql`, 'utf8')
+      ctx.db.run(sql.raw(source.trim()))
+    }
+
+    it('rewrites a lone mortgage object into a one-element mortgages array', () => {
+      write(
+        JSON.stringify({
+          properties: [
+            { id: 'home', kind: 'primary', label: 'Home', propertyValueCents: 40_000_000, rentCents: null, mortgage: mortgage() },
+          ],
+        }),
+      )
+
+      sweep()
+
+      expect(loadProperties(ctx.db, TENANT_ID).properties[0]?.mortgages).toEqual([mortgage()])
+    })
+
+    it('rewrites a null mortgage into an empty mortgages array', () => {
+      write(
+        JSON.stringify({
+          properties: [
+            { id: 'cottage', kind: 'owned', label: 'Cottage', propertyValueCents: 10_000_000, rentCents: null, mortgage: null },
+          ],
+        }),
+      )
+
+      sweep()
+
+      expect(loadProperties(ctx.db, TENANT_ID).properties[0]?.mortgages).toEqual([])
+    })
+
+    it('leaves a row already in the current shape untouched', () => {
+      const current = property({ mortgages: [mortgage()] })
+      write(JSON.stringify({ properties: [current] }))
+
+      sweep()
+
+      expect(loadProperties(ctx.db, TENANT_ID).properties[0]).toEqual(current)
+    })
+
+    it('is a no-op the second time, because nothing legacy-shaped is left', () => {
+      write(
+        JSON.stringify({
+          properties: [
+            { id: 'home', kind: 'primary', label: 'Home', propertyValueCents: 40_000_000, rentCents: null, mortgage: mortgage() },
+          ],
+        }),
+      )
+
+      sweep()
+      sweep()
+
+      expect(loadProperties(ctx.db, TENANT_ID).properties[0]?.mortgages).toEqual([mortgage()])
+    })
   })
 })
 

@@ -264,6 +264,7 @@
     "aprPlaceholder": "bv. wat het afschrift JKP noemt",
     "aprReads": "Komt neer op {{value}}.",
     "balance": "Openstaand saldo",
+    "capHint": "Tot {{value}} kaarten.",
     "create": "Deze kaart toevoegen",
     "hint": "Doorlopend krediet — een kredietkaart, een winkelkaart. Geen vast schema: het saldo is wat je het laatst tegen een afschrift bevestigde. Wordt van het nettovermogen afgetrokken en is de volgende keer dat de portefeuillepagina laadt zichtbaar; niets hier wordt herrekend.",
     "interestReads": "{{value}} geschatte rente volgende maand aan dit tempo.",
@@ -328,6 +329,7 @@
       "toggle_one": "{{value}} gearchiveerd doel tonen",
       "toggle_other": "{{value}} gearchiveerde doelen tonen"
     },
+    "capHint": "Tot {{value}} doelen.",
     "categoryLabel": "Budgetcategorie",
     "categoryPlaceholder": "Kies een categorie…",
     "create": "Dit doel toevoegen",
@@ -459,7 +461,8 @@
     "save": "Deze lening opslaan",
     "term": "Resterende looptijd in maanden",
     "title": "Leningen",
-    "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd"
+    "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd",
+    "useStandardPaymentHint": "Vul eerst het openstaand saldo, de rentevoet en de resterende looptijd in."
   },
   "members": {
     "createButton": "Uitnodiging aanmaken",
@@ -615,6 +618,7 @@
   },
   "property": {
     "add": "Eigendom toevoegen",
+    "capHint": "Tot {{value}} eigendommen.",
     "cashFlowReads": "{{value}} over na de hypotheekbetaling per maand.",
     "equityReads": "{{value}} overwaarde vandaag.",
     "hint": "Wat je in eigendom hebt — het huis waar je woont, of iets dat je verhuurt. Een wijziging is de volgende keer dat het vermogensoverzicht of de portefeuillepagina laadt zichtbaar; niets hier wordt hier herrekend.",
@@ -630,6 +634,7 @@
     "mortgage": {
       "add": "Hypotheek toevoegen",
       "anchorDate": "Saldo per",
+      "capHint": "Tot {{value}} hypotheken per eigendom.",
       "originalPrincipal": "Oorspronkelijk geleend bedrag",
       "originalPrincipalHint": "Optioneel. Hiermee kan Balancr laten zien hoeveel van de lening al is afgelost.",
       "originalPrincipalPlaceholder": "bv. wat de lening was op dag één",
@@ -648,6 +653,7 @@
       "remove": "Hypotheek verwijderen",
       "term": "Resterende looptijd in maanden",
       "useStandardPayment": "Gebruik de standaardbetaling voor deze rente en looptijd",
+      "useStandardPaymentHint": "Vul eerst het openstaand saldo, de rentevoet en de resterende looptijd in.",
       "heading": "Hypotheek {{n}}"
     },
     "none": "Nog geen eigendommen. Voeg toe waar je woont, of iets dat je verhuurt.",

@@ -29,7 +29,6 @@ import {
   setDedupeGroup,
   setSourceOfTruth,
   syncAccountMap,
-  ungroupAccount,
   unlinkGroup,
   updateAccountMap,
   type AccountBalance,
@@ -407,7 +406,7 @@ describe('dismissMirror', () => {
     const [a1, g1] = rows()
     setDedupeGroup(ctx.db, TENANT_ID, 'broker', [a1!.id, g1!.id], a1!.id)
 
-    // `ungroupAccount` is the operation there, and it records the same decision while
+    // `unlinkGroup` is the operation there, and it records the same decision while
     // also breaking the group.
     expect(dismissMirror(ctx.db, TENANT_ID, g1!.id)).toBeNull()
   })
@@ -570,32 +569,18 @@ describe('grouping records provenance too', () => {
     }
   })
 
-  it('treats ungrouping as a decision, not as an absence of one', () => {
-    // "These two are not the same account" is worth exactly as much as the opposite,
-    // and is the answer #131's dismissal has to be able to store.
-    syncAccountMap(ctx.db, TENANT_ID, [actual('a1', 'Mirror'), ghostfolio('g1', 'Bolero')])
-    const [a, g] = rows()
-    if (a === undefined || g === undefined) throw new Error('expected two rows')
-    groupAccounts(ctx.db, TENANT_ID, [a.id, g.id], g.id)
-    ungroupAccount(ctx.db, TENANT_ID, a.id)
-
-    const after = rows()[0]
-    expect(after?.dedupeGroup).toBeNull()
-    expect(after?.isSourceOfTruth).toBe(true)
-    expect([...decidedFields(after ?? { decidedFields: null })].sort()).toEqual([
-      'dedupeGroup',
-      'isSourceOfTruth',
-    ])
-  })
 })
 
 describe('unlinkGroup', () => {
-  // `ungroupAccount` frees only the row named, which is right when a group has three
+  // Unlinking is a decision, not an absence of one: "these two are not the same
+  // account" is worth exactly as much as the opposite, and is the answer #131's
+  // dismissal has to be able to store. It frees every member of a group in one
+  // transaction rather than only the row named, which is right when a group has three
   // or more members but is the exact footgun for the common case of two: freeing the
-  // source-of-truth side alone leaves its twin as the sole member of a group with no
-  // source of truth, and its money silently stops counting. The settings panel shows
-  // a pair as one block with one "Unlink" button, so unlinking has to mean the whole
-  // pair, symmetrically, whichever id the button happens to carry.
+  // source-of-truth side alone would leave its twin as the sole member of a group with
+  // no source of truth, and its money silently stops counting. The settings panel
+  // shows a pair as one block with one "Unlink" button, so unlinking has to mean the
+  // whole pair, symmetrically, whichever id the button happens to carry.
   it('separates both members of a pair, whichever id is passed', () => {
     syncAccountMap(ctx.db, TENANT_ID, [actual('a1', 'Mirror'), ghostfolio('g1', 'Bolero')])
     const [a, g] = rows()
@@ -992,9 +977,7 @@ describe('applyDerivedMirror', () => {
     // apart, and the panel becomes a fight the job always wins.
     const { actualId, ghostfolioId } = seedPair()
     applyDerivedMirror(ctx.db, TENANT_ID, { actualId, ghostfolioId, matchedOn: 'argenta' })
-    ungroupAccount(ctx.db, TENANT_ID, ghostfolioId)
-    // Both are loose again, so the rule would match them a second time.
-    ungroupAccount(ctx.db, TENANT_ID, actualId)
+    unlinkGroup(ctx.db, TENANT_ID, ghostfolioId)
 
     expect(deriveMirrors(loadAccountMap(ctx.db, TENANT_ID))).toHaveLength(1)
     expect(applyDerivedMirror(ctx.db, TENANT_ID, { actualId, ghostfolioId, matchedOn: 'argenta' })).toBeNull()

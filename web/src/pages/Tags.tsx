@@ -71,17 +71,7 @@ function TagsTable({ data, onRefreshed }: { data: TagTotals; onRefreshed: () => 
                 <tr key={tag.id}>
                   <th scope="row">
                     {tag.color === null ? null : (
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: 'inline-block',
-                          width: '0.7em',
-                          height: '0.7em',
-                          borderRadius: '50%',
-                          backgroundColor: tag.color,
-                          marginRight: '0.5em',
-                        }}
-                      />
+                      <span className="tag-dot" aria-hidden="true" style={{ backgroundColor: tag.color }} />
                     )}
                     {tag.tag}
                   </th>

@@ -77,11 +77,10 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
           {who === null ? t('auth.onboarding.lede') : t('auth.onboarding.ledeNamed', { who })}
         </p>
 
-        <div className="signin__or" role="tablist" aria-label={t('auth.onboarding.modeLabel')}>
+        <div className="signin__or" role="group" aria-label={t('auth.onboarding.modeLabel')}>
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === 'create'}
+            aria-pressed={mode === 'create'}
             className={`button ${mode === 'create' ? 'button--primary' : 'button--quiet'}`}
             disabled={busy}
             onClick={() => setMode('create')}
@@ -90,8 +89,7 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === 'redeem'}
+            aria-pressed={mode === 'redeem'}
             className={`button ${mode === 'redeem' ? 'button--primary' : 'button--quiet'}`}
             disabled={busy}
             onClick={() => setMode('redeem')}

@@ -7,7 +7,7 @@ import {
   deriveMirrors,
   loadAccountMap,
   syncAccountMap,
-  ungroupAccount,
+  unlinkGroup,
   type AccountMapRow,
 } from '../../src/domain/aggregate/accounts.ts'
 import { holdsInvestments } from '../../src/domain/aggregate/classify.ts'
@@ -330,11 +330,17 @@ describe('a Ghostfolio mirror of a bank account', () => {
     const { db, tenantId, rows } = settle()
     const ghostfolio = rows.find((row) => row.externalId === 'g-current')
     if (ghostfolio === undefined) throw new Error('the fixture produced no mirror')
-    ungroupAccount(db, tenantId, ghostfolio.id)
+    unlinkGroup(db, tenantId, ghostfolio.id)
 
     const result = computeNetWorth('2026-03-01', valued(loadAccountMap(db, tenantId)))
     expect(result.totalCents).toBe(CURRENT_CENTS * 2 + BROKER_CENTS)
-    expect(deriveMirrors(loadAccountMap(db, tenantId))).toEqual([])
+
+    // Freed rather than forgotten: a later sync's own `deriveMirrors` still proposes
+    // the same pair by name, but `applyDerivedMirror` must refuse it — the decision
+    // survives however a future sync re-derives the candidate.
+    const [pair] = deriveMirrors(loadAccountMap(db, tenantId))
+    if (pair === undefined) throw new Error('expected the pair to still be derivable by name')
+    expect(applyDerivedMirror(db, tenantId, pair)).toBeNull()
   })
 })
 
