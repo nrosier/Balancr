@@ -373,6 +373,7 @@ const PAYLOAD: Payload = {
   debts: [],
   goals: [],
   invites: [],
+  users: [],
   integrations: {
     actual: {
       serverUrl: 'https://actual.example.com',

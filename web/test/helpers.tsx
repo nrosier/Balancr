@@ -427,6 +427,7 @@ export function stubSettings(availability: AiAvailabilityWire = { enabled: true,
     accounts: [],
     dedupe: [],
     invites: [],
+    users: [],
     ai: {
       availability,
       month: '2026-09',
