@@ -41,13 +41,12 @@
  * has to leave the account.** Rather than requiring every category to be
  * tagged before it counts (most households will not have tagged more than a
  * handful), the household's own already-computed average total spend
- * (the same EWMA `household.ts` uses for the emergency-fund cushion) is
- * added as a flat monthly cost on top of the tagged categories and bills
- * above. It is a coarser number than a per-category baseline — it re-averages
- * some of the same noisy discretionary spend a `fixed`-tagged category and a
- * known bill already count precisely — but a floor that ignores most of a
- * household's real spending is a worse trade than a floor that double-counts
- * a little of it.
+ * (the same EWMA `household.ts` uses for the emergency-fund cushion) fills
+ * the gap: only the residual left over after subtracting what the tagged
+ * categories and bills above already project is added as a flat monthly
+ * cost, never the whole average on top of them (#685) — a household that
+ * spends €3,000/month on average and has €1,800 of that precisely tagged
+ * `fixed` should see €3,000/month projected forward, not €4,800.
  */
 import { config } from '../../config.ts'
 import type { Db } from '../../db/index.ts'
@@ -196,10 +195,20 @@ export function projectCashflow(db: Db, tenantId: string): Forecast | null {
         )
       : 0
 
+  // `bucket.fixedCents` already holds every tagged monthly baseline and detected
+  // bill occurrence projected across the horizon — averaging that across the same
+  // horizon gives the flat amount `typicalSpendCents` would otherwise double-count
+  // on top of those precisely-known legs, rather than re-averaging only the
+  // genuinely untagged residual (#685).
+  const alreadyCountedCents = Math.round(
+    [...months.values()].reduce((sum, bucket) => sum + bucket.fixedCents, 0) / horizon.length,
+  )
+  const residualCents = Math.max(0, typicalSpendCents - alreadyCountedCents)
+
   let balanceCents = netWorth.liquidCents
   const orderedMonths = horizon.map((month) => {
     const bucket = months.get(month) as ForecastMonth
-    bucket.fixedCents += typicalSpendCents
+    bucket.fixedCents += residualCents
     bucket.netCents = bucket.incomeCents - bucket.fixedCents
     balanceCents += bucket.netCents
     bucket.balanceCents = balanceCents

@@ -218,7 +218,7 @@ describe('projectCashflow', () => {
     }
   })
 
-  it('adds the household average total spend as a flat cost, on top of any tagged categories', () => {
+  it('adds only the residual of the household average not already covered by tagged categories (#685)', () => {
     seedAnchor(500_000, { spentCents: 150_000 })
     const rent = fact(ANCHOR, 'rent', {
       baseline: { baselineCents: 90_000, currentCents: 90_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
@@ -229,10 +229,29 @@ describe('projectCashflow', () => {
 
     const forecast = projectCashflow(ctx.db, tenantId)
     for (const month of forecast?.months ?? []) {
-      // A single stored month's `ewma` is just that month's own figure.
-      expect(month.fixedCents).toBe(90_000 + 150_000)
+      // Household average total spend is 150,000; rent's own 90,000 is already
+      // in there, so only the 60,000 residual is added on top of it — the
+      // total lands back at the household's real average, not at 240,000.
+      expect(month.fixedCents).toBe(150_000)
     }
-    expect(forecast?.months[11]?.balanceCents).toBe(500_000 - (90_000 + 150_000) * 12)
+    expect(forecast?.months[11]?.balanceCents).toBe(500_000 - 150_000 * 12)
+  })
+
+  it('adds nothing extra when the tagged fixed total already exceeds the household average', () => {
+    seedAnchor(500_000, { spentCents: 90_000 })
+    const rent = fact(ANCHOR, 'rent', {
+      baseline: { baselineCents: 150_000, currentCents: 150_000, deltaBp: 0, monthsUsed: 6, windowMonths: 1, winsorEffectBp: 0 },
+    })
+    syncCategoryMeta(ctx.db, tenantId, [rent])
+    persistFacts(ctx.db, tenantId, [rent], [ANCHOR])
+    classify('rent', 'fixed')
+
+    const forecast = projectCashflow(ctx.db, tenantId)
+    for (const month of forecast?.months ?? []) {
+      // The residual is clamped at zero rather than going negative and eating
+      // into rent's own, precisely-known figure.
+      expect(month.fixedCents).toBe(150_000)
+    }
   })
 
   it('lets the running balance go negative without clamping', () => {

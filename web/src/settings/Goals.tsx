@@ -31,6 +31,7 @@ import {
   type GoalSetting,
   type GoalStatus,
 } from '../shared.ts'
+import { Private } from '../ui/Money.tsx'
 import { Issue, Panel } from './Panel.tsx'
 import type { SettingsPanelProps } from './state.ts'
 
@@ -416,7 +417,9 @@ export function GoalsPanel({ settings, state, owner }: SettingsPanelProps): Reac
               {archived.map((row) => (
                 <li className="goal goal--archived" key={row.key}>
                   <p className="goal__reads">{row.label}</p>
-                  <p className="goal__reads muted num">{row.targetCents}</p>
+                  <p className="goal__reads muted num">
+                    <Private>{row.targetCents}</Private>
+                  </p>
                   {row.doneAt !== null && (
                     <p className="goal__reads muted">
                       {t('settings:goals.archive.doneOn', { date: formatDate(row.doneAt) })}

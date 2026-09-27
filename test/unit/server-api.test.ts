@@ -90,6 +90,7 @@ const ENDPOINTS = [
   '/api/forecast',
   '/api/scenario',
   '/api/insights',
+  '/api/tags',
 ] as const
 
 let ctx: ReturnType<typeof apiFixture>
@@ -761,6 +762,15 @@ describe('GET /api/scenario', () => {
       .run()
     const body = (await get('/api/scenario')).json()
     expect(body.scenario.baselineCents).toBe(61_000)
+  })
+})
+
+describe('GET /api/tags (#699)', () => {
+  it('reports the fixture tag with its all-time, rolling-12 and this-year totals', async () => {
+    const body = (await get('/api/tags')).json()
+
+    expect(body.tags).toHaveLength(1)
+    expect(body.tags[0]).toMatchObject({ tag: 'rental', color: '#ff0000', allTimeNetCents: -50_000 })
   })
 })
 
@@ -1971,6 +1981,9 @@ describe('money', () => {
   // still enough to catch the walk matching nothing.
   const MIN_AMOUNTS: Partial<Record<(typeof ENDPOINTS)[number], number>> = {
     '/api/scenario': 1,
+    // One tag, two months of `netCents`, three derived totals — same fixture-is-
+    // deliberately-small reasoning as scenario above.
+    '/api/tags': 4,
   }
 
   it('is integer cents and integer basis points, everywhere, on every endpoint', async () => {

@@ -1107,7 +1107,7 @@ function CheckOutcome({ result }: { result: PromptValidation }): ReactNode {
 
       {verdict === null ? null : (
         <>
-          <p className={verdict.verdict === 'safe' ? 'muted' : 'notice notice--alert'}>
+          <p className={verdict.verdict === 'safe' ? 'muted' : 'notice notice--error'}>
             {t(`settings:prompt.check.${verdict.verdict}`)}
           </p>
 

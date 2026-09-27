@@ -128,6 +128,8 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
     }),
   )
   const customPricesComplete = !isCustom || selectedModels.every((model) => modelPrices[model] !== undefined)
+  const budgetEurValue = Number(current.budgetEur.trim())
+  const budgetValid = current.budgetEur.trim() !== '' && Number.isFinite(budgetEurValue) && budgetEurValue >= 0
 
   const submit = (): void => {
     state.save(
@@ -142,7 +144,7 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
         modelFast,
         modelDeep,
         modelPrices,
-        budgetEur: Number(current.budgetEur),
+        budgetEur: budgetEurValue,
       },
       () => setDraft(null),
     )
@@ -336,7 +338,9 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
           <button
             type="submit"
             className="button button--primary"
-            disabled={locked || draft === null || modelFast === '' || modelDeep === '' || !customPricesComplete}
+            disabled={
+              locked || draft === null || modelFast === '' || modelDeep === '' || !customPricesComplete || !budgetValid
+            }
           >
             {state.pending === 'integrations-ai' ? t('shell.loading') : t('action.save')}
           </button>

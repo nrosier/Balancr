@@ -133,13 +133,11 @@ export function householdSignals(input: HouseholdInput): Signal[] {
   // budget-allocation nudge below needs it in both directions: a positive
   // shortfall to fill, or its absence to know the fund is already covered.
   let shortfallCents = 0
-  if (input.netWorth && input.spendHistory.length > 0) {
-    const typicalSpend = Math.round(
-      ewma(
-        input.spendHistory.map((entry) => entry.cents),
-        params.baseline.halfLifeMonths,
-      ),
-    )
+  // Judged against the EWMA of *previous* months, same as `income_change` above —
+  // the judged month itself must not shorten its own cushion on paper (#686).
+  const previousSpend = input.spendHistory.slice(0, -1).map((entry) => entry.cents)
+  if (input.netWorth && previousSpend.length > 0) {
+    const typicalSpend = Math.round(ewma(previousSpend, params.baseline.halfLifeMonths))
     if (typicalSpend > 0) {
       // Basis points of a month, so "2.4 months" survives being an integer.
       // Named `targetMonthsBp` rather than `targetBp` because `savings_rate_low`

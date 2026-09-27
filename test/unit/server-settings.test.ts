@@ -470,6 +470,17 @@ describe('PATCH /api/settings/params', () => {
     expect(res.statusCode).toBe(403)
     expect(loadParams(ctx.db, tenantId)).toEqual(DEFAULT_PARAMS)
   })
+
+  it("does not leak into or read from another tenant's params (#700)", async () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    saveParams(ctx.db, otherTenantId, { baseline: { windowMonths: 9 } })
+
+    const res = await patch('/api/settings/params', { baseline: { windowMonths: 6 } })
+
+    expect(res.statusCode).toBe(200)
+    expect(loadParams(ctx.db, tenantId).baseline.windowMonths).toBe(6)
+    expect(loadParams(ctx.db, otherTenantId).baseline.windowMonths).toBe(9)
+  })
 })
 
 describe('PATCH /api/settings/household', () => {

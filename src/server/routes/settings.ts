@@ -748,7 +748,7 @@ const aiIntegrationPatchRequest = z.strictObject({
     cacheWriteInputEur: euroAmount(),
     outputEur: euroAmount(),
   })).default({}),
-  budgetEur: z.coerce.number().nonnegative().refine(fitsMicroEur, { message: 'value is too large to store as micro-euros' }),
+  budgetEur: euroAmount(),
 }).refine((value) => !(value.clearApiKey === true && value.apiKey !== undefined), {
   message: 'apiKey and clearApiKey cannot be used together',
 })
