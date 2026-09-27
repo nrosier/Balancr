@@ -20,6 +20,8 @@ import {
   fetchScheduleLabels,
   fetchSchedules,
   fetchSchedulesPaidThisMonth,
+  fetchTagMonthlyTotals,
+  fetchTags,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
@@ -47,6 +49,7 @@ import { monthFingerprint } from '../domain/aggregate/fingerprint.ts'
 import { persistMismatches, persistMonthTotals } from '../domain/aggregate/month-store.ts'
 import { loadParams } from '../domain/aggregate/params.ts'
 import { aggregateSpend } from '../domain/aggregate/spend.ts'
+import { persistTagFacts, syncTagMeta } from '../domain/aggregate/tags.ts'
 import type { Logger } from '../logger.ts'
 import {
   addMonths,
@@ -265,6 +268,19 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     const schedules = await fetchSchedules(db, tenantId)
     const scheduleLabels = await fetchScheduleLabels(db, tenantId)
 
+    // Same reasoning again for `tag_meta`/`tag_monthly_facts` (#663). Bounded to
+    // `targets`, not the wider `load` window above: unlike `recomputed`, tag facts
+    // feed no baseline, so there is no reason to reach further back than the
+    // months this install already reports on.
+    const tags = await fetchTags(db, tenantId)
+    const tagTotals = await fetchTagMonthlyTotals(
+      db,
+      tenantId,
+      tags.filter((tag) => !tag.hidden).map((tag) => tag.tag),
+      startOfMonth(targets[0] as string),
+      endOfMonth(targets[targets.length - 1] as string),
+    )
+
     // What is still to come this month (#159). Read here rather than inside
     // `aggregateSpend` for the reason every clock-dependent figure is: the
     // aggregator is pure and this is a function of today. Only the current month
@@ -321,6 +337,8 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       dayCurves,
       schedules,
       scheduleLabels,
+      tags,
+      tagTotals,
     }
   })
 
@@ -330,7 +348,18 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     log.warn('Actual reports no budget months at or before the current month')
     return { months: 0, facts: 0 }
   }
-  const { load, targets, history, recomputed, committed, dayCurves, schedules, scheduleLabels } = fetched
+  const {
+    load,
+    targets,
+    history,
+    recomputed,
+    committed,
+    dayCurves,
+    schedules,
+    scheduleLabels,
+    tags,
+    tagTotals,
+  } = fetched
 
   const computed = await step('compute', async () => {
     const aggregate = aggregateSpend({
@@ -355,6 +384,14 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       // classifiable by the next pass.
       const categories = syncCategoryMeta(tx, tenantId, aggregate.facts)
       syncScheduleMeta(tx, tenantId, schedules, scheduleLabels)
+      syncTagMeta(tx, tenantId, tags)
+      const tagFacts = persistTagFacts(
+        tx,
+        tenantId,
+        tagTotals,
+        new Map(tags.map((tag) => [tag.tag, tag.id])),
+        targets,
+      )
       const facts = persistFacts(tx, tenantId, aggregate.facts, targets)
       // Month totals cover the target months, so the uncategorised backlog stored
       // here is the backlog over the months this install reports on
@@ -385,10 +422,10 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       )
       const drift = persistMismatches(tx, tenantId, aggregate.mismatches, targets)
 
-      return { aggregate, categories, facts, months, drift }
+      return { aggregate, categories, facts, tagFacts, months, drift }
     })
   })
-  const { aggregate, categories, facts, months, drift } = computed
+  const { aggregate, categories, facts, tagFacts, months, drift } = computed
 
   const accounts = await step('accounts', () => syncAccounts(db, tenantId, log))
 
@@ -397,6 +434,8 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     historyMonths: load.length,
     facts: facts.written,
     factsRemoved: facts.removed,
+    tagFacts: tagFacts.written,
+    tagFactsRemoved: tagFacts.removed,
     categories,
     accountsCreated: accounts.created,
     accountsRenamed: accounts.renamed,

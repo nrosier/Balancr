@@ -13,9 +13,11 @@
  * makes both equal to that window, and choosing months well before the real
  * current one keeps `targets.includes(currentMonth)` false — so the
  * committed/day-curve branches never run and need no mock. `fetchSchedules`/
- * `fetchScheduleLabels` run regardless (#662, `schedule_meta` stays fresh even
- * in a month with nothing committed to compute), so those two are stubbed to
- * empty rather than left to reach a real Actual client.
+ * `fetchScheduleLabels` (#662) and `fetchTags`/`fetchTagMonthlyTotals` (#663)
+ * run regardless — both stay fresh even in a month with nothing committed to
+ * compute — so all four are stubbed rather than left to reach a real Actual
+ * client; the tag pair returns a small fixture instead of empty, so the tag
+ * write-through has something to assert against.
  */
 import { asc, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,6 +28,8 @@ import {
   jobRuns as jobRunsTable,
   monthlyCategoryFacts as monthlyCategoryFactsTable,
   monthlyTotals as monthlyTotalsTable,
+  tagMeta as tagMetaTable,
+  tagMonthlyFacts as tagMonthlyFactsTable,
 } from '../../src/db/schema.ts'
 import { runJob, type JobStep } from '../../src/jobs/runner.ts'
 import { syncJob } from '../../src/jobs/sync.ts'
@@ -71,6 +75,9 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   fetchRecomputedSpend: () => Promise.resolve([]),
   fetchSchedules: () => Promise.resolve([]),
   fetchScheduleLabels: () => Promise.resolve(new Map()),
+  fetchTags: () => Promise.resolve([{ id: 'tag1', tag: 'rental', color: null, hidden: false }]),
+  fetchTagMonthlyTotals: () =>
+    Promise.resolve([{ tag: 'rental', month: '2020-01', netCents: -1_000, txnCount: 1 }]),
 }))
 
 vi.mock('../../src/adapters/ghostfolio/client.ts', async (importOriginal) => ({
@@ -107,6 +114,17 @@ describe('a real sync run', () => {
 
     expect(steps().map((step) => step.name)).toEqual(['connect', 'fetch', 'compute', 'accounts'])
     expect(steps().every((step) => step.status === 'ok')).toBe(true)
+  })
+
+  it('keeps tag_meta and tag_monthly_facts fresh alongside everything else (#663)', async () => {
+    await runJob(db, syncJob, TENANT_ID)
+
+    expect(db.select().from(tagMetaTable).where(eq(tagMetaTable.tenantId, TENANT_ID)).all()).toMatchObject([
+      { tagId: 'tag1', tag: 'rental', color: null, hidden: false },
+    ])
+    expect(
+      db.select().from(tagMonthlyFactsTable).where(eq(tagMonthlyFactsTable.tenantId, TENANT_ID)).all(),
+    ).toMatchObject([{ tagId: 'tag1', month: '2020-01', netCents: -1_000, txnCount: 1 }])
   })
 
   it('rolls back facts, category meta, and month totals together when the compute step fails partway (#591/D4)', async () => {

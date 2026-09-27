@@ -991,3 +991,121 @@ export function fetchSchedulesPaidThisMonth(
     return counts
   })
 }
+
+// ---------------------------------------------------------------------------
+//  Tags (#663)
+// ---------------------------------------------------------------------------
+
+const tagShape = z.object({
+  id: z.string(),
+  tag: z.string(),
+  color: z.string().nullable().optional(),
+  hidden: z.boolean().nullable().optional(),
+})
+
+export interface ActualTag {
+  id: string
+  tag: string
+  color: string | null
+  hidden: boolean
+}
+
+/**
+ * Every registered tag (#663), for the tag-totals page's own cache.
+ *
+ * `getTags()` also returns a `description` field — a household's own free text about
+ * what a tag means — which is deliberately dropped on parse. Unlike everywhere else in
+ * this module that already withholds a name from the AI path (`fetchScheduleLabels`'s
+ * doc comment explains why), a tag's own string here isn't withheld either: it's
+ * captured and stored in `tag_meta`, but only ever read back by the tags page itself,
+ * never by `redact.ts` or anything Gemini-facing. `description` earns no such carve-out
+ * because nothing downstream needs it at all.
+ */
+export async function fetchTags(db: Db, tenantId: string): Promise<ActualTag[]> {
+  const raw = await withActual(db, tenantId, (actual) => actual.getTags())
+  const parsed = z.array(tagShape).safeParse(raw)
+  if (!parsed.success) {
+    throw new Error(`Actual "getTags" returned an unexpected shape: ${z.prettifyError(parsed.error)}`)
+  }
+  return parsed.data.map((tag) => ({
+    id: tag.id,
+    tag: tag.tag,
+    color: tag.color ?? null,
+    hidden: tag.hidden ?? false,
+  }))
+}
+
+/**
+ * Reproduces Actual's own `hasTags`/`hasAnyTag` rule-condition escaping exactly (see
+ * `@actual-app/core`'s `transaction-rules.ts` and its `extractTagsForFilter` helper),
+ * so a tag containing a regex-special character matches `notes` the same way Actual's
+ * own rule editor would match it. `tags.tag` (from `getTags()`) is stored without its
+ * leading `#` — the `#` has to be added back before escaping, or the `(?<!#)` lookbehind
+ * excludes every real occurrence, since a tag in `notes` is always written as `#tag`.
+ */
+export function tagRegexPattern(tag: string): string {
+  const escaped = `#${tag}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\$/g, '[$]')
+  return `(?<!#)${escaped}([\\s#]|$)`
+}
+
+const tagMonthRow = z.object({ month: z.string(), amount: cents.nullable(), count: z.number() })
+
+export interface TagMonthTotal {
+  tag: string
+  month: string
+  /** Signed, Actual's own convention: negative is a net cost, positive a net gain. */
+  netCents: number
+  txnCount: number
+}
+
+/**
+ * Net cost/gain per tag per month (#663), one AQL query per tag.
+ *
+ * Unlike `fetchRecomputedSpend` this deliberately does *not* filter to on-budget
+ * accounts: a tag exists precisely to cut across the boundary a category can't — a
+ * mortgage payment leaving an off-budget loan account is exactly the kind of figure a
+ * property-linked tag needs to see. `transferFilter`/`fetchOffBudgetTransferLegIds` are
+ * reused unchanged even so: they already drop a pure internal transfer between two of
+ * the household's own accounts while keeping the on-budget leg of one that crosses into
+ * an off-budget account counted once, whether or not the query is itself restricted to
+ * on-budget accounts.
+ *
+ * Sequential across `tags`, not `Promise.all` — same reasoning `fetchHistory` already
+ * gives: every call goes through the Actual serialiser anyway.
+ */
+export async function fetchTagMonthlyTotals(
+  db: Db,
+  tenantId: string,
+  tags: readonly string[],
+  from: string,
+  to: string,
+): Promise<TagMonthTotal[]> {
+  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
+  const out: TagMonthTotal[] = []
+  for (const tag of tags) {
+    const rows = await runAql(
+      db,
+      tenantId,
+      `tag-totals:${tag}`,
+      () =>
+        q('transactions')
+          .filter({
+            date: { $gte: from, $lte: to },
+            notes: { $regexp: tagRegexPattern(tag) },
+            ...transferFilter(keepLegIds),
+            starting_balance_flag: false,
+          })
+          .groupBy({ $month: '$date' })
+          .select([
+            { month: { $month: '$date' } },
+            { amount: { $sum: '$amount' } },
+            { count: { $count: '$id' } },
+          ]),
+      tagMonthRow,
+    )
+    for (const row of rows) {
+      out.push({ tag, month: row.month, netCents: row.amount ?? 0, txnCount: row.count })
+    }
+  }
+  return out
+}

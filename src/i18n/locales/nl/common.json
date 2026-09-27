@@ -111,7 +111,8 @@
     "overview": "Overzicht",
     "portfolio": "Portefeuille",
     "scenario": "Scenario",
-    "settings": "Instellingen"
+    "settings": "Instellingen",
+    "tags": "Tags"
   },
   "notConfigured": {
     "actual": {
@@ -150,6 +151,9 @@
     },
     "settings": {
       "lede": "Taal, prompts, drempels en welke bron elke rekening beheert."
+    },
+    "tags": {
+      "lede": "Netto kost of opbrengst voor alles wat in Actual getagd is, dwars over categorieën en budgetlijnen heen."
     }
   },
   "periodPicker": {

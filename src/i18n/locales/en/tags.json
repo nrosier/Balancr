@@ -1,0 +1,13 @@
+{
+  "table": {
+    "caption_one": "One tag tracked.",
+    "caption_other": "{{value}} tags tracked.",
+    "column": {
+      "allTime": "All time",
+      "rolling12": "Last 12 months",
+      "tag": "Tag",
+      "thisYear": "This year"
+    }
+  },
+  "title": "Per-tag totals"
+}

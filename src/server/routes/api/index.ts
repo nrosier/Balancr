@@ -36,6 +36,7 @@ import { buildPortfolio } from './portfolio.ts'
 import { buildScenario } from './scenario.ts'
 import { buildStatus } from './status.ts'
 import { buildJobHistory } from './status-history.ts'
+import { buildTagTotals } from './tags.ts'
 
 /**
  * Which language the rendered-text exceptions come back in.
@@ -88,6 +89,8 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/portfolio', (request: FastifyRequest) => buildPortfolio(db, requireUser(request).tenantId))
 
   app.get('/api/forecast', (request: FastifyRequest) => buildForecast(db, requireUser(request).tenantId))
+
+  app.get('/api/tags', (request: FastifyRequest) => buildTagTotals(db, requireUser(request).tenantId))
 
   app.get('/api/scenario', (request: FastifyRequest) => buildScenario(db, requireUser(request).tenantId))
 
