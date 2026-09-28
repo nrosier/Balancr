@@ -50,7 +50,9 @@ export function Nav({ account }: NavProps): ReactNode {
       {ROUTES.map(({ path, labelKey, Icon, preload }) => (
         <Link key={path} to={path} className="nav__link" onPreload={preload}>
           <Icon />
-          <span className="nav__label">{t(labelKey)}</span>
+          <span className="nav__label" title={t(labelKey)}>
+            {t(labelKey)}
+          </span>
         </Link>
       ))}
       {account === undefined ? null : (
