@@ -306,11 +306,36 @@ export function compareToBenchmark(input: CompareInput): BenchmarkComparison {
           (reference.mean_monthly_cents * periodMonths * scaled.bp) / reference.equivalent_adults_bp,
         )
 
+  const basisTotalCents = level ? levelTotalCents : comparedCents
+
+  // Largest-remainder rounding (#755): each group's benchmark share is floored
+  // independently first, and the cents lost to flooring are handed back one at a
+  // time, largest fractional part first, ties broken by group id — the same
+  // discipline `splitCategoryPool` already applies to goal shares. Without this,
+  // the displayed group figures would drift from independent rounding and not sum
+  // to `basisTotalCents` exactly, a latent trap for any future total row.
+  const withFraction = benchmark.groups.map((entry) => {
+    const raw = (basisTotalCents * entry.share_bp) / 10_000
+    const floor = Math.floor(raw)
+    return { entry, floor, fraction: raw - floor }
+  })
+  const benchmarkCentsByGroup = new Map<BenchmarkGroup, number>(
+    withFraction.map(({ entry, floor }) => [entry.id, floor]),
+  )
+  let remainder = basisTotalCents - withFraction.reduce((sum, item) => sum + item.floor, 0)
+  const byLargestFraction = [...withFraction].sort((a, b) => {
+    if (a.fraction !== b.fraction) return b.fraction - a.fraction
+    return a.entry.id < b.entry.id ? -1 : a.entry.id > b.entry.id ? 1 : 0
+  })
+  for (const item of byLargestFraction) {
+    if (remainder <= 0) break
+    benchmarkCentsByGroup.set(item.entry.id, (benchmarkCentsByGroup.get(item.entry.id) ?? 0) + 1)
+    remainder -= 1
+  }
+
   const groups = benchmark.groups.map((entry): GroupComparison => {
     const mine = totals.get(entry.id) ?? { cents: 0, categories: 0 }
-    const benchmarkCents = Math.round(
-      ((level ? levelTotalCents : comparedCents) * entry.share_bp) / 10_000,
-    )
+    const benchmarkCents = benchmarkCentsByGroup.get(entry.id) ?? 0
     const deltaCents = mine.cents - benchmarkCents
     return {
       group: entry.id,

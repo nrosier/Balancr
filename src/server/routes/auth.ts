@@ -105,7 +105,14 @@ export function registerAuthRoutes(app: FastifyInstance, { db, oidc }: AuthRoute
   app.get(
     '/auth/session',
     publicRoute,
-    (request: FastifyRequest): SessionResponse => {
+    (request: FastifyRequest, reply: FastifyReply): SessionResponse => {
+      // Outside `/api/*`, so `security.ts`'s blanket hook doesn't cover it — set
+      // explicitly here. A cached answer is a cached identity: on the shared
+      // household device this repo is built for, a co-parent who logs in after
+      // the first logs out must not see a stale "authenticated as" from a cache.
+      void reply.header('cache-control', 'no-store')
+      void reply.header('vary', 'cookie')
+
       // Only asked when there is no session already — an onboarding cookie left
       // over from a browser that has since signed in some other way is not worth
       // a lookup.

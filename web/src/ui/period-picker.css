@@ -188,9 +188,13 @@
 .period-picker__cell.is-outside {
   color: var(--text-muted);
 }
+/* Greying out a disabled cell here *is* the signal that no data exists for that
+   period, not just an inert state — so `opacity` alone (which drops the number's own
+   text below the AA floor) is the wrong tool. Same rule `settings.css` states for a
+   disabled input: the background marks the state, the text stays at full contrast (#781). */
 .period-picker__cell:disabled {
   cursor: default;
-  opacity: 0.6;
+  background: var(--surface-sunken);
 }
 .period-picker__cell:disabled:hover {
   background: transparent;

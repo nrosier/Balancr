@@ -1505,6 +1505,28 @@ describe('the month note', () => {
     })
     expect(screen.getByRole('button', { name: 'Year' }).hasAttribute('disabled')).toBe(false)
   })
+
+  it('shows the length-bound issue even though its path is empty, not "text" (#767)', async () => {
+    // `saveMonthNote` bounds the length by parsing the bare string, so the issue the
+    // server returns is pathless — `MonthNote.tsx` matches `path === 'text' || path === ''`
+    // for exactly this reason. Nothing before this test served that rejection.
+    serve({
+      '/api/budget': json(FULL),
+      '/api/budget/note?month=2026-08': json({ text: '' }),
+      '/api/budget/note': json(
+        { error: { code: 'bad_request', message: 'The request body was not valid.', requestId: 'req-7', issues: [{ path: '', message: 'Too many characters.' }] } },
+        400,
+      ),
+    })
+    renderApp(<Budget />, { path: '/budget/notes' })
+    await screen.findByLabelText('Note for August 2026')
+
+    fireEvent.change(noteBox(), { target: { value: 'Replaced the dishwasher this month.' } })
+    fireEvent.click(saveNote())
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Too many characters.')
+  })
 })
 
 describe('a month nobody computed', () => {

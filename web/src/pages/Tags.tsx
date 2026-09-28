@@ -19,10 +19,6 @@ import { PageHeader } from './PageHeader.tsx'
 
 const JOBS = ['sync'] as const satisfies readonly Refreshable[]
 
-function isEmpty(data: TagTotals): boolean {
-  return data.tags.length === 0
-}
-
 export function Tags(): ReactNode {
   const { t } = useT()
   const resource = useResource<TagTotals>('/api/tags')
@@ -30,10 +26,33 @@ export function Tags(): ReactNode {
   return (
     <>
       <PageHeader title={t('nav.tags')} lede={t('page.tags.lede')} />
-      <DataState resource={resource} isEmpty={isEmpty}>
-        {(data) => <TagsTable data={data} onRefreshed={resource.reload} />}
+      <DataState resource={resource}>
+        {(data) =>
+          data.tags.length === 0 ? (
+            <TagsNotConfigured />
+          ) : (
+            <TagsTable data={data} onRefreshed={resource.reload} />
+          )
+        }
       </DataState>
     </>
+  )
+}
+
+/**
+ * A household with a synced Actual but no `#tag` anywhere is not "no data yet"
+ * (#783) — the generic empty state's "run a sync" hint would be wrong, since a
+ * sync may well have run. Tags are created in Actual's own UI, not a Balancr
+ * setting, so there is nowhere in this app to send the reader — only what to do
+ * in Actual.
+ */
+function TagsNotConfigured(): ReactNode {
+  const { t } = useT()
+  return (
+    <div className="notice notice--info" role="status">
+      <p className="notice__lead">{t('tags:notConfigured.title')}</p>
+      <p>{t('tags:notConfigured.body')}</p>
+    </div>
   )
 }
 
@@ -47,6 +66,7 @@ function TagsTable({ data, onRefreshed }: { data: TagTotals; onRefreshed: () => 
 
       <section className="card">
         <h2 className="card__title">{t('tags:title')}</h2>
+        <p className="panel__hint muted">{t('tags:hint')}</p>
         <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
           <table className="table">
             <caption className="table__caption" id={captionId}>
@@ -69,7 +89,7 @@ function TagsTable({ data, onRefreshed }: { data: TagTotals; onRefreshed: () => 
             <tbody>
               {data.tags.map((tag) => (
                 <tr key={tag.id}>
-                  <th scope="row">
+                  <th scope="row" className="table__cell--name">
                     {tag.color === null ? null : (
                       <span className="tag-dot" aria-hidden="true" style={{ backgroundColor: tag.color }} />
                     )}

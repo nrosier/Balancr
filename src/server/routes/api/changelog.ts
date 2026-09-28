@@ -17,8 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { renderMarkdown } from '../../../util/markdown.ts'
 import { changelogSchema, type Changelog } from './schemas.ts'
-
-const HEADING = /^## \[(\d+\.\d+\.\d+)\] — (\d{4}-\d{2}-\d{2})$/
+import { HEADING } from './changelog-heading.ts'
 
 interface ParsedEntry {
   version: string

@@ -114,12 +114,11 @@ function Figures({ data, onRefreshed }: { data: ScenarioPayload; onRefreshed: ()
     <>
       <FreshnessBar freshness={data.freshness} jobs={JOBS} onRefreshed={onRefreshed} />
 
-      {seed.baselineCents === null || seed.startingValueCents === null ? (
-        <div className="notice notice--info">
-          {seed.baselineCents === null ? <p>{t('scenario:hint.noBaseline')}</p> : null}
-          {seed.startingValueCents === null ? <p>{t('scenario:hint.noStartingValue')}</p> : null}
-        </div>
-      ) : null}
+      <div className="notice notice--info">
+        {seed.baselineCents === null ? <p>{t('scenario:hint.noBaseline')}</p> : null}
+        {seed.startingValueCents === null ? <p>{t('scenario:hint.noStartingValue')}</p> : null}
+        <p>{t('scenario:hint.noGrowthRate')}</p>
+      </div>
 
       <div className="grid-cards">
         <Metric label={t('scenario:metric.contribution')} value={<Money cents={baselineCents} />} unknown={t('empty.unknown')} />

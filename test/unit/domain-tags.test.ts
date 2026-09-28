@@ -212,6 +212,32 @@ describe('loadTagTotals', () => {
     expect(row?.byMonth.map((point) => point.month)).toEqual(['2025-01', '2025-06', '2026-01', '2026-02'])
   })
 
+  it('orders tags by largest absolute all-time total first (#771)', () => {
+    syncTagMeta(ctx.db, TENANT_ID, [
+      tag('t1', { tag: 'small-gain' }),
+      tag('t2', { tag: 'big-cost' }),
+      tag('t3', { tag: 'medium-gain' }),
+    ])
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [
+        total('small-gain', '2026-01', { netCents: 1_000 }),
+        total('big-cost', '2026-01', { netCents: -50_000 }),
+        total('medium-gain', '2026-01', { netCents: 10_000 }),
+      ],
+      new Map([['small-gain', 't1'], ['big-cost', 't2'], ['medium-gain', 't3']]),
+      ['2026-01'],
+      new Set(['t1', 't2', 't3']),
+    )
+
+    expect(loadTagTotals(ctx.db, TENANT_ID, '2026-01').map((row) => row.tag)).toEqual([
+      'big-cost',
+      'medium-gain',
+      'small-gain',
+    ])
+  })
+
   it('excludes a hidden tag', () => {
     seed()
     ctx.db.update(tagMeta).set({ hidden: true }).where(eq(tagMeta.tagId, 't1')).run()
@@ -258,7 +284,7 @@ describe('loadTagTotals', () => {
   })
 })
 
-describe('tenant isolation (#699)', () => {
+describe('tenant isolation (#699, #759)', () => {
   it('keeps tag_meta and tag_monthly_facts scoped per tenant, even when the tag id collides', () => {
     const otherTenantId = createSecondTenant(ctx.db)
 
@@ -288,5 +314,76 @@ describe('tenant isolation (#699)', () => {
     expect(loadTagTotals(ctx.db, otherTenantId, '2026-01')).toEqual([
       expect.objectContaining({ tag: 'rental-b', allTimeNetCents: -9_000 }),
     ])
+  })
+
+  /**
+   * The two cases below use a *colliding* tag id ('t1') on purpose, unlike the
+   * happy-path test above — a shared id is always inside its own tenant's `keep`
+   * list regardless of tenant, so it can't exercise either stale-row `where`
+   * clause in `persistTagFacts`. Only a collision between one tenant's *stale*
+   * tag and another tenant's *live* row can prove the tenant clause is load-bearing.
+   */
+
+  it("a recompute that drops a stale tag for one tenant never removes another tenant's live row for the same colliding tag id (#759)", () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    const tagsByIdA = new Map([['rental-a', 't1'], ['extra-a', 't2']])
+
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [total('rental-a', '2026-01'), total('extra-a', '2026-01')],
+      tagsByIdA,
+      ['2026-01'],
+      new Set(['t1', 't2']),
+    )
+    persistTagFacts(
+      ctx.db,
+      otherTenantId,
+      [total('rental-b', '2026-01')],
+      new Map([['rental-b', 't1']]),
+      ['2026-01'],
+      new Set(['t1']),
+    )
+
+    // Tenant A's next recompute drops 't1' ('rental-a') — still an active tag, just
+    // with no transactions this month. The cleanup's `keep` is now ['t2'], and its
+    // `where` matches A's own stale 't1' row; without the tenant clause it would
+    // just as readily match tenant B's live 't1' row, since B's id is also 't1'
+    // and also not in A's `keep`.
+    expect(
+      persistTagFacts(ctx.db, TENANT_ID, [total('extra-a', '2026-01')], tagsByIdA, ['2026-01'], new Set(['t1', 't2'])),
+    ).toEqual({ written: 1, removed: 1 })
+
+    expect(
+      ctx.db.select().from(tagMonthlyFacts).where(eq(tagMonthlyFacts.tenantId, TENANT_ID)).all().map((row) => row.tagId),
+    ).toEqual(['t2'])
+    expect(ctx.db.select().from(tagMonthlyFacts).where(eq(tagMonthlyFacts.tenantId, otherTenantId)).all()).toHaveLength(1)
+  })
+
+  it("clearing a tenant's month with no tagged transactions this pass never wipes another tenant's row for the same month and colliding tag id (#759)", () => {
+    const otherTenantId = createSecondTenant(ctx.db)
+    const tagsByIdA = new Map([['rental-a', 't1']])
+
+    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsByIdA, ['2026-01'], new Set(['t1']))
+    persistTagFacts(
+      ctx.db,
+      otherTenantId,
+      [total('rental-b', '2026-01')],
+      new Map([['rental-b', 't1']]),
+      ['2026-01'],
+      new Set(['t1']),
+    )
+
+    // Tenant A's month legitimately ends up with nothing tagged this pass: `keep`
+    // is empty, which forces the cleanup's separately-written `keep.length === 0`
+    // branch (`notInArray` with an empty list matches nothing, not everything).
+    // That branch's own tenant clause is all that keeps this scoped to A.
+    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsByIdA, ['2026-01'], new Set(['t1']))).toEqual({
+      written: 0,
+      removed: 1,
+    })
+
+    expect(ctx.db.select().from(tagMonthlyFacts).where(eq(tagMonthlyFacts.tenantId, TENANT_ID)).all()).toEqual([])
+    expect(ctx.db.select().from(tagMonthlyFacts).where(eq(tagMonthlyFacts.tenantId, otherTenantId)).all()).toHaveLength(1)
   })
 })

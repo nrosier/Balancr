@@ -148,6 +148,21 @@
 }
 
 /*
+ * The sentence under a card's title explaining what it does, or an aside beside a
+ * field. Moved here from `settings.css` (#785): both classes are used just as often
+ * on read-only pages — Portfolio, Tags, the portfolio drift/suggestions cards, the
+ * budget month note — as on a settings form, so a settings-only stylesheet left
+ * them unstyled everywhere else.
+ */
+.panel__hint,
+.panel__meta {
+  margin: 0;
+  font-size: var(--type-sm);
+  line-height: var(--lead-normal);
+  max-width: 60ch;
+}
+
+/*
  * `min(100%, 18rem)` rather than a bare `18rem`: on a 375px screen an 18rem minimum
  * would overflow the track and push the card off the side.
  */
@@ -281,6 +296,14 @@
 .field__input--code {
   font-family: var(--font-mono);
   letter-spacing: 0.2em;
+}
+
+/* A field's own validation message — shared by settings panels and the sign-in
+ * form alike (#789), rather than two class names for the same box. */
+.field__issue {
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-sm);
+  color: var(--negative);
 }
 
 /* ── Notices ─────────────────────────────────────────────────────────────── */

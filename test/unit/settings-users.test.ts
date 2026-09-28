@@ -14,6 +14,7 @@
  *    empty `users` array for them, same as it does for `invites`.
  *  - **The change lands in the audit trail** as `settings.userAccess`.
  */
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from '../../src/db/index.ts'
@@ -26,6 +27,7 @@ import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
 import type { Settings } from '../../src/server/routes/api/schemas.ts'
 import { apiFixture } from '../helpers/api-fixture.ts'
+import { createSecondTenant } from '../helpers/second-tenant.ts'
 
 let ctx: ReturnType<typeof apiFixture>
 let app: FastifyInstance
@@ -175,5 +177,36 @@ describe('PATCH /api/settings/users/:id', () => {
   it('rejects an unrecognised field', async () => {
     const res = await patch(`/api/settings/users/${viewerId}`, { role: 'owner' })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('404s for a user in a different tenant, and never touches them (#757)', async () => {
+    const tenantB = createSecondTenant(ctx.db, 'Second')
+    const stranger = ctx.db
+      .insert(users)
+      .values({
+        tenantId: tenantB,
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        email: `stranger-${crypto.randomUUID()}@example.test`,
+        displayName: 'Stranger',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (stranger === undefined) throw new Error('inserting the stranger returned no row')
+    const strangerToken = createSession(ctx.db, {
+      userId: stranger.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    const before = auditRows(ctx.db).length
+    const res = await patch(`/api/settings/users/${stranger.id}`, { disabled: true })
+    expect(res.statusCode).toBe(404)
+
+    const row = ctx.db.select().from(users).where(eq(users.id, stranger.id)).all()[0]
+    expect(row?.disabled).toBe(false)
+    expect(readSession(ctx.db, strangerToken)).not.toBeNull()
+    expect(auditRows(ctx.db)).toHaveLength(before)
   })
 })

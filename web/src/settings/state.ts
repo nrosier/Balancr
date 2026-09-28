@@ -1,5 +1,5 @@
 /**
- * One payload, five panels, and every write answering with the whole thing.
+ * One payload behind every panel, and every write answering with the whole thing.
  *
  * `GET /api/settings` returns everything the page shows, and each write returns it
  * again — the server says why: activating a prompt changes which version is active
@@ -20,7 +20,7 @@
  * `error.message`, where the panel prints it once.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, apiGet, apiSend } from '../api/client.ts'
+import { ApiError, apiGet, apiSend, issueMessage } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useResource, useSessionExpiry, type Resource } from '../api/resource.tsx'
 import type { AiEstimate, Settings } from '../shared.ts'
@@ -159,11 +159,7 @@ export function useSettings(): SettingsState {
     [csrf, run],
   )
 
-  const issue = useCallback(
-    (path: string): string | undefined =>
-      error?.issues.find((candidate) => candidate.path === path || candidate.path.startsWith(`${path}.`))?.message,
-    [error],
-  )
+  const issue = useCallback((path: string): string | undefined => issueMessage(error?.issues, path), [error])
 
   return {
     resource: { ...read, data: written ?? read.data },

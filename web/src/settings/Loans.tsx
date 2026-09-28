@@ -526,11 +526,17 @@ export function LoansPanel({ settings, state, owner }: SettingsPanelProps): Reac
             type="button"
             className="button button--quiet"
             disabled={locked || rows.length >= MAX_LOANS}
+            aria-describedby={rows.length >= MAX_LOANS ? 'loans-cap-hint' : undefined}
             onClick={add}
           >
             {t('settings:loans.add')}
           </button>
         </div>
+        {rows.length >= MAX_LOANS && (
+          <p id="loans-cap-hint" className="panel__meta muted">
+            {t('settings:loans.capHint', { value: MAX_LOANS })}
+          </p>
+        )}
       </form>
     </Panel>
   )

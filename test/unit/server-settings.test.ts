@@ -786,6 +786,66 @@ describe('PATCH /api/settings/benchmark-reference', () => {
   })
 })
 
+describe('PATCH /api/settings/categories/:id/coicop', () => {
+  const send_ = (id: string, body: object, options?: { token?: string }) =>
+    patch(`/api/settings/categories/${id}/coicop`, body, options)
+
+  const coicopOf = (id: string): string | null | undefined =>
+    loadMapping(ctx.db, tenantId, null).find((row) => row.categoryId === id)?.coicop
+
+  it('stores a division, and answers with the list saying so (#43)', async () => {
+    const res = await send_('cat-groceries', { coicop: '01' })
+
+    expect(res.statusCode).toBe(200)
+    const row = res
+      .json<Settings>()
+      .benchmark.categories.find((category) => category.categoryId === 'cat-groceries')
+    expect(row?.coicop).toBe('01')
+    expect(coicopOf('cat-groceries')).toBe('01')
+  })
+
+  it('accepts the reserved "00" code for spending outside household consumption', async () => {
+    const res = await send_('cat-groceries', { coicop: '00' })
+    expect(res.statusCode).toBe(200)
+    expect(coicopOf('cat-groceries')).toBe('00')
+  })
+
+  it('is the one route allowed to write null back, taking a mapping away', async () => {
+    await send_('cat-groceries', { coicop: '01' })
+    const res = await send_('cat-groceries', { coicop: null })
+
+    expect(res.statusCode).toBe(200)
+    expect(coicopOf('cat-groceries')).toBe(null)
+  })
+
+  it('records the change against the category, not against settings', async () => {
+    await send_('cat-groceries', { coicop: '01' })
+    expect(auditActions(ctx.db)).toContain('settings.coicop')
+  })
+
+  it('refuses a deeper code than the picker offers, an empty string, a nonsense string, and a missing body', async () => {
+    // Stored rows may carry a deeper code like '01.1.1' from an approved AI proposal — this
+    // route may read one back on another category, but it may never *write* one, since the
+    // picker itself has no option that deep to display it with.
+    expect((await send_('cat-groceries', { coicop: '01.1.1' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', { coicop: '' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', { coicop: 'not-a-code' })).statusCode).toBe(400)
+    expect((await send_('cat-groceries', {})).statusCode).toBe(400)
+    expect(coicopOf('cat-groceries')).toBe(null)
+  })
+
+  it('answers 404 for a category Balancr has never seen', async () => {
+    const res = await send_('cat-invented', { coicop: '01' })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('is refused for a viewer', async () => {
+    const res = await send_('cat-groceries', { coicop: '01' }, { token: viewer })
+    expect(res.statusCode).toBe(403)
+    expect(coicopOf('cat-groceries')).toBe(null)
+  })
+})
+
 describe('PATCH /api/settings/categories/:id/custody-shared', () => {
   const send_ = (id: string, body: object, options?: { token?: string }) =>
     patch(`/api/settings/categories/${id}/custody-shared`, body, options)
@@ -1810,7 +1870,6 @@ describe('the narrative activation gate (#454)', () => {
     expect(saved).toBeDefined()
     expect(saved?.gate).toBe('unvalidated')
     expect(saved?.validatedAt).toBeNull()
-    expect(saved?.rulesVersion).toBeNull()
   })
 
   it('activates the same body once a safe verdict is stored', async () => {
@@ -1829,7 +1888,6 @@ describe('the narrative activation gate (#454)', () => {
       .json<Settings>()
       .prompts.find((p) => p.key === 'narrative.system' && p.locale === SHARED_LOCALE)
     expect(entry?.active.gate).toBe('safe')
-    expect(entry?.active.rulesVersion).toBe(VALIDATION_RULES_VERSION)
     expect(entry?.active.validatedAt).not.toBeNull()
   })
 

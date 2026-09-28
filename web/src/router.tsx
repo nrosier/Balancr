@@ -1,11 +1,11 @@
 /**
- * Five pages, one history API, no dependency.
+ * Flat routes, one history API, no dependency.
  *
  * React Router would be the reflex, and for an application with nested layouts, data
- * loaders and route-level code splitting it earns its size. This has five flat
- * routes and one layout. What it needs is `pushState`, a `popstate` listener and an
- * anchor that does not reload the page — about forty lines, all of them visible here
- * rather than configured somewhere else.
+ * loaders and route-level code splitting it earns its size. This has one layout and
+ * a page per route, none nested in another. What it needs is `pushState`, a
+ * `popstate` listener and an anchor that does not reload the page — about forty
+ * lines, all of them visible here rather than configured somewhere else.
  *
  * The part that is easy to get wrong, and the reason `Link` is not just an `onClick`:
  * an anchor must stay an anchor. Ctrl-click, ⌘-click, middle-click and "open in new

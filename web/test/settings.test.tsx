@@ -275,9 +275,7 @@ const PAYLOAD: Payload = {
         body: 'Judge the signals.',
         gate: 'unvalidated',
         validatedAt: null,
-        rulesVersion: null,
       },
-      storedBody: 'Judge the signals.',
       versions: [
         {
           id: 'p2',
@@ -290,7 +288,6 @@ const PAYLOAD: Payload = {
           chars: 19,
           gate: 'unvalidated',
           validatedAt: null,
-          rulesVersion: null,
         },
         {
           id: 'p1',
@@ -303,7 +300,6 @@ const PAYLOAD: Payload = {
           chars: 12,
           gate: 'unvalidated',
           validatedAt: null,
-          rulesVersion: null,
         },
       ],
     },
@@ -321,9 +317,7 @@ const PAYLOAD: Payload = {
         body: 'Write the month up.',
         gate: 'built_in',
         validatedAt: null,
-        rulesVersion: null,
       },
-      storedBody: null,
       versions: [],
     },
   ],
@@ -1234,7 +1228,9 @@ describe('accounts', () => {
   it('writes a kind change straight away, since there is nothing to submit', async () => {
     const calls = await open({ ...READS, '/api/settings/accounts/a-current': json(PAYLOAD) })
 
-    fireEvent.change(screen.getAllByLabelText('Kind')[0] ?? document.createElement('select'), {
+    // The accessible name repeats the account name (#779), so each row's own select
+    // is addressable on its own rather than by a shared "Kind" label plus index.
+    fireEvent.change(screen.getByLabelText('Current account Kind'), {
       target: { value: 'savings' },
     })
 
@@ -1247,8 +1243,8 @@ describe('accounts', () => {
 
   it('offers every kind the server accepts', async () => {
     await open(READS)
-    const select = screen.getAllByLabelText('Kind')[0]
-    expect([...(select?.querySelectorAll('option') ?? [])].map((o) => o.getAttribute('value'))).toEqual([
+    const select = screen.getByLabelText('Current account Kind')
+    expect([...select.querySelectorAll('option')].map((o) => o.getAttribute('value'))).toEqual([
       ...ACCOUNT_KINDS,
     ])
   })
@@ -1256,8 +1252,7 @@ describe('accounts', () => {
   it('drops the net-worth account out of the sum on request', async () => {
     const calls = await open({ ...READS, '/api/settings/accounts/g-broker': json(PAYLOAD) })
 
-    const boxes = screen.getAllByLabelText('Count toward net worth')
-    fireEvent.click(boxes[2] ?? document.createElement('input'))
+    fireEvent.click(screen.getByLabelText('Bolero Count toward net worth'))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
@@ -1316,9 +1311,11 @@ describe('a linked pair of accounts', () => {
     })
 
     // One toggle for the block, not one per member: current account (ungrouped) + the pair.
-    const boxes = screen.getAllByLabelText('Count toward net worth')
+    // The accessible name repeats the account name (#779), so the query matches on the
+    // shared suffix rather than the exact string.
+    const boxes = screen.getAllByLabelText(/Count toward net worth$/)
     expect(boxes).toHaveLength(2)
-    fireEvent.click(boxes[1] ?? document.createElement('input'))
+    fireEvent.click(screen.getByLabelText('Bolero Count toward net worth'))
 
     await waitFor(() => {
       expect(writes(calls)).toEqual([
@@ -2274,7 +2271,26 @@ describe('property', () => {
     fireEvent.click(addMortgage())
 
     expect(screen.getAllByLabelText('Outstanding balance')).toHaveLength(3)
-    expect(addMortgage().disabled).toBe(true)
+    const button = addMortgage()
+    expect(button.disabled).toBe(true)
+
+    // #768: the disabled button must point at the hint explaining why, not leave a
+    // screen-reader user to guess.
+    const describedBy = button.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)?.textContent).toContain('3')
+  })
+
+  it('points the disabled "Add a property" button at its cap hint once the roster is full (#768)', async () => {
+    await open(READS)
+
+    for (let i = 0; i < 20; i += 1) addProperty()
+
+    const button = within(property()).getByRole('button', { name: 'Add a property' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    const describedBy = button.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)?.textContent).toContain('20')
   })
 
   it('leaves the list read-only for a viewer', async () => {
@@ -2566,6 +2582,44 @@ describe('property', () => {
       within(property()).getByText('€ 880,00 actually moved through this category last month.'),
     ).toBeTruthy()
     expect(within(property()).getByText('€ 900,00 scheduled for this rent.')).toBeTruthy()
+  })
+
+  it('attaches a rejection nested under a mortgage row to the properties panel via prefix match (#762)', async () => {
+    await open({
+      ...READS,
+      '/api/settings/property': failure('invalidBody', 'That request was not valid.', 400, [
+        { path: 'properties.0.mortgages.0.balanceCents', message: 'balance cannot exceed the property value' },
+      ]),
+    })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home' } })
+    fireEvent.change(screen.getByLabelText('Estimated value'), { target: { value: '400000' } })
+    fireEvent.click(saveProperty())
+
+    const issue = await within(property()).findByText('balance cannot exceed the property value')
+    expect(issue).toBeTruthy()
+    // The generic message would be true and useless next to a whole list of properties.
+    expect(screen.queryByText('That request was not valid.')).toBeNull()
+  })
+
+  it('never lets a rejection for a same-prefix but unrelated field land on the properties panel — or anywhere else (#762)', async () => {
+    await open({
+      ...READS,
+      '/api/settings/property': failure('invalidBody', 'That request was not valid.', 400, [
+        { path: 'propertiesRemoved', message: 'this belongs to nobody on the page' },
+      ]),
+    })
+
+    addProperty()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home' } })
+    fireEvent.change(screen.getByLabelText('Estimated value'), { target: { value: '400000' } })
+    fireEvent.click(saveProperty())
+
+    // `'propertiesRemoved'.startsWith('properties')` is true, but the match requires the
+    // separator `.` after it — missing here, so no field on the page may claim this message.
+    await waitFor(() => within(property()).getByRole('button', { name: 'Save' }))
+    expect(screen.queryByText('this belongs to nobody on the page')).toBeNull()
   })
 })
 
@@ -2890,6 +2944,66 @@ describe('ai provider (#528)', () => {
     expect(screen.getAllByText('Only the owner can change this.').length).toBeGreaterThan(0)
     expect((screen.getByLabelText('Provider') as HTMLSelectElement).disabled).toBe(true)
     expect(saveButton('AI provider').disabled).toBe(true)
+  })
+
+  it('disables Save for a blank, non-numeric, or negative monthly budget (#763)', async () => {
+    await open(READS)
+
+    const budget = screen.getByLabelText('Monthly budget')
+    // A field otherwise untouched has nothing to save either — change the provider
+    // first so Save is enabled on everything but the budget before each case below.
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+
+    fireEvent.change(budget, { target: { value: '' } })
+    expect(saveButton('AI provider').disabled).toBe(true)
+
+    fireEvent.change(budget, { target: { value: 'not-a-number' } })
+    expect(saveButton('AI provider').disabled).toBe(true)
+
+    fireEvent.change(budget, { target: { value: '-5' } })
+    expect(saveButton('AI provider').disabled).toBe(true)
+
+    fireEvent.change(budget, { target: { value: '20' } })
+    expect(saveButton('AI provider').disabled).toBe(false)
+  })
+
+  it('sends the budget as a coerced number, not a string it merely looks like (#763)', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/ai': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Monthly budget'), { target: { value: '20' } })
+    fireEvent.click(saveButton('AI provider'))
+
+    await waitFor(() => {
+      // `toMatchObject` here is exact on this key: a coerced `20` matches, a `'20'`
+      // string the field could just as easily have sent would not.
+      expect(writes(calls).at(-1)?.body).toMatchObject({ budgetEur: 20 })
+    })
+  })
+
+  it('accepts a comma decimal separator in the budget, the way Belgian formatting would type it (#784)', async () => {
+    const calls = await open({ ...READS, '/api/settings/integrations/ai': json(PAYLOAD) })
+
+    fireEvent.change(screen.getByLabelText('Monthly budget'), { target: { value: '20,50' } })
+    expect(saveButton('AI provider').disabled).toBe(false)
+    fireEvent.click(saveButton('AI provider'))
+
+    await waitFor(() => {
+      expect(writes(calls).at(-1)?.body).toMatchObject({ budgetEur: 20.5 })
+    })
+  })
+
+  it('explains why Save stays disabled once a field is touched but invalid (#784)', async () => {
+    await open(READS)
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    expect(screen.queryByText('Enter a budget of 0 or more to save.')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Monthly budget'), { target: { value: '-5' } })
+    expect(saveButton('AI provider').disabled).toBe(true)
+    expect(screen.getByText('Enter a budget of 0 or more to save.')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Monthly budget'), { target: { value: '20' } })
+    expect(screen.queryByText('Enter a budget of 0 or more to save.')).toBeNull()
   })
 
   it('keeps an unsaved provider change after a visit to a sibling AI subtab (#533)', async () => {
@@ -3400,6 +3514,18 @@ describe('debts (#442)', () => {
     expect(saveExisting().disabled).toBe(true)
     expect(boxValue('Outstanding balance')).toBe('€ 2.000,00')
   })
+
+  it('points the disabled "Add a card" button at its cap hint once the roster is full (#768)', async () => {
+    await open(READS)
+
+    for (let i = 0; i < 20; i += 1) addDebt()
+
+    const button = within(debts()).getByRole('button', { name: 'Add a card' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    const describedBy = button.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)?.textContent).toContain('20')
+  })
 })
 
 describe('goals (#407)', () => {
@@ -3593,6 +3719,33 @@ describe('goals (#407)', () => {
     expect((screen.getByLabelText('Target amount') as HTMLInputElement).disabled).toBe(true)
     expect(saveExisting().disabled).toBe(true)
     expect(boxValue('Target amount')).toBe(eur('5.000,00'))
+  })
+
+  it('keeps an archived goal amount wrapped in Private (#764)', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        goals: [{ ...STORED, status: 'done', doneAt: '2026-01-15' }],
+      }),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 archived goal' }))
+
+    const wrapped = document.querySelector('.goal--archived [data-private]')
+    expect(wrapped?.textContent).toContain('5.000,00')
+  })
+
+  it('points the disabled "Add a goal" button at its cap hint once the roster is full (#768)', async () => {
+    await open(READS)
+
+    for (let i = 0; i < 10; i += 1) addGoal()
+
+    const button = within(goals()).getByRole('button', { name: 'Add a goal' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    const describedBy = button.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)?.textContent).toContain('10')
   })
 })
 
@@ -4133,9 +4286,7 @@ describe('prompts', () => {
       body: 'Beoordeel de signalen.',
       gate: 'unvalidated',
       validatedAt: null,
-      rulesVersion: null,
     },
-    storedBody: 'Beoordeel de signalen.',
     versions: [
       {
         id: 'p3',
@@ -4148,7 +4299,6 @@ describe('prompts', () => {
         chars: 22,
         gate: 'unvalidated',
         validatedAt: null,
-        rulesVersion: null,
       },
     ],
   }
@@ -4527,7 +4677,6 @@ describe('the prompt safety check (#454)', () => {
     chars: EDITED.length,
     gate: 'unvalidated',
     validatedAt: null,
-    rulesVersion: null,
     ...over,
   })
 
@@ -4545,9 +4694,7 @@ describe('the prompt safety check (#454)', () => {
               ...active,
               locale: SHARED_LOCALE,
               validatedAt: null,
-              rulesVersion: null,
             },
-            storedBody: active.body,
             versions,
           }
         : entry,
@@ -5023,9 +5170,7 @@ describe('the prompt safety check (#454)', () => {
             body: NL_BODY,
             gate: 'unvalidated',
             validatedAt: null,
-            rulesVersion: null,
           },
-          storedBody: NL_BODY,
           versions: [version({ id: 'nl1', version: 1, active: true, chars: NL_BODY.length })],
         },
       ] as Payload['prompts'],
@@ -5068,7 +5213,7 @@ describe('the prompt safety check (#454)', () => {
   })
 
   it('badges each version row with its gate, so a cleared one is visible before activating', async () => {
-    await open({ ...READS, '/api/settings': json(saved({ gate: 'safe', rulesVersion: 1 })) })
+    await open({ ...READS, '/api/settings': json(saved({ gate: 'safe' })) })
     selectNarrative()
 
     // Scoped to the version list rather than counted across the panel: the Check section's own
@@ -5136,7 +5281,6 @@ describe('the prompt safety check (#454)', () => {
             body: EDITED,
             gate: 'unvalidated',
             validatedAt: null,
-            rulesVersion: null,
           },
           versions: [],
         },
@@ -5175,7 +5319,6 @@ describe('the prompt safety check (#454)', () => {
             body: BUILT_IN,
             gate: 'built_in',
             validatedAt: null,
-            rulesVersion: null,
           },
           versions: [version({ id: 'n5', version: 1 })],
         },

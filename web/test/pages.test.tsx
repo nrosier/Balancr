@@ -1,5 +1,5 @@
 /**
- * The route table and the five pages hanging off it.
+ * The route table and the pages hanging off it.
  *
  * The table is what stops the nav and the router from drifting: they read the same
  * array, so a page cannot become unreachable while still working. What is worth
@@ -7,13 +7,13 @@
  * an unknown path is not a page at all — because those are the cases a `switch` in a
  * component would get subtly wrong and nothing would notice.
  *
- * All five pages render their own content as of #32, so what is left to assert across
+ * Every page renders its own content as of #32, so what is left to assert across
  * the table is what has to stay true of every one of them however its content changes:
  * exactly one level-one heading, and every string on it out of the catalogue rather
  * than written into the component. A hardcoded English word survives a Dutch UI without
  * failing anything, which is precisely why it is checked here rather than left to a
- * reading. What each page then does with its payload is its own file's subject —
- * `overview`, `budget`, `portfolio`, `insights` and `settings` each have one.
+ * reading. What each page then does with its payload is its own file's subject — each
+ * page in the route table has one, named for its path.
  *
  * Every page reads its own endpoint on mount, so `fetch` is stubbed for the whole file.
  * Not because this test is about the payload, but because a page component left to

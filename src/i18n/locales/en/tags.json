@@ -1,7 +1,12 @@
 {
+  "hint": "A net figure: inflows and outflows on this tag are combined into one number, so a total near zero can mean real money moved both ways rather than nothing happened.",
+  "notConfigured": {
+    "title": "No tags yet",
+    "body": "Tags aren't a Balancr setting — add a #tag to a transaction's notes in Actual, then sync, and it shows up here."
+  },
   "table": {
     "caption_one": "One tag tracked.",
-    "caption_other": "{{value}} tags tracked.",
+    "caption_other": "{{value}} tags tracked, largest all-time total first.",
     "column": {
       "allTime": "All time",
       "rolling12": "Last 12 months",

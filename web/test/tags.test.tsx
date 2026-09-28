@@ -25,10 +25,6 @@ const FULL: TagTotals = {
       allTimeNetCents: -125_000,
       rolling12NetCents: -60_000,
       thisYearNetCents: -30_000,
-      byMonth: [
-        { month: '2026-08', netCents: -30_000, txnCount: 2 },
-        { month: '2026-09', netCents: 5_000, txnCount: 1 },
-      ],
     },
     {
       id: 't2',
@@ -37,7 +33,6 @@ const FULL: TagTotals = {
       allTimeNetCents: 42_000,
       rolling12NetCents: 42_000,
       thisYearNetCents: 42_000,
-      byMonth: [{ month: '2026-09', netCents: 42_000, txnCount: 3 }],
     },
   ],
 }
@@ -86,6 +81,14 @@ describe('when tags have real totals behind them', () => {
     expect(sideGigRow.textContent).toContain(formatMoney(42_000, { whole: true }))
   })
 
+  it('lets a long tag name wrap instead of forcing the row wider (#772)', async () => {
+    serve(FULL)
+    renderApp(<Tags />)
+
+    const rentalHeader = await screen.findByRole('rowheader', { name: /rental-a/ })
+    expect(rentalHeader.className).toContain('table__cell--name')
+  })
+
   it('leaves every string translated', async () => {
     serve(FULL)
     renderApp(<Tags />)
@@ -97,11 +100,12 @@ describe('when tags have real totals behind them', () => {
 })
 
 describe('when no tag has been registered yet', () => {
-  it('shows the empty state instead of an empty table', async () => {
+  it('explains that tags come from Actual instead of showing an empty table', async () => {
     serve(EMPTY)
     renderApp(<Tags />)
 
-    expect(await screen.findByText('No data yet')).toBeTruthy()
+    expect(await screen.findByText('No tags yet')).toBeTruthy()
+    expect(screen.getByText(/add a #tag to a transaction's notes in Actual/)).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
   })
 })

@@ -8,6 +8,7 @@
   },
   "hint": {
     "noBaseline": "Nog geen categorie is gemarkeerd als Investeringen, dus dit start vanaf het cijfer hieronder in plaats van een echt cijfer. Markeer er een onder Instellingen › Benchmark om je eigen cijfer te gebruiken.",
+    "noGrowthRate": "Er is geen echt rendement om dit van af te leiden, dus het cijfer hieronder is een algemene aanname en geen meting van je eigen portefeuille. Pas het aan als je een betere schatting hebt.",
     "noStartingValue": "Nog geen momentopname van de nettowaarde, dus dit start vanaf het cijfer hieronder in plaats van een echt cijfer."
   },
   "input": {

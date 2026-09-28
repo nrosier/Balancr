@@ -133,6 +133,7 @@
       "birthYear": "Geboortejaar",
       "blocked_one": "De gegevens van één persoon zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rij hierboven aan of verwijder ze.",
       "blocked_other": "De gegevens van {{value}} personen zijn nog niet volledig. Het huishouden wordt in één keer opgeslagen, dus vul de rijen hierboven aan of verwijder ze.",
+      "capHint": "Tot {{value}} huisgenoten.",
       "country": "Land",
       "countryHint": "Welk nationaal gemiddelde jouw uitgaven vergeleken worden. Balancr levert vandaag een echt bestand voor België; elk ander land toont de vergelijking als niet ingesteld tot er een bestand bijkomt.",
       "country_BE": "België",
@@ -312,7 +313,7 @@
     "none": "Er is nog geen overzicht gegenereerd.",
     "recipients": {
       "add": "Nog een ontvanger toevoegen",
-      "hint": "Tot vijf e-mailadressen.",
+      "hint": "Tot {{value}} e-mailadressen.",
       "label": "Ontvangers",
       "masked_one": "{{value}} ontvanger — enkel zichtbaar voor de eigenaar.",
       "masked_other": "{{value}} ontvangers — enkel zichtbaar voor de eigenaar.",
@@ -406,6 +407,10 @@
         "xai": "xAI / Grok"
       },
       "providerLabel": "Leverancier",
+      "saveNeedsBaseUrl": "Vul de basis-URL in om op te slaan.",
+      "saveNeedsBudget": "Vul een budget van 0 of meer in om op te slaan.",
+      "saveNeedsModel": "Vul beide modelvelden hierboven in om op te slaan.",
+      "saveNeedsPrices": "Elk geselecteerd model heeft hierboven een prijs nodig om op te slaan.",
       "title": "AI-leverancier"
     },
     "ghostfolio": {
@@ -433,6 +438,7 @@
     "add": "Lening toevoegen",
     "anchorDate": "Saldo per",
     "balanceReads": "{{value}} vandaag nog openstaand.",
+    "capHint": "Tot {{value}} leningen.",
     "create": "Deze lening toevoegen",
     "extra": "Extra per maand",
     "extraHint": "Optioneel. Alles wat je bovenop de maandelijkse betaling aflost, waardoor de einddatum vooruitschuift.",
@@ -673,6 +679,7 @@
     "yieldReads": "{{value}} brutorendement."
   },
   "risk": {
+    "caption": "De bodem, het doel en het plafond van elke activaklasse, in basispunten",
     "column": {
       "class": "Activaklasse",
       "maxBp": "Plafond",

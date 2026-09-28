@@ -11,6 +11,17 @@
  * Built on `../ui/sections.ts`'s generic `Section`/`sectionFor` — the tab-strip
  * mechanism this page settled on and the one `#228`/`#229`/`#230` reuse rather than
  * reinventing.
+ *
+ * **Eight top-level tabs, reviewed and left as-is (#791).** `general` and `net-worth`
+ * are themselves already consolidations — #528 folded five flat account/property/loan/
+ * debt/goal tabs into `net-worth`'s own sub-strip, and `general` carries language,
+ * history, build info, users and members the same way. What is left — `ai`, `risk`,
+ * `thresholds`, `benchmark`, `digest`, `integrations` — are six genuinely separate
+ * domains (portfolio drift bands, aggregation-engine signal thresholds, a Statbel
+ * comparison, a scheduled email, external connections) with no shared parent one of
+ * them belongs under; forcing two of these together to shrink the count would produce
+ * a tab whose contents don't actually belong to each other, which is the opposite of
+ * what #200's original consolidation was for.
  */
 import { sectionFor as sectionForGeneric, type Section } from '../ui/sections.ts'
 

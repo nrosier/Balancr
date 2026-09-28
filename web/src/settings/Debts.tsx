@@ -332,12 +332,17 @@ export function DebtsPanel({ settings, state, owner }: SettingsPanelProps): Reac
             type="button"
             className="button button--quiet"
             disabled={locked || rows.length >= MAX_DEBTS}
+            aria-describedby={rows.length >= MAX_DEBTS ? 'debts-cap-hint' : undefined}
             onClick={add}
           >
             {t('settings:debts.add')}
           </button>
         </div>
-        <p className="panel__meta muted">{t('settings:debts.capHint', { value: MAX_DEBTS })}</p>
+        {rows.length >= MAX_DEBTS && (
+          <p id="debts-cap-hint" className="panel__meta muted">
+            {t('settings:debts.capHint', { value: MAX_DEBTS })}
+          </p>
+        )}
       </form>
     </Panel>
   )

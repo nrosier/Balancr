@@ -7,16 +7,15 @@
 </p>
 
 <!--
-  The release and licence badges are static on purpose. This repository is
-  private, and shields.io reads the public GitHub API — its `github/v/release`
-  and `github/license` endpoints render "repo not found" here, which looks like a
-  broken project rather than a closed one. `npm run badges:check` fails if either
-  badge drifts from package.json, or if a dynamic one comes back.
+  This repository has been public since 2026-09-05, so all three badges read
+  live from GitHub's public API instead of quoting a version by hand.
+  `npm run badges:check` fails if the release or license badge stops pointing
+  at this repo, or drifts from package.json.
 -->
 <p align="center">
   <a href="https://github.com/nrosier/balancr/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nrosier/balancr/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/nrosier/balancr/releases"><img alt="Release" src="https://img.shields.io/badge/release-v2.5.1-blue"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://github.com/nrosier/balancr/releases"><img alt="Release" src="https://img.shields.io/github/v/release/nrosier/balancr?label=release"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/nrosier/balancr"></a>
 </p>
 
 ---
@@ -1042,10 +1041,12 @@ longer does.
 
 A push to `main` publishes `edge`; a `v*` tag publishes that version, and
 `latest` follows the newest non-RC tag. Releasing means bumping `package.json` —
-the patch for a slice, the minor when its milestone closes — renaming
-`## [Unreleased]` in `CHANGELOG.md` to it, and letting
-`npm run badges:check` confirm the release badge above moved with it — that bump
-is also what triggers the image build, since `package.json` is one of
+the patch for a slice, the minor when its milestone closes — and writing that
+version's own heading straight at the top of `CHANGELOG.md`; there is no
+`## [Unreleased]` staging section to rename, since the entries for a slice land
+under its release the same day it ships. `npm run badges:check` confirms the
+release badge above resolves to the same version — that bump is also what
+triggers the image build, since `package.json` is one of
 [`image.yml`](.github/workflows/image.yml)'s trigger paths.
 
 ## Development notes

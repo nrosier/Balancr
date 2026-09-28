@@ -25,7 +25,7 @@
  * this endpoint's `month` param, so nothing downstream of this file changes shape.
  */
 import { useState, type ReactNode } from 'react'
-import { ApiError, apiSend } from '../api/client.ts'
+import { ApiError, apiSend, issueMessage } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useResource, useSessionExpiry } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
@@ -181,7 +181,7 @@ export function MonthNotePanel({ initialMonth, owner }: MonthNotePanelProps): Re
           </p>
         )}
         <Issue
-          message={failure?.issues.find((candidate) => candidate.path === 'text' || candidate.path === '')?.message}
+          message={issueMessage(failure?.issues, 'text') ?? issueMessage(failure?.issues, '')}
         />
 
         <button type="submit" className="button button--primary" disabled={locked || draft === null || tooLong}>

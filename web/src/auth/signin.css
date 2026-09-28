@@ -72,9 +72,3 @@
 .signin__error {
   margin-top: var(--space-4);
 }
-
-.signin__fieldIssue {
-  margin: var(--space-1) 0 0;
-  font-size: var(--type-sm);
-  color: var(--negative);
-}

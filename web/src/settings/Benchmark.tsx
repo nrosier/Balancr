@@ -1,9 +1,10 @@
 /**
  * Who lives here, and which reference line each envelope belongs to (#43).
  *
- * Two panels, because the benchmark comparison needs two facts that only a person can
- * supply, and they are different kinds of fact. The household is one small form saved as a
- * whole; the mapping is fifty independent judgements, each written the moment it is made.
+ * Household and mapping started as separate panels because the benchmark comparison needs
+ * two facts that only a person can supply, and they are different kinds of fact. The
+ * household is one small form saved as a whole; the mapping is fifty independent
+ * judgements, each written the moment it is made.
  *
  *  - **The file is read-only and shown anyway.** Every share in it is the survey's, and a
  *    screen that let anybody edit them would be a screen that manufactures a reference —
@@ -51,7 +52,7 @@
  * ages the household at the year of the month being compared, so a member who turned
  * fourteen in March was a child in last January's figures and is not in this one's.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import {
   BENCHMARK_COUNTRIES,
@@ -586,6 +587,7 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             type="button"
             className="button button--quiet"
             disabled={locked || rows.length >= MAX_HOUSEHOLD_MEMBERS}
+            aria-describedby={rows.length >= MAX_HOUSEHOLD_MEMBERS ? 'household-cap-hint' : undefined}
             onClick={() =>
               // Full time by default: the common row is somebody who lives here, and a
               // custody share is the exception that gets typed.
@@ -611,6 +613,11 @@ export function HouseholdPanel({ settings, state, owner }: SettingsPanelProps): 
             {state.pending === 'household' ? t('shell.loading') : t('action.save')}
           </button>
         </div>
+        {rows.length >= MAX_HOUSEHOLD_MEMBERS && (
+          <p id="household-cap-hint" className="panel__meta muted">
+            {t('settings:benchmark.household.capHint', { value: MAX_HOUSEHOLD_MEMBERS })}
+          </p>
+        )}
       </form>
 
     </Panel>
@@ -929,6 +936,7 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
   const { benchmark } = settings
   const { categories, file } = benchmark
   const locked = !owner || state.busy
+  const captionId = useId()
 
   /** Which reference line a division feeds, from the file rather than from a copy of it. */
   const lineOf = (division: string): string | null =>
@@ -992,9 +1000,9 @@ export function MappingPanel({ settings, state, owner }: SettingsPanelProps): Re
           */}
           <p className="panel__meta muted">{t('settings:benchmark.mapping.aiVisibilityNote')}</p>
 
-          <div className="table-scroll">
+          <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
             <table className="table">
-              <caption className="table__caption">
+              <caption className="table__caption" id={captionId}>
                 {t('settings:benchmark.mapping.caption')}
               </caption>
               <thead>
@@ -1204,6 +1212,7 @@ export function TranslationsPanel({ settings, state, owner }: SettingsPanelProps
   const targets = locales.supported.filter((code) => code !== sourceLocale)
   const [locale, setLocale] = useState<string>(targets[0] ?? sourceLocale)
   const locked = !owner || state.busy
+  const captionId = useId()
 
   return (
     <Panel
@@ -1235,9 +1244,9 @@ export function TranslationsPanel({ settings, state, owner }: SettingsPanelProps
             </select>
           </div>
 
-          <div className="table-scroll">
+          <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
             <table className="table">
-              <caption className="table__caption">
+              <caption className="table__caption" id={captionId}>
                 {t('settings:benchmark.translations.caption')}
               </caption>
               <thead>
@@ -1325,9 +1334,9 @@ const BENCHMARK_SUBSECTIONS: readonly Section<BenchmarkSubsectionId>[] = [
 ]
 
 /**
- * Benchmark's own subsection tabs — the household roster, the category mapping table
- * and the Statbel reference correction are three independent panels (#327 flattened
- * Household/Comparison from a nested tab strip under Household into a third sibling
+ * Benchmark's own subsection tabs — the household roster, the category mapping table,
+ * its translations and the Statbel reference correction are independent panels (#327
+ * flattened Household/Comparison from a nested tab strip under Household into a sibling
  * here, alongside Household and Categories, rather than a shelf nested inside a shelf);
  * this only stops them showing at once.
  *

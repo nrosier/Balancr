@@ -132,11 +132,16 @@ export function DigestPanel({ settings, state, owner }: SettingsPanelProps): Rea
                   type="button"
                   className="button button--quiet"
                   disabled={locked || recipients.length >= MAX_RECIPIENTS}
+                  aria-describedby={recipients.length >= MAX_RECIPIENTS ? 'recipients-cap-hint' : undefined}
                   onClick={() => setRecipientsDraft([...recipients, ''])}
                 >
                   {t('settings:digest.recipients.add')}
                 </button>
-                <p className="panel__meta muted">{t('settings:digest.recipients.hint')}</p>
+                {recipients.length >= MAX_RECIPIENTS && (
+                  <p id="recipients-cap-hint" className="panel__meta muted">
+                    {t('settings:digest.recipients.hint', { value: MAX_RECIPIENTS })}
+                  </p>
+                )}
                 <Issue message={state.issue('recipientEmails')} />
               </>
             ) : (

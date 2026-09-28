@@ -15,7 +15,7 @@
  * auth failure in this app.
  */
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { ApiError, type CsrfConfig } from '../api/client.ts'
+import { ApiError, issueMessage, type CsrfConfig } from '../api/client.ts'
 import mark from '../assets/favicon.svg'
 import { useT } from '../i18n.ts'
 import { createTenant, redeemInvite } from './session.ts'
@@ -44,8 +44,7 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
 
   const who = pending.displayName ?? pending.email
 
-  const issue = (path: string): string | undefined =>
-    error?.issues.find((candidate) => candidate.path === path)?.message
+  const issue = (path: string): string | undefined => issueMessage(error?.issues, path)
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -116,7 +115,7 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
                 onChange={(event) => setLabel(event.target.value)}
               />
               {issue('label') === undefined ? null : (
-                <p className="signin__fieldIssue" role="alert">
+                <p className="field__issue" role="alert">
                   {issue('label')}
                 </p>
               )}
@@ -138,7 +137,7 @@ export function Onboarding({ pending, csrf, onProvisioned }: OnboardingProps): R
                 onChange={(event) => setCode(event.target.value)}
               />
               {issue('code') === undefined ? null : (
-                <p className="signin__fieldIssue" role="alert">
+                <p className="field__issue" role="alert">
                   {issue('code')}
                 </p>
               )}

@@ -344,15 +344,18 @@ describe('compareToBenchmark: what counts and what does not', () => {
     const result = ok(compare(ROWS, CODES, { benchmark: SHIPPED_MIX }))
 
     // Literal, because these are the figures a page prints: 65000/185000 against the
-    // survey's 13,97%, and 185000 × 13,97% as the reference in euros.
+    // survey's 13,97%, and 185000 × 13,97% as the reference in euros — 25844 rather than
+    // the 25844.5 exact share, since the half-cent this line's independent rounding would
+    // have claimed goes to `alcohol_tobacco` instead: both land on the same fractional
+    // part, and the largest-remainder tie-break (#755) is alphabetical by group id.
     expect(line(result, 'food')).toEqual({
       group: 'food',
       yourCents: 65_000,
       yourShareBp: 3_514,
       referenceShareBp: 1_397,
-      benchmarkCents: 25_845,
-      deltaBp: 15_150,
-      deltaCents: 39_155,
+      benchmarkCents: 25_844,
+      deltaBp: 15_151,
+      deltaCents: 39_156,
       categories: 1,
     })
     expect(line(result, 'housing')).toEqual({
@@ -365,15 +368,13 @@ describe('compareToBenchmark: what counts and what does not', () => {
       deltaCents: 63_427,
       categories: 1,
     })
-    // The reference lines add up to the compared total, so the mix comparison is a
-    // division of the same money on both sides — to within the rounding, which is where
-    // the bound comes from rather than from tolerance for a wrong answer. Each of the ten
-    // lines is rounded independently, so the sum can miss by up to half a cent per line;
-    // with the shares as published it misses by one. Apportioning by largest remainder
-    // would close that and would also make every line's figure depend on the other nine,
-    // which is a worse trade for a card that prints no total to disagree with.
+    // The reference lines add up to the compared total exactly, not just to within
+    // rounding (#755): largest-remainder apportionment closes the gap independent
+    // per-line rounding would otherwise leave, the same discipline `splitCategoryPool`
+    // already applies to goal shares — a precondition for any future total row or chart
+    // that sums these figures and expects them to match.
     const referenceTotal = result.groups.reduce((sum, group) => sum + group.benchmarkCents, 0)
-    expect(Math.abs(referenceTotal - 185_000)).toBeLessThanOrEqual(5)
+    expect(referenceTotal).toBe(185_000)
   })
 
   it('distinguishes a group nothing maps to from a group nothing was spent on', () => {

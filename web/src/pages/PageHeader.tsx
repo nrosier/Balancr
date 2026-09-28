@@ -1,7 +1,7 @@
 /**
  * The frame every view starts from.
  *
- * All five pages now render their own content, so what is left here is the one thing
+ * Every page now renders its own content, so what is left here is the one thing
  * they share: a heading and a line under it, in the same place, at the same size, so
  * that moving between views does not move the title. This file was
  * `Placeholder.tsx` through the shell issue (#28) and carried a `Placeholder`

@@ -369,6 +369,57 @@ describe('a category-kind goal on GET /api/overview (#407)', () => {
   })
 })
 
+describe('a total-kind goal on GET /api/overview (#684)', () => {
+  // Zero rate and zero payment, same as the loan fixture in the '#441' describe
+  // block above, so the balance is exactly `principalCents` whatever day this runs on.
+  const CAR = {
+    kind: 'car' as const,
+    label: 'Car',
+    openingDate: '2025-03-01',
+    principalCents: 1_500_000,
+    anchorDate: '2025-03-01',
+    rateBp: 0,
+    monthlyPaymentCents: 0,
+    remainingTermMonths: 600,
+    originalPrincipalCents: null,
+    extraMonthlyPaymentCents: null,
+  }
+
+  it("prices it against the card's own adjusted total, with a loan on file", async () => {
+    createLoan(ctx.db, TENANT_ID, CAR)
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'Total net worth',
+      kind: 'total',
+      priority: 'normal',
+      targetCents: 5_000_000,
+    })
+
+    const body = (await get('/api/overview')).json()
+    const goal = body.goals.find((row: { id: string }) => row.id === created.id)
+
+    // The loan is already folded into `netWorth.totalCents` (#441) — the goal must
+    // agree with the figure on the card directly above it, not a raw snapshot that
+    // never subtracted the loan at all.
+    expect(goal.currentCents).toBe(body.netWorth.totalCents)
+    expect(body.netWorth.totalCents).toBe(4_820_000 - 1_500_000)
+  })
+
+  it('is unchanged from the raw net worth when there is nothing to adjust by', async () => {
+    const created = createGoal(ctx.db, TENANT_ID, {
+      label: 'Total net worth',
+      kind: 'total',
+      priority: 'normal',
+      targetCents: 5_000_000,
+    })
+
+    const body = (await get('/api/overview')).json()
+    const goal = body.goals.find((row: { id: string }) => row.id === created.id)
+
+    expect(goal.currentCents).toBe(body.netWorth.totalCents)
+    expect(body.netWorth.totalCents).toBe(4_820_000)
+  })
+})
+
 describe('GET /api/budget', () => {
   it('returns the latest computed month by default', async () => {
     const body = (await get('/api/budget')).json()
@@ -2262,9 +2313,10 @@ describe('money', () => {
   // still enough to catch the walk matching nothing.
   const MIN_AMOUNTS: Partial<Record<(typeof ENDPOINTS)[number], number>> = {
     '/api/scenario': 1,
-    // One tag, two months of `netCents`, three derived totals — same fixture-is-
-    // deliberately-small reasoning as scenario above.
-    '/api/tags': 4,
+    // One tag, three derived totals — the wire contract dropped its per-month
+    // `byMonth` series (#741), so this is now just the three summary figures.
+    // Same fixture-is-deliberately-small reasoning as scenario above.
+    '/api/tags': 2,
   }
 
   it('is integer cents and integer basis points, everywhere, on every endpoint', async () => {

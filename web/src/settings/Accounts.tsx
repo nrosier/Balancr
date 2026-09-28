@@ -179,6 +179,9 @@ export function AccountsPanel({ settings, state, owner }: SettingsPanelProps): R
 
 interface FieldsProps {
   id: string
+  /** The row's own `<h3 className="account__name">` id — every label here is repeated
+   *  once per account, so the accessible name also needs the name it belongs to (#779). */
+  nameId: string
   kind: AccountSetting['kind']
   includeInNetWorth: boolean
   locked: boolean
@@ -186,17 +189,27 @@ interface FieldsProps {
 }
 
 /** The two judgements every account (or linked pair) carries, shared by both row shapes. */
-function AccountFields({ id, kind, includeInNetWorth, locked, onPatch }: FieldsProps): ReactNode {
+function AccountFields({
+  id,
+  nameId,
+  kind,
+  includeInNetWorth,
+  locked,
+  onPatch,
+}: FieldsProps): ReactNode {
   const { t } = useT()
+  const kindLabelId = `account-kind-label-${id}`
+  const networthLabelId = `account-networth-label-${id}`
   return (
     <div className="account__controls">
       <div className="field field--inline">
-        <label className="field__label" htmlFor={`account-kind-${id}`}>
+        <label id={kindLabelId} className="field__label" htmlFor={`account-kind-${id}`}>
           {t('settings:accounts.kind')}
         </label>
         <select
           id={`account-kind-${id}`}
           className="field__input"
+          aria-labelledby={`${nameId} ${kindLabelId}`}
           value={kind}
           disabled={locked}
           onChange={(event) => onPatch(id, { kind: event.target.value })}
@@ -213,11 +226,12 @@ function AccountFields({ id, kind, includeInNetWorth, locked, onPatch }: FieldsP
         <input
           id={`account-networth-${id}`}
           type="checkbox"
+          aria-labelledby={`${nameId} ${networthLabelId}`}
           checked={includeInNetWorth}
           disabled={locked}
           onChange={(event) => onPatch(id, { includeInNetWorth: event.target.checked })}
         />
-        {t('settings:accounts.includeInNetWorth')}
+        <span id={networthLabelId}>{t('settings:accounts.includeInNetWorth')}</span>
       </label>
     </div>
   )
@@ -240,11 +254,13 @@ function SingleRow({ account, busy, owner, onPatch }: SingleRowProps): ReactNode
     <li className="account">
       {/*
         A heading rather than a span: the controls below repeat their labels on every
-        row, and a heading is what lets a screen reader tell which account's "Kind"
-        it has landed on.
+        row, and its `id` is what lets `AccountFields` tie each one's accessible name
+        back to this account, not just visually group them (#779).
       */}
       <div className="account__head">
-        <h3 className="account__name">{name}</h3>
+        <h3 id={`account-name-${id}`} className="account__name">
+          {name}
+        </h3>
         <span className="account__source muted">{t(`source.${source}`)}</span>
       </div>
 
@@ -256,6 +272,7 @@ function SingleRow({ account, busy, owner, onPatch }: SingleRowProps): ReactNode
 
       <AccountFields
         id={id}
+        nameId={`account-name-${id}`}
         kind={kind}
         includeInNetWorth={includeInNetWorth}
         locked={locked}
@@ -293,7 +310,9 @@ function LinkedRow({ members, busy, owner, onPatch, onUnlink }: LinkedRowProps):
   return (
     <li className="account">
       <div className="account__head">
-        <h3 className="account__name">{name}</h3>
+        <h3 id={`account-name-${id}`} className="account__name">
+          {name}
+        </h3>
         <span className="account__source muted">{t(`source.${source}`)}</span>
         <span className="badge badge--truth">{t('settings:accounts.linked.badge')}</span>
       </div>
@@ -315,6 +334,7 @@ function LinkedRow({ members, busy, owner, onPatch, onUnlink }: LinkedRowProps):
 
       <AccountFields
         id={id}
+        nameId={`account-name-${id}`}
         kind={kind}
         includeInNetWorth={includeInNetWorth}
         locked={locked}
