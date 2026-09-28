@@ -41,8 +41,17 @@ export interface SavingsAggregate {
   hasSavings: boolean
   /** Same, for `investments`. */
   hasInvestments: boolean
-  /** This month's spend across every savings-or-investments envelope. A withdrawal
-   *  from savings shows up here the same way any other spend does. */
+  /**
+   * This month's movement across every savings-or-investments envelope, on the
+   * same per-month scale as `baselineCents` — a withdrawal from savings shows up
+   * here the same way any other spend does, but rate-normalized to the category's
+   * own cadence wherever a baseline exists (#749). Without that, an annual or
+   * quarterly envelope's raw lump-sum month would be compared against a baseline
+   * averaged over its whole window and read as a many-times-over drawdown every
+   * time the expected payment lands. Only a category with no baseline yet falls
+   * back to its raw month figure, and then `baselineCents` is null below anyway,
+   * so nothing compares that raw figure to anything.
+   */
   spentCents: number
   /** Sum of each envelope's own baseline, or null when none of them has one yet. */
   baselineCents: number | null
@@ -58,7 +67,11 @@ export function splitSavingsMonth(
 
   for (const row of rows) {
     if (!context.savings.has(row.categoryId) && !context.investments.has(row.categoryId)) continue
-    spentCents += row.spentCents
+    // `baseline.currentCents` is already the mean spend per month over the
+    // category's own window (1 month for a monthly cadence, so identical to
+    // `spentCents` there) — using it keeps every category on the same per-month
+    // scale as `baselineCents`, rather than raw month vs. multi-month rate (#749).
+    spentCents += row.baseline?.currentCents ?? row.spentCents
     if (row.baseline !== null) {
       baselineCents += row.baseline.baselineCents
       hasBaseline = true

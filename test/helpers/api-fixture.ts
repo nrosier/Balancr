@@ -144,6 +144,7 @@ export function apiFixture(options: { jobsFailed?: boolean; empty?: boolean } = 
     ],
     new Map([['rental', 'tag-rental']]),
     months,
+    new Set(['tag-rental']),
   )
 
   persistSignals(

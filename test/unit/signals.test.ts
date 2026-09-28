@@ -478,6 +478,25 @@ describe('burn rate', () => {
       })
     })
 
+    it('ignores a reliable curve for a non-monthly baseline, and falls back to the flat rate (#748)', () => {
+      // Same fixture as the test above, except this category's baseline is a
+      // 12-month window (an annual contribution, say) rather than 1. `baselineCents`
+      // there is a mean *per month*, so smoothing it over the rest of this month
+      // would manufacture a projection with no relationship to what is actually
+      // due — the curve path has to be skipped entirely, landing back on the
+      // flat-rate formula (spent + extrapolated variable = 60 000 + 60 000).
+      const annual = fact({
+        spent: 60_000,
+        budgeted: 90_000,
+        txnCount: 2,
+        baseline: { baselineCents: 100_000, deltaBp: 0, windowMonths: 12 },
+        dayCurve: { medianFractionBp: 5_000 },
+      })
+      const signals = categorySignals([annual], 0.5, DEFAULT_PARAMS)
+      expect(codes(signals)).toEqual(['burn_rate_over'])
+      expect(signals[0]?.metrics.projectedCents).toBe(120_000)
+    })
+
     it('still catches a brand-new schedule the curve has no history for, via the max() floor', () => {
       // Nothing spent yet and the curve — trusted, but built from months before this
       // schedule existed — says nothing unusual is due (medianFractionBp: 0, so the

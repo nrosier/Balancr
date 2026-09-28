@@ -52,7 +52,7 @@
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
-import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
+import { loadOffBudgetAccounts, loadOnBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
 import {
   estimatedMonthlyInterestCents,
   listDebts,
@@ -130,9 +130,14 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   for (const debt of debts) {
     reconciliationCandidates.push({ kind: 'debt', label: debt.label, valueCents: debt.balanceCents })
   }
+  // Both scopes: a credit card or car loan tracked on-budget in Actual is exactly
+  // as capable of being the same money as a self-reported Debt/Loan entry as an
+  // off-budget account is (#746) — `totalCents` never distinguished the two, so
+  // the reconciliation check should not either.
+  const reconciliationAccounts = [...offBudgetAccounts, ...loadOnBudgetAccounts(db, tenantId)]
   const reconciliationWarnings = findPossibleDoubleCounts(
     reconciliationCandidates,
-    offBudgetAccounts.map((account) => ({
+    reconciliationAccounts.map((account) => ({
       accountId: account.accountMapId,
       name: account.name,
       balanceCents: account.balanceCents,

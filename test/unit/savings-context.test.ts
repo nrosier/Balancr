@@ -91,6 +91,22 @@ describe('the context, read off the database', () => {
     })
   })
 
+  it('sums the rate-normalized baseline figure, not the raw month, for a non-monthly envelope (#749)', () => {
+    // An annual investment contribution: 1 200 000 lands in the one month it's paid,
+    // but its baseline (a 12-month window) reports that as a 100 000/month rate. Summing
+    // the raw month here would make `household.ts` compare a twelve-months-at-once figure
+    // against a one-month baseline and read every on-schedule payment as an 11x drawdown.
+    meta('annual-brokerage-contribution', 'investments')
+    const context = savingsContext(ctx.db, TENANT_ID)
+    const aggregate = splitSavingsMonth(context, [
+      fact('annual-brokerage-contribution', 1_200_000, {
+        baseline: { ...baseline(100_000, 100_000), windowMonths: 12 },
+      }),
+    ])
+    expect(aggregate.spentCents).toBe(100_000)
+    expect(aggregate.baselineCents).toBe(100_000)
+  })
+
   it('has no baseline when neither tagged envelope has one yet', () => {
     meta('emergency-fund', 'savings')
     const context = savingsContext(ctx.db, TENANT_ID)

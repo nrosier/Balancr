@@ -83,10 +83,17 @@ describe('fetchTagMonthlyTotals (#691)', () => {
   it('buckets one fetched transaction into every tag its note matches, by month', async () => {
     withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
       data: [
-        { date: '2026-03-14', notes: '#rental payment', amount: -80_000 },
-        { date: '2026-03-20', notes: '#maintenance #rental boiler', amount: -12_000 },
-        { date: '2026-04-02', notes: '#rental payment', amount: -80_000 },
-        { date: '2026-04-05', notes: 'no tag here', amount: -5_000 },
+        { id: 't1', date: '2026-03-14', notes: '#rental payment', amount: -80_000, transferId: null, offBudget: false },
+        {
+          id: 't2',
+          date: '2026-03-20',
+          notes: '#maintenance #rental boiler',
+          amount: -12_000,
+          transferId: null,
+          offBudget: false,
+        },
+        { id: 't3', date: '2026-04-02', notes: '#rental payment', amount: -80_000, transferId: null, offBudget: false },
+        { id: 't4', date: '2026-04-05', notes: 'no tag here', amount: -5_000, transferId: null, offBudget: false },
       ],
     })
 
@@ -104,11 +111,55 @@ describe('fetchTagMonthlyTotals (#691)', () => {
 
   it('ignores a null-amount transaction as zero, same as the old per-tag $sum did', async () => {
     withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
-      data: [{ date: '2026-05-01', notes: '#rental', amount: null }],
+      data: [{ id: 't1', date: '2026-05-01', notes: '#rental', amount: null, transferId: null, offBudget: false }],
     })
 
     const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
 
     expect(totals).toEqual([{ tag: 'rental', month: '2026-05', netCents: 0, txnCount: 1 }])
+  })
+
+  it('counts a tagged boundary-crossing transfer once, at the on-budget leg\'s sign (#744)', async () => {
+    // Actual's own `addTransfer` copies `notes` to the counterpart leg verbatim, so a
+    // freshly tagged mortgage payment carries "#rental" on both the on-budget leg that
+    // pays it and the off-budget loan leg that receives it. Summing both nets to zero.
+    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+      data: [
+        { id: 'onbudget', date: '2026-03-10', notes: '#rental', amount: -80_000, transferId: 'offbudget', offBudget: false },
+        { id: 'offbudget', date: '2026-03-10', notes: '#rental', amount: 80_000, transferId: 'onbudget', offBudget: true },
+      ],
+    })
+
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+
+    expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: -80_000, txnCount: 1 }])
+  })
+
+  it('uses whichever leg of a crossing transfer actually carries the tag when only one does', async () => {
+    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+      data: [
+        { id: 'onbudget', date: '2026-03-10', notes: 'mortgage payment', amount: -80_000, transferId: 'offbudget', offBudget: false },
+        { id: 'offbudget', date: '2026-03-10', notes: '#rental', amount: 80_000, transferId: 'onbudget', offBudget: true },
+      ],
+    })
+
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+
+    expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: 80_000, txnCount: 1 }])
+  })
+
+  it('does not treat a transfer between two on-budget accounts as a crossing pair', async () => {
+    // Same `offBudget` on both legs — an ordinary internal transfer, not the boundary
+    // crossing #744 is about. Each leg is independent, so a note on just one still counts.
+    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+      data: [
+        { id: 'a', date: '2026-03-10', notes: '#rental', amount: -5_000, transferId: 'b', offBudget: false },
+        { id: 'b', date: '2026-03-10', notes: null, amount: 5_000, transferId: 'a', offBudget: false },
+      ],
+    })
+
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+
+    expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: -5_000, txnCount: 1 }])
   })
 })

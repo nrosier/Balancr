@@ -251,7 +251,14 @@ export function categorySignals(
       (spentCents > 0 || committedCents > 0)
     ) {
       let projectedCents: number
-      if (fact.dayCurve?.reliable && fact.baseline) {
+      // `fact.baseline.baselineCents` is a mean spend *per month*, so smoothing it
+      // over `remainingFraction` of the current month only means something for a
+      // monthly-cadence category. For an annual or quarterly envelope, the year's
+      // lump sum either already landed this month or is not due at all — treating
+      // the rest of the month as owed a smooth slice of it manufactures a false
+      // burn-rate alert (#748), so the curve path is trusted only when the baseline
+      // itself is a one-month window.
+      if (fact.dayCurve?.reliable && fact.baseline && fact.baseline.windowMonths === 1) {
         const remainingFraction = Math.max(0, 1 - fact.dayCurve.medianFractionBp / 10_000)
         const dayCurveProjectedCents =
           spentCents + Math.round(fact.baseline.baselineCents * remainingFraction)
