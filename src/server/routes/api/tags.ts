@@ -13,9 +13,9 @@ import { config } from '../../../config.ts'
 import { freshness } from './freshness.ts'
 import { tagTotalsSchema, type TagTotals } from './schemas.ts'
 
-export function buildTagTotals(db: Db, tenantId: string): TagTotals {
+export function buildTagTotals(db: Db, tenantId: string, isOwner: boolean): TagTotals {
   return tagTotalsSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     tags: loadTagTotals(db, tenantId, currentMonthIn(config.TZ)),
   })
 }

@@ -108,6 +108,7 @@ export const COVER_WINDOW_MONTHS = config.JOBS_HISTORY_MONTHS
 export function buildOverview(
   db: Db,
   tenantId: string,
+  isOwner: boolean,
   locale: string = config.DEFAULT_LOCALE,
 ): Overview {
   const month = latestStoredMonth(db, tenantId)
@@ -179,7 +180,7 @@ export function buildOverview(
   }))
 
   return overviewSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     netWorth:
       netWorth === null
         ? null

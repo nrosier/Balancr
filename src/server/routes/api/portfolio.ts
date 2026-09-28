@@ -90,7 +90,7 @@ import {
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
-export function buildPortfolio(db: Db, tenantId: string): Portfolio {
+export function buildPortfolio(db: Db, tenantId: string, isOwner: boolean): Portfolio {
   const date = latestSnapshotDate(db, tenantId)
   const metrics = date === null ? null : loadPortfolioMetrics(db, tenantId, date)
   const holdings = date === null ? [] : loadSnapshot(db, tenantId, date)
@@ -145,7 +145,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   )
 
   return portfolioSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     date,
     totalValueCents: metrics?.totalValueCents ?? null,
     // `loadPortfolioMetrics` reads an absent split back as zero, which is the honest

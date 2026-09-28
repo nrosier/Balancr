@@ -86,6 +86,15 @@ export function loadSpendHistory(db: Db, tenantId: string, limit = 24): SpendMon
     .all()
 }
 
+/**
+ * `history`, for a viewer (#728) — empty, same convention `digestSetting` uses for
+ * `recipientEmails` and `loadIntegrations` uses for every masked field: a viewer sees
+ * "nothing to show", not a redacted version of the real trend.
+ */
+export function maskSpendHistoryForViewer(history: SpendMonth[], isOwner: boolean): SpendMonth[] {
+  return isOwner ? history : []
+}
+
 export interface BudgetState {
   /** The UTC month this state describes. */
   month: string
@@ -122,6 +131,31 @@ export function budgetState(db: Db, tenantId: string, now: Date = new Date()): B
         ? 10_000
         : Math.min(10_000, Math.round((spentMicroEur / budgetMicroEur) * 10_000)),
     exceeded: spentMicroEur >= budgetMicroEur,
+  }
+}
+
+/**
+ * `state`, for a viewer (#728) — zeroed to the same shape a deployment with
+ * `GEMINI_MONTHLY_BUDGET_EUR=0` already produces, the "not configured" convention
+ * `loadIntegrations` uses for this same euro figure elsewhere on the settings page.
+ *
+ * All four numeric fields together, not just the one a report happened to name:
+ * `budgetMicroEur` is `remainingMicroEur + spentMicroEur`, and `spentMicroEur` is
+ * recoverable from `usedBp` and `budgetMicroEur` alone, so masking any one field and
+ * leaving the rest real would still hand a viewer the household's AI spend by
+ * arithmetic. Every caller that serves this to a client — `/api/settings` and
+ * `/api/insights` — goes through this one function so the two pages cannot disagree
+ * about what a viewer may see.
+ */
+export function maskBudgetForViewer(state: BudgetState, isOwner: boolean): BudgetState {
+  if (isOwner) return state
+  return {
+    month: state.month,
+    spentMicroEur: 0,
+    budgetMicroEur: 0,
+    remainingMicroEur: 0,
+    usedBp: 10_000,
+    exceeded: true,
   }
 }
 

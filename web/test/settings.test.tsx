@@ -3703,10 +3703,117 @@ describe('members', () => {
       }),
     })
 
-    expect(screen.getByText('Only the owner can change this.')).toBeTruthy()
+    // Two panels share this subsection now (#739) and each says so once, in its own body.
+    expect(screen.getAllByText('Only the owner can change this.').length).toBe(2)
     expect((screen.getByLabelText('Label') as HTMLInputElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Create invite' }) as HTMLButtonElement).disabled).toBe(true)
     expect((within(row('For Jo')).getByRole('button', { name: 'Revoke' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('who can sign in (#739)', () => {
+  const open = (replies: Replies): Promise<Call[]> => openPage(replies, '/settings/members', 'Members')
+
+  const row = (label: string): HTMLElement => {
+    const found = screen.getByText(label).closest('li')
+    if (found === null) throw new Error(`no account row for ${label}`)
+    return found as HTMLElement
+  }
+
+  const USERS: Payload['users'] = [
+    {
+      id: 'u-owner',
+      email: 'owner@example.com',
+      displayName: 'Alex',
+      role: 'owner',
+      disabled: false,
+      createdAt: '2020-01-01T10:00:00.000Z',
+      lastSeenAt: '2026-09-20T09:00:00.000Z',
+    },
+    {
+      id: 'u-viewer',
+      email: null,
+      displayName: null,
+      role: 'viewer',
+      disabled: true,
+      createdAt: '2026-02-01T10:00:00.000Z',
+      lastSeenAt: null,
+    },
+  ]
+
+  it("shows each account's own role, status and last-seen, and falls back to \"Unnamed\"", async () => {
+    await open({ ...READS, '/api/settings': json({ ...PAYLOAD, users: USERS }) })
+
+    expect(within(row('Alex')).getByText((text) => text.includes('Owner'))).toBeTruthy()
+    expect(within(row('Alex')).getByText('Enabled')).toBeTruthy()
+    expect(within(row('Unnamed')).getByText((text) => text.includes('Viewer'))).toBeTruthy()
+    expect(within(row('Unnamed')).getByText('Disabled')).toBeTruthy()
+    expect(within(row('Unnamed')).getByText((text) => text.includes('Never signed in'))).toBeTruthy()
+  })
+
+  it('shows an empty state when no accounts exist yet', async () => {
+    await open(READS)
+
+    expect(screen.getByText('No accounts yet.')).toBeTruthy()
+  })
+
+  it('disables an account through the whole payload, without a second GET', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, users: USERS }),
+      '/api/settings/users/u-owner': json({
+        ...PAYLOAD,
+        users: [{ ...USERS[0], disabled: true }, USERS[1]],
+      }),
+    })
+
+    fireEvent.click(within(row('Alex')).getByRole('button', { name: 'Disable' }))
+
+    await waitFor(() => {
+      expect(within(row('Alex')).getByText('Disabled')).toBeTruthy()
+    })
+    expect(writes(calls)).toEqual([
+      { path: '/api/settings/users/u-owner', method: 'PATCH', body: { disabled: true } },
+    ])
+    // The narrow response, not the whole payload — no second GET of /api/settings.
+    expect(calls.filter((call) => call.path === '/api/settings')).toHaveLength(1)
+  })
+
+  it('re-enables a disabled account', async () => {
+    const calls = await open({
+      ...READS,
+      '/api/settings': json({ ...PAYLOAD, users: USERS }),
+      '/api/settings/users/u-viewer': json({
+        ...PAYLOAD,
+        users: [USERS[0], { ...USERS[1], disabled: false }],
+      }),
+    })
+
+    fireEvent.click(within(row('Unnamed')).getByRole('button', { name: 'Re-enable' }))
+
+    await waitFor(() => {
+      expect(within(row('Unnamed')).getByText('Enabled')).toBeTruthy()
+    })
+    expect(writes(calls)).toEqual([
+      { path: '/api/settings/users/u-viewer', method: 'PATCH', body: { disabled: false } },
+    ])
+  })
+
+  it('leaves every control disabled for a viewer', async () => {
+    await open({
+      ...READS,
+      '/api/settings': json({
+        ...PAYLOAD,
+        users: USERS,
+        profile: { ...PAYLOAD.profile, role: 'viewer' },
+      }),
+    })
+
+    expect(screen.getAllByText('Only the owner can change this.').length).toBe(2)
+    expect((within(row('Alex')).getByRole('button', { name: 'Disable' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(
+      (within(row('Unnamed')).getByRole('button', { name: 'Re-enable' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 })
 

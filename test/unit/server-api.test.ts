@@ -1592,6 +1592,61 @@ describe('GET /api/insights', () => {
     expect(body.owner).toBe(false)
   })
 
+  it('masks the AI spend from a viewer, and agrees with /api/settings about it (#728)', async () => {
+    recordRun(ctx.db, TENANT_ID, {
+      kind: 'findings',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { categories: [] },
+      payloadHash: 'spend-hash',
+      status: 'ok',
+      costMicroEurOverride: 5_000_000,
+    })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    // The owner sees the real, nonzero spend the run above just recorded.
+    const ownerSpend = (await get('/api/insights')).json().spend
+    expect(ownerSpend.spentMicroEur).toBe(5_000_000)
+
+    // Any one of the four numeric fields recovers the others by arithmetic, so a
+    // viewer gets the same zeroed shape on both pages rather than one field masked
+    // and the rest left real.
+    const insights = (await get('/api/insights', token)).json()
+    const settings = (await get('/api/settings', token)).json()
+    expect(insights.spend).toEqual({
+      month: ownerSpend.month,
+      spentMicroEur: 0,
+      budgetMicroEur: 0,
+      usedBp: 10_000,
+      exceeded: true,
+    })
+    expect(settings.ai.month).toBe(ownerSpend.month)
+    expect(settings.ai.spentMicroEur).toBe(0)
+    expect(settings.ai.budgetMicroEur).toBe(0)
+    expect(settings.ai.remainingMicroEur).toBe(0)
+    expect(settings.ai.usedBp).toBe(10_000)
+    expect(settings.ai.exceeded).toBe(true)
+    expect(settings.ai.history).toEqual([])
+  })
+
   it('filters signals and the narrative to the month asked for (#158)', async () => {
     // The fixture's signals belong to `MONTH` alone — July has none stored — so
     // asking for July is the one request that proves the filter runs at all.
@@ -2086,6 +2141,37 @@ describe('freshness', () => {
       expect(body.freshness.stale, url).toBe(true)
       const sync = body.freshness.jobs.find((job: { name: string }) => job.name === 'sync')
       expect(sync.error, url).toContain('ECONNREFUSED')
+    }
+  })
+
+  it('masks the verbatim upstream error from a viewer, on every endpoint (#729)', async () => {
+    await app.close()
+    ctx.sqlite.close()
+    await open({ jobsFailed: true })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    for (const url of ENDPOINTS) {
+      const body = (await get(url, token)).json()
+      expect(body.freshness.stale, url).toBe(true)
+      const sync = body.freshness.jobs.find((job: { name: string }) => job.name === 'sync')
+      expect(sync.error, url).toBeNull()
     }
   })
 })

@@ -66,7 +66,12 @@ export function resolveLocale(request: FastifyRequest): string {
 
 export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   app.get('/api/overview', (request: FastifyRequest) =>
-    buildOverview(db, requireUser(request).tenantId, resolveLocale(request)),
+    buildOverview(
+      db,
+      requireUser(request).tenantId,
+      request.user?.role === 'owner',
+      resolveLocale(request),
+    ),
   )
 
   app.get('/api/budget', (request: FastifyRequest) => {
@@ -86,13 +91,21 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
     )
   })
 
-  app.get('/api/portfolio', (request: FastifyRequest) => buildPortfolio(db, requireUser(request).tenantId))
+  app.get('/api/portfolio', (request: FastifyRequest) =>
+    buildPortfolio(db, requireUser(request).tenantId, request.user?.role === 'owner'),
+  )
 
-  app.get('/api/forecast', (request: FastifyRequest) => buildForecast(db, requireUser(request).tenantId))
+  app.get('/api/forecast', (request: FastifyRequest) =>
+    buildForecast(db, requireUser(request).tenantId, request.user?.role === 'owner'),
+  )
 
-  app.get('/api/tags', (request: FastifyRequest) => buildTagTotals(db, requireUser(request).tenantId))
+  app.get('/api/tags', (request: FastifyRequest) =>
+    buildTagTotals(db, requireUser(request).tenantId, request.user?.role === 'owner'),
+  )
 
-  app.get('/api/scenario', (request: FastifyRequest) => buildScenario(db, requireUser(request).tenantId))
+  app.get('/api/scenario', (request: FastifyRequest) =>
+    buildScenario(db, requireUser(request).tenantId, request.user?.role === 'owner'),
+  )
 
   app.get('/api/insights', (request: FastifyRequest) => {
     const query = request.query as { month?: unknown; runsPeriod?: unknown; signalsPeriod?: unknown } | undefined
@@ -136,12 +149,20 @@ export function registerApiRoutes(app: FastifyInstance, db: Db): void {
   // The detailed half of readiness. `/readyz` serves the same computation stripped of
   // every message, because it answers without a session; this one is behind the guard
   // and may quote what an upstream said. See `status.ts`.
-  app.get('/api/status', (request: FastifyRequest) => buildStatus(db, requireUser(request).tenantId))
+  app.get('/api/status', (request: FastifyRequest) =>
+    buildStatus(db, requireUser(request).tenantId, request.user?.role === 'owner'),
+  )
 
   // Expanded on demand from a row in the panel above; see `status-history.ts`.
   app.get('/api/status/history', (request: FastifyRequest) => {
     const query = request.query as { job?: unknown; limit?: unknown } | undefined
-    return buildJobHistory(db, requireUser(request).tenantId, query?.job, query?.limit)
+    return buildJobHistory(
+      db,
+      requireUser(request).tenantId,
+      query?.job,
+      query?.limit,
+      request.user?.role === 'owner',
+    )
   })
 
   // The version number in the header opens a dialog on this. See `changelog.ts` for

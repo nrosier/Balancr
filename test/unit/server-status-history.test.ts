@@ -171,4 +171,48 @@ describe('/api/status/history', () => {
     expect(body.runs[0]?.steps[1]?.error).toBe('ECONNREFUSED actual:5006')
     expect(body.runs[0]?.steps[0]?.error).toBeNull()
   })
+
+  it('masks the run’s and every step’s verbatim error from a viewer (#729)', async () => {
+    insertRun(ctx.db, {
+      startedAt: new Date('2026-08-06T00:00:00Z'),
+      status: 'partial',
+      error: 'ECONNREFUSED actual:5006',
+      steps: [
+        { name: 'connect', status: 'ok', durationMs: 50 },
+        { name: 'fetch', status: 'error', durationMs: 200, error: 'ECONNREFUSED actual:5006' },
+      ],
+    })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        tenantId: getSoleTenantId(ctx.db),
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        email: `${crypto.randomUUID()}@example.test`,
+        displayName: 'Viewer',
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/status/history?job=sync',
+      cookies: { [SESSION_COOKIE]: token },
+    })
+    const body = res.json<JobHistory>()
+    // Still partial — only the message text is the owner's, not the fact of failure.
+    expect(body.runs[0]?.status).toBe('partial')
+    expect(body.runs[0]?.error).toBeNull()
+    expect(body.runs[0]?.steps[1]?.error).toBeNull()
+    expect(body.runs[0]?.steps[0]?.error).toBeNull()
+  })
 })

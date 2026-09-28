@@ -11,9 +11,9 @@ import { scenarioBaseline } from '../../../domain/aggregate/scenario.ts'
 import { freshness } from './freshness.ts'
 import { scenarioSchema, type Scenario } from './schemas.ts'
 
-export function buildScenario(db: Db, tenantId: string): Scenario {
+export function buildScenario(db: Db, tenantId: string, isOwner: boolean): Scenario {
   return scenarioSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     scenario: scenarioBaseline(db, tenantId),
   })
 }

@@ -134,6 +134,7 @@ export type {
   Status,
   Suggestion,
   TagTotals,
+  UserSetting,
 } from '../../src/server/routes/api/schemas.ts'
 
 export {

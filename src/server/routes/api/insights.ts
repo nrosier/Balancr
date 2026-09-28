@@ -73,7 +73,7 @@ import {
   type CategoryGuessCandidate,
 } from '../../../domain/aggregate/signals-store.ts'
 import { tenantAiAvailability } from '../../../domain/ai/availability.ts'
-import { budgetState } from '../../../domain/ai/budget.ts'
+import { budgetState, maskBudgetForViewer } from '../../../domain/ai/budget.ts'
 import { openQuestions } from '../../../domain/ai/clarify.ts'
 import {
   loadNarrative,
@@ -123,12 +123,14 @@ export function buildInsights(db: Db, tenantId: string, options: InsightsOptions
   // period beside it, and there was no way to ask for July's. The cost is that a month
   // with no narrative now says so — which is the truth, and the button beside it is #158.
   const narrative = month === null ? null : loadNarrative(db, tenantId, month, locale)
-  const spend = budgetState(db, tenantId)
+  // Masked for a viewer (#728): the same projection `/api/settings` applies, so the
+  // two pages cannot disagree about what a viewer may see.
+  const spend = maskBudgetForViewer(budgetState(db, tenantId), options.owner ?? false)
   const factsChangedAt =
     month === null ? null : loadMonthTotals(db, tenantId, [month])[0]?.factsChangedAt ?? null
 
   return insightsSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, options.owner ?? false),
     ai: tenantAiAvailability(db, tenantId),
     owner: options.owner ?? false,
     month,

@@ -21,6 +21,8 @@ import {
   checkBudget,
   loadSpendHistory,
   loadSpendMonth,
+  maskBudgetForViewer,
+  maskSpendHistoryForViewer,
   spendMonthOf,
 } from '../../src/domain/ai/budget.ts'
 import {
@@ -814,6 +816,48 @@ describe('budgetState', () => {
     expect(budgetState(db, tenantId, now).remainingMicroEur).toBe(
       before.remainingMicroEur - eurToMicroEur(3),
     )
+  })
+})
+
+describe('maskBudgetForViewer', () => {
+  const now = new Date('2026-03-15T03:00:00Z')
+
+  it('passes an owner the real state, unchanged', () => {
+    runIn('2026-03', { costMicroEurOverride: eurToMicroEur(3.75) })
+    const state = budgetState(db, tenantId, now)
+
+    expect(maskBudgetForViewer(state, true)).toEqual(state)
+  })
+
+  it('zeroes every spend figure for a viewer, keeping only the month (#728)', () => {
+    runIn('2026-03', { costMicroEurOverride: eurToMicroEur(3.75) })
+    const state = budgetState(db, tenantId, now)
+
+    expect(maskBudgetForViewer(state, false)).toEqual({
+      month: state.month,
+      spentMicroEur: 0,
+      budgetMicroEur: 0,
+      remainingMicroEur: 0,
+      usedBp: 10_000,
+      exceeded: true,
+    })
+  })
+})
+
+describe('maskSpendHistoryForViewer', () => {
+  it('passes an owner the real history, unchanged', () => {
+    runIn('2026-01')
+    runIn('2026-02')
+    const history = loadSpendHistory(db, tenantId)
+
+    expect(maskSpendHistoryForViewer(history, true)).toEqual(history)
+  })
+
+  it('empties the history for a viewer rather than redacting each month (#728)', () => {
+    runIn('2026-01')
+    runIn('2026-02')
+
+    expect(maskSpendHistoryForViewer(loadSpendHistory(db, tenantId), false)).toEqual([])
   })
 })
 

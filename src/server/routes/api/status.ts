@@ -135,7 +135,7 @@ export function jobsCheck(rows: readonly JobRow[], enabled: boolean): CheckVerdi
   return { status: 'ok', reason: null }
 }
 
-export function buildStatus(db: Db, tenantId: string): Status {
+export function buildStatus(db: Db, tenantId: string, isOwner: boolean): Status {
   // First, and on its own: everything below reads the database, so a database that
   // cannot be read has to be reported rather than thrown. A readiness endpoint that
   // answers 500 has told the orchestrator nothing it can act on.
@@ -192,9 +192,10 @@ export function buildStatus(db: Db, tenantId: string): Status {
       lastSuccessAt: iso(row.lastSuccessAt),
       nextRunAt: iso(row.nextRunAt),
       lastDurationMs: row.lastDurationMs,
-      // Only while the status still says error: a message left by a failure a later
-      // run fixed would report an outage that is over.
-      error: row.status === 'error' ? row.error : null,
+      // Only while the status still says error, and only for the owner: the message
+      // can name an internal hostname or the budget file itself (#729). A failure a
+      // later run fixed would also report an outage that is over, so both gate it.
+      error: row.status === 'error' && isOwner ? row.error : null,
       schedule: scheduleOf(row.name),
     })),
     queued: jobsInFlight(tenantId),
@@ -259,9 +260,9 @@ const SEVERITY: Record<Readiness['checks'][number]['status'], number> = {
  * to ask, and they change by taking the worst answer any tenant gave.
  */
 export function buildReadiness(db: Db): Readiness {
-  if (!databaseReadable(db)) return terse(buildStatus(db, ''))
+  if (!databaseReadable(db)) return terse(buildStatus(db, '', false))
 
-  const perTenant = allTenantIds(db).map((tenantId) => terse(buildStatus(db, tenantId)))
+  const perTenant = allTenantIds(db).map((tenantId) => terse(buildStatus(db, tenantId, false)))
 
   const checks = CHECK_NAMES.map((name) => {
     let worst: Readiness['checks'][number] = { name, status: 'unknown' }
