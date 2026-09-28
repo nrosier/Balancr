@@ -1022,16 +1022,17 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.5.1` is the current release. A property's rent, and
-a mortgage's monthly payment, can now be linked to an Actual Budget category
-and checked (read-only) against what actually moved through it; Integrations
-settings split into Actual Budget / Ghostfolio subtabs; the Overview page's
-savings rate and goals now share one card; and two bugs are fixed — the
-COICOP division picker staying enabled for income/hidden categories, and
-saving a property with kind `owned` 400ing (see [`CHANGELOG.md`](CHANGELOG.md)
-for details). Existing deployments upgrade in place.
+**Where it is now** — `2.5.2` is the current release. It closes out the third
+and final tier of a full backlog-clearing sweep: a property's rent/mortgage
+payment can now link to the Actual schedule that represents it, per-tag net
+cost/gain totals get their own `/tags` page, and a reconciliation check flags
+a self-reported property/loan/debt that looks like the same money as an
+off-budget account. The rest is fixes — tenant-isolation and session/cache
+hardening, tag-total correctness, and a long tail of settings-panel
+accessibility and validation gaps (see [`CHANGELOG.md`](CHANGELOG.md) for
+details). Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.5.1`; a release candidate is
+`docker pull` now resolves `latest` to `2.5.2`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/balancr/issues), grouped

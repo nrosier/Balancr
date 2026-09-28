@@ -6,6 +6,70 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.5.2] — 2026-09-29
+
+### Security
+
+- **A newly created user defaulted to the `owner` role instead of `viewer`, and disabling a user left its existing sessions alive**
+  ([#697](https://github.com/nrosier/balancr/issues/697), [#695](https://github.com/nrosier/balancr/issues/695)). `users.role` now defaults to `viewer` (existing rows migrate via `0050`), and disabling a user now also ends its sessions.
+- **A backup's intermediate plaintext database copy was left group/world-readable for the duration of `VACUUM INTO`**
+  ([#698](https://github.com/nrosier/balancr/issues/698)). It's now `chmod 0600` immediately after the copy completes.
+- **`/auth/session` and every other `/api/*` response could be cached by the browser, letting a prior account's identity leak on a shared device**
+  ([#730](https://github.com/nrosier/balancr/issues/730), [#696](https://github.com/nrosier/balancr/issues/696)). Responses now carry `Cache-Control: no-store` and `Vary: Cookie`.
+- **`reconstructFindings` read `ai_findings` by `run_id` with no tenant filter**
+  ([#734](https://github.com/nrosier/balancr/issues/734)), a tenant-isolation gap now closed.
+- **AI spend and sync errors were visible to a viewer, with no owner-only way to manage who has access**
+  ([#728](https://github.com/nrosier/balancr/issues/728), [#729](https://github.com/nrosier/balancr/issues/729), [#739](https://github.com/nrosier/balancr/issues/739)). Both are now masked from viewer-role responses, behind a new owner-only user-access panel.
+
+### Added
+
+- **A property's rent or mortgage payment can now link directly to the Actual schedule that represents it**, not just its category
+  ([#662](https://github.com/nrosier/balancr/issues/662)). The schedule's own resolved category and amount supersede the manually set ones once linked; a household that never adopts this sees no change.
+- **Per-tag net cost/gain totals**, with a new minimal `/tags` page
+  ([#663](https://github.com/nrosier/balancr/issues/663)). Off-budget accounts are included, matching how a tag can span the on-budget/off-budget boundary a category can't; totals are cached at sync time like every other computed figure.
+- **A reconciliation check now warns when a self-reported property, loan or debt looks like the same money as an off-budget Actual account**
+  ([#689](https://github.com/nrosier/balancr/issues/689)), without ever merging or excluding anything automatically.
+
+### Changed
+
+- **Property cards get a heading and their mortgage sub-blocks are visually separated**
+  ([#661](https://github.com/nrosier/balancr/issues/661)), with aligned field captions and mortgage actions pulled into their own row.
+- **A redundant `modelPrices` viewer-mask was dropped**
+  ([#735](https://github.com/nrosier/balancr/issues/735)) — `GET /api/ai/estimate` and the AI run log already expose the same pricing on purpose.
+
+### Fixed
+
+- **Several tag-total bugs**: a tag deleted in Actual left a decaying ghost row in `tag_meta` ([#733](https://github.com/nrosier/balancr/issues/733), [#751](https://github.com/nrosier/balancr/issues/751)); a tag's net total depended on which leg of a boundary-crossing transfer carried it ([#690](https://github.com/nrosier/balancr/issues/690)); totals kept Actual's signed convention instead of the app's own positive-out convention ([#753](https://github.com/nrosier/balancr/issues/753)); and tag windows anchored on wall-clock "now" instead of `latestStoredMonth` like every other surface ([#752](https://github.com/nrosier/balancr/issues/752)). `fetchTagMonthlyTotals` and `loadTagTotals` now aggregate in SQL instead of one query per tag or a full in-JS scan ([#691](https://github.com/nrosier/balancr/issues/691), [#692](https://github.com/nrosier/balancr/issues/692)).
+- **The `/tags` table had no defined row order, couldn't wrap a long tag name, and Privacy mode's `tabIndex` on `<Money>` added 120 unnamed tab stops to a 40-row table**
+  ([#771](https://github.com/nrosier/balancr/issues/771), [#772](https://github.com/nrosier/balancr/issues/772), [#778](https://github.com/nrosier/balancr/issues/778)); the page also gained a `NotConfigured` gate matching other setup-dependent pages ([#783](https://github.com/nrosier/balancr/issues/783)).
+- **Several disabled controls gave no visible or announced reason**: row-cap "Add" buttons ([#670](https://github.com/nrosier/balancr/issues/670), [#768](https://github.com/nrosier/balancr/issues/768)), the "Use standard payment" button ([#706](https://github.com/nrosier/balancr/issues/706)), and the AI settings Save button — whose budget field also couldn't parse a Belgian-locale number ([#784](https://github.com/nrosier/balancr/issues/784)).
+- **Accessibility fixes across PeriodPicker and settings**: per-row disclosure buttons and disabled month/year cells had no distinguishing accessible name or announcement ([#668](https://github.com/nrosier/balancr/issues/668), [#669](https://github.com/nrosier/balancr/issues/669)); the mode toggle and dialog picked up further fixes ([#774](https://github.com/nrosier/balancr/issues/774)); a locale-formatting bug built its own `Intl.DateTimeFormat` instead of the shared one ([#773](https://github.com/nrosier/balancr/issues/773)); and disabled-cell contrast collapsed to 2.59:1 in light theme ([#781](https://github.com/nrosier/balancr/issues/781)).
+- **Onboarding's mode picker used `tablist`/`tab` roles with no keyboard handling**
+  ([#671](https://github.com/nrosier/balancr/issues/671)), and now follows the ARIA group/pressed pattern already used elsewhere (`ThemeToggle`).
+- **Archived-goal text dropped below AA contrast under its own opacity, and per-account settings controls repeated identical labels with no row-group association**
+  ([#775](https://github.com/nrosier/balancr/issues/775), [#779](https://github.com/nrosier/balancr/issues/779)); Benchmark and Risk tables gained the shared keyboard-scroll-region convention and a caption ([#780](https://github.com/nrosier/balancr/issues/780)).
+- **Row-cap hints across Loans, Debts, Goals, Property, Benchmark and Digest settings panels now render only once the cap is reached, each linked to its Add button via `aria-describedby`**
+  ([#786](https://github.com/nrosier/balancr/issues/786), [#787](https://github.com/nrosier/balancr/issues/787), [#788](https://github.com/nrosier/balancr/issues/788)); the nav tab-bar's label sizing was recalibrated for 8 tabs with a `title` fallback ([#769](https://github.com/nrosier/balancr/issues/769)), and pace-mark contrast was raised to 3:1 against every fill state ([#770](https://github.com/nrosier/balancr/issues/770)).
+- **A `total`-kind goal's progress was priced against the wrong net-worth figure, and the forecast double-counted average spend on top of already-tagged fixed categories and bills**
+  ([#684](https://github.com/nrosier/balancr/issues/684), [#685](https://github.com/nrosier/balancr/issues/685)); the emergency-fund cushion is now judged against the same EWMA convention `income_change` already uses and counts on-budget liquid money only ([#686](https://github.com/nrosier/balancr/issues/686), [#747](https://github.com/nrosier/balancr/issues/747)), Overview and Findings agree on one definition of "months of cover" ([#687](https://github.com/nrosier/balancr/issues/687)), and a category-kind goal's `elapsedMonths` is now correct across gaps in its trend ([#688](https://github.com/nrosier/balancr/issues/688)).
+- **A category source-locale change wrote two tables without a transaction, and `setSourceOfTruth`/`saveParams`/`saveProfile` had the same read-modify-write gap**
+  ([#732](https://github.com/nrosier/balancr/issues/732), [#678](https://github.com/nrosier/balancr/issues/678), [#680](https://github.com/nrosier/balancr/issues/680)); `resetComputedData` and `forgetMonth` now clear every affected table instead of a subset ([#677](https://github.com/nrosier/balancr/issues/677), [#679](https://github.com/nrosier/balancr/issues/679)).
+- **Four tables existed as schema exports but were missing from the object handed to `drizzle()`, and the legacy single-mortgage read-time shim was replaced with a real one-time migration**
+  ([#682](https://github.com/nrosier/balancr/issues/682), [#683](https://github.com/nrosier/balancr/issues/683)).
+- **Validation gaps**: the AI budget field, a custom AI provider's blank base URL, onboarding's server-side field errors, and month-note's length rejection now all surface consistently on the client
+  ([#672](https://github.com/nrosier/balancr/issues/672), [#674](https://github.com/nrosier/balancr/issues/674), [#675](https://github.com/nrosier/balancr/issues/675), [#676](https://github.com/nrosier/balancr/issues/676)); nested Zod paths (e.g. `properties.0.label`) now match their panel-level lookup key instead of only an exact string ([#673](https://github.com/nrosier/balancr/issues/673)), and that same matching logic — previously drifted across three separate copies — is now shared ([#790](https://github.com/nrosier/balancr/issues/790)). Every property/goal category-link field now has its own `<Issue>` rendering slot, with a compiler-enforced guard test keeping the list in sync ([#736](https://github.com/nrosier/balancr/issues/736)).
+- **A further batch of fixes landed across budget, portfolio, and forecast surfaces**
+  ([#731](https://github.com/nrosier/balancr/issues/731), [#744](https://github.com/nrosier/balancr/issues/744), [#745](https://github.com/nrosier/balancr/issues/745), [#746](https://github.com/nrosier/balancr/issues/746), [#748](https://github.com/nrosier/balancr/issues/748), [#749](https://github.com/nrosier/balancr/issues/749), [#750](https://github.com/nrosier/balancr/issues/750), [#756](https://github.com/nrosier/balancr/issues/756)).
+- **An archived goal's target amount wasn't masked under privacy mode, and the AI verdict notice referenced a nonexistent CSS tone class**
+  ([#703](https://github.com/nrosier/balancr/issues/703), [#704](https://github.com/nrosier/balancr/issues/704)).
+- **The scenario panel's growth-rate default had no "not measured" caveat unlike its sibling inputs, and Benchmark group amounts on the "mix" basis were rounded independently and didn't sum to their own basis total**
+  ([#754](https://github.com/nrosier/balancr/issues/754), [#755](https://github.com/nrosier/balancr/issues/755)).
+- **Three sync-path performance fixes**: goal progress re-fetched full net-worth history per goal, `loadFacts` re-joined category names per month, and the AI proposal generator re-queried payee history per uncategorised transaction
+  ([#711](https://github.com/nrosier/balancr/issues/711), [#712](https://github.com/nrosier/balancr/issues/712), [#713](https://github.com/nrosier/balancr/issues/713)); a transfer-crossing scan that ran three times per sync pass was also fixed ([#719](https://github.com/nrosier/balancr/issues/719)).
+- **`PATCH /api/settings/integrations/ai` now merges submitted `modelPrices` onto the existing set instead of replacing it wholesale**
+  ([#743](https://github.com/nrosier/balancr/issues/743)), so switching the fast/deep model no longer drops the price of a model that's no longer selected; `FreshnessBar`'s `jobs` prop is now typed against `Refreshable` so a typo in a job name fails `tsc` instead of a live refresh call ([#742](https://github.com/nrosier/balancr/issues/742)).
+- **Assorted settings-panel bugs**: `clearApiKey`'s validation refine would have failed silently if ever wired to the UI ([#737](https://github.com/nrosier/balancr/issues/737)), `MembersPanel` kept shadowing `settings.invites` after creating an invite ([#738](https://github.com/nrosier/balancr/issues/738)), and several settings hint elements referenced CSS classes that didn't match their actual names, including a duplicate pair now consolidated ([#785](https://github.com/nrosier/balancr/issues/785), [#789](https://github.com/nrosier/balancr/issues/789)). Unused prompt-editor fields and an `/api/tags` series the frontend never reads were removed, along with their stale doc comments ([#740](https://github.com/nrosier/balancr/issues/740), [#741](https://github.com/nrosier/balancr/issues/741)).
+
 ## [2.5.1] — 2026-09-26
 
 ### Added
