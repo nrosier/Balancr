@@ -23,7 +23,7 @@ import { useId, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { NetWorthChart } from '../charts/NetWorthChart.tsx'
 import { useT } from '../i18n.ts'
-import { formatMonth, type Forecast as ForecastPayload } from '../shared.ts'
+import { formatMonth, type Forecast as ForecastPayload, type Refreshable } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric } from '../ui/Metric.tsx'
 import { Money } from '../ui/Money.tsx'
@@ -31,7 +31,7 @@ import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
 /** The two jobs this projection is built from: a synced month, and a net-worth snapshot. */
-const JOBS = ['sync', 'networth'] as const
+const JOBS = ['sync', 'networth'] as const satisfies readonly Refreshable[]
 
 function isEmpty(data: ForecastPayload): boolean {
   return data.forecast === null

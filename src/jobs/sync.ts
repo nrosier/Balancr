@@ -12,6 +12,7 @@
  */
 import { syncActual } from '../adapters/actual/client.ts'
 import {
+  boundaryCrossingTransferLegIds,
   fetchAccounts as fetchActualAccounts,
   fetchBudgetMonth,
   fetchBudgetMonths,
@@ -22,6 +23,8 @@ import {
   fetchSchedulesPaidThisMonth,
   fetchTagMonthlyTotals,
   fetchTags,
+  fetchTransferCrossingData,
+  offBudgetTransferLegIds,
   type BudgetMonth,
 } from '../adapters/actual/queries.ts'
 import { fetchAccounts as fetchGhostfolioAccounts } from '../adapters/ghostfolio/client.ts'
@@ -255,12 +258,51 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
 
     if (targets.length === 0) return { ready: false as const, load, targets }
 
+    // Whether this pass covers the current month — `committed` and `dayCurves`
+    // below (and the transfer-crossing range just below this) each only apply
+    // to it, so it's read once here rather than re-derived at each site.
+    const isCurrentMonthTarget = targets.includes(currentMonth)
+    // The historical day-of-month shape `burn_rate_over` projects from (#311),
+    // computed here (rather than inside `buildDayCurves`) for the same
+    // "function of today" reason `today` below is: it needs to be known before
+    // `dayCurves` runs regardless of which branch that takes.
+    const dayCurveHistoryMonths = monthsBefore(currentMonth, params.dayCurve.windowMonths)
+
     const history = await fetchHistory(db, tenantId, load)
+
+    // One transfer-crossing lookup per sync pass, over a range wide enough to
+    // cover every consumer below, rather than one per consumer (#719):
+    // `fetchRecomputedSpend` and `fetchTagMonthlyTotals` were each independently
+    // re-deriving the same on-budget-transfer-leg data across heavily
+    // overlapping ranges, and `fetchRecomputedSpendDaily` a third time when the
+    // day curve runs. `load`'s range already covers `targets`'s (`planMonths`'s
+    // own invariant — `load` only ever trims from the *earlier* end), so the
+    // day-curve window is the only one that can extend past it, and only when
+    // `isCurrentMonthTarget`; `currentMonth` (the day curve's own upper bound) is
+    // always `load`'s last month whenever it is a target, so `load`'s own upper
+    // bound already covers it. A `keepLegIds` id found outside a given
+    // consumer's own `[from, to]` is harmless there — that consumer's query
+    // still restricts by `date`, so the extra id simply matches no rows.
+    const crossingFrom =
+      isCurrentMonthTarget && (dayCurveHistoryMonths[0] as string) < (load[0] as string)
+        ? (dayCurveHistoryMonths[0] as string)
+        : (load[0] as string)
+    const crossingTo = load[load.length - 1] as string
+    const { legs, counterpartIsOffBudget } = await fetchTransferCrossingData(
+      db,
+      tenantId,
+      startOfMonth(crossingFrom),
+      endOfMonth(crossingTo),
+    )
+    const offBudgetKeepLegIds = offBudgetTransferLegIds(legs, counterpartIsOffBudget)
+    const boundaryCrossingKeepLegIds = boundaryCrossingTransferLegIds(legs, counterpartIsOffBudget)
+
     const recomputed = await fetchRecomputedSpend(
       db,
       tenantId,
       startOfMonth(load[0] as string),
       endOfMonth(load[load.length - 1] as string),
+      offBudgetKeepLegIds,
     )
 
     // Fetched unconditionally, unlike `committed` below: `schedule_meta` (#662)
@@ -279,6 +321,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
       tags.filter((tag) => !tag.hidden).map((tag) => tag.tag),
       startOfMonth(targets[0] as string),
       endOfMonth(targets[targets.length - 1] as string),
+      boundaryCrossingKeepLegIds,
     )
 
     // What is still to come this month (#159). Read here rather than inside
@@ -287,7 +330,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
     // gets one — a past month's committed figure is zero by definition, and the
     // schedules for a future month are not what `targets` is about.
     const today = todayIn(config.TZ)
-    const committed = targets.includes(currentMonth)
+    const committed = isCurrentMonthTarget
       ? committedForMonth({
           schedules,
           month: currentMonth,
@@ -301,19 +344,18 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
         })
       : emptyCommitted(currentMonth)
 
-    // The historical day-of-month shape `burn_rate_over` projects from (#311).
-    // Same reasoning as `committed`: only the current month gets one, and its
-    // own fetch window — independent of the baseline history above — is read
-    // here, at sync-time, because "how far through the month" is a function of
-    // today.
-    const dayCurveHistoryMonths = monthsBefore(currentMonth, params.dayCurve.windowMonths)
-    const dayCurves = targets.includes(currentMonth)
+    // The historical day-of-month shape `burn_rate_over` projects from (#311)
+    // — `dayCurveHistoryMonths` itself was hoisted above, alongside the
+    // transfer-crossing range that also needs it. Same reasoning as
+    // `committed`: only the current month gets one.
+    const dayCurves = isCurrentMonthTarget
       ? buildDayCurves({
           daily: await fetchRecomputedSpendDaily(
             db,
             tenantId,
             startOfMonth(dayCurveHistoryMonths[0] as string),
             endOfMonth(addMonths(currentMonth, -1)),
+            offBudgetKeepLegIds,
           ),
           historyMonths: dayCurveHistoryMonths,
           month: currentMonth,

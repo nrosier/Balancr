@@ -42,8 +42,8 @@
       "pinDigests": false
     },
     {
-      "description": "@actual-app/api is versioned YY.M to track the Actual server release. Bumping it ahead of the server produces out-of-sync-migrations, so this one is never automatic — it is approved by hand when the server is upgraded.",
-      "matchPackageNames": ["@actual-app/api"],
+      "description": "@actual-app/api and @actual-app/core are both versioned YY.M in lockstep to track the Actual server release. Bumping one ahead of the other produces out-of-sync migrations, so neither is ever automatic — both are approved by hand together when the server is upgraded.",
+      "matchPackageNames": ["@actual-app/api", "@actual-app/core"],
       "dependencyDashboardApproval": true,
       "addLabels": ["needs-server-upgrade"]
     },

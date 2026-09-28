@@ -98,12 +98,21 @@ export function loadGoalsWithProgress(
 
   const active = visible.filter((goal) => goal.status === 'active')
 
+  // Loaded once per distinct kind (#711) rather than once per goal — the history
+  // query is goal-independent, so two goals sharing a kind (e.g. two `liquid`
+  // goals) would otherwise reload and refilter the same series twice.
+  const historyByKind = new Map(
+    [...new Set(active.flatMap((goal) => (goal.kind === 'category' ? [] : [goal.kind])))].map(
+      (kind) => [kind, loadNetWorthComponentHistory(db, tenantId, kind)] as const,
+    ),
+  )
+
   for (const goal of active) {
     if (goal.kind === 'category') continue
     const kind = goal.kind
     const currentCents = currentCentsFor({ kind }, netWorth)
     const progress = computeGoalProgress(goal, currentCents)
-    const trend = monthlyGoalTrend(loadNetWorthComponentHistory(db, tenantId, kind), asOfMonth)
+    const trend = monthlyGoalTrend(historyByKind.get(kind) ?? [], asOfMonth)
     const projection = projectGoal(progress, trend, asOfMonth)
     const requiredMonthlyCents = requiredMonthlySavingsCents(progress, asOfMonth)
     results.set(goal.id, {

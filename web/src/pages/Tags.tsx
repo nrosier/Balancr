@@ -11,13 +11,13 @@
 import { useId, type ReactNode } from 'react'
 import { useResource } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
-import type { TagTotals } from '../shared.ts'
+import type { Refreshable, TagTotals } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Money } from '../ui/Money.tsx'
 import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
-const JOBS = ['sync'] as const
+const JOBS = ['sync'] as const satisfies readonly Refreshable[]
 
 function isEmpty(data: TagTotals): boolean {
   return data.tags.length === 0

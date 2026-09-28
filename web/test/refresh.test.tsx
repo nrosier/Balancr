@@ -38,6 +38,7 @@ import type {
   Freshness,
   JobStatus,
   RefreshAccepted,
+  Refreshable,
   Status,
 } from '../src/shared.ts'
 import { FreshnessBar } from '../src/ui/Refresh.tsx'
@@ -133,6 +134,12 @@ interface HostProps {
   start: Freshness
   /** What a re-read answers with, if the test wants the jobs to land. */
   next?: Freshness
+  /**
+   * `readonly string[]`, not `Refreshable`: one test below deliberately sends a name
+   * the union has no room for, to check the client quotes the server's own rejection
+   * of a job name rather than translating it. `FreshnessBar`'s prop stays typed
+   * against `Refreshable` (#742) — this harness casts past that for that one case.
+   */
   jobs?: readonly string[]
 }
 
@@ -153,7 +160,7 @@ function Host({ start, next, jobs }: HostProps): ReactNode {
     <FreshnessBar
       freshness={freshness}
       onRefreshed={onRefreshed}
-      {...(jobs === undefined ? {} : { jobs })}
+      {...(jobs === undefined ? {} : { jobs: jobs as readonly Refreshable[] })}
     />
   )
 }

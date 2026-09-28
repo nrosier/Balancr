@@ -42,7 +42,7 @@ import { PropertyTable } from '../portfolio/Property.tsx'
 import { PORTFOLIO_SECTIONS, sectionFor } from '../portfolio/sections.ts'
 import { Suggestions } from '../portfolio/Suggestions.tsx'
 import { useRouter } from '../router.tsx'
-import { formatBp, formatDate, type Portfolio as PortfolioPayload } from '../shared.ts'
+import { formatBp, formatDate, type Portfolio as PortfolioPayload, type Refreshable } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { HoldingsTable } from '../ui/HoldingsTable.tsx'
 import { Metric } from '../ui/Metric.tsx'
@@ -66,7 +66,7 @@ const euro = (cents: number): ReactNode => <Money cents={cents} options={{ whole
  * the bar names them when it does. A module constant so the array's identity is stable
  * across renders.
  */
-const JOBS = ['portfolio'] as const
+const JOBS = ['portfolio'] as const satisfies readonly Refreshable[]
 
 /**
  * True when no snapshot has ever been written.

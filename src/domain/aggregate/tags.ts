@@ -23,13 +23,15 @@ import type { PersistResult } from './facts.ts'
 const CHUNK = 200
 
 /**
- * Upserts `tag_meta` from a nightly `fetchTags` pass. Like `syncScheduleMeta`, every
- * column is refreshed on every sync — Actual owns all of it, and there is no
- * user-entered column here to protect.
+ * Upserts `tag_meta` from a nightly `fetchTags` pass, and drops rows for a tag
+ * no longer in `tags` — the same stale-row cleanup `persistFacts` gives
+ * `monthly_category_facts`, and for the same reason: `fetchTags` returns the
+ * *whole* current list on every pass, so a tag missing from it was deleted in
+ * Actual, not just skipped this time (#733). Like `syncScheduleMeta`, every
+ * surviving row's columns are refreshed on every sync — Actual owns all of it,
+ * and there is no user-entered column here to protect.
  */
 export function syncTagMeta(db: Db | Transaction, tenantId: string, tags: readonly ActualTag[]): number {
-  if (tags.length === 0) return 0
-
   const rows = tags.map((tag) => ({
     tenantId,
     tagId: tag.id,
@@ -53,6 +55,16 @@ export function syncTagMeta(db: Db | Transaction, tenantId: string, tags: readon
         })
         .run()
     }
+
+    const keep = rows.map((row) => row.tagId)
+    // `notInArray` with an empty list matches nothing rather than everything —
+    // the same pitfall `persistFacts` notes — so the all-deleted case needs its
+    // own branch.
+    const where =
+      keep.length > 0
+        ? and(eq(tagMeta.tenantId, tenantId), notInArray(tagMeta.tagId, keep))
+        : eq(tagMeta.tenantId, tenantId)
+    tx.delete(tagMeta).where(where).run()
   })
 
   return rows.length

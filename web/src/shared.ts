@@ -41,6 +41,10 @@
  *    this import: the prompt editor has to know which value means "not a language's own
  *    text", and a literal `'*'` on this side is how the picker's first entry comes to
  *    mean something different from what the server stores under it.
+ *  - **The refreshable-job name.** `jobs/refresh.ts`'s `Refreshable` is a type-only
+ *    export — the module itself reaches `logger.ts` and then `config`, so only the
+ *    union crosses, never the array. That is enough for a page's own job list to be
+ *    checked against the server's names at compile time (#742).
  *  - **The catalogues.** The same JSON files, not a copy: `npm run i18n:check`
  *    guarantees `en` and `nl` parity for one set of files, and a build-time copy is
  *    how a Dutch string gets fixed in the place nothing renders.
@@ -136,6 +140,13 @@ export type {
   TagTotals,
   UserSetting,
 } from '../../src/server/routes/api/schemas.ts'
+
+// Type only, like the schemas above: `src/jobs/refresh.ts` reaches `logger.ts` →
+// `config.ts` for the module that owns the running job, and only the name union
+// crosses here (#742). `FreshnessBar`'s `jobs` prop and each page's own `JOBS`
+// constant are typed against it so a typo in a job name fails `tsc` instead of a
+// live `POST /api/refresh`.
+export type { Refreshable } from '../../src/jobs/refresh.ts'
 
 export {
   FINDING_SPECS,

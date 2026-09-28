@@ -1993,15 +1993,20 @@ export const goalSettingSchema = z.object({
  * its siblings are booleans, not the value they describe, for the same reason a
  * TOTP secret is never re-readable once set.
  *
- * None of `serverUrl`, `syncId`, `url`, `baseUrl`, `googleCloudProject`,
- * `modelPrices`, or `budgetEurMicro` is a secret either, but for a viewer they are
- * masked to the same "nothing configured" shape an unset integration already has
- * (`''`/`null`/`{}`/`0`) rather than round-tripped as-is (#586): a hostname or sync
- * id is reconnaissance value for a viewer with a foothold, the same argument #573
- * already accepted for a digest's recipient list. `provider`, `*Configured`,
- * `categorySourceLocale`, `modelFast`, and `modelDeep` say nothing an attacker could
- * use to reach the account, so they round-trip for every role. See `loadIntegrations`
- * in `settings.ts` for the masking itself.
+ * None of `serverUrl`, `syncId`, `url`, `baseUrl`, `googleCloudProject`, or
+ * `budgetEurMicro` is a secret either, but for a viewer they are masked to the same
+ * "nothing configured" shape an unset integration already has (`''`/`null`/`0`)
+ * rather than round-tripped as-is (#586): a hostname or sync id is reconnaissance
+ * value for a viewer with a foothold, the same argument #573 already accepted for a
+ * digest's recipient list. `provider`, `*Configured`, `categorySourceLocale`,
+ * `modelFast`, and `modelDeep` say nothing an attacker could use to reach the
+ * account, so they round-trip for every role. See `loadIntegrations` in
+ * `settings.ts` for the masking itself.
+ *
+ * `modelPrices` used to be on that masked list, but round-trips for every role now
+ * (#735): `GET /api/ai/estimate` and `GET /api/settings/ai/runs` already give a
+ * viewer the same pricing on purpose, so masking it here only hid it from the one
+ * place that could show it in context.
  */
 export const integrationsSettingSchema = z.object({
   actual: z.object({

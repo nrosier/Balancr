@@ -80,6 +80,7 @@ import {
   type Budget as BudgetPayload,
   type BenchmarkPeriodKind,
   type GoalPace,
+  type Refreshable,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Metric, type MetricRow } from '../ui/Metric.tsx'
@@ -101,7 +102,7 @@ import '../budget/custody.css'
  * are computed from what it writes, and the bar says so when it does. Ghostfolio is left
  * alone, because nothing on this page comes from it.
  */
-const JOBS = ['sync'] as const
+const JOBS = ['sync'] as const satisfies readonly Refreshable[]
 
 type CategoryFact = BudgetPayload['categories'][number]
 

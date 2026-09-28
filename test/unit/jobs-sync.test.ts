@@ -13,11 +13,13 @@
  * makes both equal to that window, and choosing months well before the real
  * current one keeps `targets.includes(currentMonth)` false — so the
  * committed/day-curve branches never run and need no mock. `fetchSchedules`/
- * `fetchScheduleLabels` (#662) and `fetchTags`/`fetchTagMonthlyTotals` (#663)
- * run regardless — both stay fresh even in a month with nothing committed to
- * compute — so all four are stubbed rather than left to reach a real Actual
- * client; the tag pair returns a small fixture instead of empty, so the tag
- * write-through has something to assert against.
+ * `fetchScheduleLabels` (#662), `fetchTags`/`fetchTagMonthlyTotals` (#663), and
+ * `fetchTransferCrossingData` (#719) run regardless — the first three stay
+ * fresh even in a month with nothing committed to compute, and the last is
+ * `recomputed`/`tagTotals`'s shared dependency — so all five are stubbed
+ * rather than left to reach a real Actual client; the tag pair returns a
+ * small fixture instead of empty, so the tag write-through has something to
+ * assert against.
  */
 import { asc, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -73,6 +75,7 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
     return Promise.resolve(found)
   },
   fetchRecomputedSpend: () => Promise.resolve([]),
+  fetchTransferCrossingData: () => Promise.resolve({ legs: [], counterpartIsOffBudget: new Map() }),
   fetchSchedules: () => Promise.resolve([]),
   fetchScheduleLabels: () => Promise.resolve(new Map()),
   fetchTags: () => Promise.resolve([{ id: 'tag1', tag: 'rental', color: null, hidden: false }]),

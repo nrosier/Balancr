@@ -31,6 +31,8 @@ import {
   fetchCategoryGroups,
   fetchRecomputedSpend,
   fetchTransactionDateRange,
+  fetchTransferCrossingData,
+  offBudgetTransferLegIds,
 } from '../src/adapters/actual/queries.ts'
 import {
   fetchAccounts as fetchGhostfolioAccounts,
@@ -182,7 +184,19 @@ async function reconcile(tenantId: string, month: string): Promise<MonthReconcil
   heading(`Reconciliation — ${month}`)
 
   const budget = await fetchBudgetMonth(db, tenantId, month)
-  const rows = await fetchRecomputedSpend(db, tenantId, `${month}-01`, endOfMonth(month))
+  const { legs, counterpartIsOffBudget } = await fetchTransferCrossingData(
+    db,
+    tenantId,
+    `${month}-01`,
+    endOfMonth(month),
+  )
+  const rows = await fetchRecomputedSpend(
+    db,
+    tenantId,
+    `${month}-01`,
+    endOfMonth(month),
+    offBudgetTransferLegIds(legs, counterpartIsOffBudget),
+  )
 
   ok(
     `Actual reports income ${formatMoney(budget.totalIncomeCents)}, ` +

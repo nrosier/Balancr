@@ -29,6 +29,7 @@ import {
   formatMoney,
   parseMoneyToCents,
   projectScenario,
+  type Refreshable,
   type Scenario as ScenarioPayload,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -39,7 +40,7 @@ import { FreshnessBar } from '../ui/Refresh.tsx'
 import { PageHeader } from './PageHeader.tsx'
 
 /** The two jobs the seed values come from: a synced month, and a net-worth snapshot. */
-const JOBS = ['sync', 'networth'] as const
+const JOBS = ['sync', 'networth'] as const satisfies readonly Refreshable[]
 
 const MAX_HORIZON_YEARS = MAX_HORIZON_MONTHS / 12
 

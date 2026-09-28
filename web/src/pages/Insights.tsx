@@ -67,6 +67,7 @@ import {
   resolveYearAnchor,
   type AiAvailabilityWire,
   type Insights as InsightsPayload,
+  type Refreshable,
 } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
 import { Private } from '../ui/Money.tsx'
@@ -86,7 +87,7 @@ import '../insights/insights.css'
  * the price of a run. Two buttons on this page, one free and one not, is how the wrong
  * one gets pressed.
  */
-const JOBS = ['signals'] as const
+const JOBS = ['signals'] as const satisfies readonly Refreshable[]
 
 /**
  * True on a deployment where the AI layer has never run.
