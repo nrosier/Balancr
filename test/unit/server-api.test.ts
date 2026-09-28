@@ -1204,6 +1204,17 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
     expect(body.netWorth.debtCents).toBe(120_000 + 18_000_000)
   })
 
+  it('keeps the off-budget savings pot out of the emergency-fund cover figure (#747)', async () => {
+    // Same fixture as "splits how much of directly available is off-budget" above:
+    // adding the off-budget pot must not change this figure, or a household with
+    // a big savings pot they don't budget from would read as flush against a
+    // typical spend that pot never actually covers.
+    addOffBudgetAccounts()
+    const body = (await get('/api/overview')).json()
+
+    expect(body.emergencyFundCentimonths).toBe(400)
+  })
+
   it('names every off-budget account regardless of kind on GET /api/portfolio', async () => {
     const { mortgageId, savingsId } = addOffBudgetAccounts()
     const body = (await get('/api/portfolio')).json()
@@ -1359,6 +1370,53 @@ describe('reconciliation warnings against off-budget accounts (#689)', () => {
 
     const body = (await get('/api/portfolio')).json()
     expect(body.reconciliationWarnings).toEqual([])
+  })
+
+  it('flags a loan whose label names an on-budget account, not only an off-budget one (#746)', async () => {
+    // Same fixture as "flags a loan whose label names an off-budget account" above,
+    // minus `offBudget: true` — a credit card or car loan tracked on-budget in
+    // Actual is exactly as capable of being the same money as a self-reported
+    // loan as an off-budget one is, and the reconciliation check must catch both.
+    syncAccountMap(ctx.db, TENANT_ID, [{ source: 'actual', externalId: 'acct-car-loan', name: 'Car loan' }])
+    const carLoanId = loadAccountMap(ctx.db, TENANT_ID).find(
+      (row) => row.externalId === 'acct-car-loan',
+    )?.id
+    if (carLoanId === undefined) throw new Error('the fixture failed to map acct-car-loan')
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth(SNAPSHOT_DATE, [
+        {
+          accountMapId: carLoanId,
+          source: 'actual',
+          externalId: 'acct-car-loan',
+          name: 'Car loan',
+          kind: 'other',
+          valueCents: -900_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+    createLoan(ctx.db, TENANT_ID, {
+      kind: 'car',
+      label: 'Car loan',
+      openingDate: '2025-03-01',
+      principalCents: 1_500_000,
+      anchorDate: '2025-03-01',
+      rateBp: 0,
+      monthlyPaymentCents: 0,
+      remainingTermMonths: 600,
+      originalPrincipalCents: null,
+      extraMonthlyPaymentCents: null,
+    })
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.reconciliationWarnings).toEqual([
+      { kind: 'loan', label: 'Car loan', accountId: carLoanId, accountName: 'Car loan' },
+    ])
   })
 })
 
@@ -1532,6 +1590,61 @@ describe('GET /api/insights', () => {
 
     const body = (await get('/api/insights', token)).json()
     expect(body.owner).toBe(false)
+  })
+
+  it('masks the AI spend from a viewer, and agrees with /api/settings about it (#728)', async () => {
+    recordRun(ctx.db, TENANT_ID, {
+      kind: 'findings',
+      provider: 'gemini-aistudio',
+      model: 'gemini-3.7-flash',
+      locale: 'en',
+      payload: { categories: [] },
+      payloadHash: 'spend-hash',
+      status: 'ok',
+      costMicroEurOverride: 5_000_000,
+    })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    // The owner sees the real, nonzero spend the run above just recorded.
+    const ownerSpend = (await get('/api/insights')).json().spend
+    expect(ownerSpend.spentMicroEur).toBe(5_000_000)
+
+    // Any one of the four numeric fields recovers the others by arithmetic, so a
+    // viewer gets the same zeroed shape on both pages rather than one field masked
+    // and the rest left real.
+    const insights = (await get('/api/insights', token)).json()
+    const settings = (await get('/api/settings', token)).json()
+    expect(insights.spend).toEqual({
+      month: ownerSpend.month,
+      spentMicroEur: 0,
+      budgetMicroEur: 0,
+      usedBp: 10_000,
+      exceeded: true,
+    })
+    expect(settings.ai.month).toBe(ownerSpend.month)
+    expect(settings.ai.spentMicroEur).toBe(0)
+    expect(settings.ai.budgetMicroEur).toBe(0)
+    expect(settings.ai.remainingMicroEur).toBe(0)
+    expect(settings.ai.usedBp).toBe(10_000)
+    expect(settings.ai.exceeded).toBe(true)
+    expect(settings.ai.history).toEqual([])
   })
 
   it('filters signals and the narrative to the month asked for (#158)', async () => {
@@ -2028,6 +2141,37 @@ describe('freshness', () => {
       expect(body.freshness.stale, url).toBe(true)
       const sync = body.freshness.jobs.find((job: { name: string }) => job.name === 'sync')
       expect(sync.error, url).toContain('ECONNREFUSED')
+    }
+  })
+
+  it('masks the verbatim upstream error from a viewer, on every endpoint (#729)', async () => {
+    await app.close()
+    ctx.sqlite.close()
+    await open({ jobsFailed: true })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        tenantId: TENANT_ID,
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    for (const url of ENDPOINTS) {
+      const body = (await get(url, token)).json()
+      expect(body.freshness.stale, url).toBe(true)
+      const sync = body.freshness.jobs.find((job: { name: string }) => job.name === 'sync')
+      expect(sync.error, url).toBeNull()
     }
   })
 })

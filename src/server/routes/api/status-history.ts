@@ -29,7 +29,7 @@ const iso = (value: Date | null): string | null => value?.toISOString() ?? null
  * (see `runner.ts`'s `makeStep`), and the wire schema — like `JobStepRow` on the
  * frontend — expects the key to always be there.
  */
-function parseSteps(row: JobRunRow): JobStep[] {
+function parseSteps(row: JobRunRow, isOwner: boolean): JobStep[] {
   try {
     const parsed = JSON.parse(row.stepsJson)
     if (!Array.isArray(parsed)) return []
@@ -37,7 +37,9 @@ function parseSteps(row: JobRunRow): JobStep[] {
       name: step.name ?? '',
       status: step.status === 'error' ? 'error' : 'ok',
       durationMs: typeof step.durationMs === 'number' ? step.durationMs : 0,
-      error: step.error ?? null,
+      // Owner only: the message can name an internal hostname or the budget file
+      // itself (#729).
+      error: isOwner ? step.error ?? null : null,
     }))
   } catch {
     return []
@@ -58,6 +60,7 @@ export function buildJobHistory(
   tenantId: string,
   jobParam: unknown,
   limitParam: unknown,
+  isOwner: boolean,
 ): JobHistory {
   if (typeof jobParam !== 'string' || findJob(jobParam) === undefined) {
     throw badRequest('job must name a registered job.')
@@ -73,8 +76,9 @@ export function buildJobHistory(
       startedAt: run.startedAt.toISOString(),
       finishedAt: iso(run.finishedAt),
       durationMs: run.durationMs,
-      error: run.error,
-      steps: parseSteps(run),
+      // Owner only, same reason as the step-level mask below (#729).
+      error: isOwner ? run.error : null,
+      steps: parseSteps(run, isOwner),
     })),
   })
 }

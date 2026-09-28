@@ -650,6 +650,14 @@
  * fill is the entire point of the chart: fill left of the tick is under pace, right of
  * it is ahead. `translateX(-50%)` centres the tick on its value instead of starting
  * there, which at 100% would otherwise draw it just outside the track.
+ *
+ * A translucent `--text` overlay only cleared 1.48:1–2.02:1 against the fill (#770) —
+ * under the 3:1 non-text minimum, and worst exactly in the over-budget state where the
+ * mark matters most. An opaque `--text` line alone doesn't fix it either: `--text` on
+ * `--accent`/`--negative` still lands under 3:1 in both themes, because both fills sit
+ * at a middling lightness close to `--text`'s own. The `--surface-card` halo is what
+ * clears it — light-on-fill in light mode, dark-on-fill in dark mode — so one half of
+ * the two-tone mark always contrasts with whatever it's drawn over, fill or bare track.
  */
 .pace__mark {
   position: absolute;
@@ -657,7 +665,7 @@
   bottom: 0;
   width: 2px;
   background: var(--text);
-  opacity: 0.55;
+  box-shadow: 0 0 0 1px var(--surface-card);
   transform: translateX(-50%);
 }
 

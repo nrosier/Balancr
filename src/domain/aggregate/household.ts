@@ -162,7 +162,13 @@ export function householdSignals(input: HouseholdInput): Signal[] {
       // already has a `targetBp` measured in basis points of *income*: one metric
       // name whose unit depends on which code carries it is how a chart or a
       // renderer eventually prints "3 months" as "0,3%".
-      const monthsBp = Math.round((input.netWorth.liquidCents / typicalSpend) * 10_000)
+      // Against the on-budget slice of liquid money, not all of it (#747):
+      // `typicalSpend` is Actual's own on-budget spend total, so pairing it with
+      // `liquidCents` — which deliberately counts an off-budget savings pot too
+      // (#353) — would inflate months-of-cover by whatever a household pays
+      // straight out of that pot, in the flattering direction.
+      const liquidOnBudgetCents = input.netWorth.liquidOnBudgetCents ?? input.netWorth.liquidCents
+      const monthsBp = Math.round((liquidOnBudgetCents / typicalSpend) * 10_000)
       const targetMonthsBp = Math.round(params.household.emergencyFundTargetMonths * 10_000)
       shortfallCents = Math.round((typicalSpend * (targetMonthsBp - monthsBp)) / 10_000)
       if (monthsBp < targetMonthsBp) {
@@ -170,7 +176,7 @@ export function householdSignals(input: HouseholdInput): Signal[] {
           householdSignal('emergency_fund_short', 'alert', {
             monthsBp,
             targetMonthsBp,
-            liquidCents: input.netWorth.liquidCents,
+            liquidOnBudgetCents,
             typicalSpendCents: typicalSpend,
             shortfallCents,
           }),

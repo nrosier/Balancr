@@ -66,6 +66,15 @@ const EXTRA: readonly { fg: ColourToken; bg: ColourToken; min: number; why: stri
   { fg: 'border-strong', bg: 'surface-card', min: UI, why: 'input border on the card' },
   // Applied in `charts/theme.ts` as ECharts `axisLabel.color`, never in a stylesheet.
   { fg: 'chart-axis', bg: 'surface-card', min: TEXT, why: 'chart axis labels' },
+  // `.pace__mark` (#770) draws a `--text` line with a `--surface-card` halo, exactly so
+  // one half of the pair clears the fill it happens to sit over: `--text` alone doesn't
+  // (both `--accent` and `--negative` sit at a lightness too close to it), so the halo
+  // is the component this check has to hold to the floor, on both possible fills. The
+  // line's own `--text` against the unfilled `--surface-sunken` track is the other half
+  // of the pair and passes easily, which is why it isn't the one asserted here.
+  { fg: 'surface-card', bg: 'accent', min: UI, why: 'pace mark halo on the fill' },
+  { fg: 'surface-card', bg: 'negative', min: UI, why: 'pace mark halo on the over-budget fill' },
+  { fg: 'text', bg: 'surface-sunken', min: UI, why: 'pace mark line on the unfilled track' },
 ]
 
 /**

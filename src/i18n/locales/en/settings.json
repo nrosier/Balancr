@@ -846,5 +846,20 @@
     "title": "Thresholds"
   },
   "title": "Settings",
+  "users": {
+    "createdReads": "Joined {{when}}",
+    "disable": "Disable",
+    "empty": "No accounts yet.",
+    "enable": "Re-enable",
+    "hint": "Everyone who can sign in to this household. Disabling an account ends every session it currently holds.",
+    "lastSeenNever": "Never signed in",
+    "lastSeenReads": "Last seen {{when}}",
+    "status": {
+      "disabled": "Disabled",
+      "enabled": "Enabled"
+    },
+    "title": "Accounts",
+    "unnamed": "Unnamed"
+  },
   "viewerOnly": "Only the owner can change this."
 }

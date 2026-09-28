@@ -52,7 +52,7 @@
 import type { Db } from '../../../db/index.ts'
 import { integrationAvailability } from '../../../db/tenant-integrations.ts'
 import { adviceFor } from '../../../domain/advice/latest.ts'
-import { loadOffBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
+import { loadOffBudgetAccounts, loadOnBudgetAccounts } from '../../../domain/aggregate/networth-store.ts'
 import {
   estimatedMonthlyInterestCents,
   listDebts,
@@ -90,7 +90,7 @@ import {
 import { freshness } from './freshness.ts'
 import { portfolioSchema, type Portfolio } from './schemas.ts'
 
-export function buildPortfolio(db: Db, tenantId: string): Portfolio {
+export function buildPortfolio(db: Db, tenantId: string, isOwner: boolean): Portfolio {
   const date = latestSnapshotDate(db, tenantId)
   const metrics = date === null ? null : loadPortfolioMetrics(db, tenantId, date)
   const holdings = date === null ? [] : loadSnapshot(db, tenantId, date)
@@ -130,9 +130,14 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   for (const debt of debts) {
     reconciliationCandidates.push({ kind: 'debt', label: debt.label, valueCents: debt.balanceCents })
   }
+  // Both scopes: a credit card or car loan tracked on-budget in Actual is exactly
+  // as capable of being the same money as a self-reported Debt/Loan entry as an
+  // off-budget account is (#746) — `totalCents` never distinguished the two, so
+  // the reconciliation check should not either.
+  const reconciliationAccounts = [...offBudgetAccounts, ...loadOnBudgetAccounts(db, tenantId)]
   const reconciliationWarnings = findPossibleDoubleCounts(
     reconciliationCandidates,
-    offBudgetAccounts.map((account) => ({
+    reconciliationAccounts.map((account) => ({
       accountId: account.accountMapId,
       name: account.name,
       balanceCents: account.balanceCents,
@@ -140,7 +145,7 @@ export function buildPortfolio(db: Db, tenantId: string): Portfolio {
   )
 
   return portfolioSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     date,
     totalValueCents: metrics?.totalValueCents ?? null,
     // `loadPortfolioMetrics` reads an absent split back as zero, which is the honest

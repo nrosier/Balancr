@@ -86,9 +86,12 @@ import { overviewSchema, type Overview } from './schemas.ts'
  * client formats `450` as `4,5`, and no arithmetic anywhere has to be trusted with
  * a fraction.
  */
-export function emergencyFundCentimonths(liquidCents: number, typicalSpendCents: number | null): number | null {
+export function emergencyFundCentimonths(
+  liquidOnBudgetCents: number,
+  typicalSpendCents: number | null,
+): number | null {
   if (typicalSpendCents === null || typicalSpendCents <= 0) return null
-  return Math.round((liquidCents / typicalSpendCents) * 100)
+  return Math.round((liquidOnBudgetCents / typicalSpendCents) * 100)
 }
 
 /**
@@ -105,6 +108,7 @@ export const COVER_WINDOW_MONTHS = config.JOBS_HISTORY_MONTHS
 export function buildOverview(
   db: Db,
   tenantId: string,
+  isOwner: boolean,
   locale: string = config.DEFAULT_LOCALE,
 ): Overview {
   const month = latestStoredMonth(db, tenantId)
@@ -176,7 +180,7 @@ export function buildOverview(
   }))
 
   return overviewSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, isOwner),
     netWorth:
       netWorth === null
         ? null
@@ -229,7 +233,9 @@ export function buildOverview(
             savingsRateBp: totals.savingsRateBp,
           },
     emergencyFundCentimonths:
-      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, typicalSpend),
+      netWorth === null
+        ? null
+        : emergencyFundCentimonths(netWorth.liquidOnBudgetCents ?? netWorth.liquidCents, typicalSpend),
     hygiene:
       hygiene === null || month === null
         ? null

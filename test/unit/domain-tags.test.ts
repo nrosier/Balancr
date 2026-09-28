@@ -54,17 +54,18 @@ describe('syncTagMeta', () => {
 
 describe('persistTagFacts', () => {
   const tagsById = new Map([['rental-a', 't1'], ['rental-b', 't2']])
+  const activeTagIds = new Set(['t1', 't2'])
 
   it('is idempotent: the same input twice leaves the same data', () => {
     const totals = [total('rental-a', '2026-01'), total('rental-b', '2026-01')]
-    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'])).toEqual({
+    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'], activeTagIds)).toEqual({
       written: 2,
       removed: 0,
     })
     const rows = () => ctx.db.select().from(tagMonthlyFacts).orderBy(tagMonthlyFacts.tagId).all()
     const first = rows()
 
-    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'])).toEqual({
+    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'], activeTagIds)).toEqual({
       written: 2,
       removed: 0,
     })
@@ -75,7 +76,7 @@ describe('persistTagFacts', () => {
 
   it('drops a total for a tag id not in the map, rather than guessing at one', () => {
     const totals = [total('unknown-tag', '2026-01')]
-    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'])).toEqual({
+    expect(persistTagFacts(ctx.db, TENANT_ID, totals, tagsById, ['2026-01'], activeTagIds)).toEqual({
       written: 0,
       removed: 0,
     })
@@ -89,24 +90,73 @@ describe('persistTagFacts', () => {
       [total('rental-a', '2026-01'), total('rental-b', '2026-01')],
       tagsById,
       ['2026-01'],
+      activeTagIds,
     )
-    expect(persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'])).toEqual(
-      { written: 1, removed: 1 },
-    )
+    expect(
+      persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'], activeTagIds),
+    ).toEqual({ written: 1, removed: 1 })
     expect(ctx.db.select().from(tagMonthlyFacts).all().map((row) => row.tagId)).toEqual(['t1'])
   })
 
   it('clears a month that legitimately ends up with no tagged transactions', () => {
-    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'])
-    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsById, ['2026-01'])).toEqual({ written: 0, removed: 1 })
+    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'], activeTagIds)
+    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsById, ['2026-01'], activeTagIds)).toEqual({
+      written: 0,
+      removed: 1,
+    })
     expect(ctx.db.select().from(tagMonthlyFacts).all()).toEqual([])
   })
 
   it('leaves months outside the recomputed window alone', () => {
-    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2025-12')], tagsById, ['2025-12'])
-    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'])
-    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsById, ['2026-01'])).toEqual({ written: 0, removed: 1 })
+    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2025-12')], tagsById, ['2025-12'], activeTagIds)
+    persistTagFacts(ctx.db, TENANT_ID, [total('rental-a', '2026-01')], tagsById, ['2026-01'], activeTagIds)
+    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsById, ['2026-01'], activeTagIds)).toEqual({
+      written: 0,
+      removed: 1,
+    })
     expect(ctx.db.select().from(tagMonthlyFacts).all().map((row) => row.month)).toEqual(['2025-12'])
+  })
+
+  it('leaves a hidden tag\'s history alone instead of reading its absence from totals as staleness (#750)', () => {
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [total('rental-a', '2026-01'), total('rental-b', '2026-01')],
+      tagsById,
+      ['2026-01'],
+      activeTagIds,
+    )
+
+    // rental-b was hidden between syncs: sync.ts stops asking Actual about it, so it
+    // never appears in this pass's totals — indistinguishable from a real gap unless
+    // the cleanup below is scoped to only the tags that were actually active this pass.
+    expect(
+      persistTagFacts(
+        ctx.db,
+        TENANT_ID,
+        [total('rental-a', '2026-01')],
+        tagsById,
+        ['2026-01'],
+        new Set(['t1']),
+      ),
+    ).toEqual({ written: 1, removed: 0 })
+    expect(ctx.db.select().from(tagMonthlyFacts).all().map((row) => row.tagId).sort()).toEqual(['t1', 't2'])
+  })
+
+  it('leaves every row alone when nothing was active this pass', () => {
+    persistTagFacts(
+      ctx.db,
+      TENANT_ID,
+      [total('rental-a', '2026-01')],
+      tagsById,
+      ['2026-01'],
+      activeTagIds,
+    )
+    expect(persistTagFacts(ctx.db, TENANT_ID, [], tagsById, ['2026-01'], new Set())).toEqual({
+      written: 0,
+      removed: 0,
+    })
+    expect(ctx.db.select().from(tagMonthlyFacts).all().map((row) => row.tagId)).toEqual(['t1'])
   })
 })
 
@@ -125,6 +175,7 @@ describe('loadTagTotals', () => {
       ],
       tagsById,
       ['2025-01', '2025-06', '2026-01', '2026-02'],
+      new Set(['t1']),
     )
   }
 
@@ -173,6 +224,7 @@ describe('loadTagTotals', () => {
       [total('rental-a', '2024-01', { netCents: -7_000 })],
       new Map([['rental-a', 't1']]),
       ['2024-01'],
+      new Set(['t1']),
     )
 
     const [row] = loadTagTotals(ctx.db, TENANT_ID, '2026-02')
@@ -210,6 +262,7 @@ describe('tenant isolation (#699)', () => {
       [total('rental-a', '2026-01', { netCents: -1_000 })],
       new Map([['rental-a', 't1']]),
       ['2026-01'],
+      new Set(['t1']),
     )
     persistTagFacts(
       ctx.db,
@@ -217,6 +270,7 @@ describe('tenant isolation (#699)', () => {
       [total('rental-b', '2026-01', { netCents: -9_000 })],
       new Map([['rental-b', 't1']]),
       ['2026-01'],
+      new Set(['t1']),
     )
 
     expect(loadTagTotals(ctx.db, TENANT_ID, '2026-01')).toEqual([

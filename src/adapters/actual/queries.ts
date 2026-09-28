@@ -1090,7 +1090,14 @@ export function tagRegexPattern(tag: string): string {
   return `(?<!#)${escaped}([\\s#]|$)`
 }
 
-const notedTxnRow = z.object({ date: z.string(), notes: z.string().nullable(), amount: cents.nullable() })
+const notedTxnRow = z.object({
+  id: z.string(),
+  date: z.string(),
+  notes: z.string().nullable(),
+  amount: cents.nullable(),
+  transferId: z.string().nullable(),
+  offBudget: z.boolean(),
+})
 
 export interface TagMonthTotal {
   tag: string
@@ -1111,6 +1118,14 @@ export interface TagMonthTotal {
  * tags exist. A note naming more than one tag (`"#maintenance #rental"`) counts
  * toward each, matching what N separate per-tag queries would each have counted.
  *
+ * `splits: 'none'` (#745): a split's tag lives only on the *parent* — Actual's
+ * `makeChild` copies category/payee/date but never `notes` — while the default
+ * `'inline'` mode's `is_parent = 0` filter excludes parents and keeps children,
+ * which have no note to match. `'none'` (`parent_id IS NULL`) does the opposite:
+ * it keeps ordinary transactions and split parents (parent's `amount` is already
+ * the full split total) and excludes children, so a split's tag is seen exactly
+ * once, at its full amount, with no risk of also summing its untagged children.
+ *
  * Unlike `fetchRecomputedSpend` this deliberately does *not* filter to on-budget
  * accounts: a tag exists precisely to cut across the boundary a category can't — a
  * mortgage payment leaving an off-budget loan account is exactly the kind of figure a
@@ -1120,6 +1135,14 @@ export interface TagMonthTotal {
  * is fine for `fetchRecomputedSpend` (restricted to on-budget accounts already, so the
  * other leg could never show up there) but wrong here — Actual's own note can land on
  * either leg, and a keep-list missing the off-budget side drops that leg's tag entirely.
+ *
+ * That keep-both-legs list creates its own hazard (#744): Actual's `addTransfer`
+ * copies `notes` to the counterpart verbatim, so a freshly tagged crossing transfer
+ * has the tag on *both* legs, and summing `-X` and `+X` nets to exactly zero. Each
+ * crossing pair is therefore resolved to a single leg below — the on-budget side
+ * when both legs carry the tag (so the total reads as a cost/gain the same way
+ * every other budget-facing figure does), or whichever single leg actually carries
+ * it when the notes were edited independently on only one side afterward.
  */
 export async function fetchTagMonthlyTotals(
   db: Db,
@@ -1137,26 +1160,48 @@ export async function fetchTagMonthlyTotals(
     'tag-totals',
     () =>
       q('transactions')
+        .options({ splits: 'none' })
         .filter({
           date: { $gte: from, $lte: to },
           notes: { $ne: null },
           ...transferFilter(keepLegIds),
           starting_balance_flag: false,
         })
-        .select(['date', 'notes', 'amount']),
+        .select(['id', 'date', 'notes', 'amount', { transferId: 'transfer_id' }, { offBudget: 'account.offbudget' }]),
     notedTxnRow,
   )
 
+  const byId = new Map(rows.map((row) => [row.id, row]))
   const patterns = tags.map((tag) => ({ tag, pattern: new RegExp(tagRegexPattern(tag)) }))
   const buckets = new Map<string, { tag: string; month: string; netCents: number; txnCount: number }>()
+  const consumedPairs = new Set<string>()
+
   for (const row of rows) {
     if (row.notes === null) continue
-    const month = row.date.slice(0, 7)
+    const counterpart = row.transferId !== null ? byId.get(row.transferId) : undefined
+    const isCrossingPair = counterpart !== undefined && counterpart.offBudget !== row.offBudget
+    if (isCrossingPair) {
+      const pairKey = [row.id, counterpart.id].sort().join('\u0000')
+      if (consumedPairs.has(pairKey)) continue
+      consumedPairs.add(pairKey)
+    }
+
     for (const { tag, pattern } of patterns) {
-      if (!pattern.test(row.notes)) continue
+      const rowMatches = pattern.test(row.notes)
+      let effective: typeof row
+      if (!isCrossingPair) {
+        if (!rowMatches) continue
+        effective = row
+      } else {
+        const counterpartMatches = counterpart.notes !== null && pattern.test(counterpart.notes)
+        if (!rowMatches && !counterpartMatches) continue
+        effective =
+          rowMatches && counterpartMatches ? (row.offBudget ? counterpart : row) : rowMatches ? row : counterpart
+      }
+      const month = effective.date.slice(0, 7)
       const key = `${tag}\u0000${month}`
       const bucket = buckets.get(key) ?? { tag, month, netCents: 0, txnCount: 0 }
-      bucket.netCents += row.amount ?? 0
+      bucket.netCents += effective.amount ?? 0
       bucket.txnCount += 1
       buckets.set(key, bucket)
     }

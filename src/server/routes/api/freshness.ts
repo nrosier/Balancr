@@ -63,14 +63,14 @@ export interface Freshness {
 
 const iso = (value: Date | null): string | null => value?.toISOString() ?? null
 
-const describe = (row: JobRow): JobFreshness => ({
+const describe = (row: JobRow, isOwner: boolean): JobFreshness => ({
   name: row.name,
   status: row.status,
   lastRunAt: iso(row.lastRunAt),
   lastSuccessAt: iso(row.lastSuccessAt),
-  // Only when the status still says error: a message left behind by a failure that
-  // a later run fixed would report an outage that is over.
-  error: row.status === 'error' ? row.error : null,
+  // Only when the status still says error, and only for the owner: the message can
+  // name an internal hostname or, for a sync failure, the budget file itself (#729).
+  error: row.status === 'error' && isOwner ? row.error : null,
 })
 
 /**
@@ -80,7 +80,7 @@ const describe = (row: JobRow): JobFreshness => ({
  * which on a new deployment is every job, and describing that as staleness would
  * mean the first thing a new user sees is a warning about nothing.
  */
-export function freshness(db: Db, tenantId: string): Freshness {
+export function freshness(db: Db, tenantId: string, isOwner: boolean): Freshness {
   const rows = loadJobRows(db, tenantId)
   const byName = new Map(rows.map((row) => [row.name, row]))
 
@@ -98,6 +98,6 @@ export function freshness(db: Db, tenantId: string): Freshness {
     // The oldest, not the newest. See the field's own comment.
     asOf: successes.length === 0 ? null : new Date(Math.min(...successes)).toISOString(),
     jobsEnabled: config.JOBS_ENABLED,
-    jobs: rows.map(describe),
+    jobs: rows.map((row) => describe(row, isOwner)),
   }
 }

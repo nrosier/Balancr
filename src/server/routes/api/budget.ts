@@ -156,7 +156,7 @@ export function buildBudget(
   }
 
   return budgetSchema.parse({
-    freshness: freshness(db, tenantId),
+    freshness: freshness(db, tenantId, owner),
     owner,
     month: resolved,
     // Every stored month, not the window `history` covers: the picker has to keep

@@ -250,6 +250,41 @@ describe('/api/status', () => {
     expect(body.ready).toBe(true)
   })
 
+  it('masks a job’s verbatim error from a viewer (#729)', async () => {
+    await app.close()
+    ctx.sqlite.close()
+    await open({ jobsFailed: true })
+
+    const viewer = ctx.db
+      .insert(users)
+      .values({
+        tenantId: getSoleTenantId(ctx.db),
+        oidcSub: `sub-${crypto.randomUUID()}`,
+        email: `${crypto.randomUUID()}@example.test`,
+        displayName: 'Viewer',
+        locale: 'en',
+        role: 'viewer',
+      })
+      .returning()
+      .all()[0]
+    if (viewer === undefined) throw new Error('inserting the viewer returned no row')
+    const token = createSession(ctx.db, {
+      userId: viewer.id,
+      method: 'oidc',
+      ip: undefined,
+      userAgent: undefined,
+    }).token
+
+    const body = (
+      await app.inject({ method: 'GET', url: '/api/status', cookies: { [SESSION_COOKIE]: token } })
+    ).json<Status>()
+    const sync = body.jobs.find((job) => job.name === 'sync')
+    // Still reported as failed — the message alone is the owner's, not the fact.
+    expect(sync?.status).toBe('error')
+    expect(sync?.error).toBeNull()
+    expect(check(body, 'actual')).toEqual({ name: 'actual', status: 'failed', reason: 'jobFailed' })
+  })
+
   it('passes the probe’s per-path detail through', async () => {
     saveProbe(
       ctx.db,

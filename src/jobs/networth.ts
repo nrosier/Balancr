@@ -98,6 +98,7 @@ export async function actualValuesAt(
       includeInNetWorth: row.includeInNetWorth,
       dedupeGroup: row.dedupeGroup,
       isSourceOfTruth: row.isSourceOfTruth,
+      offBudget: row.offBudget,
     })
   }
   return values
@@ -176,6 +177,7 @@ async function run({ db, tenantId, now, log }: JobContext): Promise<JobDetail> {
     unresolvedGroups: result.unresolvedGroups.length,
     totalCents: result.totalCents,
     liquidCents: result.liquidCents,
+    liquidOnBudgetCents: result.liquidOnBudgetCents ?? result.liquidCents,
     investedCents: result.investedCents,
     debtCents: result.debtCents,
   }

@@ -13,7 +13,7 @@ import { eurToMicroEur, parseModelPricesJson, type ModelPrices } from '../adapte
 import type { AiProvider } from '../adapters/ai/types.ts'
 import { config } from '../config.ts'
 import { decryptField, encryptField } from './field-crypto.ts'
-import { getSoleTenantId } from './tenant.ts'
+import { allTenantIds } from './tenant.ts'
 import { tenantIntegrations } from './schema.ts'
 
 /**
@@ -139,13 +139,17 @@ export function resolvedIntegrations(db: Db, tenantId: string): ResolvedIntegrat
 /**
  * Returns true if it imported a row, false if tenant 1 already had one.
  *
- * Still uses `getSoleTenantId` rather than taking a `tenantId` parameter
- * (#376): it runs once at boot, before a second tenant can exist by
- * construction, and it's the only legitimate way to learn tenant 1's id
- * this early — there is no request or job context to thread one from.
+ * Reads tenant 1 as `allTenantIds(db)[0]` (ordered by creation) rather than
+ * `getSoleTenantId` (#731): a second tenant existing by the time the process
+ * restarts must not crash boot — this import only ever targets tenant 1
+ * regardless of how many tenants now exist, so it has no reason to demand
+ * exactly one.
  */
 export function importEnvIntegrationsOnce(db: Db): boolean {
-  const tenantId = getSoleTenantId(db)
+  const [tenantId] = allTenantIds(db)
+  if (tenantId === undefined) {
+    throw new Error('expected tenant 1 to exist by boot time — did migrations run?')
+  }
   const existing = db
     .select({ tenantId: tenantIntegrations.tenantId })
     .from(tenantIntegrations)

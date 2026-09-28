@@ -117,6 +117,14 @@ describe('Nav', () => {
     expect(links()).toHaveLength(ROUTES.length)
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy()
   })
+
+  it('keeps every label reachable by title, in case its own box ever truncates it (#769)', () => {
+    renderApp(<Nav />, { path: '/' })
+    for (const link of links()) {
+      const label = link.querySelector('.nav__label')
+      expect(label?.getAttribute('title')).toBe(link.textContent)
+    }
+  })
 })
 
 describe('AppShell', () => {

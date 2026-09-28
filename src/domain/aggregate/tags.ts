@@ -11,7 +11,7 @@
  * derived from that one stored series at read time (`loadTagTotals`), not stored as
  * separate columns: there is nothing a read-time sum over the series can't answer.
  */
-import { and, eq, gte, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm'
 import type { ActualTag, TagMonthTotal } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
 import { tagMeta, tagMonthlyFacts } from '../../db/schema.ts'
@@ -68,6 +68,15 @@ export function syncTagMeta(db: Db | Transaction, tenantId: string, tags: readon
  * `months` is passed separately from `totals` for the same reason `persistFacts`
  * takes it separately from `facts`: a month that legitimately ends up with no tagged
  * transactions at all must still be cleared of any stale rows from a previous sync.
+ *
+ * `activeTagIds` scopes that stale-row cleanup to tags `sync.ts` actually asked
+ * Actual about this pass (#750): hiding a tag makes `sync.ts` stop including it in
+ * `fetchTagMonthlyTotals`'s tag list, so it never appears in `totals` for any month —
+ * indistinguishable, from `totals` alone, from a tag that genuinely had no matching
+ * transactions this month. Without this scope the cleanup below would read that
+ * absence as staleness and erase the hidden tag's entire history on the very next
+ * sync. Restricting deletion to `activeTagIds` means hiding a tag only stops it
+ * gaining new rows; a still-active tag with a real gap this month is unaffected.
  */
 export function persistTagFacts(
   db: Db | Transaction,
@@ -75,6 +84,7 @@ export function persistTagFacts(
   totals: readonly TagMonthTotal[],
   tagsById: ReadonlyMap<string, string>,
   months: readonly string[],
+  activeTagIds: ReadonlySet<string>,
 ): PersistResult {
   const computedAt = new Date()
   const result: PersistResult = { written: 0, removed: 0 }
@@ -102,20 +112,28 @@ export function persistTagFacts(
       result.written += chunk.length
     }
 
-    for (const month of months) {
-      const keep = rows.filter((row) => row.month === month).map((row) => row.tagId)
-      // `notInArray` with an empty list matches nothing rather than everything, so
-      // the all-cleared case needs its own branch — same pitfall `persistFacts` notes.
-      const where =
-        keep.length > 0
-          ? and(
-              eq(tagMonthlyFacts.tenantId, tenantId),
-              eq(tagMonthlyFacts.month, month),
-              notInArray(tagMonthlyFacts.tagId, keep),
-            )
-          : and(eq(tagMonthlyFacts.tenantId, tenantId), eq(tagMonthlyFacts.month, month))
+    if (activeTagIds.size > 0) {
+      const active = [...activeTagIds]
+      for (const month of months) {
+        const keep = rows.filter((row) => row.month === month).map((row) => row.tagId)
+        // `notInArray` with an empty list matches nothing rather than everything, so
+        // the all-cleared case needs its own branch — same pitfall `persistFacts` notes.
+        const where =
+          keep.length > 0
+            ? and(
+                eq(tagMonthlyFacts.tenantId, tenantId),
+                eq(tagMonthlyFacts.month, month),
+                inArray(tagMonthlyFacts.tagId, active),
+                notInArray(tagMonthlyFacts.tagId, keep),
+              )
+            : and(
+                eq(tagMonthlyFacts.tenantId, tenantId),
+                eq(tagMonthlyFacts.month, month),
+                inArray(tagMonthlyFacts.tagId, active),
+              )
 
-      result.removed += tx.delete(tagMonthlyFacts).where(where).run().changes
+        result.removed += tx.delete(tagMonthlyFacts).where(where).run().changes
+      }
     }
   })
 

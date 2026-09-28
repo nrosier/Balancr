@@ -84,6 +84,7 @@ import { legacyRedirectFor, SETTINGS_SECTIONS, sectionFor } from '../settings/se
 import { SettingsNav } from '../settings/SettingsNav.tsx'
 import { StatusPanel } from '../settings/Status.tsx'
 import { ThresholdsSection } from '../settings/Thresholds.tsx'
+import { UsersPanel } from '../settings/Users.tsx'
 import { useSettings, type SettingsPanelProps } from '../settings/state.ts'
 import { formatMonth, type AiEstimate } from '../shared.ts'
 import { DataState } from '../ui/DataState.tsx'
@@ -126,7 +127,10 @@ function GeneralSection(props: SettingsPanelProps): ReactNode {
       {active === 'status' ? (
         <StatusPanel {...props} />
       ) : active === 'members' ? (
-        <MembersPanel {...props} />
+        <>
+          <UsersPanel {...props} />
+          <MembersPanel {...props} />
+        </>
       ) : active === 'audit' ? (
         <AuditPanel />
       ) : (

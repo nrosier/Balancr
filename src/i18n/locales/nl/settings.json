@@ -846,5 +846,20 @@
     "title": "Drempels"
   },
   "title": "Instellingen",
+  "users": {
+    "createdReads": "Lid geworden {{when}}",
+    "disable": "Uitschakelen",
+    "empty": "Nog geen accounts.",
+    "enable": "Opnieuw inschakelen",
+    "hint": "Iedereen die kan inloggen bij dit huishouden. Een account uitschakelen beëindigt meteen elke sessie die het nog heeft.",
+    "lastSeenNever": "Nog nooit ingelogd",
+    "lastSeenReads": "Laatst gezien {{when}}",
+    "status": {
+      "disabled": "Uitgeschakeld",
+      "enabled": "Ingeschakeld"
+    },
+    "title": "Accounts",
+    "unnamed": "Naamloos"
+  },
   "viewerOnly": "Alleen de eigenaar kan dit wijzigen."
 }

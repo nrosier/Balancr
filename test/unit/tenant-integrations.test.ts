@@ -68,6 +68,22 @@ describe('importEnvIntegrationsOnce', () => {
     // to something meaningless.
     expect(row.actualE2ePasswordEnc).toBeNull()
   })
+
+  it('does not crash once a second tenant exists, and still only ever targets tenant 1 (#731)', () => {
+    // A restart after onboarding has provisioned tenant 2 (#373) must not crash
+    // boot just because more than one tenant now exists — this import only
+    // ever targets tenant 1, however many tenants there are.
+    const db = freshDb()
+    const tenantId = getSoleTenantId(db)
+    importEnvIntegrationsOnce(db)
+    const before = db.select().from(tenantIntegrations).where(eq(tenantIntegrations.tenantId, tenantId)).all()[0]
+    createSecondTenant(db)
+
+    expect(importEnvIntegrationsOnce(db)).toBe(false)
+    expect(db.select().from(tenantIntegrations).where(eq(tenantIntegrations.tenantId, tenantId)).all()[0]).toEqual(
+      before,
+    )
+  })
 })
 
 /**

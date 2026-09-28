@@ -76,6 +76,7 @@ export function PeriodPicker({
   const { t, language } = useT()
   const rootRef = useRef<HTMLSpanElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const activeModeBtnRef = useRef<HTMLButtonElement>(null)
   const popoverId = useId()
 
   const [open, setOpen] = useState(false)
@@ -133,6 +134,13 @@ export function PeriodPicker({
     }
   }, [open])
 
+  // Land on the active Month/Year toggle when the dialog opens (#774) — the first
+  // sensible stop for a screen-reader or keyboard user, rather than leaving them to
+  // hunt for a focusable control inside a dialog nothing told them had opened.
+  useEffect(() => {
+    if (open) activeModeBtnRef.current?.focus()
+  }, [open])
+
   function select(next: Period): void {
     onSelect(next)
     closePopover(false)
@@ -173,14 +181,26 @@ export function PeriodPicker({
       </button>
 
       {open ? (
-        <div id={popoverId} className="period-picker__popover" role="dialog" aria-label={label}>
-          <div className={`period-picker__mode${mode === 'year' ? ' is-year' : ''}`}>
+        <div
+          id={popoverId}
+          className="period-picker__popover"
+          role="dialog"
+          aria-modal="true"
+          aria-label={label}
+        >
+          <div
+            className={`period-picker__mode${mode === 'year' ? ' is-year' : ''}`}
+            role="group"
+            aria-label={t('periodPicker.view')}
+          >
             <span className="period-picker__mode-thumb" />
             {KINDS.map((kind) => (
               <button
                 key={kind}
+                ref={mode === kind ? activeModeBtnRef : undefined}
                 type="button"
                 className={`period-picker__mode-btn${mode === kind ? ' active' : ''}`}
+                aria-pressed={mode === kind}
                 onClick={() => {
                   setMode(kind)
                   onSelect(switchKind(period, kind))

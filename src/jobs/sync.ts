@@ -391,6 +391,7 @@ async function run({ db, tenantId, log, now, step }: JobContext): Promise<JobDet
         tagTotals,
         new Map(tags.map((tag) => [tag.tag, tag.id])),
         targets,
+        new Set(tags.filter((tag) => !tag.hidden).map((tag) => tag.id)),
       )
       const facts = persistFacts(tx, tenantId, aggregate.facts, targets)
       // Month totals cover the target months, so the uncategorised backlog stored

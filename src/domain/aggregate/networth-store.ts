@@ -213,26 +213,31 @@ export function loadLatestAccountBalances(db: Db, tenantId: string): AccountBala
 
 function summariseNetWorth(db: Db, tenantId: string, date: string): NetWorthSummary {
   const rows = db
-    .select({ kind: accountMap.kind, valueCents: netWorthSnapshots.valueCents })
+    .select({
+      kind: accountMap.kind,
+      offBudget: accountMap.offBudget,
+      valueCents: netWorthSnapshots.valueCents,
+    })
     .from(netWorthSnapshots)
     .innerJoin(accountMap, eq(accountMap.id, netWorthSnapshots.accountMapId))
     .where(and(eq(netWorthSnapshots.tenantId, tenantId), eq(netWorthSnapshots.date, date)))
     .all()
 
-  const summary: NetWorthSummary = {
-    date,
-    totalCents: 0,
-    liquidCents: 0,
-    investedCents: 0,
-    debtCents: 0,
-  }
+  let totalCents = 0
+  let liquidCents = 0
+  let liquidOnBudgetCents = 0
+  let investedCents = 0
+  let debtCents = 0
   for (const row of rows) {
-    summary.totalCents += row.valueCents
-    if (LIQUID.has(row.kind)) summary.liquidCents += row.valueCents
-    if (row.kind === 'investment') summary.investedCents += row.valueCents
-    if (row.valueCents < 0) summary.debtCents += -row.valueCents
+    totalCents += row.valueCents
+    if (LIQUID.has(row.kind)) {
+      liquidCents += row.valueCents
+      if (!row.offBudget) liquidOnBudgetCents += row.valueCents
+    }
+    if (row.kind === 'investment') investedCents += row.valueCents
+    if (row.valueCents < 0) debtCents += -row.valueCents
   }
-  return summary
+  return { date, totalCents, liquidCents, liquidOnBudgetCents, investedCents, debtCents }
 }
 
 export function loadLatestNetWorth(db: Db, tenantId: string): NetWorthSummary | null {
@@ -282,6 +287,28 @@ export interface OffBudgetAccount {
  * either — the same three judgement calls `computeNetWorth` itself respects.
  */
 export function loadOffBudgetAccounts(db: Db, tenantId: string): OffBudgetAccount[] {
+  return loadAccountsCountingTowardNetWorth(db, tenantId, true)
+}
+
+/**
+ * On-budget Actual accounts that count toward net worth today, with their balance.
+ *
+ * Same shape as `loadOffBudgetAccounts`, and needed for the same reason `#689`'s
+ * double-count warning already covers off-budget accounts: a credit card or car
+ * loan tracked on-budget in Actual is exactly as capable of being the same money
+ * as a self-reported Debt/Loan entry as an off-budget one is (#746) — the
+ * reconciliation check has no reason to only look at half the accounts already
+ * inside `totalCents`.
+ */
+export function loadOnBudgetAccounts(db: Db, tenantId: string): OffBudgetAccount[] {
+  return loadAccountsCountingTowardNetWorth(db, tenantId, false)
+}
+
+function loadAccountsCountingTowardNetWorth(
+  db: Db,
+  tenantId: string,
+  offBudget: boolean,
+): OffBudgetAccount[] {
   const latest = db
     .select({ date: sql<string>`max(${netWorthSnapshots.date})` })
     .from(netWorthSnapshots)
@@ -306,7 +333,7 @@ export function loadOffBudgetAccounts(db: Db, tenantId: string): OffBudgetAccoun
     .where(
       and(
         eq(netWorthSnapshots.tenantId, tenantId),
-        eq(accountMap.offBudget, true),
+        eq(accountMap.offBudget, offBudget),
         eq(netWorthSnapshots.date, date),
       ),
     )

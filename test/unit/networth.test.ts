@@ -29,6 +29,7 @@ function account(overrides: Partial<AccountValue> & { id: string }): AccountValu
     includeInNetWorth: overrides.includeInNetWorth ?? true,
     dedupeGroup: overrides.dedupeGroup ?? null,
     isSourceOfTruth: overrides.isSourceOfTruth ?? true,
+    ...(overrides.offBudget !== undefined ? { offBudget: overrides.offBudget } : {}),
   }
 }
 
@@ -143,6 +144,20 @@ describe('computeNetWorth classification', () => {
     expect(result.debtCents).toBe(74_000)
   })
 
+  it('splits the on-budget slice of liquid out of the off-budget rest (#747)', () => {
+    const result = computeNetWorth('2026-03-01', [
+      account({ id: 'current', kind: 'checking', valueCents: 180_000 }),
+      account({ id: 'off-budget-savings', kind: 'savings', valueCents: 500_000, offBudget: true }),
+      account({ id: 'broker', kind: 'investment', valueCents: 3_000_000, offBudget: true }),
+    ])
+    expect(result.liquidCents).toBe(680_000)
+    // Off-budget savings is liquid net worth (#353) but not on-budget spend cover.
+    expect(result.liquidOnBudgetCents).toBe(180_000)
+    // Off-budget applies to every kind, not only liquid ones — an off-budget
+    // brokerage account still counts toward `investedCents` as usual.
+    expect(result.investedCents).toBe(3_000_000)
+  })
+
   it('counts an overdrawn current account as debt as well as liquid', () => {
     // Money owed on exactly the same terms as a card, and still the account the
     // rent leaves from, so it is both.
@@ -170,6 +185,7 @@ describe('computeNetWorth classification', () => {
       date: '2026-03-01',
       totalCents: 0,
       liquidCents: 0,
+      liquidOnBudgetCents: 0,
       investedCents: 0,
       debtCents: 0,
       contributions: [],

@@ -167,7 +167,12 @@ import {
   saveReferenceOverride,
 } from '../../domain/benchmark/reference.ts'
 import { tenantAiAvailability } from '../../domain/ai/availability.ts'
-import { budgetState, loadSpendHistory } from '../../domain/ai/budget.ts'
+import {
+  budgetState,
+  loadSpendHistory,
+  maskBudgetForViewer,
+  maskSpendHistoryForViewer,
+} from '../../domain/ai/budget.ts'
 import { SHARED_LOCALE } from '../../domain/ai/prompt-locale.ts'
 import {
   activatePrompt,
@@ -1266,7 +1271,10 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
   const isOwner = user.role === 'owner'
   const accounts = loadAccountMap(db, user.tenantId)
   const exclusionReasons = netWorthExclusionReasons(accounts)
-  const budget = budgetState(db, user.tenantId)
+  // Masked for a viewer (#728): the four numeric fields are mutually derivable, so
+  // `maskBudgetForViewer` zeroes all of them rather than one, and `/api/insights`
+  // masks through the same function so the two pages cannot disagree.
+  const budget = maskBudgetForViewer(budgetState(db, user.tenantId), isOwner)
 
   return settingsSchema.parse({
     build: { version: APP_VERSION, revision: APP_REVISION },
@@ -1334,7 +1342,7 @@ export function buildSettings(db: Db, request: FastifyRequest): Settings {
       remainingMicroEur: budget.remainingMicroEur,
       usedBp: budget.usedBp,
       exceeded: budget.exceeded,
-      history: loadSpendHistory(db, user.tenantId),
+      history: maskSpendHistoryForViewer(loadSpendHistory(db, user.tenantId), isOwner),
     },
     digest: digestSetting(db, user.tenantId, isOwner),
   })
