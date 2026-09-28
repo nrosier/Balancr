@@ -140,4 +140,29 @@ describe('PeriodPicker', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Period' }))
   })
+
+  it('marks the dialog aria-modal and moves focus to the active mode toggle on open (#774)', () => {
+    renderApp(<Harness initial={{ kind: 'month', value: '2026-08' }} />)
+    open()
+
+    const dialog = screen.getByRole('dialog', { name: 'Period' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Month' }))
+  })
+
+  it('groups the mode toggle and marks which of Month/Year is pressed (#774)', () => {
+    renderApp(<Harness initial={{ kind: 'month', value: '2026-08' }} />)
+    open()
+
+    const group = screen.getByRole('group')
+    const month = within(group).getByRole('button', { name: 'Month' })
+    const year = within(group).getByRole('button', { name: 'Year' })
+    expect(month.getAttribute('aria-pressed')).toBe('true')
+    expect(year.getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(year)
+
+    expect(month.getAttribute('aria-pressed')).toBe('false')
+    expect(year.getAttribute('aria-pressed')).toBe('true')
+  })
 })
