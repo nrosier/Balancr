@@ -31,6 +31,8 @@ export interface AccountValue {
   includeInNetWorth: boolean
   dedupeGroup: string | null
   isSourceOfTruth: boolean
+  /** Absent (or `false`) for a Ghostfolio account, which has no such concept. */
+  offBudget?: boolean
 }
 
 /** As a const array too, so the API schema's `z.enum` can share this vocabulary. */
@@ -67,6 +69,15 @@ export interface NetWorthSummary {
   totalCents: number
   /** Checking, savings and cash — what an emergency fund is actually made of. */
   liquidCents: number
+  /**
+   * The on-budget slice of `liquidCents`, for comparing against on-budget-only
+   * spend figures (`typicalMonthlySpendCents` and friends). `liquidCents` itself
+   * deliberately counts an off-budget savings pot too (#353) — right for the Net
+   * Worth card and a liquid savings goal, but pairing it against on-budget spend
+   * inflates months-of-cover by whatever a household pays straight out of that
+   * pot, in the flattering direction (#747).
+   */
+  liquidOnBudgetCents?: number
   investedCents: number
   /** Debt as a positive number, because "you owe 2 400" reads better negated. */
   debtCents: number
@@ -168,11 +179,15 @@ export function computeNetWorth(date: string, accounts: readonly AccountValue[])
 
   let totalCents = 0
   let liquidCents = 0
+  let liquidOnBudgetCents = 0
   let investedCents = 0
   let debtCents = 0
   for (const account of contributions) {
     totalCents += account.valueCents
-    if (LIQUID.has(account.kind)) liquidCents += account.valueCents
+    if (LIQUID.has(account.kind)) {
+      liquidCents += account.valueCents
+      if (!account.offBudget) liquidOnBudgetCents += account.valueCents
+    }
     if (account.kind === 'investment') investedCents += account.valueCents
     // Any account in the red is debt, not just a card: an overdrawn current
     // account is money owed on exactly the same terms.
@@ -183,6 +198,7 @@ export function computeNetWorth(date: string, accounts: readonly AccountValue[])
     date,
     totalCents,
     liquidCents,
+    liquidOnBudgetCents,
     investedCents,
     debtCents,
     contributions,

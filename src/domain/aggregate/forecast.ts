@@ -94,7 +94,11 @@ export interface ForecastMonth {
 export interface Forecast {
   /** The net-worth snapshot this projection starts from. */
   startDate: string
-  /** The liquid balance projected forward — not `totalCents`, which includes investments. */
+  /**
+   * The liquid balance projected forward — not `totalCents`, which includes
+   * investments, and not `liquidCents`, which counts an off-budget savings pot
+   * (#353) this forecast's own spend figures never touch (#747).
+   */
   startBalanceCents: number
   /** Ascending, oldest (next month) first. Always `FORECAST_HORIZON_MONTHS` long. */
   months: ForecastMonth[]
@@ -205,7 +209,8 @@ export function projectCashflow(db: Db, tenantId: string): Forecast | null {
   )
   const residualCents = Math.max(0, typicalSpendCents - alreadyCountedCents)
 
-  let balanceCents = netWorth.liquidCents
+  const startBalanceCents = netWorth.liquidOnBudgetCents ?? netWorth.liquidCents
+  let balanceCents = startBalanceCents
   const orderedMonths = horizon.map((month) => {
     const bucket = months.get(month) as ForecastMonth
     bucket.fixedCents += residualCents
@@ -215,5 +220,5 @@ export function projectCashflow(db: Db, tenantId: string): Forecast | null {
     return bucket
   })
 
-  return { startDate: netWorth.date, startBalanceCents: netWorth.liquidCents, months: orderedMonths }
+  return { startDate: netWorth.date, startBalanceCents, months: orderedMonths }
 }

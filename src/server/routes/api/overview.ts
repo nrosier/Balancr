@@ -86,9 +86,12 @@ import { overviewSchema, type Overview } from './schemas.ts'
  * client formats `450` as `4,5`, and no arithmetic anywhere has to be trusted with
  * a fraction.
  */
-export function emergencyFundCentimonths(liquidCents: number, typicalSpendCents: number | null): number | null {
+export function emergencyFundCentimonths(
+  liquidOnBudgetCents: number,
+  typicalSpendCents: number | null,
+): number | null {
   if (typicalSpendCents === null || typicalSpendCents <= 0) return null
-  return Math.round((liquidCents / typicalSpendCents) * 100)
+  return Math.round((liquidOnBudgetCents / typicalSpendCents) * 100)
 }
 
 /**
@@ -229,7 +232,9 @@ export function buildOverview(
             savingsRateBp: totals.savingsRateBp,
           },
     emergencyFundCentimonths:
-      netWorth === null ? null : emergencyFundCentimonths(netWorth.liquidCents, typicalSpend),
+      netWorth === null
+        ? null
+        : emergencyFundCentimonths(netWorth.liquidOnBudgetCents ?? netWorth.liquidCents, typicalSpend),
     hygiene:
       hygiene === null || month === null
         ? null

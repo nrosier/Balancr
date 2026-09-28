@@ -18,6 +18,7 @@ import {
   loadNetWorthAsOf,
   loadNetWorthHistory,
   loadOffBudgetAccounts,
+  loadOnBudgetAccounts,
   persistNetWorth,
 } from '../../src/domain/aggregate/networth-store.ts'
 import { computeNetWorth, type AccountValue } from '../../src/domain/aggregate/networth.ts'
@@ -192,6 +193,27 @@ describe('loadNetWorthAsOf (#498)', () => {
 
     expect(loadNetWorthAsOf(ctx.db, TENANT_ID, '2026-08-31')).toBeNull()
   })
+
+  it('splits the on-budget slice of liquid out of an off-budget savings pot (#747)', () => {
+    // `a2` is synced off-budget in the fixture above, which defaults its persisted
+    // `kind` to 'other' (accounts.ts's `defaultKind`) — not liquid. Set it to a
+    // liquid kind explicitly: the point of this test is that on-budget-ness, not
+    // kind or name, is what the on-budget/off-budget split goes by.
+    ctx.db.update(accountMap).set({ kind: 'savings' }).where(eq(accountMap.id, ids.a2 as string)).run()
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth('2026-08-31', [
+        account('a1', 200_000, { kind: 'checking' }),
+        account('a2', 500_000, { kind: 'savings' }),
+      ]),
+    )
+
+    expect(loadNetWorthAsOf(ctx.db, TENANT_ID, '2026-08-31')).toMatchObject({
+      liquidCents: 700_000,
+      liquidOnBudgetCents: 200_000,
+    })
+  })
 })
 
 describe('loadLatestAccountBalances', () => {
@@ -271,5 +293,47 @@ describe('loadOffBudgetAccounts', () => {
 
   it('returns nothing before the first pass has run', () => {
     expect(loadOffBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
+  })
+})
+
+describe('loadOnBudgetAccounts', () => {
+  it('names the on-budget accounts that count toward net worth, with their balance (#746)', () => {
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth('2026-03-01', [account('a1', 250_000), account('a2', -18_000_000)]),
+    )
+
+    expect(loadOnBudgetAccounts(ctx.db, TENANT_ID)).toEqual([
+      { accountMapId: ids.a1, name: 'Zichtrekening', balanceCents: 250_000, currency: 'EUR', kind: 'checking' },
+    ])
+  })
+
+  it('skips an off-budget account even though it counts toward net worth', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a2', -18_000_000)]))
+
+    expect(loadOnBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
+  })
+
+  it('drops an on-budget account someone has since excluded from net worth', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    ctx.db.update(accountMap).set({ includeInNetWorth: false }).where(eq(accountMap.id, ids.a1 as string)).run()
+
+    expect(loadOnBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
+  })
+
+  it('drops an on-budget account that has since lost its dedupe tie', () => {
+    persistNetWorth(ctx.db, TENANT_ID, computeNetWorth('2026-03-01', [account('a1', 250_000)]))
+    ctx.db
+      .update(accountMap)
+      .set({ dedupeGroup: 'checking', isSourceOfTruth: false })
+      .where(eq(accountMap.id, ids.a1 as string))
+      .run()
+
+    expect(loadOnBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
+  })
+
+  it('returns nothing before the first pass has run', () => {
+    expect(loadOnBudgetAccounts(ctx.db, TENANT_ID)).toEqual([])
   })
 })

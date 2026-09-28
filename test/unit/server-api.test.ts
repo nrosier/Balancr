@@ -1204,6 +1204,17 @@ describe('off-budget accounts, already counted into net worth (#353)', () => {
     expect(body.netWorth.debtCents).toBe(120_000 + 18_000_000)
   })
 
+  it('keeps the off-budget savings pot out of the emergency-fund cover figure (#747)', async () => {
+    // Same fixture as "splits how much of directly available is off-budget" above:
+    // adding the off-budget pot must not change this figure, or a household with
+    // a big savings pot they don't budget from would read as flush against a
+    // typical spend that pot never actually covers.
+    addOffBudgetAccounts()
+    const body = (await get('/api/overview')).json()
+
+    expect(body.emergencyFundCentimonths).toBe(400)
+  })
+
   it('names every off-budget account regardless of kind on GET /api/portfolio', async () => {
     const { mortgageId, savingsId } = addOffBudgetAccounts()
     const body = (await get('/api/portfolio')).json()
@@ -1359,6 +1370,53 @@ describe('reconciliation warnings against off-budget accounts (#689)', () => {
 
     const body = (await get('/api/portfolio')).json()
     expect(body.reconciliationWarnings).toEqual([])
+  })
+
+  it('flags a loan whose label names an on-budget account, not only an off-budget one (#746)', async () => {
+    // Same fixture as "flags a loan whose label names an off-budget account" above,
+    // minus `offBudget: true` — a credit card or car loan tracked on-budget in
+    // Actual is exactly as capable of being the same money as a self-reported
+    // loan as an off-budget one is, and the reconciliation check must catch both.
+    syncAccountMap(ctx.db, TENANT_ID, [{ source: 'actual', externalId: 'acct-car-loan', name: 'Car loan' }])
+    const carLoanId = loadAccountMap(ctx.db, TENANT_ID).find(
+      (row) => row.externalId === 'acct-car-loan',
+    )?.id
+    if (carLoanId === undefined) throw new Error('the fixture failed to map acct-car-loan')
+    persistNetWorth(
+      ctx.db,
+      TENANT_ID,
+      computeNetWorth(SNAPSHOT_DATE, [
+        {
+          accountMapId: carLoanId,
+          source: 'actual',
+          externalId: 'acct-car-loan',
+          name: 'Car loan',
+          kind: 'other',
+          valueCents: -900_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        },
+      ]),
+    )
+    createLoan(ctx.db, TENANT_ID, {
+      kind: 'car',
+      label: 'Car loan',
+      openingDate: '2025-03-01',
+      principalCents: 1_500_000,
+      anchorDate: '2025-03-01',
+      rateBp: 0,
+      monthlyPaymentCents: 0,
+      remainingTermMonths: 600,
+      originalPrincipalCents: null,
+      extraMonthlyPaymentCents: null,
+    })
+
+    const body = (await get('/api/portfolio')).json()
+
+    expect(body.reconciliationWarnings).toEqual([
+      { kind: 'loan', label: 'Car loan', accountId: carLoanId, accountName: 'Car loan' },
+    ])
   })
 })
 

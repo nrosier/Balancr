@@ -43,10 +43,12 @@ function series(last: string, count: number, cents: (index: number) => number): 
 }
 
 function netWorth(overrides: Partial<NetWorthResult> = {}): NetWorthResult {
+  const liquidCents = overrides.liquidCents ?? 900_000
   return {
     date: '2026-03-31',
     totalCents: 5_000_000,
-    liquidCents: 900_000,
+    liquidCents,
+    liquidOnBudgetCents: liquidCents,
     investedCents: 4_100_000,
     debtCents: 0,
     contributions: [],
@@ -192,11 +194,27 @@ describe('emergency fund', () => {
     expect(find(signals, 'emergency_fund_short')?.metrics).toEqual({
       monthsBp: 15_000,
       targetMonthsBp: 30_000,
-      liquidCents: 360_000,
+      liquidOnBudgetCents: 360_000,
       typicalSpendCents: 240_000,
       shortfallCents: 360_000,
     })
     expect(find(signals, 'emergency_fund_short')?.severity).toBe('alert')
+  })
+
+  it('measures the cushion against the on-budget slice, not an off-budget savings pot (#747)', () => {
+    // Same flat spend as above, but this household's liquid figure includes an
+    // off-budget savings pot on top of the on-budget money the spend is actually
+    // paid out of — 3600,00 liquid overall, only 1500,00 of it on-budget.
+    const signals = householdSignals(
+      input({
+        spendHistory: series('2026-03', 6, () => 240_000),
+        netWorth: netWorth({ liquidCents: 720_000, liquidOnBudgetCents: 360_000 }),
+      }),
+    )
+    expect(find(signals, 'emergency_fund_short')?.metrics).toMatchObject({
+      monthsBp: 15_000,
+      liquidOnBudgetCents: 360_000,
+    })
   })
 
   it('is not shortened by a month that happens to contain an annual premium', () => {

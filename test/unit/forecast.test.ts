@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
 import { createTestDb } from '../../src/db/index.ts'
-import { categoryMeta } from '../../src/db/schema.ts'
+import { accountMap, categoryMeta } from '../../src/db/schema.ts'
 import { getSoleTenantId } from '../../src/db/tenant.ts'
 import { loadAccountMap, syncAccountMap } from '../../src/domain/aggregate/accounts.ts'
 import type { ExpectedFrequency } from '../../src/domain/aggregate/baseline.ts'
@@ -252,6 +252,52 @@ describe('projectCashflow', () => {
       // into rent's own, precisely-known figure.
       expect(month.fixedCents).toBe(150_000)
     }
+  })
+
+  it('starts from the on-budget slice of liquid, not an off-budget savings pot (#747)', () => {
+    // Same anchor as `seedAnchor(500_000)`, but built by hand so a second,
+    // off-budget liquid account can sit alongside the on-budget one: the
+    // forecast's own spend figures never draw from that pot, so starting the
+    // projection from the inclusive `liquidCents` would overstate the runway.
+    persistMonthTotals(ctx.db, tenantId, [totals(ANCHOR)], [])
+    syncAccountMap(ctx.db, tenantId, [{ source: 'actual', externalId: 'savings-offbudget', name: 'Spaarpot', offBudget: true }])
+    const offBudgetId = loadAccountMap(ctx.db, tenantId).find((row) => row.externalId === 'savings-offbudget')?.id as string
+    // `defaultKind` guesses `other` for a new off-budget account; force it to a
+    // liquid kind, the same correction a real deployment makes through the
+    // settings page — `loadLatestNetWorth` classifies by this persisted column.
+    ctx.db.update(accountMap).set({ kind: 'savings' }).where(eq(accountMap.id, offBudgetId)).run()
+    persistNetWorth(
+      ctx.db,
+      tenantId,
+      computeNetWorth(`${ANCHOR}-28`, [
+        {
+          accountMapId: ids.checking as string,
+          source: 'actual',
+          externalId: 'checking',
+          name: 'checking',
+          kind: 'checking',
+          valueCents: 500_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+        } satisfies AccountValue,
+        {
+          accountMapId: offBudgetId,
+          source: 'actual',
+          externalId: 'savings-offbudget',
+          name: 'Spaarpot',
+          kind: 'savings',
+          valueCents: 300_000,
+          includeInNetWorth: true,
+          dedupeGroup: null,
+          isSourceOfTruth: true,
+          offBudget: true,
+        } satisfies AccountValue,
+      ]),
+    )
+
+    const forecast = projectCashflow(ctx.db, tenantId)
+    expect(forecast?.startBalanceCents).toBe(500_000)
   })
 
   it('lets the running balance go negative without clamping', () => {
