@@ -45,10 +45,19 @@ describe('syncTagMeta', () => {
     expect(row).toMatchObject({ tag: 'rental-b', color: '#00ff00', hidden: true })
   })
 
-  it('does nothing with an empty list rather than clearing the table', () => {
+  it('removes a tag deleted in Actual on the next sync (#733)', () => {
+    syncTagMeta(ctx.db, TENANT_ID, [tag('t1'), tag('t2')])
+    syncTagMeta(ctx.db, TENANT_ID, [tag('t2')])
+
+    expect(ctx.db.select().from(tagMeta).where(eq(tagMeta.tagId, 't1')).get()).toBeUndefined()
+    expect(ctx.db.select().from(tagMeta).where(eq(tagMeta.tagId, 't2')).get()).toBeDefined()
+  })
+
+  it('clears the table when every tag is gone (#733)', () => {
     syncTagMeta(ctx.db, TENANT_ID, [tag('t1')])
     syncTagMeta(ctx.db, TENANT_ID, [])
-    expect(ctx.db.select().from(tagMeta).where(eq(tagMeta.tagId, 't1')).get()).toBeDefined()
+
+    expect(ctx.db.select().from(tagMeta).where(eq(tagMeta.tagId, 't1')).get()).toBeUndefined()
   })
 })
 

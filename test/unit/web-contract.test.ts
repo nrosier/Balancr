@@ -28,12 +28,14 @@
  * arrays, so widening `AnalysisReason` fails `tsc` here instead of shipping a page that
  * prints a raw code.
  */
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, beforeAll } from 'vitest'
 import { initI18n, t } from '../../src/i18n/index.ts'
 import { accountSettingSchema, aiDryRunSchema } from '../../src/server/routes/api/schemas.ts'
 import { DEFAULT_PARAMS } from '../../src/domain/aggregate/params.ts'
 import { PROMPT_KEYS } from '../../src/domain/ai/prompts.ts'
 import type { AnalysisReason, AnalysisStatus } from '../../src/domain/ai/analysis.ts'
+import type { InvalidCategoryLinkError, InvalidScheduleLinkError } from '../../src/domain/property/properties.ts'
 import { ACCOUNT_KINDS } from '../../web/src/settings/kinds.ts'
 
 const LANGUAGES = ['en', 'nl'] as const
@@ -117,5 +119,38 @@ describe('the settings keys built from a name', () => {
     for (const reason of DROPPED_REASONS) {
       translated(`settings:prompt.dryRun.droppedReason.${reason}`)
     }
+  })
+})
+
+/**
+ * Every field name `settings.ts` can attribute a 400 to outside a Zod schema (#736):
+ * `InvalidCategoryLinkError`/`InvalidScheduleLinkError`'s `field`, and the two goal
+ * routes' hardcoded `'categoryId'`. `state.issue(path)` only surfaces a message where
+ * some `<Issue>` reads that exact path — an unmatched one fails silently (no banner,
+ * no per-field text; see `Settings.tsx`'s error-banner suppression), so this is
+ * enforced by the compiler (the `Record` below) rather than left to a comment staying
+ * in sync with `properties.ts` by hand.
+ */
+const PROPERTY_LINK_FIELDS: Record<
+  InstanceType<typeof InvalidCategoryLinkError>['field'] | InstanceType<typeof InvalidScheduleLinkError>['field'],
+  true
+> = {
+  rentCategoryId: true,
+  paymentCategoryId: true,
+  rentScheduleId: true,
+  paymentScheduleId: true,
+}
+
+describe('every field-attributed settings error has a rendering slot (#736)', () => {
+  it('gives every property category/schedule link field its own Issue slot', () => {
+    const source = readFileSync('web/src/settings/Property.tsx', 'utf8')
+    for (const field of Object.keys(PROPERTY_LINK_FIELDS)) {
+      expect(source, field).toContain(`state.issue('${field}')`)
+    }
+  })
+
+  it('gives the goal categoryId link its own Issue slot', () => {
+    const source = readFileSync('web/src/settings/Goals.tsx', 'utf8')
+    expect(source).toContain("state.issue('categoryId')")
   })
 })

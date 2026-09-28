@@ -308,7 +308,7 @@ describe('GET /api/settings', () => {
     expect(ownerSettings.digest.recipientCount).toBe(2)
   })
 
-  it('masks integration hostnames, sync id, model prices, and budget from a viewer (#586)', async () => {
+  it('masks integration hostnames, sync id, and budget from a viewer (#586)', async () => {
     await patch('/api/settings/integrations/actual', {
       serverUrl: 'https://actual.example.test',
       syncId: 'sync-id-value',
@@ -340,11 +340,12 @@ describe('GET /api/settings', () => {
     expect(viewerSettings.integrations.actual.syncId).toBe('')
     expect(viewerSettings.integrations.ghostfolio.url).toBe('')
     expect(viewerSettings.integrations.ai.baseUrl).toBeNull()
-    expect(viewerSettings.integrations.ai.modelPrices).toEqual({})
     expect(viewerSettings.integrations.ai.budgetEurMicro).toBe(0)
     // Not reconnaissance value, and unaffected by the mask: which model is selected,
-    // and whether a secret is set at all.
+    // whether a secret is set at all, and the pricing a viewer can already see via
+    // `GET /api/ai/estimate`/`GET /api/settings/ai/runs` (#735).
     expect(viewerSettings.integrations.ai.modelFast).toBe('custom-model')
+    expect(viewerSettings.integrations.ai.modelPrices).toHaveProperty('custom-model')
     expect(viewerSettings.integrations.actual.passwordConfigured).toBe(true)
     expect(viewerSettings.integrations.ghostfolio.tokenConfigured).toBe(true)
 

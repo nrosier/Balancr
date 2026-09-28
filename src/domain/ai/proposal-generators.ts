@@ -7,7 +7,7 @@
  * guessed at a lower bar here. A category with no baseline yet is still just
  * skipped — that gap is left for #217.
  */
-import { fetchPayeeCategoryHistory, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
+import { fetchPayeeCategoryHistories, fetchUncategorisedTransactions } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
 import { addMonths, endOfMonth, startOfMonth } from '../../util/month.ts'
 import { loadCategoryTrends } from '../aggregate/facts.ts'
@@ -48,9 +48,16 @@ export async function generateCategoryProposals(
   let created = 0
   const candidates: CategoryGuessCandidate[] = []
 
+  // One batched lookup for every distinct payee in this month's uncategorised
+  // backlog, rather than one per transaction (#713): each was its own
+  // serialised `withActual` IPC round trip, so a backlog of any size used to
+  // turn one proposal-generation pass into that many round trips.
+  const payeeIds = [...new Set(transactions.map((txn) => txn.payeeId).filter((id) => id !== null))]
+  const historyByPayee = await fetchPayeeCategoryHistories(db, tenantId, payeeIds)
+
   for (const txn of transactions) {
     if (txn.payeeId === null) continue
-    const history = await fetchPayeeCategoryHistory(db, tenantId, txn.payeeId)
+    const history = historyByPayee.get(txn.payeeId) ?? []
     const suggestion = suggestCategoryForPayee(history)
     if (suggestion === null) {
       const distribution = summariseCategoryHistory(history)

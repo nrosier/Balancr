@@ -194,8 +194,12 @@ export function syncCategoryMeta(
 
 /**
  * Upserts `schedule_meta` from a nightly `fetchSchedules`/`fetchScheduleLabels`
- * pass (#662). Unlike `syncCategoryMeta` there is no user-entered column to
- * preserve, so every column is refreshed on every sync.
+ * pass (#662), and drops rows for a schedule no longer in `schedules` — the same
+ * stale-row cleanup `persistFacts` gives `monthly_category_facts`, and for the
+ * same reason: `fetchSchedules` returns the *whole* current list on every pass,
+ * so a schedule missing from it was deleted in Actual, not just skipped this
+ * time (#733). Unlike `syncCategoryMeta` there is no user-entered column to
+ * preserve, so every surviving row's columns are refreshed on every sync too.
  */
 export function syncScheduleMeta(
   db: Db | Transaction,
@@ -203,8 +207,6 @@ export function syncScheduleMeta(
   schedules: readonly ActualSchedule[],
   labels: ReadonlyMap<string, string>,
 ): number {
-  if (schedules.length === 0) return 0
-
   const rows = schedules.map((schedule) => ({
     tenantId,
     scheduleId: schedule.id,
@@ -232,6 +234,16 @@ export function syncScheduleMeta(
         })
         .run()
     }
+
+    const keep = rows.map((row) => row.scheduleId)
+    // `notInArray` with an empty list matches nothing rather than everything —
+    // the same pitfall `persistFacts` notes — so the all-deleted case needs its
+    // own branch.
+    const where =
+      keep.length > 0
+        ? and(eq(scheduleMeta.tenantId, tenantId), notInArray(scheduleMeta.scheduleId, keep))
+        : eq(scheduleMeta.tenantId, tenantId)
+    tx.delete(scheduleMeta).where(where).run()
   })
 
   return rows.length
@@ -274,28 +286,22 @@ export function loadFrequencies(db: Db, tenantId: string): Map<string, ExpectedF
  * jobs, forecasting, anything that never puts a name in front of a person) omits
  * it and gets the untranslated source-language snapshot, as before (#479).
  */
-export function loadFacts(db: Db, tenantId: string, month: string, locale?: string): MonthlyFact[] {
-  const rows = db
-    .select({
-      fact: monthlyCategoryFacts,
-      name: categoryMeta.nameSnapshot,
-      isIncome: categoryMeta.isIncome,
-      hidden: categoryMeta.hidden,
-    })
-    .from(monthlyCategoryFacts)
-    .innerJoin(
-      categoryMeta,
-      and(
-        eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId),
-        eq(categoryMeta.tenantId, monthlyCategoryFacts.tenantId),
-      ),
-    )
-    .where(and(eq(monthlyCategoryFacts.tenantId, tenantId), eq(monthlyCategoryFacts.month, month)))
-    .orderBy(monthlyCategoryFacts.categoryId)
-    .all()
+type FactJoinRow = {
+  fact: typeof monthlyCategoryFacts.$inferSelect
+  name: string
+  isIncome: boolean
+  hidden: boolean
+}
 
-  const names = locale === undefined ? null : loadCategoryNames(db, tenantId, locale)
+const factJoinSelect = {
+  fact: monthlyCategoryFacts,
+  name: categoryMeta.nameSnapshot,
+  isIncome: categoryMeta.isIncome,
+  hidden: categoryMeta.hidden,
+}
 
+/** `loadFacts`/`loadFactsForMonths`'s shared row shape, turned into the public type. */
+function toMonthlyFacts(rows: readonly FactJoinRow[], names: Map<string, string> | null): MonthlyFact[] {
   return rows.map(({ fact, name, isIncome, hidden }) => ({
     month: fact.month,
     categoryId: fact.categoryId,
@@ -337,6 +343,67 @@ export function loadFacts(db: Db, tenantId: string, month: string, locale?: stri
             reliable: fact.dayCurveReliable ?? false,
           },
   }))
+}
+
+export function loadFacts(db: Db, tenantId: string, month: string, locale?: string): MonthlyFact[] {
+  const rows = db
+    .select(factJoinSelect)
+    .from(monthlyCategoryFacts)
+    .innerJoin(
+      categoryMeta,
+      and(
+        eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId),
+        eq(categoryMeta.tenantId, monthlyCategoryFacts.tenantId),
+      ),
+    )
+    .where(and(eq(monthlyCategoryFacts.tenantId, tenantId), eq(monthlyCategoryFacts.month, month)))
+    .orderBy(monthlyCategoryFacts.categoryId)
+    .all()
+
+  const names = locale === undefined ? null : loadCategoryNames(db, tenantId, locale)
+  return toMonthlyFacts(rows, names)
+}
+
+/**
+ * The same facts as `loadFacts`, for several months at once — one query and one
+ * category-name join rather than one of each per month (#712), the same
+ * restructuring `loadSignalsForMonths` already does. A month with nothing
+ * computed gets an empty array, not a missing key, same as that function.
+ */
+export function loadFactsForMonths(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+  locale?: string,
+): Map<string, MonthlyFact[]> {
+  const byMonth = new Map<string, MonthlyFact[]>(months.map((month) => [month, []]))
+  if (months.length === 0) return byMonth
+
+  const rows = db
+    .select(factJoinSelect)
+    .from(monthlyCategoryFacts)
+    .innerJoin(
+      categoryMeta,
+      and(
+        eq(categoryMeta.categoryId, monthlyCategoryFacts.categoryId),
+        eq(categoryMeta.tenantId, monthlyCategoryFacts.tenantId),
+      ),
+    )
+    .where(and(eq(monthlyCategoryFacts.tenantId, tenantId), inArray(monthlyCategoryFacts.month, [...months])))
+    .orderBy(monthlyCategoryFacts.month, monthlyCategoryFacts.categoryId)
+    .all()
+
+  const names = locale === undefined ? null : loadCategoryNames(db, tenantId, locale)
+  const byMonthRaw = new Map<string, FactJoinRow[]>()
+  for (const row of rows) {
+    const forMonth = byMonthRaw.get(row.fact.month) ?? []
+    forMonth.push(row)
+    byMonthRaw.set(row.fact.month, forMonth)
+  }
+  for (const [month, forMonth] of byMonthRaw) {
+    byMonth.set(month, toMonthlyFacts(forMonth, names))
+  }
+  return byMonth
 }
 
 export interface CategoryTrends {

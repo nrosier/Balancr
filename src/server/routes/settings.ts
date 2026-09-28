@@ -1142,21 +1142,21 @@ function loadIntegrations(db: Db, tenantId: string, isOwner: boolean): Integrati
         : null,
       modelFast: row.aiModelFast,
       modelDeep: row.aiModelDeep,
-      modelPrices: isOwner
-        ? Object.fromEntries(
-            Object.entries(JSON.parse(row.aiModelPricesJson) as Record<string, ModelPrice>).map(
-              ([model, price]) => [
-                model,
-                {
-                  inputEurMicro: price.input,
-                  cachedInputEurMicro: price.cachedInput,
-                  cacheWriteInputEurMicro: price.cacheWriteInput,
-                  outputEurMicro: price.output,
-                },
-              ],
-            ),
-          )
-        : {},
+      // Not masked for a viewer (#735): `GET /api/ai/estimate` (`requireUser`) and
+      // `GET /api/settings/ai/runs` (`requireUser`) already hand a viewer the same
+      // per-model pricing, on purpose — masking it here bought nothing but a false
+      // sense of it being hidden.
+      modelPrices: Object.fromEntries(
+        Object.entries(JSON.parse(row.aiModelPricesJson) as Record<string, ModelPrice>).map(([model, price]) => [
+          model,
+          {
+            inputEurMicro: price.input,
+            cachedInputEurMicro: price.cachedInput,
+            cacheWriteInputEurMicro: price.cacheWriteInput,
+            outputEurMicro: price.output,
+          },
+        ]),
+      ),
       budgetEurMicro: isOwner ? row.aiMonthlyBudgetEurMicro : 0,
     },
   })
@@ -2179,33 +2179,39 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const before = loadIntegrations(db, tenantId, true)
     const hostChanged = !sameHost(patch.serverUrl, before.actual.serverUrl)
 
-    db.update(tenantIntegrations)
-      .set({
-        actualServerUrl: patch.serverUrl,
-        actualSyncId: patch.syncId,
-        actualCategorySourceLocale: patch.categorySourceLocale,
-        ...(patch.password !== undefined
-          ? { actualPasswordEnc: encryptField(patch.password) }
-          : hostChanged
-            ? { actualPasswordEnc: '' }
-            : {}),
-        ...(patch.e2ePassword !== undefined
-          ? { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }
-          : hostChanged
-            ? { actualE2ePasswordEnc: null }
-            : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(tenantIntegrations.tenantId, tenantId))
-      .run()
+    // One transaction (#732): a crash between the integrations row and the translation
+    // cleanup below would otherwise leave the tenant pointed at a new source locale
+    // while stale translation rows for it still outrank the fresh Actual snapshot —
+    // silently and permanently, since nothing re-derives category names from scratch.
+    db.transaction((tx) => {
+      tx.update(tenantIntegrations)
+        .set({
+          actualServerUrl: patch.serverUrl,
+          actualSyncId: patch.syncId,
+          actualCategorySourceLocale: patch.categorySourceLocale,
+          ...(patch.password !== undefined
+            ? { actualPasswordEnc: encryptField(patch.password) }
+            : hostChanged
+              ? { actualPasswordEnc: '' }
+              : {}),
+          ...(patch.e2ePassword !== undefined
+            ? { actualE2ePasswordEnc: encryptField(patch.e2ePassword) }
+            : hostChanged
+              ? { actualE2ePasswordEnc: null }
+              : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(tenantIntegrations.tenantId, tenantId))
+        .run()
 
-    // The new source locale's name is the Actual snapshot from here on — any translation
-    // rows already on file for it would otherwise keep outranking that snapshot forever,
-    // with no way to clear them (`saveCategoryTranslation` rejects writes for the source
-    // locale outright).
-    if (patch.categorySourceLocale !== before.actual.categorySourceLocale) {
-      clearTranslationsForLocale(db, tenantId, patch.categorySourceLocale)
-    }
+      // The new source locale's name is the Actual snapshot from here on — any translation
+      // rows already on file for it would otherwise keep outranking that snapshot forever,
+      // with no way to clear them (`saveCategoryTranslation` rejects writes for the source
+      // locale outright).
+      if (patch.categorySourceLocale !== before.actual.categorySourceLocale) {
+        clearTranslationsForLocale(tx, tenantId, patch.categorySourceLocale)
+      }
+    })
 
     const after = loadIntegrations(db, tenantId, true)
     recordAudit(db, {
@@ -2273,7 +2279,16 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
     const before = loadIntegrations(db, tenantId, true)
     const row = integrationsRow(db, tenantId)
     const baseUrl = validatedAiBaseUrl(patch.provider, patch.baseUrl)
-    const modelPrices = tenantModelPrices(patch.modelPrices)
+    // Merged onto what's already stored, never replaced wholesale (#743): the client
+    // only ever sends a price for the two currently-selected models, so a client that
+    // sent the full stored set on every save would still overwrite it during the one
+    // frame a model switch has dropped the old selection from `selectedModels` before
+    // the draft catches up. A model missing from the patch keeps the price it already
+    // had rather than losing it the moment nobody has it selected.
+    const modelPrices: ModelPrices = {
+      ...(JSON.parse(row.aiModelPricesJson) as ModelPrices),
+      ...tenantModelPrices(patch.modelPrices),
+    }
     for (const model of new Set([patch.modelFast.trim(), patch.modelDeep.trim()])) {
       if (!priceFor(patch.provider, model, modelPrices).known) {
         throw badRequest(`An explicit price is required for unknown model ${model}.`)

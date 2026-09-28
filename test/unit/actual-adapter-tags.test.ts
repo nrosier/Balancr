@@ -1,9 +1,13 @@
 /**
  * `tagRegexPattern` reproduces Actual's own `hasTags`/`hasAnyTag` escaping (#663) — see
  * its doc comment in `queries.ts` for why the leading `#` has to be added back before
- * escaping. `fetchTagMonthlyTotals`'s transfer-boundary handling reuses
- * `boundaryCrossingTransferLegIds`/`transferFilter` unchanged, already covered in
- * `actual-transfer-reconciliation.test.ts` (#690), so it isn't repeated here.
+ * escaping. `fetchTagMonthlyTotals` no longer looks up the transfer boundary itself
+ * (#719 moved that to a single per-sync-pass call the caller makes once via
+ * `fetchTransferCrossingData`/`boundaryCrossingTransferLegIds` and passes in as
+ * `keepLegIds`) — that lookup is covered in `actual-transfer-reconciliation.test.ts`
+ * (#690), so it isn't repeated here; every call below passes `[]` since the JS-side
+ * crossing-pair dedup exercised below (#744) operates on each fetched row's own
+ * `transferId`/`offBudget` fields, independent of what `keepLegIds` was.
  *
  * `fetchTagMonthlyTotals`'s own bulk-fetch-then-bucket shape (#691) is covered below,
  * against a mocked `withActual` the same way `actual-schedules.test.ts` mocks
@@ -23,9 +27,6 @@ const { fetchTagMonthlyTotals, tagRegexPattern } = await import('../../src/adapt
 
 const DB_STUB = {} as Db
 const TENANT_ID = 'tenant-tags'
-
-/** No transfers crossing the boundary in range — the common case, one query fewer. */
-const NO_CROSSING_TRANSFERS = { data: [] }
 
 beforeEach(() => {
   withActualMock.mockReset()
@@ -66,22 +67,21 @@ describe('tagRegexPattern', () => {
 
 describe('fetchTagMonthlyTotals (#691)', () => {
   it('issues exactly one query for the transactions regardless of tag count', async () => {
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({ data: [] })
+    withActualMock.mockResolvedValueOnce({ data: [] })
 
-    await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental', 'maintenance', 'car'], '2026-01', '2026-12')
+    await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental', 'maintenance', 'car'], '2026-01', '2026-12', [])
 
-    // Once for the transfer-boundary lookup, once for the bulk notes fetch — never
-    // once per tag, which is the whole point of the fix.
-    expect(withActualMock).toHaveBeenCalledTimes(2)
+    // Just the bulk notes fetch — never once per tag, which is the whole point of the fix.
+    expect(withActualMock).toHaveBeenCalledTimes(1)
   })
 
   it('returns nothing, and queries nothing, when no tags are registered', async () => {
-    expect(await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, [], '2026-01', '2026-12')).toEqual([])
+    expect(await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, [], '2026-01', '2026-12', [])).toEqual([])
     expect(withActualMock).not.toHaveBeenCalled()
   })
 
   it('buckets one fetched transaction into every tag its note matches, by month', async () => {
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+    withActualMock.mockResolvedValueOnce({
       data: [
         { id: 't1', date: '2026-03-14', notes: '#rental payment', amount: -80_000, transferId: null, offBudget: false },
         {
@@ -97,7 +97,7 @@ describe('fetchTagMonthlyTotals (#691)', () => {
       ],
     })
 
-    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental', 'maintenance'], '2026-01', '2026-12')
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental', 'maintenance'], '2026-01', '2026-12', [])
 
     expect(totals).toEqual(
       expect.arrayContaining([
@@ -110,11 +110,11 @@ describe('fetchTagMonthlyTotals (#691)', () => {
   })
 
   it('ignores a null-amount transaction as zero, same as the old per-tag $sum did', async () => {
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+    withActualMock.mockResolvedValueOnce({
       data: [{ id: 't1', date: '2026-05-01', notes: '#rental', amount: null, transferId: null, offBudget: false }],
     })
 
-    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12', [])
 
     expect(totals).toEqual([{ tag: 'rental', month: '2026-05', netCents: 0, txnCount: 1 }])
   })
@@ -123,27 +123,27 @@ describe('fetchTagMonthlyTotals (#691)', () => {
     // Actual's own `addTransfer` copies `notes` to the counterpart leg verbatim, so a
     // freshly tagged mortgage payment carries "#rental" on both the on-budget leg that
     // pays it and the off-budget loan leg that receives it. Summing both nets to zero.
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+    withActualMock.mockResolvedValueOnce({
       data: [
         { id: 'onbudget', date: '2026-03-10', notes: '#rental', amount: -80_000, transferId: 'offbudget', offBudget: false },
         { id: 'offbudget', date: '2026-03-10', notes: '#rental', amount: 80_000, transferId: 'onbudget', offBudget: true },
       ],
     })
 
-    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12', [])
 
     expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: -80_000, txnCount: 1 }])
   })
 
   it('uses whichever leg of a crossing transfer actually carries the tag when only one does', async () => {
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+    withActualMock.mockResolvedValueOnce({
       data: [
         { id: 'onbudget', date: '2026-03-10', notes: 'mortgage payment', amount: -80_000, transferId: 'offbudget', offBudget: false },
         { id: 'offbudget', date: '2026-03-10', notes: '#rental', amount: 80_000, transferId: 'onbudget', offBudget: true },
       ],
     })
 
-    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12', [])
 
     expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: 80_000, txnCount: 1 }])
   })
@@ -151,14 +151,14 @@ describe('fetchTagMonthlyTotals (#691)', () => {
   it('does not treat a transfer between two on-budget accounts as a crossing pair', async () => {
     // Same `offBudget` on both legs — an ordinary internal transfer, not the boundary
     // crossing #744 is about. Each leg is independent, so a note on just one still counts.
-    withActualMock.mockResolvedValueOnce(NO_CROSSING_TRANSFERS).mockResolvedValueOnce({
+    withActualMock.mockResolvedValueOnce({
       data: [
         { id: 'a', date: '2026-03-10', notes: '#rental', amount: -5_000, transferId: 'b', offBudget: false },
         { id: 'b', date: '2026-03-10', notes: null, amount: 5_000, transferId: 'a', offBudget: false },
       ],
     })
 
-    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12')
+    const totals = await fetchTagMonthlyTotals(DB_STUB, TENANT_ID, ['rental'], '2026-01', '2026-12', [])
 
     expect(totals).toEqual([{ tag: 'rental', month: '2026-03', netCents: -5_000, txnCount: 1 }])
   })

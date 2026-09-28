@@ -69,6 +69,12 @@ jobs:
       - name: Production dependency licenses
         run: npm run licenses:check
 
+      # npm silently skips a lifecycle script that isn't in package.json's
+      # allowScripts rather than failing the install — this catches the gap
+      # here instead of at a runtime that's missing a native binary (#720).
+      - name: Install-script allowlist
+        run: npm run allow-scripts:check
+
       - name: Tests
         run: npm test
 

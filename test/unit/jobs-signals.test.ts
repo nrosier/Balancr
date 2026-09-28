@@ -32,7 +32,7 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   // populates a transaction, so an empty list is exactly what a real budget
   // with nothing uncategorised would also return.
   fetchUncategorisedTransactions: () => Promise.resolve([]),
-  fetchPayeeCategoryHistory: () => Promise.resolve([]),
+  fetchPayeeCategoryHistories: () => Promise.resolve(new Map()),
 }))
 
 let ctx: ReturnType<typeof createTestDb>

@@ -817,6 +817,17 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
         )}
 
         <Issue message={state.issue('properties')} />
+        {/*
+          The server attributes a stale rent/mortgage category or schedule link to the
+          bare field name, not to a row index (#736) — `saveProperties` validates the
+          whole list in one PATCH, and by the time a link is rejected it no longer knows
+          which draft row typed it. So these read page-level, the same as `'properties'`
+          above, rather than being threaded down to one row's own fields.
+        */}
+        <Issue message={state.issue('rentCategoryId')} />
+        <Issue message={state.issue('rentScheduleId')} />
+        <Issue message={state.issue('paymentCategoryId')} />
+        <Issue message={state.issue('paymentScheduleId')} />
 
         <div className="properties__actions">
           <button

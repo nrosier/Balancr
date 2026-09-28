@@ -552,6 +552,39 @@ describe('PATCH /api/settings/integrations/ai', () => {
     expect(row(ctx.db).aiMonthlyBudgetEurMicro).toBe(42_000_000)
   })
 
+  it('keeps a deselected model price on file rather than dropping it (#743)', async () => {
+    await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
+      googleCloudProject: null,
+      modelFast: 'gemini-flash-lite',
+      modelDeep: 'gemini-pro',
+      modelPrices: {
+        'gemini-flash-lite': { inputEur: 0.1, cachedInputEur: 0.01, cacheWriteInputEur: 0.1, outputEur: 0.2 },
+        'gemini-pro': { inputEur: 1, cachedInputEur: 0.1, cacheWriteInputEur: 1, outputEur: 2 },
+      },
+      budgetEur: 42,
+    })
+
+    // Switches `modelDeep` to a model the built-in catalogue already prices, so this
+    // patch's own `modelPrices` carries nothing for `gemini-pro` — exactly the shape
+    // the client sends on a real model switch, since it only ever prices the two
+    // currently-selected models.
+    const res = await patch('/api/settings/integrations/ai', {
+      provider: 'gemini-aistudio',
+      googleCloudProject: null,
+      modelFast: 'gemini-flash-lite',
+      modelDeep: 'gemini-3.1-pro-preview',
+      modelPrices: {
+        'gemini-flash-lite': { inputEur: 0.1, cachedInputEur: 0.01, cacheWriteInputEur: 0.1, outputEur: 0.2 },
+      },
+      budgetEur: 42,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json<Settings>().integrations.ai.modelPrices).toHaveProperty('gemini-pro')
+    expect(JSON.parse(row(ctx.db).aiModelPricesJson)).toHaveProperty('gemini-pro')
+  })
+
   it('stores an OpenAI preset with its fixed official URL and a provider-scoped key', async () => {
     const res = await patch('/api/settings/integrations/ai', {
       provider: 'openai',

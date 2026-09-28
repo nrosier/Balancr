@@ -19,8 +19,9 @@
  */
 import { config } from '../../../config.ts'
 import type { Db } from '../../../db/index.ts'
-import { loadCategoryTrends, loadFacts } from '../../../domain/aggregate/facts.ts'
+import { loadCategoryTrends, loadFacts, loadFactsForMonths } from '../../../domain/aggregate/facts.ts'
 import { loadGoalsWithProgress } from '../../../domain/aggregate/goal-store.ts'
+import type { MonthlyFact } from '../../../domain/aggregate/spend.ts'
 import {
   latestStoredMonth,
   loadMonthTotals,
@@ -91,6 +92,23 @@ export function resolveBenchmarkPeriod(raw: unknown): BenchmarkPeriodKind {
   return raw as BenchmarkPeriodKind
 }
 
+/**
+ * `months`' facts, one batched query (#712) rather than one `loadFacts` call —
+ * and its own category-name join — per month. `resolved` is already loaded as
+ * `facts`, so it is excluded from the batch and spliced back in from memory.
+ */
+function factsAcrossMonths(
+  db: Db,
+  tenantId: string,
+  months: readonly string[],
+  resolved: string,
+  facts: MonthlyFact[],
+  locale: string,
+): MonthlyFact[][] {
+  const byMonth = loadFactsForMonths(db, tenantId, months.filter((m) => m !== resolved), locale)
+  return months.map((m) => (m === resolved ? facts : byMonth.get(m) ?? []))
+}
+
 export function buildBudget(
   db: Db,
   tenantId: string,
@@ -122,11 +140,13 @@ export function buildBudget(
     config.TZ,
   )
   // The common case — a plain month — needs no extra query: `facts` already is that
-  // one month's rows. A year or YTD sums whichever other months the window covers.
+  // one month's rows. A year or YTD sums whichever other months the window covers,
+  // one batched query for all of them (#712) rather than one `loadFacts` call —
+  // and its own category-name join — per month.
   const benchmarkRows =
     benchmarkMonths.length === 1 && benchmarkMonths[0] === resolved
       ? facts
-      : sumSpendRows(benchmarkMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m, locale))))
+      : sumSpendRows(factsAcrossMonths(db, tenantId, benchmarkMonths, resolved, facts, locale))
 
   // Its own independent window: a reader can widen the custody card to a year without
   // widening the benchmark card, so this is not `benchmarkMonths` under another name
@@ -136,7 +156,7 @@ export function buildBudget(
   const custodyRows =
     custodyMonths.length === 1 && custodyMonths[0] === resolved
       ? facts
-      : sumCustodyRows(custodyMonths.map((m) => (m === resolved ? facts : loadFacts(db, tenantId, m, locale))))
+      : sumCustodyRows(factsAcrossMonths(db, tenantId, custodyMonths, resolved, facts, locale))
 
   // Present-tense (#407): today's real month, not `resolved` — a goal is tied to
   // its envelope right now, independent of which historical month this page is

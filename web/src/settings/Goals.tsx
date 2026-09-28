@@ -389,6 +389,13 @@ export function GoalsPanel({ settings, state, owner }: SettingsPanelProps): Reac
         )}
 
         <Issue message={state.issue('targetCents')} />
+        {/*
+          A stale/unknown `categoryId` (#736) rejects the same way `UnknownCategoryError`
+          does elsewhere: attributed to the bare field name, not to one row, since the
+          route validates a single goal per request but has no per-row slot of its own —
+          same reasoning as `'targetCents'` above.
+        */}
+        <Issue message={state.issue('categoryId')} />
 
         <div className="goals__actions">
           <button

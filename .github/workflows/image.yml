@@ -19,6 +19,13 @@ name: Image
 # `package.json` is on that list, which also makes this the milestone gate: the
 # version bump that closes a milestone touches it, so the last pull request of
 # every milestone builds the image before it merges.
+#
+# A release lands as a direct push to main (a "release:" commit, no PR, #715),
+# which the `pull_request` trigger above never sees — so without the `push`
+# trigger below, the exact commit that release.yml tags and publishes is the
+# one commit this gate never validates. Unfiltered by path, unlike the PR
+# trigger: a release push is rare enough that running the full build on every
+# one of them costs nothing next to leaving it unchecked.
 on:
   pull_request:
     paths:
@@ -31,7 +38,10 @@ on:
       - scripts/copy-assets.mjs
       - scripts/prune-runtime-deps.mjs
       - scripts/verify-image.sh
+      - .hadolint.yaml
       - .github/workflows/image.yml
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

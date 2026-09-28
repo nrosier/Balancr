@@ -28,6 +28,7 @@
     "contrast:check": "tsx scripts/check-contrast.ts",
     "skips:check": "tsx scripts/check-test-skips.ts",
     "licenses:check": "tsx scripts/check-licenses.ts",
+    "allow-scripts:check": "tsx scripts/check-allow-scripts.ts",
     "probe": "tsx --env-file-if-exists=.env scripts/probe.ts",
     "fake:ghostfolio": "tsx scripts/fake-backend/ghostfolio-server.ts",
     "fake:seed": "tsx --env-file-if-exists=.env scripts/fake-backend/seed-benchmark-custody.ts",
@@ -97,6 +98,10 @@
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true,
-    "better-sqlite3@12.11.1": true
+    "better-sqlite3@12.11.1": true,
+    "argon2@0.45.1": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "@google/genai@2.24.0": true
   }
 }

@@ -16,6 +16,7 @@ import { and, eq } from 'drizzle-orm'
 import type { Db } from '../../db/index.ts'
 import { categoryMeta, categoryTranslations } from '../../db/schema.ts'
 import { integrationsRow } from '../../db/tenant-integrations.ts'
+import type { Transaction } from '../audit.ts'
 
 /** No `category_meta` row for this category — the same "not found" case `MappingError` covers. */
 export class TranslationError extends Error {}
@@ -143,7 +144,7 @@ export function saveCategoryTranslation(
  * `saveCategoryTranslation`'s own guard blocks clearing it any other way, since a write for
  * the source locale is rejected outright.
  */
-export function clearTranslationsForLocale(db: Db, tenantId: string, locale: string): void {
+export function clearTranslationsForLocale(db: Db | Transaction, tenantId: string, locale: string): void {
   db.delete(categoryTranslations)
     .where(and(eq(categoryTranslations.tenantId, tenantId), eq(categoryTranslations.locale, locale)))
     .run()

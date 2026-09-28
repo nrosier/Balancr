@@ -47,7 +47,7 @@ import { ApiError, apiSend } from '../api/client.ts'
 import { useCsrf } from '../api/csrf.tsx'
 import { useSessionExpiry } from '../api/resource.tsx'
 import { useT } from '../i18n.ts'
-import type { Freshness, RefreshAccepted } from '../shared.ts'
+import type { Freshness, RefreshAccepted, Refreshable } from '../shared.ts'
 import { FreshnessNote } from './Freshness.tsx'
 
 /** How often the page re-reads its endpoint while a refresh is outstanding. */
@@ -272,9 +272,11 @@ export interface FreshnessBarProps {
    * The jobs whose output this page shows, or omitted for every data job.
    *
    * A module constant at the call site rather than a literal in the JSX, so the
-   * identity is stable and `start` is not rebuilt on every render.
+   * identity is stable and `start` is not rebuilt on every render. Typed against
+   * the server's own name union rather than `readonly string[]` (#742), so a typo
+   * in a page's own list fails `tsc` instead of a live `POST /api/refresh`.
    */
-  jobs?: readonly string[]
+  jobs?: readonly Refreshable[]
   /** Re-reads the page's own endpoint. `resource.reload`, threaded down from the page. */
   onRefreshed: () => void
 }

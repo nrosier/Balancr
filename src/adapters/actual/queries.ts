@@ -332,16 +332,23 @@ export function boundaryCrossingTransferLegIds(
 /**
  * The on-budget transfer legs in `[from, to]` and their counterparts'
  * `offbudget` status — the two queries `offBudgetTransferLegIds` and
- * `boundaryCrossingTransferLegIds` both need, shared so a boundary-crossing
- * transfer is only looked up once regardless of which rule a caller wants
- * applied to it.
+ * `boundaryCrossingTransferLegIds` both need.
+ *
+ * Exported so `sync.ts` can call this exactly once per sync pass, over a
+ * range wide enough to cover every consumer below, rather than each of
+ * `fetchRecomputedSpend`/`fetchRecomputedSpendDaily`/`fetchTagMonthlyTotals`
+ * re-running it over its own (overlapping) range every time (#719). A
+ * `keepLegIds` list computed over a wider range than a given consumer's own
+ * `[from, to]` is harmless to reuse there: that consumer's own query still
+ * restricts by `date`, so any "extra" ids outside its window simply match no
+ * rows.
  *
  * A second query rather than a single joined one: `transfer_id` has no `ref`
  * in Actual's AQL schema (unlike `account`), so a dotted path through it
  * (`transfer_id.account.offbudget`) does not compile — the counterpart's
  * account has to be looked up by id instead.
  */
-async function fetchTransferCrossingData(
+export async function fetchTransferCrossingData(
   db: Db,
   tenantId: string,
   from: string,
@@ -395,16 +402,6 @@ async function fetchOffBudgetTransferLegIds(
   return offBudgetTransferLegIds(legs, counterpartIsOffBudget)
 }
 
-async function fetchBoundaryCrossingTransferLegIds(
-  db: Db,
-  tenantId: string,
-  from: string,
-  to: string,
-): Promise<string[]> {
-  const { legs, counterpartIsOffBudget } = await fetchTransferCrossingData(db, tenantId, from, to)
-  return boundaryCrossingTransferLegIds(legs, counterpartIsOffBudget)
-}
-
 /**
  * `{transfer_id: null}`, widened to also keep the specific on-budget legs
  * `fetchOffBudgetTransferLegIds` found — see its comment for why those must
@@ -431,14 +428,18 @@ export function transferFilter(keepLegIds: readonly string[]): Record<string, un
  *    `is_parent = 0`, so children are counted and the parent is not. Do not
  *    "fix" this by passing `splits: 'all'` — that double-counts every split.
  *  - refunds need no clause either: summing signed amounts nets them off.
+ *
+ * `keepLegIds` comes from `fetchTransferCrossingData`/`offBudgetTransferLegIds`
+ * — the caller's job, not this function's, so a sync pass touching multiple
+ * date ranges looks the crossing data up once rather than once per call (#719).
  */
 export async function fetchRecomputedSpend(
   db: Db,
   tenantId: string,
   from: string,
   to: string,
+  keepLegIds: readonly string[],
 ): Promise<RecomputedSpend[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
     db,
     tenantId,
@@ -489,14 +490,16 @@ export interface RecomputedSpendDaily {
  * figure to cross-check this against (Actual has no per-day total), so unlike
  * the monthly query this one never feeds `mismatches`; it is trusted at the
  * same level `txnCount` already is elsewhere in this file.
+ *
+ * `keepLegIds` — see `fetchRecomputedSpend`'s doc comment (#719).
  */
 export async function fetchRecomputedSpendDaily(
   db: Db,
   tenantId: string,
   from: string,
   to: string,
+  keepLegIds: readonly string[],
 ): Promise<RecomputedSpendDaily[]> {
-  const keepLegIds = await fetchOffBudgetTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
     db,
     tenantId,
@@ -623,33 +626,49 @@ export async function fetchTransaction(
   return { id: row.id, categoryId: row.category, payeeId: row.payee }
 }
 
-const payeeCategoryRow = z.object({ category: z.string().nullable() })
+const payeeCategoryRow = z.object({ payee: z.string(), category: z.string().nullable() })
 
 /**
- * A payee's past categorisation, most recent first — the category-assignment
- * generator's confidence check. Includes uncategorised rows rather than
- * excluding them with an AQL `$ne` against `null`, which is not reliable
- * across Actual's query engines; the generator filters them out in plain JS
- * instead, where it is easy to verify.
+ * Every listed payee's past categorisation, most recent first — the
+ * category-assignment generator's confidence check, batched across every
+ * uncategorised transaction's payee in one query rather than one per payee
+ * (#713): each was its own serialised `withActual` IPC round trip. Includes
+ * uncategorised rows rather than excluding them with an AQL `$ne` against
+ * `null`, which is not reliable across Actual's query engines; the generator
+ * filters them out in plain JS instead, where it is easy to verify.
+ *
+ * AQL has no per-group limit, so `limit` (still 20, unchanged from before
+ * #713) is applied here in JS, after the single query orders every matching
+ * row by date descending — the same "most recent N" a per-payee `.limit()`
+ * call would have given, since filtering an already-ordered list preserves
+ * its order within each payee's own bucket.
  */
-export function fetchPayeeCategoryHistory(
+export async function fetchPayeeCategoryHistories(
   db: Db,
   tenantId: string,
-  payeeId: string,
+  payeeIds: readonly string[],
   limit = 20,
-): Promise<{ categoryId: string | null }[]> {
-  return runAql(
+): Promise<Map<string, { categoryId: string | null }[]>> {
+  const byPayee = new Map<string, { categoryId: string | null }[]>()
+  if (payeeIds.length === 0) return byPayee
+
+  const rows = await runAql(
     db,
     tenantId,
     'payee-category-history',
     () =>
       q('transactions')
-        .filter({ payee: payeeId, transfer_id: null, starting_balance_flag: false })
+        .filter({ payee: { $oneof: payeeIds }, transfer_id: null, starting_balance_flag: false })
         .orderBy({ date: 'desc' })
-        .select(['category'])
-        .limit(limit),
+        .select(['payee', 'category']),
     payeeCategoryRow,
-  ).then((rows) => rows.map((row) => ({ categoryId: row.category })))
+  )
+  for (const row of rows) {
+    const bucket = byPayee.get(row.payee)
+    if (bucket === undefined) byPayee.set(row.payee, [{ categoryId: row.category }])
+    else if (bucket.length < limit) bucket.push({ categoryId: row.category })
+  }
+  return byPayee
 }
 
 const uncategorisedTransactionRow = z.object({
@@ -1129,9 +1148,9 @@ export interface TagMonthTotal {
  * Unlike `fetchRecomputedSpend` this deliberately does *not* filter to on-budget
  * accounts: a tag exists precisely to cut across the boundary a category can't — a
  * mortgage payment leaving an off-budget loan account is exactly the kind of figure a
- * property-linked tag needs to see. `transferFilter` is reused, but paired with
- * `fetchBoundaryCrossingTransferLegIds` rather than `fetchOffBudgetTransferLegIds`
- * (#690): the latter only ever returns the *on-budget* leg of a crossing transfer, which
+ * property-linked tag needs to see. `transferFilter` is reused, but the caller
+ * must pass a `keepLegIds` built from `boundaryCrossingTransferLegIds` rather than
+ * `offBudgetTransferLegIds` (#690): the latter only ever returns the *on-budget* leg of a crossing transfer, which
  * is fine for `fetchRecomputedSpend` (restricted to on-budget accounts already, so the
  * other leg could never show up there) but wrong here — Actual's own note can land on
  * either leg, and a keep-list missing the off-budget side drops that leg's tag entirely.
@@ -1143,6 +1162,10 @@ export interface TagMonthTotal {
  * when both legs carry the tag (so the total reads as a cost/gain the same way
  * every other budget-facing figure does), or whichever single leg actually carries
  * it when the notes were edited independently on only one side afterward.
+ *
+ * `keepLegIds` comes from `fetchTransferCrossingData`/`boundaryCrossingTransferLegIds`
+ * — see `fetchRecomputedSpend`'s doc comment for why the caller, not this
+ * function, owns that lookup (#719).
  */
 export async function fetchTagMonthlyTotals(
   db: Db,
@@ -1150,10 +1173,10 @@ export async function fetchTagMonthlyTotals(
   tags: readonly string[],
   from: string,
   to: string,
+  keepLegIds: readonly string[],
 ): Promise<TagMonthTotal[]> {
   if (tags.length === 0) return []
 
-  const keepLegIds = await fetchBoundaryCrossingTransferLegIds(db, tenantId, from, to)
   const rows = await runAql(
     db,
     tenantId,

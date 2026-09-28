@@ -25,11 +25,11 @@ vi.mock('../../src/adapters/actual/queries.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/adapters/actual/queries.ts')>()),
   fetchTransaction: vi.fn(),
   fetchUncategorisedTransactions: vi.fn(),
-  fetchPayeeCategoryHistory: vi.fn(),
+  fetchPayeeCategoryHistories: vi.fn(),
 }))
 
 import {
-  fetchPayeeCategoryHistory,
+  fetchPayeeCategoryHistories,
   fetchTransaction,
   fetchUncategorisedTransactions,
 } from '../../src/adapters/actual/queries.ts'
@@ -43,7 +43,8 @@ let tenantId: string
 beforeEach(() => {
   vi.mocked(fetchTransaction).mockReset()
   vi.mocked(fetchUncategorisedTransactions).mockReset()
-  vi.mocked(fetchPayeeCategoryHistory).mockReset()
+  vi.mocked(fetchPayeeCategoryHistories).mockReset()
+  vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(new Map())
 
   ctx = createTestDb()
   applyMigrations(ctx.db as never)
@@ -95,13 +96,20 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
       { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
-      { categoryId: 'food' },
-      { categoryId: 'food' },
-      { categoryId: 'food' },
-      { categoryId: 'food' },
-      { categoryId: 'other' },
-    ])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(
+      new Map([
+        [
+          'payee-1',
+          [
+            { categoryId: 'food' },
+            { categoryId: 'food' },
+            { categoryId: 'food' },
+            { categoryId: 'food' },
+            { categoryId: 'other' },
+          ],
+        ],
+      ]),
+    )
     vi.mocked(fetchTransaction).mockResolvedValue({
       id: 'txn-1',
       categoryId: null,
@@ -121,10 +129,9 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
       { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
-      { categoryId: 'food' },
-      { categoryId: 'other' },
-    ])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(
+      new Map([['payee-1', [{ categoryId: 'food' }, { categoryId: 'other' }]]]),
+    )
 
     const created = await generateCategoryProposals(db, tenantId, MONTH)
 
@@ -137,10 +144,9 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
       { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
-      { categoryId: 'food' },
-      { categoryId: 'other' },
-    ])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(
+      new Map([['payee-1', [{ categoryId: 'food' }, { categoryId: 'other' }]]]),
+    )
 
     await generateCategoryProposals(db, tenantId, MONTH)
 
@@ -165,7 +171,7 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
       { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([{ categoryId: null }])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(new Map([['payee-1', [{ categoryId: null }]]]))
 
     await generateCategoryProposals(db, tenantId, MONTH)
 
@@ -176,10 +182,12 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValueOnce([
       { id: 'txn-old', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-02-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
-      { categoryId: 'food' },
-      { categoryId: 'other' },
-    ])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(
+      new Map([
+        ['payee-1', [{ categoryId: 'food' }, { categoryId: 'other' }]],
+        ['payee-2', [{ categoryId: 'food' }, { categoryId: 'other' }]],
+      ]),
+    )
     await generateCategoryProposals(db, tenantId, '2026-02')
 
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValueOnce([
@@ -197,10 +205,9 @@ describe('generateCategoryProposals', () => {
     vi.mocked(fetchUncategorisedTransactions).mockResolvedValue([
       { id: 'txn-1', payeeId: 'payee-1', payeeName: 'Colruyt', amountCents: -4200, date: '2026-03-05' },
     ])
-    vi.mocked(fetchPayeeCategoryHistory).mockResolvedValue([
-      { categoryId: 'food' },
-      { categoryId: 'food' },
-    ])
+    vi.mocked(fetchPayeeCategoryHistories).mockResolvedValue(
+      new Map([['payee-1', [{ categoryId: 'food' }, { categoryId: 'food' }]]]),
+    )
     vi.mocked(fetchTransaction).mockResolvedValue({
       id: 'txn-1',
       categoryId: 'food',
@@ -221,7 +228,9 @@ describe('generateCategoryProposals', () => {
     const created = await generateCategoryProposals(db, tenantId, MONTH)
 
     expect(created).toBe(0)
-    expect(fetchPayeeCategoryHistory).not.toHaveBeenCalled()
+    // The payee-less transaction never contributes an id to the batched lookup
+    // (#713) — the call still happens once for the month, just with nothing to ask for.
+    expect(fetchPayeeCategoryHistories).toHaveBeenCalledWith(db, tenantId, [])
   })
 })
 

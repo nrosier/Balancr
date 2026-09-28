@@ -259,10 +259,19 @@ describe('syncScheduleMeta (#662)', () => {
     })
   })
 
-  it('does nothing with an empty list rather than clearing the table', () => {
+  it('removes a schedule deleted in Actual on the next sync (#733)', () => {
+    syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-1'), schedule('sch-2')], new Map())
+    syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-2')], new Map())
+
+    expect(ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()).toBeUndefined()
+    expect(ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-2')).get()).toBeDefined()
+  })
+
+  it('clears the table when every schedule is gone (#733)', () => {
     syncScheduleMeta(ctx.db, TENANT_ID, [schedule('sch-1')], new Map())
     syncScheduleMeta(ctx.db, TENANT_ID, [], new Map())
-    expect(ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()).toBeDefined()
+
+    expect(ctx.db.select().from(scheduleMeta).where(eq(scheduleMeta.scheduleId, 'sch-1')).get()).toBeUndefined()
   })
 })
 
