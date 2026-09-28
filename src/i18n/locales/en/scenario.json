@@ -8,6 +8,7 @@
   },
   "hint": {
     "noBaseline": "No category is tagged Investments yet, so this starts from the figure below instead of a real one. Tag one under Settings › Benchmark to use your own.",
+    "noGrowthRate": "There's no real rate of return to derive this from, so the figure below is a generic assumption, not something measured from your own portfolio. Adjust it if you have a better estimate.",
     "noStartingValue": "No net-worth snapshot yet, so this starts from the figure below instead of a real one."
   },
   "input": {

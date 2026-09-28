@@ -16,8 +16,8 @@ permissions:
 
 # Actions below are pinned to a commit SHA, not a floating tag (GitHub's own
 # recommended convention: https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
-# The trailing `# vX` comment is what Dependabot/Renovate read to find and
-# open the bump PR when a new release lands — see .github/dependabot.yml.
+# The trailing `# vX` comment is what Renovate reads to find and open the
+# bump PR when a new release lands — see renovate.json.
 jobs:
   verify:
     name: Typecheck, i18n, tests
@@ -43,10 +43,15 @@ jobs:
       - name: i18n parity
         run: npm run i18n:check
 
-      # The release and licence badges are static because shields.io cannot read a
-      # private repo; this is what stops them quoting last month's version.
+      # The release and licence badges read live from shields.io; this only
+      # catches one pointed at the wrong repo.
       - name: README badges
         run: npm run badges:check
+
+      # The changelog dialog's parser needs an exact em dash in the top
+      # heading; a typed hyphen would otherwise ship silently unparsed.
+      - name: CHANGELOG heading format
+        run: npm run changelog:check
 
       # `npm test` asserts the same floor, but only this prints the table: every pair
       # with its measured ratio and how much room it has left. A pair passing by 0.25 is

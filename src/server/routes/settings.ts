@@ -763,6 +763,10 @@ const aiIntegrationPatchRequest = z.strictObject({
   budgetEur: euroAmount(),
 }).refine((value) => !(value.clearApiKey === true && value.apiKey !== undefined), {
   message: 'apiKey and clearApiKey cannot be used together',
+  // Without a path this issue has none, which `fieldIssues` reads as "not tied to
+  // any field" — it suppresses the general error banner while matching no `Issue`
+  // slot, so a failing save would show nothing at all (#737).
+  path: ['clearApiKey'],
 })
 
 /**
@@ -935,12 +939,6 @@ const netWorthExclusionReasons = (rows: readonly AccountMapRow[]): Map<string, E
 function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string): PromptSetting {
   const active = resolvePrompt(db, tenantId, key, locale)
   const versions = listPromptVersions(db, tenantId, key, locale)
-  // Read off the raw row set, not off `active`: for a language with no override of its
-  // own, `resolvePrompt` answers with the *shared* row, which this locale's own version
-  // list does not contain — so `active.id` can differ from anything in `versions` even
-  // though neither is locked or pinned (#468). `storedBody` is what this locale actually
-  // has on file, independent of which row inheritance resolves to.
-  const storedActive = versions.find((row) => row.active) ?? null
   // Fetched by id rather than found in `versions`, because the two are not the same set:
   // for a language with no override of its own, `resolvePrompt` answers with the *shared*
   // row, which this locale's version list does not contain. The verdict columns live on
@@ -970,9 +968,7 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
       body: active.body,
       gate: activeGate,
       validatedAt: activeRow?.validatedAt?.toISOString() ?? null,
-      rulesVersion: activeRow?.validationRulesVersion ?? null,
     },
-    storedBody: storedActive?.body ?? null,
     versions: versions.map((row) => ({
       id: row.id,
       version: row.version,
@@ -984,7 +980,6 @@ function promptSetting(db: Db, tenantId: string, key: PromptKey, locale: string)
       chars: row.body.length,
       gate: promptGateState(key, row),
       validatedAt: row.validatedAt?.toISOString() ?? null,
-      rulesVersion: row.validationRulesVersion,
     })),
   })
 }
@@ -3003,7 +2998,6 @@ export function registerSettingsRoutes(app: FastifyInstance, db: Db): void {
           ? 'built_in'
           : promptGateState(promptKeyOf(row.key), row),
       validatedAt: row.validatedAt?.toISOString() ?? null,
-      rulesVersion: row.validationRulesVersion,
       body: row.body,
     })
   })

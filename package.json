@@ -25,6 +25,7 @@
     "auth:local": "tsx --env-file-if-exists=.env scripts/local-user.ts",
     "i18n:check": "tsx scripts/check-i18n.ts",
     "badges:check": "node scripts/check-badges.mjs",
+    "changelog:check": "tsx scripts/check-changelog.ts",
     "contrast:check": "tsx scripts/check-contrast.ts",
     "skips:check": "tsx scripts/check-test-skips.ts",
     "licenses:check": "tsx scripts/check-licenses.ts",

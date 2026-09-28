@@ -4,8 +4,11 @@
  * which is exactly the kind of rule that quietly stops holding.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { is } from 'drizzle-orm'
+import { SQLiteTable, SQLiteView } from 'drizzle-orm/sqlite-core'
 import { createTestDb } from '../../src/db/index.ts'
 import { applyMigrations } from '../../src/db/apply-migrations.ts'
+import * as schemaModule from '../../src/db/schema.ts'
 import {
   accountMap,
   aiRuns,
@@ -333,5 +336,15 @@ describe('clarification_queue.run_id', () => {
 
     ctx.sqlite.prepare('delete from ai_runs where id = ?').run('run-1')
     expect(ctx.db.select().from(clarificationQueue).all()[0]?.runId).toBe('run-1')
+  })
+})
+
+describe('schema object handed to drizzle() (#765)', () => {
+  it('lists every table or view this module exports — the #682 bug (a table left out) is structurally impossible', () => {
+    const exportedTables = Object.entries(schemaModule)
+      .filter(([name, value]) => name !== 'schema' && (is(value, SQLiteTable) || is(value, SQLiteView)))
+      .map(([name]) => name)
+
+    expect(Object.keys(schemaModule.schema).sort()).toEqual(exportedTables.sort())
   })
 })

@@ -63,6 +63,19 @@ export class ApiError extends Error {
 }
 
 /**
+ * The message for whichever issue belongs to `path` — an exact match, or a nested
+ * path underneath it (`'accounts'` also catches `'accounts.0.name'`), so a form
+ * field driven by an object or array still finds the one issue that explains it.
+ *
+ * Was independently re-implemented, and drifted, in three places that each render
+ * an `issues` array next to a field (#790) — settings forms, onboarding, and the
+ * month note. One shared lookup so a fix here reaches all three.
+ */
+export function issueMessage(issues: readonly ApiFieldIssue[] | undefined, path: string): string | undefined {
+  return issues?.find((candidate) => candidate.path === path || candidate.path.startsWith(`${path}.`))?.message
+}
+
+/**
  * The `issues` array, keeping only entries that are actually shaped like one.
  *
  * The envelope is ours, but this runs on whatever came back — a proxy's error page,

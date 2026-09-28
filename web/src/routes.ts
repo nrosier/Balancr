@@ -122,6 +122,10 @@ export const ROUTES: readonly AppRoute[] = [
     ...page(() => import('./pages/Scenario.tsx'), 'Scenario'),
   },
   {
+    // Grouped with Insights rather than beside Budget/Portfolio/Forecast/Scenario ahead
+    // of it (#782): those four are where a plan is built or a number is entered, while
+    // Tags and Insights are both read-only cross-cutting reports over data those pages
+    // already hold, so they sit together at the end, ahead of Settings.
     path: '/tags',
     labelKey: 'nav.tags',
     Icon: IconTags,

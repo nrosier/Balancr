@@ -31,7 +31,7 @@
  * Belgian and 0,065% to a parser, and the honest fix is to never render the separator
  * that creates the ambiguity. Each row prints what its three numbers read as instead.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { assetClassLabel } from '../charts/AllocationChart.tsx'
 import { useT } from '../i18n.ts'
 import {
@@ -85,6 +85,7 @@ function presetSummary(bands: BandsSetting, label: (key: BandClass) => string): 
 export function RiskPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const advice = settings.advice
+  const captionId = useId()
 
   /** A preset picked but not yet saved. Null means "whatever is stored". */
   const [chosen, setChosen] = useState<PresetId | null>(null)
@@ -239,8 +240,11 @@ export function RiskPanel({ settings, state, owner }: SettingsPanelProps): React
 
         <Issue message={state.issue('bands')} />
 
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
           <table className="table risk__bands">
+            <caption className="table__caption" id={captionId}>
+              {t('settings:risk.caption')}
+            </caption>
             <thead>
               <tr>
                 <th scope="col">{t('settings:risk.column.class')}</th>

@@ -16,7 +16,7 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
-import { formatMonth } from '../shared.ts'
+import { formatMonth, formatMonthShort } from '../shared.ts'
 import './period-picker.css'
 
 export type PeriodKind = 'month' | 'year'
@@ -88,10 +88,16 @@ export function PeriodPicker({
 
   // Bare, abbreviated month names shared across every year — `formatMonth` always
   // prints a year alongside the month and so is not reusable for the grid's own list.
-  const monthNames = useMemo(() => {
-    const fmt = new Intl.DateTimeFormat(language, { month: 'short' })
-    return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(2000, i, 1)))
-  }, [language])
+  // Built from `formatMonthShort` rather than a locally-constructed `Intl.DateTimeFormat`
+  // so this grid gets the same `<lang>-BE` locale (and Belgian calendar conventions)
+  // every other month name in the app uses, not the bare UI language code (#773).
+  const monthNames = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) =>
+        formatMonthShort(`2000-${String(i + 1).padStart(2, '0')}`, language),
+      ),
+    [language],
+  )
 
   const availableYears = useMemo(
     () =>

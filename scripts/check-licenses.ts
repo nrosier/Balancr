@@ -78,8 +78,10 @@ const EXCEPTIONS: Record<string, string> = {
 
 // Anchored/exact where it matters: `UNLICENSED` (no license at all) is not the
 // same thing as `Unlicense` (a public-domain dedication), and license-checker
-// reports them as distinct strings.
-const DENY: RegExp[] = [/^\(?AGPL/i, /^\(?GPL/i, /SSPL/i, /^UNLICENSED$/]
+// reports them as distinct strings. `UNKNOWN` is the third of that family —
+// license-checker's own literal for a package that declares no license field
+// at all, distinct from both and otherwise passing silently.
+const DENY: RegExp[] = [/^\(?AGPL/i, /^\(?GPL/i, /SSPL/i, /^UNLICENSED$/, /^UNKNOWN$/]
 
 function init(options: InitOpts): Promise<ModuleInfos> {
   return new Promise((resolve, reject) => {

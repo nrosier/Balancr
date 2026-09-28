@@ -16,15 +16,20 @@
  * and losing the type that says which.
  */
 import type { ReactNode } from 'react'
+import { useT } from '../i18n.ts'
 import { usePrivacy } from '../privacy/PrivacyContext.tsx'
 import { formatMicroEur, formatMoney, type MoneyOptions } from '../shared.ts'
 
 export function Private({ children }: { children: ReactNode }): ReactNode {
   const { enabled } = usePrivacy()
+  const { t } = useT()
   // A tab stop only while there is something to peek at: with privacy mode off,
-  // every figure would otherwise gain a stop nobody needs to reach.
+  // every figure would otherwise gain a stop nobody needs to reach. The label
+  // is what makes that stop worth reaching at all (#778) — the blur is CSS-only
+  // and never hides the figure from a screen reader, so an unlabelled `<span>`
+  // is a stop most browsers prune from the accessibility tree entirely.
   return (
-    <span data-private tabIndex={enabled ? 0 : undefined}>
+    <span data-private tabIndex={enabled ? 0 : undefined} aria-label={enabled ? t('privacy.peek') : undefined}>
       {children}
     </span>
   )

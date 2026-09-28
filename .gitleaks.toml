@@ -6,14 +6,19 @@
 [extend]
 useDefault = true
 
-[allowlist]
+# Array-of-tables form: the schema gitleaks >= v8.21 (the pinned v8.30.1 in
+# ci.yml included) actually uses for global allowlists. The legacy singular
+# `[allowlist]` table still parses, but isn't what this version's own default
+# config or test fixtures write (#725).
+[[allowlists]]
 description = "Placeholders and test fixtures"
 paths = [
   '''\.env\.example$''',
   '''^test/setup\.ts$''',
-  '''^README\.md$''',
 ]
 regexes = [
-  # The 48-character session secret in the test setup is literally 'x' repeated.
-  '''x{32,}''',
+  # The one secret-shaped example value anywhere in README.md, in the backup
+  # walkthrough's placeholder passphrase — narrower than exempting the whole
+  # file, so a real secret pasted anywhere else in it still gets caught (#725).
+  '''write-this-down-somewhere-else''',
 ]

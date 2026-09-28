@@ -133,6 +133,7 @@
       "birthYear": "Year of birth",
       "blocked_one": "One person's details are not complete yet. The household is saved as one, so finish the row above or remove it.",
       "blocked_other": "{{value}} people's details are not complete yet. The household is saved as one, so finish the rows above or remove them.",
+      "capHint": "Up to {{value}} household members.",
       "country": "Country",
       "countryHint": "Which national average your spending is compared against. Balancr ships a real file for Belgium today; every other country shows the comparison as not configured until one is added.",
       "country_BE": "Belgium",
@@ -312,7 +313,7 @@
     "none": "No digest has been generated yet.",
     "recipients": {
       "add": "Add another recipient",
-      "hint": "Up to five email addresses.",
+      "hint": "Up to {{value}} email addresses.",
       "label": "Recipients",
       "masked_one": "{{value}} recipient — visible to the owner only.",
       "masked_other": "{{value}} recipients — visible to the owner only.",
@@ -406,6 +407,10 @@
         "xai": "xAI / Grok"
       },
       "providerLabel": "Provider",
+      "saveNeedsBaseUrl": "Enter the base URL to save.",
+      "saveNeedsBudget": "Enter a budget of 0 or more to save.",
+      "saveNeedsModel": "Fill in both model fields above to save.",
+      "saveNeedsPrices": "Every selected model needs a price above to save.",
       "title": "AI provider"
     },
     "ghostfolio": {
@@ -433,6 +438,7 @@
     "add": "Add a loan",
     "anchorDate": "Balance as of",
     "balanceReads": "{{value}} still owed today.",
+    "capHint": "Up to {{value}} loans.",
     "create": "Add this loan",
     "extra": "Extra each month",
     "extraHint": "Optional. Anything you pay on top of the monthly payment, which brings the payoff date forward.",
@@ -673,6 +679,7 @@
     "yieldReads": "{{value}} gross yield."
   },
   "risk": {
+    "caption": "Each asset class's floor, target and ceiling, in basis points",
     "column": {
       "class": "Asset class",
       "maxBp": "Ceiling",

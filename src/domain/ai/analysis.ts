@@ -21,7 +21,7 @@
  * returns the deterministic list, so the page degrades to real findings in a
  * defensible order instead of showing an error.
  */
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { callAi } from '../../adapters/ai/client.ts'
 import { costMicroEur, estimateCostMicroEur } from '../../adapters/ai/pricing.ts'
 import { tryAssembleRequestText } from '../../adapters/ai/prompt.ts'
@@ -369,6 +369,7 @@ const findingKey = (categoryId: string | null, code: string): string => `${categ
  */
 function reconstructFindings(
   db: Db,
+  tenantId: string,
   sourceRunId: string,
   signals: readonly Signal[],
   locale: string,
@@ -376,7 +377,14 @@ function reconstructFindings(
   const byKey = new Map<string, Signal>()
   for (const signal of signals) byKey.set(findingKey(signal.categoryId, signal.code), signal)
 
-  const rows = db.select().from(aiFindings).where(eq(aiFindings.runId, sourceRunId)).all()
+  // `runId` alone is only unique within a tenant's own run sequence, not globally
+  // (#734) — without this, a collision or a guessed id from another tenant would
+  // reconstruct another household's findings.
+  const rows = db
+    .select()
+    .from(aiFindings)
+    .where(and(eq(aiFindings.runId, sourceRunId), eq(aiFindings.tenantId, tenantId)))
+    .all()
   const out: AnalysisFinding[] = []
   for (const row of rows) {
     const source = byKey.get(findingKey(row.categoryId, row.code))
@@ -661,7 +669,7 @@ export async function runAnalysis(
         reason: 'reused',
         runId,
         degraded: false,
-        findings: reconstructFindings(db, reused.id, ranked, locale),
+        findings: reconstructFindings(db, tenantId, reused.id, ranked, locale),
         costMicroEur: 0,
       }
     }

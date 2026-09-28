@@ -29,7 +29,15 @@ import {
   updateAccountMap,
 } from '../../src/domain/aggregate/accounts.ts'
 import { loadMonthTotals, persistMonthTotals } from '../../src/domain/aggregate/month-store.ts'
-import { loadHygiene, loadSignals, persistSignals } from '../../src/domain/aggregate/signals-store.ts'
+import {
+  loadCategoryGuessCandidates,
+  loadCategoryGuessCandidatesByIds,
+  loadHygiene,
+  loadSignals,
+  persistCategoryGuessCandidates,
+  persistSignals,
+  type CategoryGuessCandidate,
+} from '../../src/domain/aggregate/signals-store.ts'
 import { loadNetWorthHistory, persistNetWorth } from '../../src/domain/aggregate/networth-store.ts'
 import type { AccountValue } from '../../src/domain/aggregate/networth.ts'
 import {
@@ -622,6 +630,35 @@ describe('category metadata and translations', () => {
     expect(rowsA[0]?.translations).toEqual({})
     expect(rowsB).toHaveLength(1)
     expect(rowsB[0]?.translations).toEqual({ nl: 'Huur' })
+  })
+})
+
+describe('category-guess candidates (#216)', () => {
+  const candidate = (transactionId: string, payeeName: string): CategoryGuessCandidate => ({
+    transactionId,
+    payeeId: `payee-${transactionId}`,
+    payeeName,
+    amountCents: -1_000,
+    date: `${MONTH}-15`,
+    history: [],
+  })
+
+  it("never returns another tenant's candidate by transaction id, and a resync never touches it", () => {
+    persistCategoryGuessCandidates(db, tenantA, MONTH, [candidate('txn-a1', 'A payee')])
+    persistCategoryGuessCandidates(db, tenantB, MONTH, [candidate('txn-b1', 'B payee')])
+
+    // B supplies A's transaction id, exactly as a compromised tenant clause would let
+    // happen on the AI egress path: no candidate — and so no payee name or spend
+    // history — crosses the boundary.
+    expect(loadCategoryGuessCandidatesByIds(db, tenantB, ['txn-a1'])).toEqual([])
+    const ownRead = loadCategoryGuessCandidatesByIds(db, tenantA, ['txn-a1'])
+    expect(ownRead).toHaveLength(1)
+    expect(ownRead[0]?.payeeName).toBe('A payee')
+
+    // The month-scoped delete-then-insert resync is scoped to the writing tenant alone.
+    persistCategoryGuessCandidates(db, tenantB, MONTH, [candidate('txn-b2', 'B payee 2')])
+    expect(loadCategoryGuessCandidates(db, tenantA, MONTH)).toHaveLength(1)
+    expect(loadCategoryGuessCandidates(db, tenantB, MONTH).map((row) => row.transactionId)).toEqual(['txn-b2'])
   })
 })
 

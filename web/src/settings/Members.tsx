@@ -14,7 +14,7 @@
  * are the facts, and "pending" is just what none of them being true means
  * right now, at read time.
  */
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useT } from '../i18n.ts'
 import { formatDateTime, type InviteCreated, type InviteSetting } from '../shared.ts'
 import { Issue, Panel } from './Panel.tsx'
@@ -41,6 +41,12 @@ export function MembersPanel({ settings, state, owner }: SettingsPanelProps): Re
   const [label, setLabel] = useState('')
   const [justCreated, setJustCreated] = useState<InviteCreated | null>(null)
   const [invites, setInvites] = useState<InviteSetting[] | null>(null)
+
+  // Otherwise a newly created invite keeps shadowing every later refetch of
+  // `settings.invites` (e.g. from another panel's save) until this panel
+  // unmounts — same reset-on-refetch pattern as `setWritten(null)` in
+  // `state.ts:98` (#738).
+  useEffect(() => setInvites(null), [settings])
 
   const rows = invites ?? settings.invites
 

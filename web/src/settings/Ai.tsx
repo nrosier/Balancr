@@ -65,6 +65,29 @@ const aiDraftOf = (ai: IntegrationsSetting['ai']): AiDraft => ({
   budgetEur: String(ai.budgetEurMicro / 1_000_000),
 })
 
+/**
+ * Why "Save" is inert right now, shown next to the button rather than only in a
+ * `title` tooltip — same reasoning as `TestHint` (#382), now also covering the
+ * case where a form has an unsaved draft but validation blocks it (#784).
+ */
+function SaveHint({ reason }: { reason: 'model' | 'prices' | 'budget' | 'baseUrl' | null }): ReactNode {
+  const { t } = useT()
+  if (reason === null) return null
+  return (
+    <p className="panel__meta muted">
+      {t(
+        reason === 'model'
+          ? 'settings:integrations.ai.saveNeedsModel'
+          : reason === 'prices'
+            ? 'settings:integrations.ai.saveNeedsPrices'
+            : reason === 'budget'
+              ? 'settings:integrations.ai.saveNeedsBudget'
+              : 'settings:integrations.ai.saveNeedsBaseUrl',
+      )}
+    </p>
+  )
+}
+
 function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactNode {
   const { t } = useT()
   const { ai } = settings.integrations
@@ -128,8 +151,20 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
     }),
   )
   const customPricesComplete = !isCustom || selectedModels.every((model) => modelPrices[model] !== undefined)
-  const budgetEurValue = Number(current.budgetEur.trim())
+  // A Belgian-locale user types a comma decimal separator (#784); `Number` only
+  // understands a dot, so normalise before parsing rather than rejecting "20,50".
+  const budgetEurValue = Number(current.budgetEur.trim().replace(',', '.'))
   const budgetValid = current.budgetEur.trim() !== '' && Number.isFinite(budgetEurValue) && budgetEurValue >= 0
+  const saveHint: 'model' | 'prices' | 'budget' | 'baseUrl' | null =
+    modelFast === '' || modelDeep === ''
+      ? 'model'
+      : !customPricesComplete
+        ? 'prices'
+        : !budgetValid
+          ? 'budget'
+          : isCustom && baseUrl === ''
+            ? 'baseUrl'
+            : null
 
   const submit = (): void => {
     state.save(
@@ -351,6 +386,7 @@ function AiProviderPanel({ settings, state, owner }: SettingsPanelProps): ReactN
           >
             {state.pending === 'integrations-ai' ? t('shell.loading') : t('action.save')}
           </button>
+          {locked || draft === null ? null : <SaveHint reason={saveHint} />}
           <button
             type="button"
             className="button button--quiet"

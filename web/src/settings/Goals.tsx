@@ -402,12 +402,17 @@ export function GoalsPanel({ settings, state, owner }: SettingsPanelProps): Reac
             type="button"
             className="button button--quiet"
             disabled={locked || active.length >= MAX_GOALS}
+            aria-describedby={active.length >= MAX_GOALS ? 'goals-cap-hint' : undefined}
             onClick={add}
           >
             {t('settings:goals.add')}
           </button>
         </div>
-        <p className="panel__meta muted">{t('settings:goals.capHint', { value: MAX_GOALS })}</p>
+        {active.length >= MAX_GOALS && (
+          <p id="goals-cap-hint" className="panel__meta muted">
+            {t('settings:goals.capHint', { value: MAX_GOALS })}
+          </p>
+        )}
       </form>
 
       {archived.length > 0 && (

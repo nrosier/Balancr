@@ -219,6 +219,9 @@ describe('listing a tenant’s users (#695)', () => {
       if (otherTenant === undefined) throw new Error('no tenant')
       db.insert(users).values({ tenantId: otherTenant.id, email: 'stranger@example.test' }).run()
 
+      // A row that omits `role` entirely must default to the least-privileged one (#697,
+      // #766) — the column's default is defence-in-depth for an insert site that skips it.
+      expect(listTenantUsers(db, otherTenant.id)[0]?.role).toBe('viewer')
       expect(listTenantUsers(db, otherTenant.id)).toHaveLength(1)
       expect(listTenantUsers(db, mine)).toHaveLength(1)
     } finally {

@@ -163,6 +163,7 @@
     "view": "View"
   },
   "privacy": {
+    "peek": "Blurred figure, hidden from a shoulder glance",
     "toggle": {
       "hint": "Blurs the screen for a shoulder glance — it is not a security control. Anyone with the browser's developer tools, the page's own data, or a screen reader can still read every figure. Shortcut: Shift+Ctrl+E (Shift+Cmd+E on a Mac).",
       "label": "Privacy mode",

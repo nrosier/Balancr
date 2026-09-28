@@ -1,7 +1,12 @@
 {
+  "hint": "Een netto-cijfer: inkomsten en uitgaven op deze tag worden samengevoegd tot één getal, waardoor een totaal rond nul kan betekenen dat er wel degelijk geld beide richtingen uit ging, niet dat er niets gebeurde.",
+  "notConfigured": {
+    "title": "Nog geen tags",
+    "body": "Tags zijn geen Balancr-instelling — voeg een #tag toe aan de notitie van een transactie in Actual, synchroniseer, en ze verschijnt hier."
+  },
   "table": {
     "caption_one": "Eén tag bijgehouden.",
-    "caption_other": "{{value}} tags bijgehouden.",
+    "caption_other": "{{value}} tags bijgehouden, grootste totaal sinds altijd eerst.",
     "column": {
       "allTime": "Sinds altijd",
       "rolling12": "Laatste 12 maanden",

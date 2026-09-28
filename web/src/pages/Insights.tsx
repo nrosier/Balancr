@@ -241,7 +241,7 @@ function Sections({
       )}
 
       {/*
-        Four sections that only a model can fill, each with its own "nothing yet" copy.
+        Sections below that only a model can fill, each with its own "nothing yet" copy.
         On a deployment without a key that copy is a lie by omission — nothing is
         pending, nothing ever will be — so the empty ones are dropped and the panel
         above says why. Anything already stored still renders: switching the model off

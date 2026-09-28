@@ -16,6 +16,7 @@ import { buildApp } from '../../src/server/app.ts'
 import { createSession } from '../../src/server/auth/sessions.ts'
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../src/server/cookies.ts'
 import { CSRF_HEADER, newCsrfToken } from '../../src/server/csrf.ts'
+import type { ErrorBody } from '../../src/server/errors.ts'
 import { apiFixture, MONTH, PREVIOUS_MONTH } from '../helpers/api-fixture.ts'
 
 let ctx: ReturnType<typeof apiFixture>
@@ -154,6 +155,11 @@ describe('PATCH /api/budget/note', () => {
     const res = await patch('/api/budget/note', { month: MONTH, text: 'x'.repeat(MONTH_NOTE_MAX_CHARS + 1) })
     expect(res.statusCode).toBe(400)
     expect(loadMonthNote(ctx.db, tenantId, MONTH)).toBe('')
+
+    // `saveMonthNote` bounds the length by parsing the bare string, not the request
+    // object, so the resulting issue's path is empty — `MonthNote.tsx` (#767) relies
+    // on that empty path to still find a message to show next to the field.
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual([''])
   })
 
   it('refuses a malformed month', async () => {

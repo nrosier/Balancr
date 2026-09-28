@@ -793,6 +793,9 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                       type="button"
                       className="button button--quiet"
                       disabled={locked || row.mortgages.length >= MAX_MORTGAGES_PER_PROPERTY}
+                      aria-describedby={
+                        row.mortgages.length >= MAX_MORTGAGES_PER_PROPERTY ? `mortgage-cap-hint-${row.id}` : undefined
+                      }
                       onClick={() => addMortgage(index)}
                     >
                       {t('settings:property.mortgage.add')}
@@ -807,9 +810,11 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
                       {t('settings:property.remove')}
                     </button>
                   </div>
-                  <p className="property__reads muted">
-                    {t('settings:property.mortgage.capHint', { value: MAX_MORTGAGES_PER_PROPERTY })}
-                  </p>
+                  {row.mortgages.length >= MAX_MORTGAGES_PER_PROPERTY && (
+                    <p id={`mortgage-cap-hint-${row.id}`} className="property__reads muted">
+                      {t('settings:property.mortgage.capHint', { value: MAX_MORTGAGES_PER_PROPERTY })}
+                    </p>
+                  )}
                 </li>
               )
             })}
@@ -834,6 +839,7 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
             type="button"
             className="button button--quiet"
             disabled={locked || rows.length >= MAX_PROPERTIES}
+            aria-describedby={rows.length >= MAX_PROPERTIES ? 'properties-cap-hint' : undefined}
             onClick={() =>
               setDrafts([
                 ...rows,
@@ -860,7 +866,11 @@ export function PropertyPanel({ settings, state, owner }: SettingsPanelProps): R
             {state.pending === 'property' ? t('shell.loading') : t('action.save')}
           </button>
         </div>
-        <p className="panel__meta muted">{t('settings:property.capHint', { value: MAX_PROPERTIES })}</p>
+        {rows.length >= MAX_PROPERTIES && (
+          <p id="properties-cap-hint" className="panel__meta muted">
+            {t('settings:property.capHint', { value: MAX_PROPERTIES })}
+          </p>
+        )}
       </form>
     </Panel>
   )

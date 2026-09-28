@@ -33,13 +33,8 @@
   gap: var(--space-4);
 }
 
-.panel__hint,
-.panel__meta {
-  margin: 0;
-  font-size: var(--type-sm);
-  line-height: var(--lead-normal);
-  max-width: 60ch;
-}
+/* `.panel__hint`/`.panel__meta` themselves live in `theme/components.css` (#785):
+ * both are used well beyond this stylesheet's own settings forms. */
 
 .panel__subtitle {
   margin: 0;
@@ -51,12 +46,6 @@
 /* The panel owns the gap, so a field inside it must not add a second one. */
 .panel > .field {
   margin: 0;
-}
-
-.field__issue {
-  margin: var(--space-1) 0 0;
-  font-size: var(--type-sm);
-  color: var(--negative);
 }
 
 .field__input:disabled,
@@ -408,7 +397,8 @@
 
 .prompt__diff,
 .prompt__dryrun,
-.prompt__check {
+.prompt__check,
+.prompt__override {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -419,6 +409,7 @@
 .prompt__diff > p,
 .prompt__dryrun > p,
 .prompt__check > p,
+.prompt__override > p,
 .rerun > p {
   margin: 0;
   font-size: var(--type-sm);
@@ -1268,8 +1259,12 @@
   margin-top: var(--space-4);
 }
 
+/* Archived, not just visited less: background changes, text does not — the same
+   "disabled state changes the background and keeps the text colour" rule this file's
+   own doc comment states, since opacity alone drops muted text below AA contrast (#775). */
 .goal--archived {
-  opacity: 0.75;
+  background: var(--surface-sunken);
+  border-color: transparent;
 }
 
 .provenance {

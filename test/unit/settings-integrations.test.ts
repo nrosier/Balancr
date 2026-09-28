@@ -717,6 +717,21 @@ describe('PATCH /api/settings/integrations/ai', () => {
     expect((await get('/api/settings')).statusCode).toBe(200)
   })
 
+  it('refuses a negative budgetEur, the lower bound a blank client-side field would otherwise coerce to zero past (#763)', async () => {
+    const res = await patch('/api/settings/integrations/ai', {
+      ...modelFields,
+      provider: 'gemini-aistudio',
+      googleCloudProject: null,
+      budgetEur: -1,
+    })
+
+    expect(res.statusCode).toBe(400)
+    // A negative amount fails both `.nonnegative()` and the `fitsMicroEur` refine below
+    // it (microEur() is itself nonnegative), so two issues land on the same path.
+    expect(res.json<ErrorBody>().error.issues?.map((issue) => issue.path)).toEqual(['budgetEur', 'budgetEur'])
+    expect(row(ctx.db).aiMonthlyBudgetEurMicro).toBe(15_000_000)
+  })
+
   it('refuses a modelPrices entry too large to round-trip through microEur (#578)', async () => {
     const res = await patch('/api/settings/integrations/ai', {
       provider: 'gemini-aistudio',

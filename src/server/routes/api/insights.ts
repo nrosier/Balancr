@@ -36,7 +36,7 @@
  *
  * Takes `?month=YYYY-MM` since #158, exactly as `/api/budget` does and through the same
  * `resolveMonth`, so the two pickers cannot disagree about what a month means or which
- * ones exist. **Three of the six sections narrow with it and two deliberately do not**,
+ * ones exist. **Three of the five sections narrow with it and two deliberately do not**,
  * and the split is the one judgement in this file:
  *
  *  - `signals`, `narrative` and `runs` are *about* a month. Each is stored under one, and

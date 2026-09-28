@@ -11,7 +11,7 @@
  * derived from that one stored series at read time (`loadTagTotals`), not stored as
  * separate columns: there is nothing a read-time sum over the series can't answer.
  */
-import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, lte, notInArray, sql } from 'drizzle-orm'
 import type { ActualTag, TagMonthTotal } from '../../adapters/actual/queries.ts'
 import type { Db } from '../../db/index.ts'
 import { tagMeta, tagMonthlyFacts } from '../../db/schema.ts'
@@ -30,6 +30,14 @@ const CHUNK = 200
  * Actual, not just skipped this time (#733). Like `syncScheduleMeta`, every
  * surviving row's columns are refreshed on every sync — Actual owns all of it,
  * and there is no user-entered column here to protect.
+ *
+ * A tag deleted in Actual also has its `tag_monthly_facts` rows removed here
+ * (#751), not just its `tag_meta` row: `persistTagFacts`'s own stale-row
+ * cleanup is deliberately scoped to `activeTagIds` so hiding a tag doesn't
+ * erase its history, but that same scoping means a tag missing from `tags`
+ * entirely — genuinely deleted, not just hidden — would otherwise never have
+ * its facts cleaned up by either function and would linger as an orphaned row
+ * with no `tag_meta` parent.
  */
 export function syncTagMeta(db: Db | Transaction, tenantId: string, tags: readonly ActualTag[]): number {
   const rows = tags.map((tag) => ({
@@ -60,11 +68,17 @@ export function syncTagMeta(db: Db | Transaction, tenantId: string, tags: readon
     // `notInArray` with an empty list matches nothing rather than everything —
     // the same pitfall `persistFacts` notes — so the all-deleted case needs its
     // own branch.
-    const where =
+    const metaWhere =
       keep.length > 0
         ? and(eq(tagMeta.tenantId, tenantId), notInArray(tagMeta.tagId, keep))
         : eq(tagMeta.tenantId, tenantId)
-    tx.delete(tagMeta).where(where).run()
+    tx.delete(tagMeta).where(metaWhere).run()
+
+    const factsWhere =
+      keep.length > 0
+        ? and(eq(tagMonthlyFacts.tenantId, tenantId), notInArray(tagMonthlyFacts.tagId, keep))
+        : eq(tagMonthlyFacts.tenantId, tenantId)
+    tx.delete(tagMonthlyFacts).where(factsWhere).run()
   })
 
   return rows.length
@@ -160,7 +174,7 @@ export interface TagTotal {
   allTimeNetCents: number
   rolling12NetCents: number
   thisYearNetCents: number
-  /** Ascending. One entry per month that has ever had a matching transaction. */
+  /** Ascending, capped to the most recent `TAG_SERIES_MONTHS` months — see below. */
   byMonth: { month: string; netCents: number; txnCount: number }[]
 }
 
@@ -180,8 +194,14 @@ const TAG_SERIES_MONTHS = 24
  * that tag, the same sense `monthly_category_facts`/`history.earliest` already use
  * elsewhere: since Balancr started persisting facts, not since some real-world start.
  *
- * `currentMonth` anchors both other windows: rolling 12 is the 12 months ending with
- * it, this-year is every stored month sharing its calendar year.
+ * `anchorMonth` is the caller's `latestStoredMonth`, not the wall-clock month (#752):
+ * every other report-facing surface anchors its rolling/this-year windows on the
+ * newest month actually synced, so a stale or paused sync holds the window steady on
+ * what data exists rather than sliding it forward and reading recent, un-synced months
+ * as zero. It anchors both other windows: rolling 12 is the 12 months ending with it,
+ * this-year is every stored month sharing its calendar year. It also caps every sum and
+ * the `byMonth` series from above, so a month beyond it — none exist today, but nothing
+ * currently stops one — can't inflate a total it hasn't arrived at yet.
  *
  * The three summary figures are summed in SQL, not read row-by-row into JS: this is a
  * request-time read, and `tag_monthly_facts` grows monotonically with tenant age × tag
@@ -189,7 +209,7 @@ const TAG_SERIES_MONTHS = 24
  * `loadNetWorthHistory` already gives for pushing its own sum into SQL. Only the
  * `byMonth` series — capped to `TAG_SERIES_MONTHS` — still needs individual rows.
  */
-export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): TagTotal[] {
+export function loadTagTotals(db: Db, tenantId: string, anchorMonth: string): TagTotal[] {
   const metaRows = db
     .select()
     .from(tagMeta)
@@ -197,8 +217,8 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
     .all()
   if (metaRows.length === 0) return []
 
-  const rolling12Start = addMonths(currentMonth, -11)
-  const yearPrefix = currentMonth.slice(0, 4)
+  const rolling12Start = addMonths(anchorMonth, -11)
+  const yearPrefix = anchorMonth.slice(0, 4)
 
   const totalsRows = db
     .select({
@@ -208,12 +228,12 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
       thisYearNetCents: sql<number>`sum(case when ${tagMonthlyFacts.month} like ${`${yearPrefix}%`} then ${tagMonthlyFacts.netCents} else 0 end)`,
     })
     .from(tagMonthlyFacts)
-    .where(eq(tagMonthlyFacts.tenantId, tenantId))
+    .where(and(eq(tagMonthlyFacts.tenantId, tenantId), lte(tagMonthlyFacts.month, anchorMonth)))
     .groupBy(tagMonthlyFacts.tagId)
     .all()
   const totalsByTagId = new Map(totalsRows.map((row) => [row.tagId, row]))
 
-  const seriesCutoff = addMonths(currentMonth, -(TAG_SERIES_MONTHS - 1))
+  const seriesCutoff = addMonths(anchorMonth, -(TAG_SERIES_MONTHS - 1))
   const factRows = db
     .select({
       tagId: tagMonthlyFacts.tagId,
@@ -222,7 +242,13 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
       txnCount: tagMonthlyFacts.txnCount,
     })
     .from(tagMonthlyFacts)
-    .where(and(eq(tagMonthlyFacts.tenantId, tenantId), gte(tagMonthlyFacts.month, seriesCutoff)))
+    .where(
+      and(
+        eq(tagMonthlyFacts.tenantId, tenantId),
+        gte(tagMonthlyFacts.month, seriesCutoff),
+        lte(tagMonthlyFacts.month, anchorMonth),
+      ),
+    )
     .orderBy(tagMonthlyFacts.month)
     .all()
 
@@ -236,16 +262,21 @@ export function loadTagTotals(db: Db, tenantId: string, currentMonth: string): T
     series.push({ month: row.month, netCents: row.netCents, txnCount: row.txnCount })
   }
 
-  return metaRows.map((meta) => {
-    const totals = totalsByTagId.get(meta.tagId)
-    return {
-      id: meta.tagId,
-      tag: meta.tag,
-      color: meta.color,
-      allTimeNetCents: totals?.allTimeNetCents ?? 0,
-      rolling12NetCents: totals?.rolling12NetCents ?? 0,
-      thisYearNetCents: totals?.thisYearNetCents ?? 0,
-      byMonth: byTagId.get(meta.tagId) ?? [],
-    }
-  })
+  return metaRows
+    .map((meta) => {
+      const totals = totalsByTagId.get(meta.tagId)
+      return {
+        id: meta.tagId,
+        tag: meta.tag,
+        color: meta.color,
+        allTimeNetCents: totals?.allTimeNetCents ?? 0,
+        rolling12NetCents: totals?.rolling12NetCents ?? 0,
+        thisYearNetCents: totals?.thisYearNetCents ?? 0,
+        byMonth: byTagId.get(meta.tagId) ?? [],
+      }
+    })
+    // Largest first (#771): a tag's whole point is spanning categories and the
+    // budget line, so the tag that moved the most money is what a reader wants to
+    // see first — same reasoning `portfolio.ts` gives for its holdings table.
+    .sort((a, b) => Math.abs(b.allTimeNetCents) - Math.abs(a.allTimeNetCents))
 }
