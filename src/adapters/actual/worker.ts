@@ -66,7 +66,8 @@ const VERBOSE_LOG_LEVELS: ReadonlySet<string> = new Set(['debug', 'trace'])
  * needs (`queries.ts`'s `updateTransactionCategory`/`setCategoryBudgetAmount`),
  * reachable only from an approved, audited proposal. `getSchedules`/`getRules`
  * are batch-only in practice (`fetchSchedules`'s atomicity), but there is no
- * reason to keep a second list — a lone `call` for either is just as harmless.
+ * reason to keep a second list — a lone `call` for either is just as harmless,
+ * same as `getTags` (`fetchTags`, #663), which is always a lone call.
  */
 const ALLOWED_METHODS: ReadonlySet<string> = new Set([
   'aqlQuery',
@@ -77,6 +78,7 @@ const ALLOWED_METHODS: ReadonlySet<string> = new Set([
   'setBudgetAmount',
   'getSchedules',
   'getRules',
+  'getTags',
 ])
 
 let opened = false
