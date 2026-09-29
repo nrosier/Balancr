@@ -6,6 +6,13 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.5.3] — 2026-09-29
+
+### Fixed
+
+- **Every sync job failed outright with "method not allowed: getTags", leaving all cached figures stale across every household**
+  ([#797](https://github.com/nrosier/balancr/pull/797), [#796](https://github.com/nrosier/balancr/issues/796)). The `/tags` page shipped in 2.5.2 added `fetchTags()`, which calls `actual.getTags()` through the per-tenant Actual worker, but the worker's `ALLOWED_METHODS` allowlist — the actual enforcement point for what may cross IPC to `@actual-app/api` — was never updated to include it, so the rejection happened before the call ever reached the Actual server and took down the whole sync job, not just tag totals. `getTags` is now allowlisted alongside `getSchedules`/`getRules`, same read-only, always-a-lone-call justification.
+
 ## [2.5.2] — 2026-09-29
 
 ### Security

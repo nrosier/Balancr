@@ -1022,17 +1022,13 @@ ends.
 
 ✅ complete · 🔄 in progress, shipping under the patch series shown · ⬜ not started
 
-**Where it is now** — `2.5.2` is the current release. It closes out the third
-and final tier of a full backlog-clearing sweep: a property's rent/mortgage
-payment can now link to the Actual schedule that represents it, per-tag net
-cost/gain totals get their own `/tags` page, and a reconciliation check flags
-a self-reported property/loan/debt that looks like the same money as an
-off-budget account. The rest is fixes — tenant-isolation and session/cache
-hardening, tag-total correctness, and a long tail of settings-panel
-accessibility and validation gaps (see [`CHANGELOG.md`](CHANGELOG.md) for
+**Where it is now** — `2.5.3` is the current release. It's a single-fix
+patch: the `/tags` page shipped in 2.5.2 silently took down every tenant's
+sync job, since the worker's method allowlist was never updated to permit
+the new `getTags` call it depends on (see [`CHANGELOG.md`](CHANGELOG.md) for
 details). Existing deployments upgrade in place.
 
-`docker pull` now resolves `latest` to `2.5.2`; a release candidate is
+`docker pull` now resolves `latest` to `2.5.3`; a release candidate is
 published under its own tag only, same as before.
 
 Progress is tracked as [issues](https://github.com/nrosier/balancr/issues), grouped
