@@ -37,7 +37,7 @@
     "backup:restore": "tsx --env-file-if-exists=.env scripts/backup-restore.ts"
   },
   "dependencies": {
-    "@actual-app/api": "26.9.0",
+    "@actual-app/api": "26.10.0",
     "@actual-app/core": "26.9.0",
     "@fastify/cookie": "^11.1.2",
     "@fastify/helmet": "^13.1.1",
