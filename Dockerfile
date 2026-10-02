@@ -58,7 +58,7 @@ RUN npm run build
 # Docker accepts a bare numeric USER/--chown.
 RUN mkdir -p /data && chown -R 1000:1000 /data
 
-FROM cgr.dev/chainguard/node:latest@sha256:5d6d6287abf176121b173a0337a888900f2909f0ac06e4e096138be4898a8f92 AS runtime
+FROM cgr.dev/chainguard/node:latest@sha256:10be2e69be84a55739a6f4e0ab47703746e546006dad2c80494fafc7f5f6c5fd AS runtime
 ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_PATH=/data/balancr.db \
