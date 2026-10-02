@@ -28,7 +28,7 @@ import type { EgressMode } from '../../egress.ts'
  * `process.on('message', ...)` dispatch loop on whatever process does the
  * importing, including a real Vitest worker process.
  */
-export const EXPECTED_API_VERSION = '26.9.0'
+export const EXPECTED_API_VERSION = '26.10.0'
 
 /**
  * What Actual calls envelope budgeting, in every spelling it has used.
