@@ -6,6 +6,22 @@ scheme in [README](README.md#versioning) — a minor lands when its milestone is
 complete, patches carry the work in between, and 1.0.0 ships when testing says so
 rather than when the feature list ends.
 
+## [2.5.4] — 2026-10-02
+
+Dependency and base-image maintenance — no user-facing behavior change.
+
+### Security
+
+- **The production image's Chainguard `node` base carried a HIGH-severity Trivy finding in Wolfi's bundled `npm` package (CVE-2026-102276, CVE-2026-102278)**
+  ([#798](https://github.com/nrosier/balancr/pull/798)). The runtime image digest is bumped to the current `cgr.dev/chainguard/node:latest` build, which carries the patched package; the dev-stage image digest used only to build moves too
+  ([#648](https://github.com/nrosier/balancr/pull/648)).
+
+### Changed
+
+- **Routine dependency maintenance**: `@fastify/static` ([#649](https://github.com/nrosier/balancr/pull/649)), `@types/node` ([#576](https://github.com/nrosier/balancr/pull/576)), `nodemailer` ([#799](https://github.com/nrosier/balancr/pull/799)), `@google/genai` ([#801](https://github.com/nrosier/balancr/pull/801) — now with an `allowScripts` entry so its install script passes the allowlist gate), dev dependencies including `typescript-eslint` ([#800](https://github.com/nrosier/balancr/pull/800)), and a lock-file maintenance pass ([#710](https://github.com/nrosier/balancr/pull/710)) — each verified by CI before merging.
+- **`@actual-app/api` and `@actual-app/core` both move to `26.10.0`**
+  ([#802](https://github.com/nrosier/balancr/pull/802), [#803](https://github.com/nrosier/balancr/pull/803)). The manually pinned `EXPECTED_API_VERSION` guard in `src/adapters/actual/protocol.ts` moves with it, and resolving the two PRs together also deduped a nested `@actual-app/core` copy out of the lockfile.
+
 ## [2.5.3] — 2026-09-29
 
 ### Fixed
