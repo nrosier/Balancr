@@ -103,6 +103,6 @@
     "argon2@0.45.1": true,
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true,
-    "@google/genai@2.24.0": true
+    "@google/genai@2.27.0": true
   }
 }
